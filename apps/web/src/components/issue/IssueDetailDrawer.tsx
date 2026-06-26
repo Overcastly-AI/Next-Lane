@@ -294,7 +294,11 @@ function DrawerBody({
               Created {new Date(issue.createdAt).toLocaleDateString()}
             </div>
 
-            <ActivityPanel issueId={issue.id} />
+            <ActivityPanel
+              issueId={issue.id}
+              statuses={statuses}
+              users={users}
+            />
           </div>
         </div>
       </div>

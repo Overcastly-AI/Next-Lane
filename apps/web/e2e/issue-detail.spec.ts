@@ -48,4 +48,35 @@ test.describe('Issue detail', () => {
     await confirm.getByRole('button', { name: 'Delete', exact: true }).click();
     await expect(page.getByText(edited)).toHaveCount(0, { timeout: 10_000 });
   });
+
+  test('activity log resolves status IDs to human names', async ({ page }) => {
+    await openDemoBoard(page);
+
+    const title = `QA activity ${Date.now()}`;
+    await page.getByRole('button', { name: /\+ Create issue/i }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+    await dialog.getByLabel('Title').fill(title);
+    await dialog.getByRole('button', { name: 'Create' }).click();
+
+    const card = page.getByText(title).first();
+    await expect(card).toBeVisible({ timeout: 10_000 });
+    await card.click();
+
+    // Change the status via the drawer's Status select, which logs activity.
+    const statusSelect = page.getByLabel('Status');
+    await expect(statusSelect).toBeVisible();
+    await statusSelect.selectOption({ label: 'In Progress' });
+
+    // The activity line should read a human status name, not a raw cuid.
+    const activityLine = page
+      .getByRole('listitem')
+      .filter({ hasText: /changed status/i })
+      .first();
+    await expect(activityLine).toContainText('In Progress', {
+      timeout: 10_000,
+    });
+    // Guard against regression: no raw cuid (c + 24 base32 chars) leaks through.
+    await expect(activityLine).not.toContainText(/\bc[a-z0-9]{24}\b/);
+  });
 });
