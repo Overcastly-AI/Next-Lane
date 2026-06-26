@@ -1,0 +1,51 @@
+name: CI
+
+# Fast, DB-free regression net for the monorepo: typecheck, build, and the
+# API unit tests (PrismaService is mocked, so no Postgres/Redis is needed).
+# Slow Playwright e2e is intentionally NOT run here.
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    name: Build, typecheck & unit test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm --filter @next-lane/api exec prisma generate
+
+      - name: Build all packages
+        run: pnpm -r build
+
+      - name: Unit tests
+        run: pnpm -r test
+
+      - name: Typecheck API
+        run: pnpm --filter @next-lane/api exec tsc --noEmit
+
+      - name: Typecheck web
+        run: pnpm --filter @next-lane/web exec tsc --noEmit
