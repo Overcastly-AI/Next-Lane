@@ -7,8 +7,26 @@ import type { UserDto } from '@next-lane/shared';
 export class UsersService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findAll(): Promise<UserDto[]> {
+  /**
+   * Return only users who share at least one workspace with the caller
+   * (the caller is always included). This endpoint powers the assignee picker,
+   * which only needs co-members — returning all users platform-wide would leak
+   * every tenant's names and emails to any authenticated user.
+   */
+  async findAll(callerId: string): Promise<UserDto[]> {
+    const memberships = await this.prisma.membership.findMany({
+      where: { userId: callerId },
+      select: { workspaceId: true },
+    });
+    const workspaceIds = memberships.map((m) => m.workspaceId);
+
     const users = await this.prisma.user.findMany({
+      where: {
+        OR: [
+          { id: callerId },
+          { memberships: { some: { workspaceId: { in: workspaceIds } } } },
+        ],
+      },
       orderBy: { name: 'asc' },
     });
     return users.map(toUserDto);

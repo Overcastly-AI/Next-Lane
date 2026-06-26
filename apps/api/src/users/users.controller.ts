@@ -1,6 +1,7 @@
 import { Controller, Get, Param } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { UsersService } from './users.service';
+import { CurrentUser, AuthUser } from '../auth/current-user.decorator';
 
 @ApiTags('users')
 @ApiBearerAuth()
@@ -9,8 +10,8 @@ export class UsersController {
   constructor(private readonly users: UsersService) {}
 
   @Get()
-  findAll() {
-    return this.users.findAll();
+  findAll(@CurrentUser() user: AuthUser) {
+    return this.users.findAll(user.id);
   }
 
   @Get(':id')
