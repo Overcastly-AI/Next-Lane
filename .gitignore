@@ -32,3 +32,11 @@ coverage/
 # Docker volumes (local data)
 .data/
 postgres-data/
+
+# Locally-downloaded Prisma engines (sandbox build workaround)
+.prisma-engines/
+
+# Playwright
+test-results/
+playwright-report/
+.playwright/

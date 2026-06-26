@@ -1,0 +1,62 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import {
+  BrowserRouter,
+  Navigate,
+  Route,
+  Routes,
+} from 'react-router-dom';
+import { ApiError } from '@/api/client';
+import { AuthProvider } from '@/auth/AuthContext';
+import { RequireAuth } from '@/auth/RequireAuth';
+import { LoginPage } from '@/pages/LoginPage';
+import { RegisterPage } from '@/pages/RegisterPage';
+import { DashboardPage } from '@/pages/DashboardPage';
+import { BoardPage } from '@/pages/BoardPage';
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 30 * 1000,
+      refetchOnWindowFocus: false,
+      retry: (failureCount, error) => {
+        // Don't retry auth/permission failures.
+        if (error instanceof ApiError && [401, 403, 404].includes(error.status)) {
+          return false;
+        }
+        return failureCount < 2;
+      },
+    },
+  },
+});
+
+export default function App() {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <BrowserRouter>
+        <AuthProvider>
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/register" element={<RegisterPage />} />
+            <Route
+              path="/"
+              element={
+                <RequireAuth>
+                  <DashboardPage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/projects/:projectId/board"
+              element={
+                <RequireAuth>
+                  <BoardPage />
+                </RequireAuth>
+              }
+            />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </AuthProvider>
+      </BrowserRouter>
+    </QueryClientProvider>
+  );
+}

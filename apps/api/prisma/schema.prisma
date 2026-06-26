@@ -1,0 +1,240 @@
+// Next Lane data model. Single source of truth for the database.
+// Changes go through `prisma migrate`. See docs/ARCHITECTURE.md.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum IssueType {
+  TASK
+  BUG
+  STORY
+  EPIC
+  SUBTASK
+}
+
+enum Priority {
+  LOWEST
+  LOW
+  MEDIUM
+  HIGH
+  HIGHEST
+}
+
+enum StatusCategory {
+  TODO
+  IN_PROGRESS
+  DONE
+}
+
+enum SprintState {
+  PLANNED
+  ACTIVE
+  COMPLETED
+}
+
+enum Role {
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  avatarColor  String   @default("#6366f1")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  memberships    Membership[]
+  reportedIssues Issue[]       @relation("reporter")
+  assignedIssues Issue[]       @relation("assignee")
+  comments       Comment[]
+  activities     ActivityLog[]
+  watching       Watcher[]
+}
+
+model Workspace {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberships Membership[]
+  projects    Project[]
+}
+
+model Membership {
+  id          String   @id @default(cuid())
+  role        Role     @default(MEMBER)
+  userId      String
+  workspaceId String
+  createdAt   DateTime @default(now())
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, workspaceId])
+  @@index([workspaceId])
+}
+
+model Project {
+  id          String   @id @default(cuid())
+  key         String // e.g. "NL"; unique within a workspace
+  name        String
+  description String?
+  leadId      String?
+  workspaceId String
+  archived    Boolean  @default(false)
+  issueSeq    Int      @default(0) // last issue number assigned for this project
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  issues    Issue[]
+  statuses  Status[]
+  sprints   Sprint[]
+  labels    Label[]
+
+  @@unique([workspaceId, key])
+  @@index([workspaceId])
+}
+
+model Status {
+  id        String         @id @default(cuid())
+  name      String
+  category  StatusCategory @default(TODO)
+  order     Int            @default(0)
+  projectId String
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  issues  Issue[]
+
+  @@index([projectId])
+}
+
+model Sprint {
+  id        String      @id @default(cuid())
+  name      String
+  goal      String?
+  state     SprintState @default(PLANNED)
+  startDate DateTime?
+  endDate   DateTime?
+  projectId String
+  createdAt DateTime    @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  issues  Issue[]
+
+  @@index([projectId])
+}
+
+model Label {
+  id        String @id @default(cuid())
+  name      String
+  color     String @default("#94a3b8")
+  projectId String
+
+  project Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  issues  IssueLabel[]
+
+  @@unique([projectId, name])
+  @@index([projectId])
+}
+
+model Issue {
+  id          String    @id @default(cuid())
+  number      Int // per-project sequential number; key = project.key + "-" + number
+  projectId   String
+  type        IssueType @default(TASK)
+  title       String
+  description String?
+  statusId    String
+  assigneeId  String?
+  reporterId  String?
+  priority    Priority  @default(MEDIUM)
+  storyPoints Int?
+  parentId    String? // self-relation for epic -> story -> subtask
+  sprintId    String?
+  rank        String // fractional index for board/backlog ordering
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  project    Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  status     Status        @relation(fields: [statusId], references: [id])
+  assignee   User?         @relation("assignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  reporter   User?         @relation("reporter", fields: [reporterId], references: [id], onDelete: SetNull)
+  parent     Issue?        @relation("subtasks", fields: [parentId], references: [id], onDelete: SetNull)
+  children   Issue[]       @relation("subtasks")
+  sprint     Sprint?       @relation(fields: [sprintId], references: [id], onDelete: SetNull)
+  comments   Comment[]
+  activities ActivityLog[]
+  labels     IssueLabel[]
+  watchers   Watcher[]
+
+  @@unique([projectId, number])
+  @@index([projectId, statusId])
+  @@index([statusId, rank])
+  @@index([sprintId])
+  @@index([assigneeId])
+  @@index([parentId])
+}
+
+model IssueLabel {
+  issueId String
+  labelId String
+
+  issue Issue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  label Label @relation(fields: [labelId], references: [id], onDelete: Cascade)
+
+  @@id([issueId, labelId])
+  @@index([labelId])
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  body      String
+  issueId   String
+  authorId  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  issue  Issue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  author User  @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([issueId])
+}
+
+model ActivityLog {
+  id        String   @id @default(cuid())
+  issueId   String
+  actorId   String
+  field     String // e.g. "status", "assignee", "created"
+  from      String?
+  to        String?
+  createdAt DateTime @default(now())
+
+  issue Issue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  actor User  @relation(fields: [actorId], references: [id], onDelete: Cascade)
+
+  @@index([issueId])
+}
+
+model Watcher {
+  issueId String
+  userId  String
+
+  issue Issue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([issueId, userId])
+  @@index([userId])
+}

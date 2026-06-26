@@ -1,0 +1,53 @@
+import type { ReactNode } from 'react';
+import { cn } from '@/lib/cn';
+
+export interface BadgeProps {
+  children: ReactNode;
+  className?: string;
+  /** Optional solid background color (e.g. a label color hex). */
+  color?: string;
+}
+
+export function Badge({ children, className, color }: BadgeProps) {
+  if (color) {
+    return (
+      <span
+        className={cn(
+          'inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-medium leading-none',
+          className,
+        )}
+        style={{ backgroundColor: hexWithAlpha(color, 0.15), color: darken(color) }}
+      >
+        {children}
+      </span>
+    );
+  }
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center rounded bg-gray-100 px-1.5 py-0.5 text-[11px] font-medium leading-none text-gray-600',
+        className,
+      )}
+    >
+      {children}
+    </span>
+  );
+}
+
+function hexWithAlpha(hex: string, alpha: number): string {
+  const c = hex.replace('#', '');
+  if (c.length !== 6) return hex;
+  const r = parseInt(c.slice(0, 2), 16);
+  const g = parseInt(c.slice(2, 4), 16);
+  const b = parseInt(c.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function darken(hex: string): string {
+  const c = hex.replace('#', '');
+  if (c.length !== 6) return hex;
+  const r = Math.round(parseInt(c.slice(0, 2), 16) * 0.65);
+  const g = Math.round(parseInt(c.slice(2, 4), 16) * 0.65);
+  const b = Math.round(parseInt(c.slice(4, 6), 16) * 0.65);
+  return `rgb(${r}, ${g}, ${b})`;
+}

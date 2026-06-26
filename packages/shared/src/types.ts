@@ -1,0 +1,133 @@
+import type {
+  IssueType,
+  Priority,
+  StatusCategory,
+  SprintState,
+  Role,
+} from './enums';
+
+/** API DTO shapes shared between server and client. These mirror Prisma models
+ *  but only expose fields the client is allowed to see. */
+
+export interface UserDto {
+  id: string;
+  email: string;
+  name: string;
+  avatarColor: string;
+  createdAt: string;
+}
+
+export interface AuthResponse {
+  accessToken: string;
+  user: UserDto;
+}
+
+export interface MembershipDto {
+  id: string;
+  role: Role;
+  user: UserDto;
+}
+
+export interface WorkspaceDto {
+  id: string;
+  name: string;
+  slug: string;
+  createdAt: string;
+}
+
+export interface ProjectDto {
+  id: string;
+  key: string;
+  name: string;
+  description: string | null;
+  leadId: string | null;
+  workspaceId: string;
+  archived: boolean;
+  createdAt: string;
+}
+
+export interface StatusDto {
+  id: string;
+  name: string;
+  category: StatusCategory;
+  order: number;
+  projectId: string;
+}
+
+export interface LabelDto {
+  id: string;
+  name: string;
+  color: string;
+  projectId: string;
+}
+
+export interface IssueDto {
+  id: string;
+  key: string; // e.g. "NL-12"
+  number: number;
+  projectId: string;
+  type: IssueType;
+  title: string;
+  description: string | null;
+  statusId: string;
+  status?: StatusDto;
+  assigneeId: string | null;
+  assignee?: UserDto | null;
+  reporterId: string | null;
+  reporter?: UserDto | null;
+  priority: Priority;
+  storyPoints: number | null;
+  parentId: string | null;
+  sprintId: string | null;
+  rank: string;
+  labels?: LabelDto[];
+  commentCount?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CommentDto {
+  id: string;
+  body: string;
+  issueId: string;
+  author: UserDto;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ActivityDto {
+  id: string;
+  issueId: string;
+  actor: UserDto;
+  field: string;
+  from: string | null;
+  to: string | null;
+  createdAt: string;
+}
+
+export interface SprintDto {
+  id: string;
+  name: string;
+  goal: string | null;
+  state: SprintState;
+  startDate: string | null;
+  endDate: string | null;
+  projectId: string;
+}
+
+export interface BoardDto {
+  project: ProjectDto;
+  statuses: StatusDto[];
+  issues: IssueDto[];
+}
+
+/** Realtime event names emitted over Socket.io. */
+export const SocketEvents = {
+  IssueCreated: 'issue.created',
+  IssueUpdated: 'issue.updated',
+  IssueMoved: 'issue.moved',
+  IssueDeleted: 'issue.deleted',
+  CommentCreated: 'comment.created',
+} as const;
+
+export type SocketEvent = (typeof SocketEvents)[keyof typeof SocketEvents];
