@@ -51,12 +51,28 @@ export function BoardPage() {
   const [activeIssue, setActiveIssue] = useState<IssueDto | null>(null);
 
   const openIssueId = searchParams.get('issue');
+  const wantsNewIssue = searchParams.get('new') === '1';
 
   const board = boardQuery.data;
   const statuses = useMemo<StatusDto[]>(
     () => (board ? [...board.statuses].sort((a, b) => a.order - b.order) : []),
     [board],
   );
+
+  // Consume a `?new=1` deep-link (e.g. from the command palette "Create issue"
+  // action): open the create modal on the first column, then drop the param.
+  useEffect(() => {
+    if (!wantsNewIssue || statuses.length === 0) return;
+    setCreateForStatus(statuses[0].id);
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('new');
+        return next;
+      },
+      { replace: true },
+    );
+  }, [wantsNewIssue, statuses, setSearchParams]);
 
   // Group + filter + rank-sort issues per column.
   const issuesByStatus = useMemo(() => {

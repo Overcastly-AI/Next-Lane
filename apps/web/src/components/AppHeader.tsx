@@ -3,9 +3,11 @@ import { Link } from 'react-router-dom';
 import { Logo } from './Logo';
 import { Avatar } from './ui/Avatar';
 import { useAuth } from '@/auth/AuthContext';
+import { useCommandPalette } from './CommandPaletteProvider';
 
 export function AppHeader({ children }: { children?: React.ReactNode }) {
   const { user, logout } = useAuth();
+  const { open: openPalette } = useCommandPalette();
   const [menuOpen, setMenuOpen] = useState(false);
 
   return (
@@ -14,6 +16,33 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
         <Logo />
       </Link>
       <div className="min-w-0 flex-1">{children}</div>
+      <button
+        type="button"
+        onClick={openPalette}
+        aria-label="Open command palette"
+        aria-keyshortcuts="Meta+K Control+K"
+        className="hidden shrink-0 items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-1.5 text-sm text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 sm:flex"
+      >
+        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+          <circle cx="11" cy="11" r="7" />
+          <path strokeLinecap="round" d="M21 21l-4.3-4.3" />
+        </svg>
+        <span>Search</span>
+        <kbd className="rounded border border-gray-200 bg-white px-1 py-0.5 font-sans text-[10px] text-gray-400">
+          ⌘K
+        </kbd>
+      </button>
+      <button
+        type="button"
+        onClick={openPalette}
+        aria-label="Open command palette"
+        className="shrink-0 rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 sm:hidden"
+      >
+        <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+          <circle cx="11" cy="11" r="7" />
+          <path strokeLinecap="round" d="M21 21l-4.3-4.3" />
+        </svg>
+      </button>
       <div className="relative shrink-0">
         <button
           onClick={() => setMenuOpen((v) => !v)}
