@@ -151,7 +151,7 @@ test.describe('workspace role enforcement', () => {
 
     const labelRes = await request.post(
       `${API_URL}/api/projects/${c.projectId}/labels`,
-      { headers: c.viewerHeaders, data: { name: 'nope', color: '#fff' } },
+      { headers: c.viewerHeaders, data: { name: 'nope', color: '#ffffff' } },
     );
     expect(labelRes.status(), 'VIEWER label create must be forbidden').toBe(403);
 

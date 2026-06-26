@@ -1,5 +1,5 @@
 import { PartialType, OmitType } from '@nestjs/swagger';
-import { IsInt, IsOptional, IsString, ValidateIf } from 'class-validator';
+import { IsInt, IsOptional, IsString, Max, Min, ValidateIf } from 'class-validator';
 import { CreateIssueDto } from './create-issue.dto';
 
 /**
@@ -35,5 +35,7 @@ export class UpdateIssueDto extends PartialType(
   @IsOptional()
   @ValidateIf((_o, v) => v !== null)
   @IsInt()
+  @Min(0)
+  @Max(999)
   storyPoints?: number | null;
 }

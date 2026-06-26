@@ -3,7 +3,9 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  Max,
   MaxLength,
+  Min,
   MinLength,
 } from 'class-validator';
 import { IssueType, Priority } from '@next-lane/shared';
@@ -23,6 +25,7 @@ export class CreateIssueDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(50000)
   description?: string;
 
   @IsOptional()
@@ -47,5 +50,7 @@ export class CreateIssueDto {
 
   @IsOptional()
   @IsInt()
+  @Min(0)
+  @Max(999)
   storyPoints?: number;
 }
