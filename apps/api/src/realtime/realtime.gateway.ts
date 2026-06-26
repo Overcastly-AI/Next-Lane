@@ -20,6 +20,11 @@ interface SocketUser {
   email: string;
 }
 
+/** Private per-user room name. Only the user themself may join it. */
+export function userRoom(userId: string): string {
+  return `user:${userId}`;
+}
+
 @WebSocketGateway({ cors: true })
 export class RealtimeGateway implements OnGatewayConnection {
   @WebSocketServer()
@@ -74,6 +79,24 @@ export class RealtimeGateway implements OnGatewayConnection {
       throw new WsException('Forbidden');
     }
     await client.join(projectId);
+    return { ok: true };
+  }
+
+  /**
+   * Join the caller's OWN private room (`user:<id>`) so they receive personal
+   * notifications live. Authorization is implicit and strict: we always derive
+   * the room from the socket's authenticated JWT user — never from a
+   * client-supplied id — so a socket can only ever subscribe to itself.
+   */
+  @SubscribeMessage('subscribe:user')
+  handleSubscribeUser(
+    @ConnectedSocket() client: Socket,
+  ): { ok: boolean } {
+    const user = client.data.user as SocketUser | undefined;
+    if (!user) {
+      throw new WsException('Unauthorized');
+    }
+    void client.join(userRoom(user.id));
     return { ok: true };
   }
 

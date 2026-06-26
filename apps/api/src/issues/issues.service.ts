@@ -6,6 +6,7 @@ import {
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeService } from '../realtime/realtime.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import {
   assertProjectMember,
   assertProjectRole,
@@ -40,6 +41,7 @@ export class IssuesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly realtime: RealtimeService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   /**
@@ -134,7 +136,31 @@ export class IssuesService {
       SocketEvents.IssueCreated,
       dtoOut,
     );
+    if (dtoOut.assigneeId) {
+      await this.notifyAssignment(userId, dtoOut.assigneeId, dtoOut);
+    }
     return dtoOut;
+  }
+
+  /**
+   * Notify a newly-set assignee and auto-watch them. Resolves the actor's name
+   * for a friendly message. Never notifies self-assignment (handled downstream).
+   */
+  private async notifyAssignment(
+    actorId: string,
+    assigneeId: string,
+    issue: IssueDto,
+  ): Promise<void> {
+    const actor = await this.prisma.user.findUnique({
+      where: { id: actorId },
+      select: { name: true },
+    });
+    await this.notifications.notifyAssigned({
+      assigneeId,
+      actorId,
+      actorName: actor?.name ?? 'Someone',
+      issue: { id: issue.id, key: issue.key, projectId: issue.projectId },
+    });
   }
 
   async findAll(
@@ -425,6 +451,12 @@ export class IssuesService {
       SocketEvents.IssueUpdated,
       dtoOut,
     );
+    if (
+      dto.assigneeId != null &&
+      dto.assigneeId !== existing.assigneeId
+    ) {
+      await this.notifyAssignment(userId, dto.assigneeId, dtoOut);
+    }
     return dtoOut;
   }
 

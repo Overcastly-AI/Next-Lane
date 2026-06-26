@@ -44,6 +44,13 @@ enum Role {
   VIEWER
 }
 
+enum NotificationType {
+  ASSIGNED
+  MENTIONED
+  COMMENTED
+  WATCHED_UPDATED
+}
+
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
@@ -59,6 +66,10 @@ model User {
   comments       Comment[]
   activities     ActivityLog[]
   watching       Watcher[]
+
+  // Notifications addressed to this user (recipient) and ones this user caused.
+  notifications      Notification[] @relation("recipient")
+  actedNotifications Notification[] @relation("actor")
 }
 
 model Workspace {
@@ -177,8 +188,9 @@ model Issue {
   sprint     Sprint?       @relation(fields: [sprintId], references: [id], onDelete: SetNull)
   comments   Comment[]
   activities ActivityLog[]
-  labels     IssueLabel[]
-  watchers   Watcher[]
+  labels        IssueLabel[]
+  watchers      Watcher[]
+  notifications Notification[]
 
   @@unique([projectId, number])
   @@index([projectId, statusId])
@@ -237,4 +249,26 @@ model Watcher {
 
   @@id([issueId, userId])
   @@index([userId])
+}
+
+// A per-recipient inbox item. Carries denormalized snapshot fields (issueKey,
+// projectId, message) so the notification bell renders without N+1 lookups even
+// if the source issue/comment later changes or is deleted.
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String // recipient
+  type      NotificationType
+  actorId   String? // who caused it (null if system / actor removed)
+  issueId   String? // source issue (null if it was deleted)
+  issueKey  String // e.g. "NL-12" — snapshot for rendering
+  projectId String // for navigation to the right board
+  message   String // short, pre-rendered summary line
+  read      Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  user  User  @relation("recipient", fields: [userId], references: [id], onDelete: Cascade)
+  actor User? @relation("actor", fields: [actorId], references: [id], onDelete: SetNull)
+  issue Issue? @relation(fields: [issueId], references: [id], onDelete: SetNull)
+
+  @@index([userId, read, createdAt])
 }

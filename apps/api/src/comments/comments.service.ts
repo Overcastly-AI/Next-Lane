@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeService } from '../realtime/realtime.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import {
   assertProjectMember,
   assertProjectRole,
@@ -46,6 +47,7 @@ export class CommentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly realtime: RealtimeService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   async findAll(userId: string, issueId: string): Promise<CommentDto[]> {
@@ -76,6 +78,24 @@ export class CommentsService {
       SocketEvents.CommentCreated,
       dtoOut,
     );
+
+    // Fan out notifications: @mentions (MENTIONED) + watchers (COMMENTED), and
+    // auto-watch the commenter + anyone mentioned. Resolution is co-member
+    // scoped so mentions never cross tenants.
+    const mentionedUserIds = await this.notifications.resolveMentions(
+      userId,
+      dto.body,
+    );
+    await this.notifications.notifyComment({
+      authorId: userId,
+      authorName: comment.author.name,
+      issue: {
+        id: issue.id,
+        key: `${issue.projectKey}-${issue.number}`,
+        projectId: issue.projectId,
+      },
+      mentionedUserIds,
+    });
     return dtoOut;
   }
 
@@ -110,9 +130,19 @@ export class CommentsService {
   private async getIssue(issueId: string) {
     const issue = await this.prisma.issue.findUnique({
       where: { id: issueId },
-      select: { id: true, projectId: true },
+      select: {
+        id: true,
+        projectId: true,
+        number: true,
+        project: { select: { key: true } },
+      },
     });
     if (!issue) throw new NotFoundException('Issue not found');
-    return issue;
+    return {
+      id: issue.id,
+      projectId: issue.projectId,
+      number: issue.number,
+      projectKey: issue.project.key,
+    };
   }
 }

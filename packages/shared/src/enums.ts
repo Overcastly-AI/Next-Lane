@@ -34,6 +34,14 @@ export enum Role {
   VIEWER = 'VIEWER',
 }
 
+/** Why a notification was created. Keep in sync with the Prisma schema. */
+export enum NotificationType {
+  ASSIGNED = 'ASSIGNED',
+  MENTIONED = 'MENTIONED',
+  COMMENTED = 'COMMENTED',
+  WATCHED_UPDATED = 'WATCHED_UPDATED',
+}
+
 export const ISSUE_TYPES = Object.values(IssueType);
 export const PRIORITIES = Object.values(Priority);
 export const STATUS_CATEGORIES = Object.values(StatusCategory);

@@ -13,6 +13,7 @@ import { BoardModule } from './board/board.module';
 import { ReportsModule } from './reports/reports.module';
 import { SearchModule } from './search/search.module';
 import { MeModule } from './me/me.module';
+import { NotificationsModule } from './notifications/notifications.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { HealthController } from './health.controller';
 
@@ -33,6 +34,7 @@ import { HealthController } from './health.controller';
     ReportsModule,
     SearchModule,
     MeModule,
+    NotificationsModule,
   ],
   controllers: [HealthController],
 })

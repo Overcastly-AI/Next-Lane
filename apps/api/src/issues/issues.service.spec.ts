@@ -3,6 +3,7 @@ import { Role, rankBetween } from '@next-lane/shared';
 import { IssuesService } from './issues.service';
 import type { PrismaService } from '../prisma/prisma.service';
 import type { RealtimeService } from '../realtime/realtime.service';
+import type { NotificationsService } from '../notifications/notifications.service';
 import type { MoveIssueDto } from './dto/move-issue.dto';
 
 /**
@@ -61,7 +62,7 @@ describe('IssuesService.assertSameProject', () => {
   beforeEach(() => {
     prisma = makePrisma();
     const realtime = {} as RealtimeService;
-    service = new IssuesService(prisma, realtime);
+    service = new IssuesService(prisma, realtime, {} as NotificationsService);
   });
 
   it('accepts when all refs belong to the same project', async () => {
@@ -163,7 +164,7 @@ describe('IssuesService.assertNoParentCycle', () => {
   beforeEach(() => {
     prisma = makePrisma();
     const realtime = {} as RealtimeService;
-    service = new IssuesService(prisma, realtime);
+    service = new IssuesService(prisma, realtime, {} as NotificationsService);
   });
 
   it('rejects an issue being its own parent', async () => {
@@ -271,6 +272,7 @@ describe('IssuesService.move', () => {
     service = new IssuesService(
       mocks.prisma as unknown as PrismaService,
       realtime as unknown as RealtimeService,
+      {} as NotificationsService,
     );
 
     // The moved issue already lives in STATUS (no status change by default).

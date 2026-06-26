@@ -4,6 +4,7 @@ import type {
   StatusCategory,
   SprintState,
   Role,
+  NotificationType,
 } from './enums';
 
 /** API DTO shapes shared between server and client. These mirror Prisma models
@@ -244,6 +245,35 @@ export interface MyWorkDto {
   reported: MyWorkIssueDto[];
 }
 
+/**
+ * A single notification (inbox item) for the current user. Carries denormalized
+ * snapshot fields (issueKey, projectId) so the bell can render and navigate
+ * without extra lookups. `actor` may be null if the user who caused it was
+ * removed; `issueId` may be null if the source issue was deleted.
+ */
+export interface NotificationDto {
+  id: string;
+  type: NotificationType;
+  actor: UserDto | null;
+  issueId: string | null;
+  issueKey: string;
+  projectId: string;
+  message: string;
+  read: boolean;
+  createdAt: string;
+}
+
+/** Paginated list of the caller's notifications, newest first. */
+export interface NotificationListDto {
+  items: NotificationDto[];
+  unreadCount: number;
+}
+
+/** Lightweight unread-count payload for the bell badge. */
+export interface UnreadCountDto {
+  count: number;
+}
+
 /** Realtime event names emitted over Socket.io. */
 export const SocketEvents = {
   IssueCreated: 'issue.created',
@@ -252,6 +282,7 @@ export const SocketEvents = {
   IssueDeleted: 'issue.deleted',
   CommentCreated: 'comment.created',
   SprintUpdated: 'sprint.updated',
+  NotificationCreated: 'notification.created',
 } as const;
 
 export type SocketEvent = (typeof SocketEvents)[keyof typeof SocketEvents];
