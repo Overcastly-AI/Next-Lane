@@ -1,0 +1,102 @@
+import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useBoard } from '@/api/issues';
+import { useRoadmap } from '@/api/roadmap';
+import { AppHeader } from '@/components/AppHeader';
+import { ProjectNav } from '@/components/project/ProjectNav';
+import {
+  ErrorState,
+  LoadingState,
+  EmptyState,
+  Spinner,
+} from '@/components/ui/States';
+import { RoadmapTimeline } from '@/components/roadmap/RoadmapTimeline';
+
+/**
+ * Stakeholder-facing roadmap: epics and sprints laid out across a shared time
+ * axis. Read-only (VIEWERs can view). Clicking an epic opens it on the board via
+ * the ?issue= drawer. Data is composed server-side by GET /projects/:id/roadmap.
+ */
+export function RoadmapPage() {
+  const { projectId = '' } = useParams();
+  const navigate = useNavigate();
+  const boardQuery = useBoard(projectId);
+  const roadmapQuery = useRoadmap(projectId);
+
+  const projectName = boardQuery.data?.project.name;
+  const data = roadmapQuery.data;
+  const isEmpty =
+    !!data && data.epics.length === 0 && data.sprints.length === 0;
+
+  function openEpic(epicId: string) {
+    navigate(`/projects/${projectId}/board?issue=${epicId}`);
+  }
+
+  return (
+    <Shell projectId={projectId} projectName={projectName}>
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 p-4 sm:p-6">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h1 className="text-lg font-semibold text-gray-900">Roadmap</h1>
+            <p className="text-sm text-gray-500">
+              Epics and sprints across time. Click an epic to open it.
+            </p>
+          </div>
+          {roadmapQuery.isFetching && <Spinner className="h-4 w-4" />}
+        </div>
+
+        <section
+          className="rounded-xl border border-gray-200 bg-white p-4 shadow-card sm:p-5"
+          aria-label="Roadmap timeline"
+        >
+          {roadmapQuery.isLoading ? (
+            <LoadingState label="Loading roadmap…" />
+          ) : roadmapQuery.isError ? (
+            <ErrorState
+              error={roadmapQuery.error}
+              onRetry={() => roadmapQuery.refetch()}
+            />
+          ) : isEmpty ? (
+            <EmptyState
+              title="No epics or sprints yet"
+              description="Create an epic or sprint to see the roadmap."
+            />
+          ) : data ? (
+            <RoadmapTimeline data={data} onOpenEpic={openEpic} />
+          ) : null}
+        </section>
+      </div>
+    </Shell>
+  );
+}
+
+function Shell({
+  children,
+  projectId,
+  projectName,
+}: {
+  children: React.ReactNode;
+  projectId: string;
+  projectName?: string;
+}) {
+  return (
+    <div className="flex h-screen flex-col">
+      <AppHeader>
+        <div className="flex items-center gap-2">
+          <Link
+            to="/"
+            className="text-sm text-gray-400 hover:text-gray-600"
+            aria-label="Back to projects"
+          >
+            Projects
+          </Link>
+          <span className="text-gray-300">/</span>
+          <span className="truncate text-sm font-semibold text-gray-900">
+            {projectName ?? 'Project'}
+          </span>
+        </div>
+      </AppHeader>
+      <ProjectNav projectId={projectId} />
+      <main className="flex-1 overflow-y-auto bg-gray-50">{children}</main>
+    </div>
+  );
+}

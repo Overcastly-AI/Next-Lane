@@ -17,6 +17,7 @@ import { MyWorkPage } from '@/pages/MyWorkPage';
 import { BoardPage } from '@/pages/BoardPage';
 import { BacklogPage } from '@/pages/BacklogPage';
 import { ReportsPage } from '@/pages/ReportsPage';
+import { RoadmapPage } from '@/pages/RoadmapPage';
 import { SettingsPage } from '@/pages/SettingsPage';
 
 const queryClient = new QueryClient({
@@ -82,6 +83,14 @@ export default function App() {
               element={
                 <RequireAuth>
                   <ReportsPage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/projects/:projectId/roadmap"
+              element={
+                <RequireAuth>
+                  <RoadmapPage />
                 </RequireAuth>
               }
             />
