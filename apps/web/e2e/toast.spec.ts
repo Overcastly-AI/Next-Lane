@@ -1,9 +1,9 @@
 import { test, expect } from '@playwright/test';
-import { openDemoBoard } from './helpers';
+import { setupIsolatedProject } from './helpers';
 
 test.describe('Toast notifications', () => {
-  test('a failed mutation surfaces an error toast', async ({ page }) => {
-    await openDemoBoard(page);
+  test('a failed mutation surfaces an error toast', async ({ page, request }) => {
+    await setupIsolatedProject(page, request, { label: 'toast' });
 
     // Create our own issue so the test is self-contained.
     const title = `QA toast ${Date.now()}`;

@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { openDemoBoard } from './helpers';
+import { setupIsolatedProject } from './helpers';
 
 /** Create a uniquely-titled issue from the board and open its detail drawer. */
 async function createAndOpenIssue(page: Page, title: string): Promise<void> {
@@ -18,8 +18,13 @@ async function createAndOpenIssue(page: Page, title: string): Promise<void> {
 test.describe('Labels management & filtering', () => {
   test('assign a seeded label and the chip appears on the card', async ({
     page,
+    request,
   }) => {
-    await openDemoBoard(page);
+    // Isolated project seeded with a "feature" label to assign.
+    await setupIsolatedProject(page, request, {
+      label: 'tag',
+      labels: ['feature'],
+    });
     const title = `QA label assign ${Date.now()}`;
     await createAndOpenIssue(page, title);
 
@@ -50,8 +55,9 @@ test.describe('Labels management & filtering', () => {
 
   test('create a new label, assign it, and filter the board by it', async ({
     page,
+    request,
   }) => {
-    await openDemoBoard(page);
+    await setupIsolatedProject(page, request, { label: 'tag' });
 
     const stamp = Date.now();
     const labelName = `qa-${stamp}`;

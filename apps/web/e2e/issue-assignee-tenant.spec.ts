@@ -45,25 +45,34 @@ async function setup(request: APIRequestContext): Promise<Ctx> {
   expect(meRes.ok(), `me failed: ${meRes.status()}`).toBeTruthy();
   const demoUserId = ((await meRes.json()) as { id: string }).id;
 
-  const wsRes = await request.get(`${API_URL}/api/workspaces`, { headers });
-  const workspaces = (await wsRes.json()) as Array<{ id: string }>;
-  const workspaceId = workspaces[0].id;
+  // A fresh workspace + project owned by the demo user (NOT the seeded demo
+  // project), so the positive-control mutations never pollute the demo. The
+  // demo user is the project's own co-member (a legitimate assignee).
+  const wsRes = await request.post(`${API_URL}/api/workspaces`, {
+    headers,
+    data: { name: `Assignee Test ${Date.now()}` },
+  });
+  expect(wsRes.ok(), `create ws failed: ${wsRes.status()}`).toBeTruthy();
+  const workspaceId = ((await wsRes.json()) as { id: string }).id;
 
-  const projRes = await request.get(
-    `${API_URL}/api/projects?workspaceId=${workspaceId}`,
-    { headers },
-  );
-  const projects = (await projRes.json()) as Array<{ id: string; key: string }>;
-  const projectId = (projects.find((p) => p.key === 'NL') ?? projects[0]).id;
+  const projRes = await request.post(`${API_URL}/api/projects`, {
+    headers,
+    data: {
+      workspaceId,
+      key: `AT${Math.floor(Math.random() * 9000 + 1000)}`,
+      name: 'Assignee Test Project',
+    },
+  });
+  expect(projRes.ok(), `create project failed: ${projRes.status()}`).toBeTruthy();
+  const projectId = ((await projRes.json()) as { id: string }).id;
 
-  // An existing issue in the demo project to mutate.
-  const issuesRes = await request.get(
-    `${API_URL}/api/issues?projectId=${projectId}`,
-    { headers },
-  );
-  const issues = (await issuesRes.json()) as Array<{ id: string }>;
-  expect(issues[0], 'no seeded issue in demo project').toBeTruthy();
-  const issueId = issues[0].id;
+  // An issue in the project to mutate.
+  const issueRes = await request.post(`${API_URL}/api/issues`, {
+    headers,
+    data: { projectId, title: 'Issue under assignee test' },
+  });
+  expect(issueRes.ok(), `create issue failed: ${issueRes.status()}`).toBeTruthy();
+  const issueId = ((await issueRes.json()) as { id: string }).id;
 
   // Register a fresh outsider user. They get their own workspace on register
   // and are NOT a member of the demo workspace.

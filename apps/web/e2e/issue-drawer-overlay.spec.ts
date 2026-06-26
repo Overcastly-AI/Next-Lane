@@ -1,5 +1,16 @@
-import { test, expect, type Page } from '@playwright/test';
-import { openDemoBoard } from './helpers';
+import {
+  test,
+  expect,
+  type Page,
+  type APIRequestContext,
+} from '@playwright/test';
+import {
+  API_URL,
+  createLabel,
+  openProjectBoard,
+  setupIsolatedProject,
+  type IsolatedContext,
+} from './helpers';
 
 /**
  * Covers the issue-drawer UI-review fixes:
@@ -7,15 +18,51 @@ import { openDemoBoard } from './helpers';
  *    not the old raw-color inline chip.
  *  - The drawer behaves as a first-class overlay: body scroll-lock while
  *    open, Esc-to-close, and focus moved into the drawer (focus trap).
+ *
+ * Runs against an isolated per-test project (own user + workspace) seeded with a
+ * red "bug" label (#ef4444) on one issue, so it never reads or pollutes the demo.
  */
 
-/**
- * Open a board card that carries the seeded red "bug" label (#ef4444) and
- * wait for the drawer dialog. Targets the label badge (resilient to mutable
- * seed titles) — the whole card is clickable, so clicking the badge opens it.
- */
-async function openLabeledCard(page: Page): Promise<void> {
-  await openDemoBoard(page);
+/** Provision an isolated project with one issue carrying a red "bug" label. */
+async function seedBugLabeledIssue(
+  page: Page,
+  request: APIRequestContext,
+): Promise<IsolatedContext> {
+  const ctx = await setupIsolatedProject(page, request, {
+    label: 'drawer',
+    openBoard: false,
+  });
+  const labelId = await createLabel(
+    request,
+    ctx.token,
+    ctx.project.id,
+    'bug',
+    '#ef4444',
+  );
+  const issueRes = await request.post(`${API_URL}/api/issues`, {
+    headers: { Authorization: `Bearer ${ctx.token}` },
+    data: { projectId: ctx.project.id, title: 'Drawer bug card' },
+  });
+  expect(issueRes.ok(), `create issue failed: ${issueRes.status()}`).toBeTruthy();
+  const issueId = ((await issueRes.json()) as { id: string }).id;
+  const attach = await request.post(
+    `${API_URL}/api/issues/${issueId}/labels`,
+    {
+      headers: { Authorization: `Bearer ${ctx.token}` },
+      data: { labelId },
+    },
+  );
+  expect(attach.ok(), `attach label failed: ${attach.status()}`).toBeTruthy();
+  await openProjectBoard(page, ctx.project.id);
+  return ctx;
+}
+
+/** Open the board card carrying the "bug" label and wait for the drawer. */
+async function openLabeledCard(
+  page: Page,
+  request: APIRequestContext,
+): Promise<void> {
+  await seedBugLabeledIssue(page, request);
   const labelOnCard = page.getByText('bug', { exact: true }).first();
   await expect(labelOnCard).toBeVisible({ timeout: 10_000 });
   await labelOnCard.click();
@@ -25,8 +72,9 @@ async function openLabeledCard(page: Page): Promise<void> {
 test.describe('Issue drawer overlay', () => {
   test('labels render legibly via Badge (darkened text, not raw light color)', async ({
     page,
+    request,
   }) => {
-    await openLabeledCard(page);
+    await openLabeledCard(page, request);
 
     const drawer = page.getByRole('dialog');
     const labelBadge = drawer.getByText('bug', { exact: true }).last();
@@ -57,8 +105,9 @@ test.describe('Issue drawer overlay', () => {
 
   test('opening the drawer locks body scroll; closing restores it', async ({
     page,
+    request,
   }) => {
-    await openDemoBoard(page);
+    await seedBugLabeledIssue(page, request);
     const before = await page.evaluate(() => document.body.style.overflow);
 
     const labelOnCard = page.getByText('bug', { exact: true }).first();
@@ -76,16 +125,17 @@ test.describe('Issue drawer overlay', () => {
     expect(afterClose).toBe(before);
   });
 
-  test('Escape closes the drawer', async ({ page }) => {
-    await openLabeledCard(page);
+  test('Escape closes the drawer', async ({ page, request }) => {
+    await openLabeledCard(page, request);
     await page.keyboard.press('Escape');
     await expect(page.getByRole('dialog')).toBeHidden();
   });
 
   test('focus moves into the drawer when opened (focus trap)', async ({
     page,
+    request,
   }) => {
-    await openLabeledCard(page);
+    await openLabeledCard(page, request);
     const focusedInsideDrawer = await page.evaluate(() => {
       const dialog = document.querySelector('[role="dialog"]');
       return !!dialog && !!document.activeElement && dialog.contains(document.activeElement);

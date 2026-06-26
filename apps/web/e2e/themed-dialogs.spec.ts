@@ -1,11 +1,14 @@
 import { test, expect } from '@playwright/test';
-import { login, openDemoBoard } from './helpers';
+import { login, registerNewUser, setupIsolatedProject } from './helpers';
 
 test.describe('Themed dialogs', () => {
   test('new-workspace modal creates a workspace (no native prompt)', async ({
     page,
+    request,
   }) => {
-    await login(page);
+    // A throwaway user so creating a workspace doesn't dirty the demo account.
+    const user = await registerNewUser(request, 'themed');
+    await login(page, { email: user.email, password: user.password });
 
     // Guard: the native window.prompt must NOT be used anymore.
     let promptCalled = false;
@@ -44,8 +47,9 @@ test.describe('Themed dialogs', () => {
 
   test('delete-issue confirm dialog appears and deletes on confirm', async ({
     page,
+    request,
   }) => {
-    await openDemoBoard(page);
+    await setupIsolatedProject(page, request, { label: 'themed' });
 
     // Create a disposable issue to delete.
     const title = `QA delete ${Date.now()}`;

@@ -1,8 +1,9 @@
 import { test, expect } from '@playwright/test';
-import { openDemoBoard } from './helpers';
+import { openDemoBoard, setupIsolatedProject } from './helpers';
 
 test.describe('Kanban board', () => {
   test('renders columns and issue cards', async ({ page }) => {
+    // Read-only against the shared demo project — safe, no writes.
     await openDemoBoard(page);
     await expect(page.getByText(/to do/i).first()).toBeVisible();
     await expect(page.getByText(/in progress/i).first()).toBeVisible();
@@ -11,8 +12,12 @@ test.describe('Kanban board', () => {
     await expect(page.getByText(/NL-\d+/).first()).toBeVisible();
   });
 
-  test('can create a new issue and it appears on the board', async ({ page }) => {
-    await openDemoBoard(page);
+  test('can create a new issue and it appears on the board', async ({
+    page,
+    request,
+  }) => {
+    // Isolated project so the create does not pollute the demo.
+    await setupIsolatedProject(page, request, { label: 'board' });
     const title = `QA board ${Date.now()}`;
     await page.getByRole('button', { name: /\+ Create issue/i }).click();
     const dialog = page.getByRole('dialog');

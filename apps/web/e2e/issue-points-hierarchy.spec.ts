@@ -1,5 +1,5 @@
 import { test, expect, Page } from '@playwright/test';
-import { openDemoBoard } from './helpers';
+import { setupIsolatedProject } from './helpers';
 
 /**
  * Story points + epics/sub-tasks in the issue drawer.
@@ -34,8 +34,11 @@ async function closeDrawer(page: Page): Promise<void> {
 }
 
 test.describe('Story points and hierarchy', () => {
-  test('set story points and see the pill on the card', async ({ page }) => {
-    await openDemoBoard(page);
+  test('set story points and see the pill on the card', async ({
+    page,
+    request,
+  }) => {
+    await setupIsolatedProject(page, request, { label: 'points' });
 
     const title = `QA points ${Date.now()}`;
     await createIssue(page, title);
@@ -61,8 +64,9 @@ test.describe('Story points and hierarchy', () => {
 
   test('set a parent and see the sub-task under the parent', async ({
     page,
+    request,
   }) => {
-    await openDemoBoard(page);
+    await setupIsolatedProject(page, request, { label: 'points' });
 
     const stamp = Date.now();
     const parentTitle = `QA parent ${stamp}`;

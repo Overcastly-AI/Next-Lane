@@ -1,9 +1,9 @@
 import { test, expect } from '@playwright/test';
-import { openDemoBoard } from './helpers';
+import { setupIsolatedProject } from './helpers';
 
 test.describe('Issue detail', () => {
-  test('open a card and add a comment', async ({ page }) => {
-    await openDemoBoard(page);
+  test('open a card and add a comment', async ({ page, request }) => {
+    await setupIsolatedProject(page, request, { label: 'detail' });
 
     // Self-contained: create our own uniquely-titled issue, then operate on it
     // (does not depend on mutable seed data).
@@ -49,8 +49,11 @@ test.describe('Issue detail', () => {
     await expect(page.getByText(edited)).toHaveCount(0, { timeout: 10_000 });
   });
 
-  test('activity log resolves status IDs to human names', async ({ page }) => {
-    await openDemoBoard(page);
+  test('activity log resolves status IDs to human names', async ({
+    page,
+    request,
+  }) => {
+    await setupIsolatedProject(page, request, { label: 'detail' });
 
     const title = `QA activity ${Date.now()}`;
     await page.getByRole('button', { name: /\+ Create issue/i }).click();

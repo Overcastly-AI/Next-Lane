@@ -48,18 +48,27 @@ async function setup(request: APIRequestContext): Promise<Ctx> {
   const token = await loginToken(request);
   const headers = { Authorization: `Bearer ${token}` };
 
-  // Project A = seeded NL project.
-  const wsRes = await request.get(`${API_URL}/api/workspaces`, { headers });
-  expect(wsRes.ok(), `workspaces failed: ${wsRes.status()}`).toBeTruthy();
-  const workspaces = (await wsRes.json()) as Array<{ id: string }>;
-  const workspaceId = workspaces[0].id;
+  // Project A = a brand-new project in a fresh workspace (NOT the seeded demo),
+  // so the positive-control mutations below never pollute the demo project.
+  const wsARes = await request.post(`${API_URL}/api/workspaces`, {
+    headers,
+    data: {
+      name: `Tenant Test A ${Date.now()}-${Math.floor(Math.random() * 1e9)}`,
+    },
+  });
+  expect(wsARes.ok(), `create ws A failed: ${wsARes.status()}`).toBeTruthy();
+  const workspaceId = ((await wsARes.json()) as { id: string }).id;
 
-  const projRes = await request.get(
-    `${API_URL}/api/projects?workspaceId=${workspaceId}`,
-    { headers },
-  );
-  const projects = (await projRes.json()) as Array<{ id: string; key: string }>;
-  const projectA = (projects.find((p) => p.key === 'NL') ?? projects[0]).id;
+  const projARes = await request.post(`${API_URL}/api/projects`, {
+    headers,
+    data: {
+      workspaceId,
+      key: `TA${Math.floor(Math.random() * 9000 + 1000)}`,
+      name: 'Tenant Test Project A',
+    },
+  });
+  expect(projARes.ok(), `create project A failed: ${projARes.status()}`).toBeTruthy();
+  const projectA = ((await projARes.json()) as { id: string }).id;
 
   const statusesARes = await request.get(
     `${API_URL}/api/projects/${projectA}/statuses`,
@@ -68,20 +77,21 @@ async function setup(request: APIRequestContext): Promise<Ctx> {
   const statusesA = (await statusesARes.json()) as Array<{ id: string }>;
   const statusA = statusesA[0].id;
 
-  // An existing issue in A to mutate.
-  const issuesARes = await request.get(
-    `${API_URL}/api/issues?projectId=${projectA}`,
-    { headers },
-  );
-  const issuesA = (await issuesARes.json()) as Array<{ id: string }>;
-  expect(issuesA[0], 'no seeded issue in project A').toBeTruthy();
-  const issueA = issuesA[0].id;
+  // An issue in A to mutate.
+  const issueARes = await request.post(`${API_URL}/api/issues`, {
+    headers,
+    data: { projectId: projectA, title: 'Issue under test in A' },
+  });
+  expect(issueARes.ok(), `create issue A failed: ${issueARes.status()}`).toBeTruthy();
+  const issueA = ((await issueARes.json()) as { id: string }).id;
 
   // Project B = a brand-new project in a fresh workspace. The demo user is a
   // member of both, which is exactly the privilege the old code mis-trusted.
   const newWsRes = await request.post(`${API_URL}/api/workspaces`, {
     headers,
-    data: { name: `Tenant Test ${Date.now()}` },
+    data: {
+      name: `Tenant Test B ${Date.now()}-${Math.floor(Math.random() * 1e9)}`,
+    },
   });
   expect(newWsRes.ok(), `create ws failed: ${newWsRes.status()}`).toBeTruthy();
   const newWs = (await newWsRes.json()) as { id: string };
