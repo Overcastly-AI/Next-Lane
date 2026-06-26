@@ -19,7 +19,7 @@ async function bootstrap() {
 
   const config = new DocumentBuilder()
     .setTitle('Next Lane API')
-    .setDescription('Open-source, self-hosted Jira alternative')
+    .setDescription('Open-source, self-hosted issue & project tracker')
     .setVersion('0.1.0')
     .addBearerAuth()
     .build();

@@ -1,10 +1,10 @@
 # Next Lane — Research Brief
 
-Open-source, self-hosted Jira competitor running locally via Docker. This brief grounds the architecture and roadmap. Decision-oriented; bullets over prose.
+Open-source, self-hosted issue & project tracker running locally via Docker. This brief grounds the architecture and roadmap. Decision-oriented; bullets over prose.
 
 ---
 
-## 1. Core Jira Feature Set to Clone (MVP → V1 → Later)
+## 1. Core feature set for an issue tracker (MVP → V1 → Later)
 
 Phased so an AI agent can build incrementally. Each phase should be shippable and usable on its own.
 
@@ -45,7 +45,7 @@ Phased so an AI agent can build incrementally. Each phase should be shippable an
 - **Advanced dashboards**: configurable widget grid, gadgets, multi-project reporting.
 - **Roadmap / timeline (Gantt)** view across epics.
 - **Webhooks + REST API + API tokens** for integrations.
-- **Audit log**, bulk edit, import/export (CSV, Jira import), SSO/OIDC, mobile-responsive polish.
+- **Audit log**, bulk edit, import/export (CSV; importers for other trackers), SSO/OIDC, mobile-responsive polish.
 
 ---
 
@@ -109,7 +109,7 @@ Constraint: fully OSS, runs locally in Docker, buildable incrementally by an AI 
 ### Patterns worth borrowing
 - **Issue as the central entity** (Plane/Focalboard) — everything links to issues; keep the core model small and extend via fields/relations.
 - **PostgreSQL + Redis** is the converged default (Plane, Taiga) — validates the §2 stack. Avoid Huly's Mongo+Elasticsearch heaviness for a "runs on a PC" goal.
-- **Lexicographic/fractional rank string per item** for ordering (Jira's LexoRank) — single-column, single-row-update reorders (see §4).
+- **Lexicographic/fractional rank string per item** for ordering (LexoRank-style) — single-column, single-row-update reorders (see §4).
 - **Async events/queue** (Celery in Plane/Taiga; BullMQ for us) for notifications/reports rather than blocking requests.
 - **Split or modular front/back** with a typed REST API + webhooks for extensibility (Plane's SDK approach).
 - Keep search **in-database first** (Postgres FTS) — don't pull in Elasticsearch until genuinely needed.
@@ -142,7 +142,7 @@ Key relationships: Project 1→M Issue; Issue M→1 Status; Issue M→1 Sprint (
 - Use a library: **`fractional-indexing`** (npm, by the Figma author) or implement a LexoRank-style base-36 string with bucket prefix.
 - Scope rank per ordering context (e.g. per board-column or per sprint) — store the relevant `rank` keyed by that context (a separate `rank` per board column if a card can appear in multiple views).
 - **Caveat**: keys grow on repeated insertions in the same gap; add an occasional **rebalance/normalization** job (LexoRank uses buckets for this). For a local single-team tool this is rarely hit, but build the rebalance routine in "Later".
-- Why not integer `position`: every reorder rewrites many rows. Why not pure float midpoints: float precision exhausts quickly. The string-key fractional approach is the proven Jira/Figma pattern.
+- Why not integer `position`: every reorder rewrites many rows. Why not pure float midpoints: float precision exhausts quickly. The string-key fractional approach is the proven Figma-style fractional-index pattern.
 
 ---
 
@@ -219,7 +219,7 @@ Notes:
 
 ## 6. Licensing Recommendation
 
-**Recommendation: AGPL-3.0** (with a CLA so you retain the option of a commercial/dual license later). For a self-hosted product whose direct competitor (Jira) is a hosted SaaS, AGPL-3.0 is the strongest defensive choice: it closes the "SaaS loophole" by requiring anyone who runs a modified version as a network service to release their source, preventing a cloud vendor from taking Next Lane, hosting it, and offering a closed competing service — this is exactly why Plane, Taiga, Mattermost/Focalboard-adjacent, and many self-hosted tools choose copyleft. The trade-off is reduced adoption by companies whose policies forbid AGPL dependencies and inability to embed in proprietary products; if maximizing permissive adoption and contributions matters more than monetization defense, choose **Apache-2.0** (permissive plus an explicit patent grant, the safer permissive pick over **MIT**). Net: pick **AGPL-3.0 + CLA** to keep the project and any future commercial offering protected; fall back to **Apache-2.0** only if frictionless corporate adoption is the priority.
+**Recommendation: AGPL-3.0** (with a CLA so you retain the option of a commercial/dual license later). For a self-hosted product whose closest analogues are hosted SaaS products, AGPL-3.0 is the strongest defensive choice: it closes the "SaaS loophole" by requiring anyone who runs a modified version as a network service to release their source, preventing a cloud vendor from taking Next Lane, hosting it, and offering a closed competing service — this is exactly why Plane, Taiga, Mattermost/Focalboard-adjacent, and many self-hosted tools choose copyleft. The trade-off is reduced adoption by companies whose policies forbid AGPL dependencies and inability to embed in proprietary products; if maximizing permissive adoption and contributions matters more than monetization defense, choose **Apache-2.0** (permissive plus an explicit patent grant, the safer permissive pick over **MIT**). Net: pick **AGPL-3.0 + CLA** to keep the project and any future commercial offering protected; fall back to **Apache-2.0** only if frictionless corporate adoption is the priority.
 
 ---
 
@@ -230,7 +230,7 @@ Notes:
 - [Huly platform (GitHub)](https://github.com/hcengineering/platform)
 - [Tracecat overview](https://www.blog.brightcoding.dev/2025/08/16/tracecat-the-open-source-security-automation-platform-that-puts-no-code-workflows-and-case-management-in-your-hands)
 - [LexoRank explained (Medium)](https://medium.com/whisperarts/lexorank-what-are-they-and-how-to-use-them-for-efficient-list-sorting-a48fc4e7849f)
-- [Understanding and Managing LexoRank in Jira (Atlassian)](https://support.atlassian.com/jira/kb/understanding-and-managing-lexorank-in-jira-server/)
+- LexoRank-style fractional indexing (lexicographic rank keys) — see the `fractional-indexing` npm package and Figma's "fractional indexing" write-up.
 - [How to efficiently reorder items in a database (fractional indexing)](https://yasoob.me/posts/how-to-efficiently-reorder-or-rerank-items-in-database/)
 - [Taiga self-hosting (Postgres + Redis) runbook](https://www.serverspan.com/en/blog/how-to-self-host-taiga-project-management-on-your-linux-vps-in-2026-full-docker-nginx-runbook-for-teams)
 - [OSS PM tool comparison (OpenProject/Taiga/Focalboard/others)](https://forum.cloudron.io/topic/8466/project-management-software-comparison-openproject-vs-taiga-vs-redmine-vs-gitlab-vs-wekan-vs-nextcloud-deck-vs-vikunja-vs-espocrm)

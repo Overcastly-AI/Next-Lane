@@ -1,7 +1,7 @@
 import { IssueType, Priority } from '@next-lane/shared';
 import type { ReactElement } from 'react';
 
-/** Small colored square icon per issue type (Jira-like). */
+/** Small colored square icon per issue type . */
 export function IssueTypeIcon({
   type,
   className = 'h-4 w-4',

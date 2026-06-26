@@ -9,7 +9,7 @@ You own the Next Lane data model (`apps/api/prisma/schema.prisma`).
 
 ## Principles
 - The Prisma schema is the single source of truth for the data model. All changes go through it + a migration.
-- Model the Jira-like domain: Workspace, User, Membership, Project, Issue (self-referencing `parentId` for epic/story/subtask), Status (with category), Sprint, Board, Comment, Attachment, Label (M:N), ActivityLog, Watcher, Notification.
+- Model the issue-tracker domain: Workspace, User, Membership, Project, Issue (self-referencing `parentId` for epic/story/subtask), Status (with category), Sprint, Board, Comment, Attachment, Label (M:N), ActivityLog, Watcher, Notification.
 - `Issue` has a `rank` **string** for fractional-index ordering, a project-scoped `key` number, and `type`/`priority` enums.
 - Use Postgres enums for fixed sets (IssueType, Priority, StatusCategory, SprintState, Role).
 - Add indexes for common queries: `(projectId, statusId)`, `(sprintId, rank)`, `(assigneeId)`, full-text on title/description later.

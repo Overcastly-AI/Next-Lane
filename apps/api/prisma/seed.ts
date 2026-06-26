@@ -85,7 +85,7 @@ async function main() {
     data: {
       key: 'NL',
       name: 'Next Lane',
-      description: 'Building the open-source, self-hosted Jira alternative.',
+      description: 'Building the open-source, self-hosted issue & project tracker.',
       workspaceId: workspace.id,
       leadId: demo.id,
     },

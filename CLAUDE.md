@@ -4,7 +4,7 @@ Guidance for Claude Code (and other AI agents) working in this repository.
 
 ## What this is
 
-Next Lane is an **open-source, self-hosted Jira alternative** that runs locally via Docker. Fully MIT-licensed, intended for the public to use and self-host. It is a TypeScript monorepo.
+Next Lane is an **open-source, self-hosted issue & project tracker** that runs locally via Docker. Fully MIT-licensed, intended for the public to use and self-host. It is a TypeScript monorepo.
 
 ## Stack (do not change without updating docs/ARCHITECTURE.md)
 
@@ -44,12 +44,34 @@ docker compose up -d --build   # full stack
 - **NestJS module pattern** for every domain. DTOs validated with `class-validator`.
 - Keep changes scoped; update `docs/ROADMAP.md` status as features land.
 
+## Work as a dev team (use agents, skills, workflows, hooks)
+
+This project is built by a **team of specialized AI agents**, not one generalist. Default to delegating and orchestrating rather than doing everything inline. The tooling lives in [`.claude/`](./.claude/README.md).
+
+**Agents** (`.claude/agents/`) — spin up the right specialist for the job:
+- `schema-architect` — Prisma data model & migrations
+- `backend-builder` — NestJS modules (controller/service/dto, gateways)
+- `frontend-builder` — React/Vite UI, query hooks, dnd-kit board
+- `code-reviewer` — review the diff before merge
+- `qa-tester` — **independent** Playwright QA / user-acceptance testing (desktop + mobile). Keep QA separate from whoever wrote the code.
+
+**Skills** (`.claude/skills/`) — invoke the matching skill before the work:
+- Build process: `brainstorming` → `writing-plans` → `test-driven-development` / `subagent-driven-development` → `requesting-code-review` → `verification-before-completion` → `finishing-a-development-branch` (vendored from Superpowers).
+- Project-specific: `add-domain-module`, `add-board-feature`, `run-stack`, `playwright-qa`.
+- Debugging: `systematic-debugging`. Parallel work: `dispatching-parallel-agents`.
+
+**Workflows** (`.claude/workflows/`) — orchestrate multi-phase work:
+- `build-vertical-slice` — feature → schema → backend → frontend → review → QA, in coordinated phases.
+- `nightly-build-loop` — work down the ROADMAP MVP items autonomously until done.
+
+**The loop for every feature:** plan → implement (specialist agent) → review (`code-reviewer`) → **QA with `qa-tester` on desktop AND mobile** → update `docs/ROADMAP.md` → commit. Never mark work done without the `verification-before-completion` evidence.
+
 ## Working style for autonomous build
 
 - Track work via the task list / ROADMAP. Commit in logical, working increments.
 - Prefer getting a thin vertical slice working end-to-end over broad-but-broken.
 - After significant changes, ensure the project still builds and `docker compose` config is valid.
-- Default branch for active development: `claude/jira-competitor-docker-local-9b7dll`.
+- Develop on the current `claude/*` working branch; never push to `main` without explicit permission.
 
 ## Known environment constraints (this build session)
 

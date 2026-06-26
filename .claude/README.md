@@ -20,6 +20,7 @@ To get upstream updates (and the session-start hook) directly, you can also run 
 | `frontend-builder` | Building React + Vite UI: pages, components, TanStack Query hooks, dnd-kit boards |
 | `schema-architect` | Designing/evolving the Prisma data model and migrations |
 | `code-reviewer` | Reviewing a diff for correctness, conventions, and security |
+| `qa-tester` | Independent Playwright QA / user-acceptance testing on desktop + mobile |
 
 ## Skills (`skills/`)
 
@@ -28,6 +29,9 @@ To get upstream updates (and the session-start hook) directly, you can also run 
 | `add-domain-module` | "Add a new backend domain module" (e.g., labels, sprints) |
 | `add-board-feature` | Work on the kanban/scrum board, drag-and-drop, or rank ordering |
 | `run-stack` | Bring the app up locally and verify it works end-to-end |
+| `playwright-qa` | QA / user-acceptance testing in a real browser, desktop + mobile |
+
+Plus the vendored Superpowers skills (TDD, systematic-debugging, writing-plans, subagent-driven-development, verification-before-completion, …) listed above.
 
 ## Workflows (`workflows/`)
 

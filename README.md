@@ -2,7 +2,7 @@
 
 # 🛣️ Next Lane
 
-**An open-source, self-hosted Jira alternative that runs entirely on your own machine via Docker.**
+**An open-source, self-hosted issue & project tracker that runs entirely on your own machine via Docker.**
 
 Plan work, track issues, run sprints, and drag cards across kanban boards — without sending your data to anyone's cloud.
 
@@ -108,4 +108,10 @@ Contributions are welcome! See [`CONTRIBUTING.md`](./CONTRIBUTING.md).
 
 [MIT](./LICENSE) — free for anyone to use and self-host.
 
-> **Note on licensing:** A self-hosted competitor to a hosted SaaS is often released under **AGPL-3.0** to keep network-deployed modifications open. Next Lane currently ships under MIT for maximum adoption; this can be revisited early in the project's life. See [`docs/RESEARCH.md`](./docs/RESEARCH.md#6-licensing).
+> **Note on licensing:** Self-hosted tools in this category are often released under **AGPL-3.0** to keep network-deployed modifications open. Next Lane currently ships under MIT for maximum adoption; this can be revisited early in the project's life. See [`docs/RESEARCH.md`](./docs/RESEARCH.md#6-licensing).
+
+## Trademarks & disclaimer
+
+Next Lane is an **independent, open-source project**. It is a general-purpose issue tracker and agile project-management tool. It is **not affiliated with, endorsed by, or sponsored by Atlassian Pty Ltd** or any other company, and it is not a drop-in replacement for, or "competitor" branding of, any specific commercial product.
+
+All product names, logos, and brands mentioned anywhere in this repository are the property of their respective owners and are used for identification and technical-reference purposes only. Use of these names does not imply endorsement.
