@@ -11,6 +11,7 @@ import { LabelsModule } from './labels/labels.module';
 import { SprintsModule } from './sprints/sprints.module';
 import { BoardModule } from './board/board.module';
 import { ReportsModule } from './reports/reports.module';
+import { RoadmapModule } from './roadmap/roadmap.module';
 import { SearchModule } from './search/search.module';
 import { MeModule } from './me/me.module';
 import { NotificationsModule } from './notifications/notifications.module';
@@ -32,6 +33,7 @@ import { HealthController } from './health.controller';
     SprintsModule,
     BoardModule,
     ReportsModule,
+    RoadmapModule,
     SearchModule,
     MeModule,
     NotificationsModule,

@@ -171,6 +171,43 @@ export interface BurndownDto {
 }
 
 /**
+ * One epic on the roadmap timeline. The date window is derived: from the
+ * earliest start to the latest end of the sprints its child issues belong to;
+ * when no child has a dated sprint, it falls back to the epic's own createdAt.
+ * `start`/`end` are ISO datetimes, or null when no date context exists (the
+ * epic then lands in the "No dates" lane). `progress` is the fraction (0–1) of
+ * child issues currently in a DONE-category status.
+ */
+export interface RoadmapEpicDto {
+  id: string;
+  key: string; // e.g. "NL-12"
+  title: string;
+  /** The epic's own current status category, for tinting the row. */
+  statusCategory: StatusCategory;
+  childCount: number;
+  doneCount: number;
+  /** Fraction of children done (0–1); 0 when the epic has no children. */
+  progress: number;
+  /** Derived window start (ISO), or null when no date context. */
+  start: string | null;
+  /** Derived window end (ISO), or null when no date context. */
+  end: string | null;
+  /** True when the window came from child sprint dates (vs. createdAt fallback). */
+  fromSprints: boolean;
+}
+
+/**
+ * Full roadmap payload for a project: every epic (with derived windows and
+ * progress) plus every sprint that has at least a start or end date, so the
+ * client can render both lanes on a shared time axis.
+ */
+export interface RoadmapDto {
+  projectId: string;
+  epics: RoadmapEpicDto[];
+  sprints: SprintDto[];
+}
+
+/**
  * A single issue hit in a global/cross-project search. Lightweight by design:
  * just enough to render a result row and navigate to the issue's board with the
  * issue drawer open.
