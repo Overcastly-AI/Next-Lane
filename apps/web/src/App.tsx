@@ -13,6 +13,7 @@ import { CommandPaletteProvider } from '@/components/CommandPaletteProvider';
 import { LoginPage } from '@/pages/LoginPage';
 import { RegisterPage } from '@/pages/RegisterPage';
 import { DashboardPage } from '@/pages/DashboardPage';
+import { MyWorkPage } from '@/pages/MyWorkPage';
 import { BoardPage } from '@/pages/BoardPage';
 import { BacklogPage } from '@/pages/BacklogPage';
 import { ReportsPage } from '@/pages/ReportsPage';
@@ -48,6 +49,14 @@ export default function App() {
               element={
                 <RequireAuth>
                   <DashboardPage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/my-work"
+              element={
+                <RequireAuth>
+                  <MyWorkPage />
                 </RequireAuth>
               }
             />

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, NavLink } from 'react-router-dom';
 import { Logo } from './Logo';
 import { Avatar } from './ui/Avatar';
 import { useAuth } from '@/auth/AuthContext';
@@ -16,6 +16,18 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
         <Logo />
       </Link>
       <div className="min-w-0 flex-1">{children}</div>
+      <NavLink
+        to="/my-work"
+        className={({ isActive }) =>
+          `shrink-0 rounded-lg px-2.5 py-1.5 text-sm font-medium transition-colors ${
+            isActive
+              ? 'bg-brand-50 text-brand-700'
+              : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+          }`
+        }
+      >
+        My Work
+      </NavLink>
       <button
         type="button"
         onClick={openPalette}

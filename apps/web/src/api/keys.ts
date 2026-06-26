@@ -1,6 +1,7 @@
 /** Centralized TanStack Query keys so invalidation stays consistent. */
 export const qk = {
   me: ['me'] as const,
+  myWork: ['myWork'] as const,
   workspaces: ['workspaces'] as const,
   users: ['users'] as const,
   projects: (workspaceId: string) => ['projects', workspaceId] as const,

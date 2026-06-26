@@ -208,6 +208,42 @@ export interface SearchResultsDto {
   projects: SearchProjectDto[];
 }
 
+/**
+ * A single issue in the "My Work" personal dashboard. Carries just enough to
+ * render a row and navigate to the issue's board with its drawer open. Scoped
+ * to the caller across every workspace/project they belong to.
+ */
+export interface MyWorkIssueDto {
+  id: string;
+  key: string; // e.g. "NL-12"
+  number: number;
+  title: string;
+  type: IssueType;
+  priority: Priority;
+  projectId: string;
+  projectKey: string;
+  statusId: string;
+  statusName: string;
+  statusCategory: StatusCategory;
+  /** Name of the sprint the issue belongs to, if any. */
+  sprintName: string | null;
+  /** State of the issue's sprint, if any (so the UI can flag active sprints). */
+  sprintState: SprintState | null;
+  updatedAt: string;
+}
+
+/**
+ * The current user's work across all their workspaces/projects. Issues are
+ * grouped by relationship to the caller. An issue can appear in both lists when
+ * the user both reported and is assigned to it.
+ */
+export interface MyWorkDto {
+  /** Issues currently assigned to the caller. */
+  assigned: MyWorkIssueDto[];
+  /** Issues the caller reported. */
+  reported: MyWorkIssueDto[];
+}
+
 /** Realtime event names emitted over Socket.io. */
 export const SocketEvents = {
   IssueCreated: 'issue.created',
