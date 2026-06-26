@@ -10,6 +10,7 @@ import { CommentsModule } from './comments/comments.module';
 import { LabelsModule } from './labels/labels.module';
 import { SprintsModule } from './sprints/sprints.module';
 import { BoardModule } from './board/board.module';
+import { ReportsModule } from './reports/reports.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { HealthController } from './health.controller';
 
@@ -27,6 +28,7 @@ import { HealthController } from './health.controller';
     LabelsModule,
     SprintsModule,
     BoardModule,
+    ReportsModule,
   ],
   controllers: [HealthController],
 })

@@ -133,6 +133,42 @@ export interface BoardDto {
   issues: IssueDto[];
 }
 
+/**
+ * One bar in the velocity report: how many story points a sprint committed to
+ * versus how many it actually completed (issues that ended in a DONE-category
+ * status). Suitable for a grouped bar chart.
+ */
+export interface VelocityPointDto {
+  sprintId: string;
+  sprintName: string;
+  state: SprintState;
+  committed: number;
+  completed: number;
+}
+
+/**
+ * One day in a sprint's burndown: the ideal (linear) remaining points and the
+ * actual remaining points derived from when issues transitioned into a
+ * DONE-category status. `date` is an ISO date (YYYY-MM-DD).
+ */
+export interface BurndownPointDto {
+  date: string;
+  ideal: number;
+  remaining: number;
+}
+
+/** Full burndown payload for a single sprint window. */
+export interface BurndownDto {
+  sprintId: string;
+  sprintName: string;
+  state: SprintState;
+  startDate: string | null;
+  endDate: string | null;
+  /** Total committed story points (sum of issue storyPoints, nulls treated as 0). */
+  totalCommitted: number;
+  series: BurndownPointDto[];
+}
+
 /** Realtime event names emitted over Socket.io. */
 export const SocketEvents = {
   IssueCreated: 'issue.created',

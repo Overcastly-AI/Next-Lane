@@ -130,21 +130,31 @@ async function main() {
     assigneeId: string | null;
     description?: string;
     labels?: string[];
+    /** Estimate in story points; powers the velocity + burndown reports. */
+    storyPoints?: number;
+    /**
+     * Days after the sprint start that this issue moved into a DONE status.
+     * Used to seed a `status` ActivityLog transition so the burndown chart shows
+     * a real curve (only meaningful for issues that end in the Done column).
+     */
+    completedOnDay?: number;
   };
   const specs: Spec[] = [
-    { title: 'Set up Docker Compose stack', type: IssueType.TASK, priority: Priority.HIGH, statusId: done.id, assigneeId: demo.id, labels: [feature.id] },
-    { title: 'Design the issue data model', type: IssueType.STORY, priority: Priority.HIGH, statusId: done.id, assigneeId: alex.id, labels: [design.id] },
-    { title: 'Implement JWT authentication', type: IssueType.TASK, priority: Priority.MEDIUM, statusId: inProgress.id, assigneeId: demo.id, labels: [feature.id] },
-    { title: 'Kanban board drag-and-drop', type: IssueType.STORY, priority: Priority.HIGHEST, statusId: inProgress.id, assigneeId: sam.id, labels: [feature.id, design.id] },
-    { title: 'Cards lose order after refresh', type: IssueType.BUG, priority: Priority.HIGH, statusId: todo.id, assigneeId: null, labels: [bug.id] },
-    { title: 'Add issue detail modal', type: IssueType.STORY, priority: Priority.MEDIUM, statusId: todo.id, assigneeId: alex.id },
-    { title: 'Backlog and sprint planning view', type: IssueType.STORY, priority: Priority.LOW, statusId: todo.id, assigneeId: null, labels: [feature.id] },
-    { title: 'Burndown chart', type: IssueType.TASK, priority: Priority.LOWEST, statusId: todo.id, assigneeId: sam.id },
+    { title: 'Set up Docker Compose stack', type: IssueType.TASK, priority: Priority.HIGH, statusId: done.id, assigneeId: demo.id, labels: [feature.id], storyPoints: 5, completedOnDay: 1 },
+    { title: 'Design the issue data model', type: IssueType.STORY, priority: Priority.HIGH, statusId: done.id, assigneeId: alex.id, labels: [design.id], storyPoints: 8, completedOnDay: 3 },
+    { title: 'Implement JWT authentication', type: IssueType.TASK, priority: Priority.MEDIUM, statusId: inProgress.id, assigneeId: demo.id, labels: [feature.id], storyPoints: 5 },
+    { title: 'Kanban board drag-and-drop', type: IssueType.STORY, priority: Priority.HIGHEST, statusId: inProgress.id, assigneeId: sam.id, labels: [feature.id, design.id], storyPoints: 8 },
+    { title: 'Cards lose order after refresh', type: IssueType.BUG, priority: Priority.HIGH, statusId: todo.id, assigneeId: null, labels: [bug.id], storyPoints: 3 },
+    { title: 'Add issue detail modal', type: IssueType.STORY, priority: Priority.MEDIUM, statusId: todo.id, assigneeId: alex.id, storyPoints: 3 },
+    { title: 'Backlog and sprint planning view', type: IssueType.STORY, priority: Priority.LOW, statusId: todo.id, assigneeId: null, labels: [feature.id], storyPoints: 5 },
+    { title: 'Burndown chart', type: IssueType.TASK, priority: Priority.LOWEST, statusId: todo.id, assigneeId: sam.id, storyPoints: 2 },
   ];
 
   // ranks per status
   const byStatus: Record<string, Spec[]> = {};
   for (const s of specs) (byStatus[s.statusId] ??= []).push(s);
+
+  const sprintStart = sprint.startDate ?? new Date();
 
   let seq = 0;
   for (const statusId of Object.keys(byStatus)) {
@@ -164,6 +174,7 @@ async function main() {
           assigneeId: s.assigneeId,
           reporterId: demo.id,
           priority: s.priority,
+          storyPoints: s.storyPoints ?? null,
           sprintId: sprint.id,
           rank: ranks[i],
           labels: s.labels
@@ -174,6 +185,23 @@ async function main() {
       await prisma.activityLog.create({
         data: { issueId: issue.id, actorId: demo.id, field: 'created', from: null, to: null },
       });
+      // Seed a status→DONE transition for completed issues so the burndown
+      // chart has real "actual remaining" data within the sprint window.
+      if (s.completedOnDay !== undefined) {
+        const completedAt = new Date(
+          sprintStart.getTime() + s.completedOnDay * 24 * 3600 * 1000,
+        );
+        await prisma.activityLog.create({
+          data: {
+            issueId: issue.id,
+            actorId: s.assigneeId ?? demo.id,
+            field: 'status',
+            from: todo.id,
+            to: done.id,
+            createdAt: completedAt,
+          },
+        });
+      }
     }
   }
 
