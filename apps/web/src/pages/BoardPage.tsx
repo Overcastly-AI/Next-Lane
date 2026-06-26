@@ -27,8 +27,12 @@ import { ProjectNav } from '@/components/project/ProjectNav';
 import { BoardColumn } from '@/components/board/BoardColumn';
 import { IssueCard } from '@/components/board/IssueCard';
 import { CreateIssueModal } from '@/components/board/CreateIssueModal';
+import { ColumnFormModal } from '@/components/board/ColumnFormModal';
 import { IssueDetailDrawer } from '@/components/issue/IssueDetailDrawer';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { useToast } from '@/components/ui/Toast';
+import { ApiError } from '@/api/client';
+import { useUpdateStatus, useDeleteStatus } from '@/api/statuses';
 import { errorMessage } from '@/lib/errorMessage';
 import { cn } from '@/lib/cn';
 
@@ -39,6 +43,8 @@ export function BoardPage() {
   const usersQuery = useUsers();
   const labelsQuery = useLabels(projectId);
   const moveIssue = useMoveIssue(projectId);
+  const updateStatus = useUpdateStatus(projectId);
+  const deleteStatus = useDeleteStatus(projectId);
   const toast = useToast();
 
   useBoardRealtime(projectId);
@@ -49,6 +55,11 @@ export function BoardPage() {
   const [labelFilter, setLabelFilter] = useState<string[]>([]);
   const [createForStatus, setCreateForStatus] = useState<string | null>(null);
   const [activeIssue, setActiveIssue] = useState<IssueDto | null>(null);
+  // Column management: add (no status), edit (a status), or delete confirm.
+  const [columnModal, setColumnModal] = useState<
+    { mode: 'add' } | { mode: 'edit'; status: StatusDto } | null
+  >(null);
+  const [columnToDelete, setColumnToDelete] = useState<StatusDto | null>(null);
 
   const openIssueId = searchParams.get('issue');
   const wantsNewIssue = searchParams.get('new') === '1';
@@ -196,6 +207,51 @@ export function BoardPage() {
     );
   }
 
+  // Reorder a column by swapping its `order` with the adjacent neighbor.
+  function moveColumn(status: StatusDto, direction: 'left' | 'right') {
+    const index = statuses.findIndex((s) => s.id === status.id);
+    const neighbor = statuses[direction === 'left' ? index - 1 : index + 1];
+    if (!neighbor) return;
+    updateStatus.mutate(
+      { id: status.id, order: neighbor.order },
+      {
+        onError: (err) =>
+          toast.error(errorMessage(err, 'Could not move that column.')),
+      },
+    );
+    updateStatus.mutate(
+      { id: neighbor.id, order: status.order },
+      {
+        onError: (err) =>
+          toast.error(errorMessage(err, 'Could not move that column.')),
+      },
+    );
+  }
+
+  function confirmDeleteColumn() {
+    if (!columnToDelete) return;
+    const target = columnToDelete;
+    deleteStatus.mutate(target.id, {
+      onSuccess: () => {
+        toast.success(`Deleted "${target.name}".`);
+      },
+      onError: (err) => {
+        // A 400 means the column still holds issues; give an actionable message
+        // instead of the raw server text.
+        const blocked = err instanceof ApiError && err.status === 400;
+        toast.error(
+          blocked
+            ? 'Move or delete its issues first.'
+            : errorMessage(err, 'Could not delete the column.'),
+          { title: blocked ? `Can't delete "${target.name}"` : undefined },
+        );
+      },
+      // Close the confirm dialog whether the delete succeeds or is blocked, so
+      // the user isn't stuck on a dialog after a 400 (column still has issues).
+      onSettled: () => setColumnToDelete(null),
+    });
+  }
+
   if (boardQuery.isLoading) {
     return (
       <Shell projectId={projectId}>
@@ -294,7 +350,12 @@ export function BoardPage() {
         <div className="p-6">
           <EmptyState
             title="No columns yet"
-            description="This project has no statuses configured."
+            description="Add a column to start organizing work on the board."
+            action={
+              <Button onClick={() => setColumnModal({ mode: 'add' })}>
+                + Add column
+              </Button>
+            }
           />
         </div>
       ) : (
@@ -306,15 +367,30 @@ export function BoardPage() {
           onDragCancel={() => setActiveIssue(null)}
         >
           <div className="nl-scroll flex flex-1 gap-4 overflow-x-auto px-4 pb-4">
-            {statuses.map((status) => (
+            {statuses.map((status, index) => (
               <BoardColumn
                 key={status.id}
                 status={status}
                 issues={issuesByStatus.get(status.id) ?? []}
                 onAdd={(id) => setCreateForStatus(id)}
                 onOpenIssue={openIssue}
+                onEdit={(s) => setColumnModal({ mode: 'edit', status: s })}
+                onDelete={(s) => setColumnToDelete(s)}
+                onMove={moveColumn}
+                canMoveLeft={index > 0}
+                canMoveRight={index < statuses.length - 1}
               />
             ))}
+            <button
+              type="button"
+              onClick={() => setColumnModal({ mode: 'add' })}
+              className="flex h-11 w-72 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-dashed border-gray-300 text-sm font-medium text-gray-500 transition-colors hover:border-brand-300 hover:bg-brand-50/50 hover:text-brand-600"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                <path strokeLinecap="round" d="M12 5v14M5 12h14" />
+              </svg>
+              Add column
+            </button>
           </div>
 
           <DragOverlay>
@@ -333,6 +409,35 @@ export function BoardPage() {
           defaultStatusId={createForStatus || undefined}
         />
       )}
+
+      {columnModal && (
+        <ColumnFormModal
+          open
+          onClose={() => setColumnModal(null)}
+          projectId={projectId}
+          status={columnModal.mode === 'edit' ? columnModal.status : undefined}
+        />
+      )}
+
+      <ConfirmDialog
+        open={columnToDelete !== null}
+        title="Delete column"
+        message={
+          <>
+            Delete the column{' '}
+            <span className="font-medium text-gray-900">
+              {columnToDelete?.name}
+            </span>
+            ? Columns that still contain issues cannot be deleted — move or delete
+            its issues first.
+          </>
+        }
+        confirmLabel="Delete column"
+        variant="danger"
+        loading={deleteStatus.isPending}
+        onConfirm={confirmDeleteColumn}
+        onCancel={() => setColumnToDelete(null)}
+      />
 
       {openIssueId && (
         <IssueDetailDrawer
