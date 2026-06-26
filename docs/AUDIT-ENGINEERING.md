@@ -314,3 +314,211 @@ each deliver high leverage for self-hosted teams at small to medium cost.
 - **Plugin/webhook event system (HMAC-signed outbound POST on issue.* events)** · P2 · M · Automation and CI/CD integration prerequisite; RealtimeService infrastructure already in place.
 - **Board prefetch overview endpoint + stale-while-revalidate caching** · P2 · S · Collapses 4 sequential requests to 1 on first load; immediate UX improvement with minimal backend cost.
 - **Live board presence indicators (per-project viewer avatars via WebSocket)** · P2 · M · High perceived polish; gateway already tracks connections; zero new API routes.
+
+---
+
+## 2026-06-26 — Pass 3 (post-sprint/label/epic/CI feature verification)
+
+Scope: full re-audit of all Pass-2 open items and all code shipped since then.
+Read every changed file: `sprints.service.ts`, `issues.service.ts`,
+`membership.util.ts`, `labels.service.ts`, `realtime.module.ts`,
+`docker-compose.yml`, `.github/workflows/ci.yml`, all four new `*.spec.ts`
+files, the web data layer (`api/issues.ts`, `api/sprints.ts`, `api/labels.ts`,
+`api/socket.ts`). API typecheck (`tsc --noEmit`) and unit test suite (39 tests
+across 4 suites) confirmed clean. Docker compose JWT bypass fully resolved.
+
+### Pass-2 fix verification
+
+| Fix area | Status | Evidence |
+|----------|--------|----------|
+| docker-compose JWT_SECRET bypass (compose `:-` default) | CONFIRMED FIXED | `docker-compose.yml:44` now uses `${JWT_SECRET:?JWT_SECRET must be set …}` — compose will refuse to start if the variable is unset; no silent fallback. |
+| RealtimeModule `??` fallback on JWT secret | CONFIRMED FIXED | `realtime.module.ts:13` now calls `getJwtSecret()` — throws at import-time if secret is unset; no hardcoded string. |
+| assigneeId workspace validation on create/update | CONFIRMED FIXED | `issues.service.ts:50-56` — `assertAssigneeInWorkspace` calls `assertWorkspaceMember`; applied in both `create` and `update`. |
+| GET /users cross-tenant leak | CONFIRMED FIXED | `users.service.ts:16-33` — `findAll` now scopes to co-members via a `Membership` sub-query; includes caller unconditionally. |
+| Unit test suite + CI pipeline | SUBSTANTIALLY FIXED | 4 spec files (39 tests): `auth.config.spec.ts`, `membership.util.spec.ts`, `issues.service.spec.ts`, `sprints.service.spec.ts`. `jest.config.js` correct. GitHub Actions CI (`ci.yml`) runs pnpm install, prisma generate, build, `pnpm -r test`, and both typechecks on every push/PR. Pass. |
+
+### Ratings (Pass 3)
+
+| Area | Score | Delta | Note |
+|------|:----:|:-----:|------|
+| Architecture & module boundaries | 4 | — | Per-domain module pattern clean; shared types correct; no leaks. Labels and sprints introduced as independent modules with correct role guards. |
+| Data model & migrations | 4 | — | Schema well-formed; `IssueLabel`, `Label`, `Sprint` models clean; indexes present. Still a single monolithic `init` migration with no rollback strategy. |
+| AuthN | 4 | — | argon2 hashing, global JWT guard, `getJwtSecret()` required. 7-day non-revocable token unchanged; no refresh-token flow (acceptable for MVP). |
+| AuthZ & multi-tenant isolation | **4** | +1 | All major holes closed: role hierarchy, assertSameProject FK validation, socket auth + membership-checked subscribe, assigneeId workspace validation, co-member scoping on GET /users. Remaining gap: `assertNoOtherActiveSprint` is checked OUTSIDE the transaction (see Risk #1). |
+| Input validation | **3** | — | DTOs cover most fields with length bounds. Remaining gaps: `description` on issues is unbounded; `storyPoints` has no `@Min(0)` / `@Max` guard (negative/astronomic values accepted); label `color` field accepts any 20-char string (not validated as hex / CSS color); `projectId`/`statusId`/`parentId`/`sprintId`/`assigneeId` accept any string format (not `@IsUUID()`). |
+| Error handling | 2 | — | No global exception filter. Unhandled Prisma errors (P2002 unique violation on concurrent issue create, P2025 record not found on concurrent delete, DB connection drop) surface as raw NestJS 500s without a structured envelope. Stack traces may leak in production logs. `rankBetween` can throw `generateKeyBetween` errors if ranks are corrupt — unhandled at service layer. |
+| N+1 / query efficiency | 3 | — | `IssuesService.findAll` and `BoardService.getBoard` remain unbounded (`findMany` with no `take`). `assertNoParentCycle` walks up to 1000 hops via sequential `findUnique` calls (one DB round-trip per hop) — pathological for any deep tree, and not inside a transaction. `assertProjectMember`/`assertProjectRole` execute two sequential queries per request with no caching. |
+| Realtime correctness | 4 | — | Socket auth and membership-checked subscribe confirmed solid. Stale socket token on future refresh-token feature is a carry-forward known gap. Sprint lifecycle events (start/complete) do not emit a realtime event to the project room — clients must poll or wait for a board invalidation. |
+| Rank / ordering integrity | 2 | — | `move` still reads neighbor ranks then writes outside a transaction (non-transactional). No rank-collision rebalance path. No change from Pass 2. |
+| Test coverage (unit + e2e) | **3** | +1 | 39 unit tests across 4 suites covering auth config fail-fast, all four membership guards (full ROLE_RANK matrix), `assertSameProject` (all FK types), `assertNoParentCycle` (self, cycle, clean), and sprint lifecycle (one-active-sprint invariant, incomplete-return on complete). CI gates on push. Score remains at 3 because: no tests for `LabelsService`, `CommentsService`, `StatusesService`, `BoardService`, `WorkspacesService`, or any controller; no integration/e2e test for sprint lifecycle or label endpoints specifically. |
+| Type safety | 5 | — | Strict TS, clean typecheck (both API and web), no stray `any`, DTOs typed against `@next-lane/shared`. `IssueWithRelations` interface in `issue.mapper.ts` is properly typed. |
+| Build / CI / Docker | **4** | +2 | GitHub Actions CI confirmed: runs pnpm install, prisma generate, `pnpm -r build`, `pnpm -r test`, typechecks API and web. Dockerfile multi-stage build is correct. docker-compose JWT bypass resolved. Minor: API Dockerfile uses `--no-frozen-lockfile` (should be `--frozen-lockfile` in CI context); `pnpm install` in Dockerfile lacks a lockfile step. |
+| Secrets / config hygiene | **4** | +2 | `getJwtSecret()` throws on missing/empty secret. `assertAuthConfig()` called at bootstrap before server bind. Compose uses `:?` error-expansion — container fails fast. No hardcoded fallbacks remain. Remaining: `POSTGRES_PASSWORD` compose default is `nextlane` (a known dev default); self-hosters may leave it in place. |
+| Dependency risk | 4 | — | Mainstream stack; no abandoned deps; NestJS 10, Prisma 5, Socket.io 4, argon2, fractional-indexing. No Dependabot / automated CVE scanning. |
+
+### Top risks & debt (Pass 3, prioritized)
+
+1. **`assertNoOtherActiveSprint` is OUTSIDE the transaction — TOCTOU race** *(Med / Med)*
+   `sprints.service.ts:90-127`: the guard `assertNoOtherActiveSprint` executes a
+   `findFirst` at line 91 OUTSIDE the `$transaction` block that starts at line 94.
+   Two simultaneous "start sprint" requests for two different sprints in the same
+   project will both pass the guard (neither sees the other as ACTIVE yet), and
+   both will write `state: ACTIVE` inside their own transactions, violating the
+   one-active-sprint invariant the board depends on. There is no unique partial
+   index on `(projectId, state = ACTIVE)` in the schema to enforce this at the DB
+   level.
+   *Fix (two-part):* (a) Move `assertNoOtherActiveSprint` INSIDE the
+   `$transaction` block (use `tx`, not `this.prisma`). (b) Add a partial unique
+   index in a migration:
+   `CREATE UNIQUE INDEX sprint_one_active_per_project ON "Sprint"("projectId")
+   WHERE state = 'ACTIVE'`. The DB constraint is the only reliable guard under
+   concurrent load. *Size: S.*
+
+2. **No global exception filter / unstructured 500s** *(Med / High)*
+   Unhandled Prisma errors (P2002 unique-constraint violation on concurrent issue
+   create, P2025 on concurrent delete, P2003 FK violation) surface as raw NestJS
+   500 responses. In production, this can expose a stack trace in the JSON body.
+   `rankBetween` calls `generateKeyBetween` which throws a `TypeError` if ranks are
+   equal — uncaught at the service layer in `move`.
+   *Fix:* Add a `@Catch()` global exception filter that maps Prisma error codes
+   (P2002 → 409 Conflict, P2025 → 404, P2003 → 400) and emits a consistent
+   `{ statusCode, message, error }` envelope; suppress stack traces when
+   `NODE_ENV=production`. Register it in `main.ts` via `useGlobalFilters`. *Size: M.*
+
+3. **`assertNoParentCycle` walks N sequential DB round-trips outside a transaction** *(Med / Low)*
+   `issues.service.ts:320-343`: the cycle guard issues one `findUnique` per hop
+   in a `while` loop, up to 1000 hops. For any deep hierarchy this is an N-query
+   waterfall. Worse, it runs OUTSIDE the `issue.update` call — a concurrent parent
+   reassignment could create a cycle between the guard completing and the write.
+   *Fix:* (a) use a WITH RECURSIVE CTE via `$queryRaw` to walk ancestors in a
+   single query; (b) move the guard inside a transaction with the update. *Size: M.*
+
+4. **Unbounded issue list and board queries** *(Med / Med — unchanged from Pass 2)*
+   `IssuesService.findAll` (`issues.service.ts:157-162`) and `BoardService.getBoard`
+   (`board.service.ts:32-43`) both call `findMany` with no `take` limit. A project
+   with thousands of issues sends them all with full relations (status, assignee,
+   reporter, labels, _count). Large payloads degrade the board and can cause OOM.
+   *Fix:* Add cursor-based pagination to `findAll` (rank-cursor, `take` defaulting
+   to 100). For the board, add a `maxPerStatus` cap or a `boardSummary` projection
+   that omits `description`. *Size: M.*
+
+5. **Non-transactional move / rank race** *(Med / Low — unchanged from Pass 2)*
+   `IssuesService.move` (`issues.service.ts:454-466`) reads `beforeRank`/
+   `afterRank` from two `findUnique` calls, then writes `rank` in a separate
+   `update` — all outside any transaction. Two concurrent moves into the same gap
+   produce identical ranks. No rebalance path.
+   *Fix:* Wrap the read-and-update in `this.prisma.$transaction()`. Add a rank
+   rebalance that distributes existing ranks when a gap is exhausted (rare but
+   possible after many moves in the same column). *Size: M.*
+
+6. **Missing input validation: description length, storyPoints range, label color format** *(Low / High)*
+   Three specific gaps in `create-issue.dto.ts`:
+   - `description` (`line 26`): `@IsString()` with no `@MaxLength`. A large
+     description (MB-scale) goes directly to Postgres via Prisma — no server-side
+     gate.
+   - `storyPoints` (`line 49-50`): `@IsInt()` with no `@Min(0)` or `@Max`. Negative
+     story points and astronomic values are accepted and stored.
+   - `label.color` (`labels/dto/label.dto.ts:9-12`): `@IsString() @MaxLength(20)`
+     accepts any 20-char string — not validated as a hex color or CSS value; could
+     produce corrupt UI renders.
+   *Fix:* Add `@MaxLength(50000)` on description, `@Min(0) @Max(999)` on
+   storyPoints, and `@Matches(/^#[0-9a-fA-F]{6}$/)` on label color. *Size: S.*
+
+7. **Dockerfile uses `--no-frozen-lockfile`** *(Low / High)*
+   `apps/api/Dockerfile:15`: `RUN pnpm install --no-frozen-lockfile`. In a
+   production image build this means the lockfile is not enforced — pnpm may
+   silently update dependencies to satisfy resolution, resulting in non-reproducible
+   builds.
+   *Fix:* Change to `--frozen-lockfile` and ensure `pnpm-lock.yaml` is committed
+   and kept current. *Size: S.*
+
+8. **Sprint lifecycle events missing from realtime** *(Low / Low)*
+   When a sprint is started or completed (`sprints.service.ts:94-130`), no
+   `socket.io` event is emitted to the project room. Clients subscribed to the
+   board receive no push notification; they must wait for a manual invalidation or
+   page reload to see the active sprint change. A board viewer in another tab sees
+   a stale board until next HTTP poll.
+   *Fix:* Inject `RealtimeService` into `SprintsService` and emit a
+   `sprint.updated` event on start and complete (similar to how `IssuesService`
+   emits `issue.updated`). Add `SprintUpdated` to `SocketEvents` in the shared
+   package. *Size: S.*
+
+9. **`GET /users/:id` has no authorization guard** *(Low / Low)*
+   `users.controller.ts:18`: `findOne(@Param('id') id: string)` calls
+   `UsersService.findOne` which does `prisma.user.findUnique`. There is no check
+   that the calling user shares a workspace with the target. Any authenticated user
+   can fetch any other user's name, email, and avatar by CUID. `GET /users` is now
+   co-member scoped, but the individual lookup is not.
+   *Fix:* In `UsersService.findOne`, verify the caller shares at least one workspace
+   with the target (reuse the co-member query from `findAll`), or scope it to
+   workspace-member lookups via a `workspaceId` query param. *Size: S.*
+
+### New capabilities & technical investments (ideation mandate)
+
+1. **Webhook / automation event system.** Expose a signed outbound webhook: on any
+   `issue.*` or `sprint.*` event the API POST-s a versioned, HMAC-SHA256-signed
+   payload to a configured URL per workspace. This is the foundation for CI/CD
+   integration (auto-close on merge), Slack/PagerDuty routing, and custom
+   automation rules. The `RealtimeService.emitToProject` infrastructure is already
+   the central fan-out point — a `WebhookService` that subscribes to the same
+   events adds one new module and one new `WebhookEndpoint` model in the schema. A
+   workspace ADMIN can register endpoints via a new REST resource. Include a retry
+   policy (exponential backoff, 3 attempts) and a delivery log. This is the most
+   commonly requested feature for self-hosted trackers and unblocks any automation
+   workflow. *Priority: P1. Size: L.*
+
+2. **Full-text search + structured filters + saved views.** Move beyond
+   `title ILIKE '%q%'`: add Postgres full-text search using `tsvector` across title
+   + description + comment bodies (trigram or GIN index), a structured filter
+   grammar (status / assignee / label / sprint / type / priority / date-range
+   combinators), and persisted "saved views" per user/project. The web side adds a
+   filter bar above the board and backlog. This turns Next Lane from a board viewer
+   into a queryable tracker — critical for teams with >100 issues. Schema: add a
+   `SavedView` model; add a GIN index on a `tsv` generated column on `Issue`. API:
+   extend `findAll` to accept a structured filter object. *Priority: P1. Size: L.*
+
+3. **Observability baseline: structured logging, request IDs, Prometheus metrics,
+   OpenTelemetry tracing.** Add `pino` (or NestJS's built-in pino adapter) for
+   structured JSON logs with a correlation `requestId` header injected by a
+   middleware. Add a `@Catch()` global exception filter (fixes Risk #2 above) as
+   part of this work. Expose `/metrics` via `prom-client` (active connections,
+   request latency histograms, DB query counts, socket room sizes). Wrap Prisma
+   calls in OpenTelemetry spans so a self-hoster can see slow queries without SSH
+   access. This is cheap to add now and invaluable for a product shipped as a
+   Docker image — operators need visibility into their own instance without source
+   access. *Priority: P2. Size: M.*
+
+### Direction (Pass 3)
+
+The security floor is now substantially solid: all Pass-1 and Pass-2 critical gaps
+are confirmed closed, 39 unit tests run in CI on every push, and the docker-compose
+JWT bypass is definitively fixed. The platform is safe to self-host by technically
+aware teams.
+
+The most important immediate action is the **sprint TOCTOU race** (Risk #1) — it is
+a one-sprint-session one-liner fix plus a DB-level partial unique index migration,
+and it protects a newly-shipped invariant. Batch it with **sprint realtime events**
+(Risk #8), **global exception filter** (Risk #2), and the **input validation gaps**
+(Risk #6) — these are all S/M-sized and should ship together.
+
+After those hardening items, the **webhook/automation system** is the highest-value
+new capability: self-hosted teams run CI and Slack, and there is currently no
+integration surface at all. The `RealtimeService` is already the right hook point.
+**Full-text search + saved views** is what transforms Next Lane from "a nice board"
+into a tracker teams use as their primary tool. Together these two investments move
+the platform from MVP to daily-driver.
+
+### Backlog-groomer feed (Pass 3 — compact)
+
+- **Move assertNoOtherActiveSprint inside $transaction + add partial unique index** · P1 · S · TOCTOU race allows two sprints to become ACTIVE simultaneously; DB constraint is the only reliable guard.
+- **Emit sprint.updated realtime event on start/complete** · P1 · S · Board viewers in other tabs see stale data until reload; no push notification on sprint lifecycle changes.
+- **Global exception filter: map Prisma error codes to structured HTTP responses** · P1 · M · P2002/P2025/P2003 surface as raw 500s with stack traces; blocks observability baseline work.
+- **Add @MaxLength(50000) on description, @Min(0)/@Max(999) on storyPoints, @Matches hex on label color** · P1 · S · Unbounded description accepts MB payloads; negative storyPoints accepted; label color not validated as hex.
+- **GET /users/:id authorization — scope to co-members** · P2 · S · Any authenticated user can enumerate any other user's name/email by CUID; co-member guard from findAll should apply to findOne too.
+- **Replace assertNoParentCycle sequential waterfall with single recursive CTE** · P2 · M · N sequential findUnique calls per hop; runs outside transaction (TOCTOU); a WITH RECURSIVE query collapses to one DB round-trip and is safe inside a tx.
+- **Cursor pagination for issue list and board** · P2 · M · findAll/getBoard return all issues unbounded; large projects send MB payloads; degrades board UX and can cause OOM.
+- **Transactional move + rank-collision rebalance** · P2 · M · Non-transactional neighbor read/update produces rank collisions under concurrency; no detection or recovery.
+- **Fix Dockerfile --no-frozen-lockfile → --frozen-lockfile** · P2 · S · Allows silent dependency drift in production image builds; non-reproducible artifacts.
+- **Webhook / automation event system (HMAC-signed outbound POST on issue.* + sprint.* events)** · P1 · L · Primary integration surface missing; needed for CI/CD, Slack, automation rules; RealtimeService is the right hook point.
+- **Full-text search + structured filters + saved views** · P1 · L · title ILIKE is the only query surface; tracker is unusable at scale without cross-field search and persisted filters.
+- **Observability baseline (pino structured logs, requestId, /metrics, OTel Prisma traces)** · P2 · M · Self-hosted product needs operator visibility without SSH; cheap to add now, expensive to retrofit later.

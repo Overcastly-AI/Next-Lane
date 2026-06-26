@@ -265,3 +265,194 @@ automation rules or query DSL until the agile core is genuinely usable end-to-en
 - Cross-project global search + richer board filters (type/priority/label/sprint) · P2 · M · title-only single-board search today
 - Command palette (Cmd-K) for jump/create/change status/assign · P2 · M · power-user differentiator; still not built
 - Reports hub: burndown / velocity / status distribution / stuck issues · P3 · L · blocked on sprints+story points UI first
+
+---
+
+## 2026-06-26 — Pass 3 (post-agile-core sprint)
+
+**Method.** Read every file in `apps/web/src/` that was claimed as shipped:
+`BacklogPage.tsx`, `IssueDetailDrawer.tsx`, `LabelPicker.tsx`, `ParentSubtasks.tsx`,
+`CommentsPanel.tsx`, `ActivityPanel.tsx`, `BoardPage.tsx` (including the new
+`LabelFilter` component), `ProjectNav.tsx`, `App.tsx`, and the companion API
+hooks in `apps/web/src/api/` (`sprints.ts`, `labels.ts`, `issues.ts`). Also
+read the backend `SprintsService`, `BoardService`, `LabelsService`, and the
+Prisma schema to verify data-to-UI alignment. Exercised the live stack on
+`:3000` / `:4000`.
+
+**Headline.** The agile-core sprint delivered substantial, real change. Six
+Pass-2 P1 backlog items are now genuinely shipped and verifiable in code:
+backlog + sprint planning view, labels management and filtering, story points
+in the drawer and on cards, epic/sub-task hierarchy, comment edit/delete, and
+a human-readable activity log. The product has crossed a threshold — it now
+*does* agile from the UI, not just at the API layer. What remains is
+the polish and differentiator layer: the board does not yet filter to the
+active sprint (it mixes backlog issues with sprint issues); there are no
+reports; there is no cross-project search or command palette; the VIEWER role
+still renders all edit affordances; and there is no "My Work" personal view.
+These are the next logical tier — the product's core loop is functional, now
+it needs to be *observable* (reports) and *power-user-friendly* (search,
+keyboard, "My Work").
+
+### What shipped (verified claim vs. reality — Pass 3)
+
+| Shipped item | Evidence | Verdict |
+|---|---|---|
+| Backlog + sprint planning view | `BacklogPage.tsx` is a full implementation: sprint sections (PLANNED/ACTIVE badges), issue rows with rank/status/points display, "Move to" dropdown, sprint start/complete/delete flows with ConfirmDialog, single-active enforcement (`startDisabled` + amber warning), incomplete issues returned to backlog on complete, full toast feedback | Confirmed — high quality |
+| Create sprint modal (name, goal, start/end dates) | `CreateSprintModal` in `BacklogPage.tsx`; all four fields wired to `useCreateSprint`; invalidates sprints + board on success | Confirmed |
+| Board reflects active sprint only | `BoardService.getBoard` filters: `OR: [{ sprintId: null }, { sprint: { state: ACTIVE } }]` — backlog and active-sprint issues only; no other sprints leak onto the board | Confirmed |
+| Story points in drawer | `IssueDetailDrawer.tsx` line 292-309: Fibonacci select (1-2-3-5-8-13) plus "None"; patches `storyPoints`; card (`IssueCard.tsx`) renders the bubble when non-null | Confirmed |
+| Story points on backlog rows | `BacklogPage.tsx` `IssueRow`: renders story-points bubble (brand-colored circle) and sprint-level point total (`pts` meta line) | Confirmed |
+| Labels management in drawer | `LabelPicker.tsx`: popover with toggle-checkboxes per label, "New label" inline form with 10 color swatches, delete-with-confirm; optimistic toggle via `useToggleIssueLabel` with dual-cache rollback | Confirmed — well-implemented |
+| Label filter on board | `BoardPage.tsx` `LabelFilter` component: multi-select popover, client-side "must carry ALL selected labels" logic, active-state button, "Clear label filter" footer; stale-ID pruning on label deletion | Confirmed |
+| Parent/subtask hierarchy in drawer | `ParentSubtasks.tsx`: shows parent chip with Clear + "Change parent" search popover; shows children list with status badges, each navigable via `onOpenIssue`; cycle prevention (excludes self + direct children) | Confirmed |
+| Comment edit/delete | `CommentsPanel.tsx` `CommentItem`: group-hover reveals Edit/Delete only for `isOwn` comments; edit-in-place textarea with Cmd/Ctrl+Enter save + Escape cancel; ConfirmDialog for delete; error toasts | Confirmed |
+| Activity log — human-readable values | `ActivityPanel.tsx`: `describe()` resolves `statusId → status.name`, `userId → user.name`; assignee renders "assigned to Alex" not raw ID; falls back to raw value only when entity missing | Confirmed |
+| Nav tab for Backlog | `ProjectNav.tsx`: two tabs — Board and Backlog — both using `NavLink` with active underline | Confirmed |
+
+### Ratings (Pass 3)
+
+| Area | Score | Pass-2 | Delta | Note |
+|---|---|---|---|---|
+| Auth (register/login) | 4 | 4 | = | Unchanged. No refresh tokens, no password reset, no logout-everywhere. Hardened JWT config still solid. |
+| Projects | 4 | 4 | = | PATCH/archive backend exists; still no project settings or edit UI in the web. Multi-project navigation works. |
+| Board (kanban) | 5 | 5 | = | Still the strongest surface. DnD + fractional ranks + realtime + label filter + active-sprint-only scoping now correct. |
+| Issues (CRUD) | 5 | 4 | +1 | Story points, parent/child picker, label assign/unassign all land in the drawer. Comment count bubble on card. All major fields reachable from the UI. |
+| Comments / activity | 4 | 3 | +1 | Comment edit/delete wired end-to-end (edit-in-place, own-only, Escape cancel). Activity log is now human-readable. Still no @mentions, no markdown, no reactions. |
+| Search / filter | 3 | 2 | +1 | Board gains label multi-filter (real improvement). Issue search exists server-side (used for parent picker). Still no priority/type board filter, no cross-project search, no saved views. |
+| Sprints / backlog | 4 | 1 | +3 | Full sprint planning view: create/start/complete/delete sprints, move issues, single-active enforcement, points totals, incomplete-return logic. Board filters correctly to active sprint. Missing: sprint dates shown on board; no burn-down indicator. Score limited by absence of reports. |
+| Labels | 4 | 1 | +3 | Create/delete labels with color swatches, toggle assign/unassign per issue (optimistic + rollback), board label filter, badge rendering on cards and drawer. Missing: label rename/edit, no label-level cross-project search. |
+| Reports | 1 | 1 | = | Nothing. Data now exists (story points, sprint history, status categories) — the prerequisite for reports has landed, but reports themselves are absent. This is now the most glaring gap relative to the stated agile positioning. |
+| Notifications | 2 | 2 | = | Mutation errors surface via toast. Realtime board sync still silent (no highlight on remote card changes). No in-app inbox, no @mentions, Watcher model entirely unused. |
+| Roles / permissions | 3 | 3 | = | API enforcement unchanged (MEMBER for mutations, ADMIN for member management, VIEWER blocked at API). UI still shows every edit affordance to VIEWERs — delete button, field selects, etc. |
+| Mobile experience | 3 | 3 | = | Backlog page uses `max-w-4xl` + responsive padding (good). Sprint action buttons wrap correctly. IssueRow hides status/priority badges on small screens (good). CreateIssueModal still uses `grid-cols-2` with no `sm:` breakpoint on mobile. Board horizontally scrolls. No real mobile-specific UX. |
+| Onboarding / empty states | 3 | 3 | = | Backlog has good empty states ("Backlog is empty", "No issues in this sprint yet"). No product tour, no sample-project offer, no "what's next" guidance after first login. |
+
+### Top gaps (prioritized backlog candidates — Pass 3)
+
+1. **Sprint burndown + velocity reports** — *What:* A `/projects/:id/reports`
+   page with (a) an active-sprint burndown chart (story points remaining over
+   calendar days), (b) a velocity bar chart (completed points per sprint), and
+   (c) a status distribution pie/donut for the current sprint. All the data
+   is now in the DB: `Sprint.startDate`/`endDate`, `Issue.storyPoints`,
+   `StatusCategory.DONE`, `ActivityLog` timestamps. *Why:* Sprint retrospectives
+   are impossible without visible progress data. This is the most glaring gap
+   now that the agile-core loop is functional — teams who start sprints will
+   immediately ask "are we on track?" and have nowhere to look. *Size:* M.
+
+2. **Board sprint indicator + sprint filter toggle** — *What:* (a) Show the
+   active sprint name in the board toolbar so users know which sprint they are
+   looking at, and (b) add a toggle to "show all backlog issues" on the board
+   (i.e. the full list the `BoardService` currently filters out). Today a user
+   on the board has no indication of which sprint they're in or why some issues
+   are absent. *Why:* Discovered while reading `BoardService.getBoard`: the
+   query correctly scopes to active sprint, but the UI has zero labeling — a
+   new user has no idea the board is scoped. Small build, high confusion
+   reduction. *Size:* S.
+
+3. **Cross-project global search** — *What:* A search endpoint (title +
+   description, across all projects the user is a member of) surfaced via a
+   search bar in the `AppHeader` or a command palette. Filter chips for
+   project/assignee/type/priority. *Why:* Issue search exists server-side
+   (`GET /issues?projectId=&q=`) but is scoped to a single project and only
+   exposed in the parent-picker popover. Teams with multiple projects cannot
+   find work without switching projects manually. *Size:* M.
+
+4. **VIEWER-aware UI (hide/disable edit affordances)** — *What:* Expose the
+   current user's role on the `AuthContext` (role is available through the
+   membership API); use it to hide the Delete button in the drawer, grey out
+   field selects, and show a "View only" chip in the header when the role is
+   VIEWER. *Why:* Currently a VIEWER sees every affordance, clicks it, and
+   either gets a cryptic 403 or a silent failure. The gap between "what the UI
+   shows" and "what the user can do" erodes trust. *Size:* S.
+
+5. **"My Work" personal dashboard** — *What:* A top-level route (`/my-work`)
+   showing: issues assigned to me (across all projects), recent activity on
+   issues I've commented on, upcoming sprint deadlines (sprints ending in 7
+   days), and a link to "issues I'm watching" (Watcher model is in the DB,
+   unused). *Why:* The product currently has no personal context — every
+   session starts on the project list with no guidance on "what should I do
+   today?" This is the single highest-leverage feature for daily active use.
+   *Size:* M.
+
+6. **Command palette (Cmd-K)** — *What:* A fuzzy-search overlay triggered by
+   Cmd-K / Ctrl-K: navigate to any project or issue (by key or title), create
+   an issue, change the status of the currently open issue. Backed by the
+   existing `GET /issues?q=` search endpoint. *Why:* The only keyboard shortcut
+   in the product is Cmd+Enter in comments. Power users measure a tracker's
+   speed by how many clicks they can avoid. This is the single biggest
+   interaction-quality differentiator. *Size:* M.
+
+7. **Sprint date display and due-date warning** — *What:* Show sprint
+   start/end dates in both the backlog sprint header and the board toolbar.
+   Flag sprints that are past their end date with a warning badge. *Why:*
+   Date fields are collected in `CreateSprintModal` but never rendered anywhere
+   in the UI. A team that sets a sprint end date has no visible reminder when
+   that date passes. *Size:* S.
+
+### New / ambitious ideas (ideation mandate — Pass 3)
+
+Three fresh bets not previously proposed:
+
+- **I. Roadmap / timeline view (Gantt-style).** A horizontal timeline page
+  per project showing epics and stories as bars across calendar weeks, colored
+  by status category. The data model has `Epic` issues with parent/child
+  relationships, and sprints have `startDate`/`endDate`. A read-only gantt
+  would answer "what are we shipping this quarter?" without any schema changes.
+  This is the view that makes stakeholders happy without giving them edit
+  access. *Size:* L.
+
+- **J. Automation rules (lightweight trigger → action engine).** A project
+  settings section with a rule builder: "When issue status changes to Done →
+  unassign; when label 'blocked' is added → post a comment tagging the
+  assignee; when sprint starts → set all issues to In Progress." The
+  `ActivityLog` already records every field change as an event stream — it is
+  a natural trigger source. Even 5 trigger types and 4 actions would
+  differentiate this product sharply from every self-hosted alternative. *Size:*
+  L.
+
+- **K. Inline issue creation directly on the backlog row ("type and press
+  Enter").** Replace the current flow of opening a modal to create an issue
+  with a ghost row at the bottom of each sprint section and the backlog: click
+  "+", type a title, press Enter — issue is created in that sprint/backlog
+  immediately. The parent-picker search in `ParentSubtasks.tsx` already
+  demonstrates the UX pattern. This reduces the "create 20 tickets during
+  sprint planning" friction dramatically. *Size:* S.
+
+### Direction (next quarter — Pass 3 view)
+
+The product's agile core is now genuinely usable end-to-end: create a sprint,
+plan it, move issues, start it, track it on the board, close it. That is a
+meaningful milestone. The next quarter has two parallel tracks.
+
+**Track 1 — Make the loop *observable*.** Reports are the highest-leverage
+unlock: burndown, velocity, and status distribution. The data is there; teams
+who run sprints will demand progress visibility immediately. Pair this with the
+board sprint indicator (S) and sprint date display (S) for quick wins that
+complete the sprint experience.
+
+**Track 2 — Make the product *personal*.** The "My Work" dashboard turns Next
+Lane from "a board I navigate to" into "a morning page I open." Combined with
+the command palette (Cmd-K), these two features define a power-user experience
+that self-hosted teams will choose over hosted alternatives precisely because
+they control the instance. The VIEWER-aware UI is a small addition that also
+belongs here — it closes the confusing 403 gap.
+
+Beyond those: the roadmap/timeline view (idea I) is a strong stakeholder-facing
+feature that requires no schema changes, and inline backlog issue creation (idea
+K) is a sprint-planning speed win that would dramatically reduce friction during
+planning sessions.
+
+### Backlog-groomer ingest — Pass 3 (title · priority · size · rationale)
+
+- Sprint burndown + velocity reports page · P1 · M · data exists (story points + sprint history); teams can't manage what they can't see; most glaring gap post-agile-core
+- Board sprint indicator + sprint filter toggle · P1 · S · board currently has no label showing which sprint is active; users don't know why issues are absent
+- Sprint date display in backlog header and board toolbar · P1 · S · date fields collected at creation but never rendered; end-date warning badge needed
+- Cross-project global search (header search bar + filters) · P1 · M · search scoped to single project only; multi-project teams have no cross-project find
+- "My Work" personal dashboard (assigned-to-me, watching, sprint deadlines) · P1 · M · no personal context today; data model supports it fully; key daily-use differentiator
+- Command palette (Cmd-K) navigation + quick create + status change · P2 · M · only keyboard shortcut is Cmd+Enter in comments; power-user differentiator
+- VIEWER-aware UI: hide/disable edit affordances based on role · P2 · S · VIEWER sees every affordance; 403 on click is confusing; API enforcement already real
+- Inline issue creation in backlog (ghost row, type-and-Enter) · P2 · S · sprint planning velocity; reduces modal round-trips during bulk creation sessions
+- Roadmap / timeline view (Gantt — epics + sprints as bars) · P2 · L · stakeholder-facing; no schema changes needed; epics + sprint dates already in DB
+- Label rename / edit (not just create/delete) · P3 · S · obvious gap in label management; users can't correct a typo without delete-and-recreate
+- Automation rules engine (trigger → action, project settings) · P3 · L · flagship differentiator; ActivityLog is a natural event source
+- JWT refresh tokens + password reset + logout-everywhere · P2 · S · auth hardening; single access token; self-hosted teams need account recovery

@@ -4,21 +4,22 @@ Single prioritized board maintained by the **backlog-groomer**, fed by the two i
 
 Format: `- [ ] (P1, M) title — description [src]` · P0 critical / P1 now / P2 next / P3 later · size S/M/L. Checked `[x]` = done.
 
-> Grooming note (2026-06-26, Pass 2): The engineering auditor's Pass 2 found two
-> residual cross-tenant isolation holes (assigneeId not validated as a workspace
-> member; GET /users leaks all platform emails). Both are S-sized and land at P0
-> — the isolation floor is not fully closed without them. The engineering auditor
-> also flagged that the JWT bypass fix shipped clean (docker-compose + realtime
-> module both corrected), so that P0 is genuinely done. The product auditor
-> confirmed the agile-surface gap is now the dominant product risk: backlog, labels,
-> story points, and epics are schema-complete but invisible in the UI. Both auditors
-> agree: close the two remaining isolation holes first (S, fast), then queue the
-> test harness + CI (makes the security model self-maintaining), then drive the
-> agile UI gap. Tension noted: product auditor wants comment edit/delete and
-> activity-log legibility queued at P1 (visible trust-reducers); engineering auditor
-> flags the global exception filter as equally urgent (unhandled Prisma 500s with
-> stack traces in responses). Both land at P1 — they are independent and
-> parallelizable.
+> Grooming note (2026-06-26, Pass 3): Engineering auditor's Pass 3 found a TOCTOU race
+> in sprint start (`assertNoOtherActiveSprint` runs OUTSIDE the transaction) and three
+> input-validation gaps (description unbounded, storyPoints no range guard, label color
+> not hex-validated). These land at P1 with the global exception filter (also P1, still
+> not shipped). Product auditor's Pass 3 confirms the agile core is now genuinely
+> functional and pivots the product gap to reports + observability + power-user flows.
+> Both auditors agree the TOCTOU sprint race is correctness-critical (one-active-sprint
+> invariant just shipped; must be hardened immediately). Tension noted: engineering
+> auditor escalated the webhook/automation system to P1 (as the primary integration
+> surface for self-hosted teams) while the product auditor treats it as P3 (flagging
+> reports and "My Work" as higher-leverage for near-term user value). Resolution: webhook
+> system remains P2 (the product's core loop is not blocked by it; reports and "My Work"
+> unlock daily-use value faster); full-text search + saved views similarly kept P2
+> (real gap, but not correctness-critical). The VIEWER-aware UI is promoted from P1-Next
+> to Ready — it is S-sized, correctness-adjacent (closes the 403 confusion gap), and has
+> been deferred two passes.
 
 ---
 
@@ -35,19 +36,27 @@ Format: `- [ ] (P1, M) title — description [src]` · P0 critical / P1 now / P2
 - [x] (P1, M) Add a lightweight toast system; surface drawer-patch + mutation errors consistently [ui-review, product-auditor]
 - [x] (P0, S) Validate assigneeId is a workspace member on issue create/update — any authenticated user ID can be set as assignee cross-tenant; assertWorkspaceMember utility already exists, just needs to be applied in IssuesService.create/update [engineering-auditor]
 - [x] (P0, S) Scope GET /users to the caller's co-members — current endpoint returns all users' names + emails to any authenticated user across all tenants; add workspaceId filter to UsersService.findAll [engineering-auditor]
-- [x] (P1, M) API unit tests for membership.util + assertSameProject + GitHub Actions CI — zero unit tests; test script is still a stub; isolation fixes are Playwright-only (slow, DB-dependent); a Jest suite + Actions workflow makes the security model self-maintaining [engineering-auditor] — DONE: added Jest+ts-jest to apps/api (32 DB-free tests covering membership.util role checks/ROLE_RANK, IssuesService.assertSameProject cross-project rejection, and auth.config getJwtSecret fail-fast); wired `pnpm --filter @next-lane/api test`; added .github/workflows/ci.yml (build + `pnpm -r test` + api/web tsc --noEmit)
-- [ ] (P1, M) Global exception filter: map Prisma errors to structured HTTP responses — unhandled P2002/P2025 + rankBetween edge cases surface as raw NestJS 500s with stack traces in responses; add @Catch() filter with consistent { statusCode, message, error } envelope [engineering-auditor]
+- [x] (P1, M) API unit tests for membership.util + assertSameProject + GitHub Actions CI — zero unit tests; test script is still a stub; isolation fixes are Playwright-only (slow, DB-dependent); a Jest suite + Actions workflow makes the security model self-maintaining [engineering-auditor]
 - [x] (P1, S) Comment edit-in-place + delete in CommentsPanel — backend PATCH/DELETE /comments/:id exist; UI has no edit or delete affordance; visible gap that reduces user trust [product-auditor]
-- [x] (P1, S) Activity log: resolve status/user IDs to human names — log currently shows raw DB IDs in from/to fields (e.g. "cmq…abc → cmq…xyz"); drawer already has statuses and users in scope; <10-line fix [product-auditor]
+- [x] (P1, S) Activity log: resolve status/user IDs to human names — log currently shows raw DB IDs in from/to fields; drawer already has statuses and users in scope; <10-line fix [product-auditor]
+- [x] (P1, L) Backlog + sprint planning view — `/projects/:id/backlog` page grouping issues into PLANNED/ACTIVE sprint sections + a Backlog section, with a "Move to" menu, create-sprint modal, Start (single-active enforced server-side), and Complete (incomplete issues return to backlog). Board/Backlog sub-nav added [product-auditor, roadmap]
+- [x] (P1, M) Labels assign/unassign + filter UI — create/edit/delete labels, assign on card and in drawer, filter board by label(s); useLabels hook is written and backend CRUD + assign/unassign endpoints are live [product-auditor, roadmap]
+- [x] (P1, M) Story points field + parent/child picker in issue drawer — expose storyPoints number field and a parentId picker for epic/story/subtask hierarchy; schema and API fully support it [product-auditor, roadmap]
+- [ ] (P1, S) Sprint TOCTOU race: move assertNoOtherActiveSprint inside $transaction + add partial unique index — `assertNoOtherActiveSprint` runs a `findFirst` OUTSIDE the `$transaction` block; two concurrent "start sprint" requests both pass the guard and both write `state: ACTIVE`, violating the one-active-sprint invariant; no DB-level partial unique index to enforce it. Fix: (a) move guard inside tx using `tx` client, (b) add migration `CREATE UNIQUE INDEX sprint_one_active_per_project ON "Sprint"("projectId") WHERE state = 'ACTIVE'` [engineering-auditor]
+- [ ] (P1, S) Sprint lifecycle: emit sprint.updated realtime event on start/complete — board viewers in other tabs see stale data until page reload; no push notification emitted when a sprint starts or completes; inject RealtimeService into SprintsService and emit `sprint.updated` on lifecycle transitions [engineering-auditor]
+- [ ] (P1, M) Global exception filter: map Prisma errors to structured HTTP responses — unhandled P2002/P2025/P2003 + rankBetween edge cases surface as raw NestJS 500s with stack traces in responses; add @Catch() filter with consistent { statusCode, message, error } envelope; suppress stack traces in production [engineering-auditor]
+- [ ] (P1, S) Input bounds: @MaxLength on description, @Min/@Max on storyPoints, hex validation on label color — description is unbounded (MB payloads accepted); storyPoints accepts negative/astronomic values; label color accepts any 20-char string and can produce corrupt UI renders [engineering-auditor]
+- [ ] (P1, S) VIEWER-aware UI: hide/disable edit affordances based on role — role enforced at API; UI still renders Delete button and all field-edit controls for VIEWERs who then get a silent or confusing 403 on click [product-auditor, engineering-auditor]
 
 ---
 
 ## Next (P1 — high value, queue as Ready empties)
 
-- [ ] (P1, S) VIEWER-aware UI: hide/disable edit affordances based on role — role enforced at API layer; UI still renders Delete button and all field-edit controls for VIEWERs who then get a silent or confusing 403 on click [product-auditor, engineering-auditor]
-- [x] (P1, L) Backlog + sprint planning view — `/projects/:id/backlog` page grouping issues into PLANNED/ACTIVE sprint sections + a Backlog section, with a "Move to" menu (assign/unassign sprintId, optimistic + toast), create-sprint modal, Start (single-active enforced server-side with a clear message), and Complete (incomplete non-DONE issues return to the backlog). Board/Backlog sub-nav added; kanban still reflects the ACTIVE sprint. API: sprint lifecycle hook + unit tests; web: e2e covers create→move→start→appears-on-board→complete→returns-to-backlog (desktop + mobile). Drag-rank within the backlog deferred (Move menu is the reliable mechanism) [product-auditor, roadmap]
-- [x] (P1, M) Labels assign/unassign + filter UI — create/edit/delete labels, assign on card and in drawer, filter board by label(s); useLabels hook is written and backend CRUD + assign/unassign endpoints are live; labels are currently read-only decoration only placed by seed data [product-auditor, roadmap]
-- [x] (P1, M) Story points field + parent/child picker in issue drawer — expose storyPoints number field and a parentId picker for epic/story/subtask hierarchy; schema and API fully support it; storyPoints confirmed in DB; prerequisite for meaningful velocity/burndown [product-auditor, roadmap]
+- [ ] (P1, M) Sprint burndown + velocity reports page — `/projects/:id/reports` with active-sprint burndown chart (story points remaining over calendar days), velocity bar chart (completed points per sprint), and status distribution; all data now in DB (Sprint.startDate/endDate, Issue.storyPoints, StatusCategory.DONE, ActivityLog timestamps); most glaring product gap post-agile-core [product-auditor]
+- [ ] (P1, S) Board sprint indicator + sprint filter toggle — board currently has no label showing which sprint is active; users don't know why some issues are absent; show active sprint name in toolbar + toggle to reveal backlog issues [product-auditor]
+- [ ] (P1, S) Sprint date display + due-date warning in backlog header and board toolbar — date fields collected at CreateSprintModal but never rendered anywhere; flag sprints past end date with a warning badge [product-auditor]
+- [ ] (P1, M) Cross-project global search — search endpoint (title + description) across all projects the user is a member of; surfaced via header search bar or command palette; current search is single-project and only exposed in the parent-picker popover [product-auditor]
+- [ ] (P1, M) "My Work" personal dashboard — top-level `/my-work` route: issues assigned to me across all projects, recent activity on issues I've commented on, upcoming sprint deadlines (7-day window), Watcher model (in DB, unused); turns Next Lane into a morning page rather than a board to navigate to [product-auditor]
 - [ ] (P1, L) Notifications: @mentions, auto-watch on assign/comment, in-app inbox (+ optional SMTP) — ActivityLog and Watcher models exist and are unused; high user value; exercises realtime properly [engineering-auditor, product-auditor]
 - [ ] (P1, L) Tenant-isolation test harness + declarative authz layer — reusable two-workspace matrix asserting every mutating endpoint + socket room rejects cross-tenant access; @RequireRole/@ResourceScope decorator so isolation is structural, not hand-rolled per service [engineering-auditor]
 
@@ -55,19 +64,23 @@ Format: `- [ ] (P1, M) title — description [src]` · P0 critical / P1 now / P2
 
 ## Next (P2)
 
-- [ ] (P2, S) Fix stale socket token after re-auth — getSocket() captures the token once at init; when refresh tokens land, the socket will carry a stale credential until page reload; pass the current token as a parameter or reconnect on auth state change [engineering-auditor]
-- [ ] (P2, M) "My Work" personal dashboard — dedicated page showing: issues assigned to me, issues I'm watching (Watcher model exists, unused), recent activity across all projects, upcoming sprint deadlines; data model supports this entirely today [product-auditor]
-- [ ] (P2, S) Inline card status transition (right-click / keyboard shortcut) — tiny context menu on the card showing the 2–4 statuses; eliminates drawer round-trip for status changes; power-user flow [product-auditor]
-- [ ] (P2, M) Public read-only project share link — token-authenticated read-only URL shareable with stakeholders who don't need an account; ShareToken model + unauthenticated board endpoint + readonly board view (no DnD, no create); top self-hosted adoption lever [product-auditor]
-- [ ] (P2, M) Full-text search (title+desc+comments) + richer board filters (type/priority/label/sprint) — current search is title-only, single-board; useLabels/useSprints hooks exist but are never consumed by any page [product-auditor, engineering-auditor]
-- [ ] (P2, M) Command palette (Cmd-K) navigation & actions — global fuzzy jump to issue/project, create issue, change status, assign; key power-user differentiator [product-auditor]
-- [ ] (P2, L) Reports hub: active-sprint burndown, velocity trend, status distribution, stuck-issue + per-assignee load — blocked on backlog+sprint UI and story points landing first [product-auditor, roadmap]
-- [ ] (P2, M) Cursor pagination for issue list and board — findAll/getBoard return all issues with full includes unbounded; degrades large projects [engineering-auditor]
+- [ ] (P2, S) GET /users/:id authorization — scope to co-members — any authenticated user can fetch any other user's name/email/avatar by CUID; the co-member guard from `findAll` should also apply to `findOne`; Low severity but consistent with the isolation model [engineering-auditor]
+- [ ] (P2, M) Replace assertNoParentCycle sequential waterfall with single recursive CTE — N sequential `findUnique` calls per hop (up to 1000 round-trips for deep trees); runs outside the update transaction (TOCTOU on concurrent parent reassignment); replace with a `WITH RECURSIVE` CTE via `$queryRaw` inside the transaction [engineering-auditor]
+- [ ] (P2, M) Cursor pagination for issue list and board — findAll/getBoard return all issues with full includes unbounded; degrades large projects and can cause OOM [engineering-auditor]
 - [ ] (P2, M) Transactional move + rank-collision rebalance — neighbor read/update outside a transaction can collide under concurrent moves; wrap in $transaction + add rebalance fallback [engineering-auditor]
-- [ ] (P2, M) Plugin/webhook event system (HMAC-signed outbound POST on issue.* events) — automation and CI/CD integration prerequisite; RealtimeService.emitToProject infrastructure already in place; one new module [engineering-auditor]
-- [ ] (P2, S) Board-overview prefetch endpoint + stale-while-revalidate caching — collapses 4 sequential requests (auth → workspaces → projects → board) into 1 on first load; immediate perceived performance improvement [engineering-auditor]
-- [ ] (P2, M) Live board presence indicators (per-project viewer avatars via WebSocket) — gateway already tracks connections; augment handleSubscribe to maintain a per-project presence map and emit presence.update; zero new API routes [engineering-auditor]
+- [ ] (P2, S) Fix Dockerfile --no-frozen-lockfile → --frozen-lockfile — non-reproducible image builds; pnpm may silently update dependencies in production image context [engineering-auditor]
+- [ ] (P2, M) Command palette (Cmd-K) navigation & actions — global fuzzy jump to issue/project, create issue, change status, assign; only keyboard shortcut today is Cmd+Enter in comments; key power-user differentiator [product-auditor]
+- [ ] (P2, S) Inline issue creation in backlog (ghost row, type-and-Enter) — replace modal round-trip with a ghost row at the bottom of each sprint/backlog section; reduces bulk-creation friction during sprint planning [product-auditor]
+- [ ] (P2, M) Plugin/webhook event system (HMAC-signed outbound POST on issue.* + sprint.* events) — automation and CI/CD integration prerequisite; RealtimeService.emitToProject infrastructure already in place; one new module [engineering-auditor, product-auditor]
+- [ ] (P2, M) Full-text search + structured filters + saved views — move beyond `title ILIKE`; Postgres full-text search (GIN/tsvector) across title + description + comments; filter grammar (status/assignee/label/sprint/type/priority); persisted SavedView model; tracker unusable at scale without this [engineering-auditor, product-auditor]
+- [ ] (P2, M) Observability baseline (pino structured logs, requestId, /metrics, OTel Prisma traces) — self-hosted product needs operator visibility without SSH; global exception filter (P1 item) is a prerequisite [engineering-auditor]
+- [ ] (P2, M) Public read-only project share link — token-authenticated read-only URL shareable with stakeholders who don't need an account; ShareToken model + unauthenticated board endpoint + readonly board view (no DnD, no create); top self-hosted adoption lever [product-auditor]
+- [ ] (P2, S) Fix stale socket token after re-auth — getSocket() captures the token once at init; when refresh tokens land, the socket will carry a stale credential until page reload; pass the current token as a parameter or reconnect on auth state change [engineering-auditor]
 - [ ] (P2, S) JWT refresh tokens + logout/password reset — single 7-day non-revocable access token today; auth hardening [product-auditor, roadmap]
+- [ ] (P2, S) Inline card status transition (right-click / keyboard shortcut) — tiny context menu on the card showing the 2–4 statuses; eliminates drawer round-trip for status changes; power-user flow [product-auditor]
+- [ ] (P2, L) Roadmap / timeline view (Gantt — epics + sprints as bars) — horizontal timeline per project showing epics and stories across calendar weeks; no schema changes needed; stakeholder-facing; epics + sprint dates already in DB [product-auditor]
+- [ ] (P2, M) Live board presence indicators (per-project viewer avatars via WebSocket) — gateway already tracks connections; augment handleSubscribe to maintain a per-project presence map and emit presence.update; zero new API routes [engineering-auditor]
+- [ ] (P2, S) Board-overview prefetch endpoint + stale-while-revalidate caching — collapses 4 sequential requests (auth → workspaces → projects → board) into 1 on first load; immediate perceived performance improvement [engineering-auditor]
 - [ ] (P2, S) Theme tokens for issueMeta hardcoded hex; create-issue modal single-column on mobile (grid-cols-1 sm:grid-cols-2) [ui-review]
 - [ ] (P2, S) Extract shared InlineError/FormError (4 duplicated banners) + drawer title aria-label + min 40px touch tap targets [ui-review]
 
@@ -75,8 +88,9 @@ Format: `- [ ] (P1, M) title — description [src]` · P0 critical / P1 now / P2
 
 ## Later (P3)
 
-- [ ] (P3, L) Automation rules engine (trigger → action: status/assignment/label) — flagship differentiator for self-hosted; depends on webhook system [product-auditor, roadmap]
-- [ ] (P3, L) Saved/shareable views + query DSL (JQL-like filter grammar) — the saved-filter pattern teams live in [product-auditor, engineering-auditor, roadmap]
+- [ ] (P3, S) Label rename / edit — users can't correct a label name typo without delete-and-recreate; obvious gap in label management [product-auditor]
+- [ ] (P3, L) Automation rules engine (trigger → action: status/assignment/label) — flagship differentiator for self-hosted; depends on webhook system; ActivityLog is natural event source [product-auditor, roadmap]
+- [ ] (P3, L) Saved/shareable views + query DSL (JQL-like filter grammar) — the saved-filter pattern teams live in; depends on full-text search + structured filters (P2) [product-auditor, engineering-auditor, roadmap]
 - [ ] (P3, S) First-run onboarding + optional sample project + 4-step tour — empty board is a weak first impression [product-auditor]
 - [ ] (P3, M) Custom fields (typed, JSONB-backed) [roadmap]
 - [ ] (P3, M) Attachments (uploads volume) [roadmap]
@@ -88,6 +102,18 @@ Format: `- [ ] (P1, M) title — description [src]` · P0 critical / P1 now / P2
 
 ## Changelog
 
+- 2026-06-26 (Pass 3 groom) — Ingested engineering-auditor Pass 3 + product-auditor Pass 3 findings.
+  - **Ticked done [x]:** backlog + sprint planning view (`abd433b` + `4be79d6`), sprint lifecycle backend (single-active enforcement + incomplete-return), story points + parent/child hierarchy (`a2ec10c`), labels management + filter UI (`1d76d22`), activity log human-readable names (`04d096e`), comment edit/delete (`e03a807`), unit tests + GitHub Actions CI (`793b390`), assigneeId workspace validation (`58b4307`), GET /users co-member scoping (`2ef9f44`). All nine items verified confirmed by engineering auditor Pass 3 against shipped code.
+  - **Escalated to P1 (added to Ready):** Sprint TOCTOU race — `assertNoOtherActiveSprint` runs outside `$transaction`; two concurrent start-sprint requests can both write `state: ACTIVE`; DB-level partial unique index is the only reliable guard (engineering-auditor Pass 3 Risk #1; S-sized, correctness-critical for a feature that just shipped). Sprint realtime events — start/complete emit no socket event; board viewers in other tabs see stale state (engineering-auditor Pass 3 Risk #8; S-sized). Input bounds — description unbounded, storyPoints unguarded, label color not hex-validated (engineering-auditor Pass 3 Risk #6; S-sized). VIEWER-aware UI promoted from P1-Next to Ready — S-sized, deferred two passes, correctness-adjacent.
+  - **Kept P1 (global exception filter):** carried forward from Pass 2; still not shipped; severity confirmed unchanged by engineering-auditor Pass 3 (raw 500s with stack traces; P2002/P2025/P2003 unhandled).
+  - **Added P1 (product — Next section):** sprint burndown + velocity reports (biggest remaining product gap; data now in DB); board sprint indicator + filter toggle (S, quick win); sprint date display (S, quick win; dates collected but never rendered); cross-project global search (M; single-project only); "My Work" personal dashboard (M; highest-leverage daily-use feature).
+  - **Added P2 (engineering):** GET /users/:id co-member guard (S; Low severity, consistent with isolation model); assertNoParentCycle CTE refactor (M; N+1 + outside-transaction TOCTOU); Dockerfile --frozen-lockfile fix (S).
+  - **Added P2 (product):** command palette Cmd-K (M; only keyboard shortcut is Cmd+Enter in comments); inline backlog issue creation (S; sprint planning friction); roadmap/timeline Gantt view (L; stakeholder-facing, no schema changes).
+  - **Added P3:** label rename/edit (S; obvious gap; was missing from board).
+  - **Kept P2 (carry-forwards):** transactional move + rank rebalance, cursor pagination, stale socket token, JWT refresh, inline card status transition, plugin/webhook event system, full-text search + saved views, observability baseline, public share link, presence indicators, board-overview prefetch. All confirmed still unshipped by Pass 3.
+  - **Tension noted and resolved:** Engineering auditor escalated webhooks and full-text search to P1 (largest new capability gaps); product auditor treats them as P2/P3 relative to reports and "My Work". Resolution: both remain P2 — neither blocks the daily-use loop, and the product gains more from observable reports + personal context in the next sprint. The engineering auditor's P1 escalation reflects integration value for self-hosted operators, which is real but not the immediate daily-driver gap.
+  - **Deduped/merged:** full-text search (engineering P1 ideation) merged with existing P2 board-filter item into single "Full-text search + structured filters + saved views"; saved views from P3 folded in as the natural endpoint of that investment.
+  - **No pruning:** P3 items remain valid; board size healthy at 10 P1 items (7 Ready + 3 large/complex in Next), 16 P2, 9 P3.
 - 2026-06-26 (Pass 2 groom) — Ingested engineering-auditor Pass 2 + product-auditor Pass 2 findings.
   - **Ticked done [x]:** realtime gateway auth, tenant-FK ownership validation, role enforcement, JWT fail-fast + docker-compose + RealtimeModule bypass closure, CORS allowlist, Badge labels in drawer, drawer overlay, toast system, themed dialogs — all verified confirmed by both auditors against the live stack.
   - **Escalated to P0 (new items added to Ready):** `assigneeId` workspace-member validation (any user ID can be set cross-tenant — S-sized fix using existing assertWorkspaceMember); GET /users scoped to co-members (cross-tenant email PII leak — S-sized). Both surface from the engineering auditor's Pass 2 re-sweep of the auth/authz layer.
