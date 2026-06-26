@@ -21,6 +21,7 @@ import {
 } from '@/api/sprints';
 import { useMyRole } from '@/api/workspaces';
 import { canEdit } from '@/lib/permissions';
+import { endDateStatus, formatDateRange } from '@/lib/sprintDates';
 import { AppHeader } from '@/components/AppHeader';
 import { ProjectNav } from '@/components/project/ProjectNav';
 import { Button } from '@/components/ui/Button';
@@ -331,6 +332,12 @@ function SprintSection({
   incompleteCount: number;
 }) {
   const isActive = sprint.state === SprintState.ACTIVE;
+  const dateRange = formatDateRange(sprint.startDate, sprint.endDate);
+  // Only warn for sprints that are running or planned — completed ones are
+  // filtered out of this view anyway, but guard so past dates don't nag.
+  const endStatus = endDateStatus(sprint.endDate);
+  const showWarning =
+    endStatus !== null && endStatus.tone !== 'ok' && isActive;
   const points = issues.reduce((sum, i) => sum + (i.storyPoints ?? 0), 0);
   const meta = [
     points > 0 ? `${points} pts` : null,
@@ -353,6 +360,27 @@ function SprintSection({
           >
             {isActive ? 'Active' : 'Planned'}
           </Badge>
+          {dateRange && (
+            <span
+              data-testid="sprint-dates"
+              className="text-xs font-normal text-gray-500"
+            >
+              {dateRange}
+            </span>
+          )}
+          {showWarning && endStatus && (
+            <span
+              data-testid="sprint-end-warning"
+              className={cn(
+                'inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-medium leading-none',
+                endStatus.tone === 'overdue'
+                  ? 'bg-red-100 text-red-700'
+                  : 'bg-amber-100 text-amber-700',
+              )}
+            >
+              {endStatus.label}
+            </span>
+          )}
           {sprint.goal && (
             <span className="text-xs font-normal text-gray-500">
               · {sprint.goal}

@@ -12,11 +12,18 @@ import {
   type DragEndEvent,
 } from '@dnd-kit/core';
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable';
-import type { IssueDto, LabelDto, StatusDto } from '@next-lane/shared';
+import {
+  SprintState,
+  type IssueDto,
+  type LabelDto,
+  type SprintDto,
+  type StatusDto,
+} from '@next-lane/shared';
 import { useBoard, useMoveIssue } from '@/api/issues';
-import { useLabels, useUsers } from '@/api/meta';
+import { useLabels, useSprints, useUsers } from '@/api/meta';
 import { useMyRole } from '@/api/workspaces';
 import { canEdit } from '@/lib/permissions';
+import { endDateStatus } from '@/lib/sprintDates';
 import { useBoardRealtime } from '@/api/socket';
 import { AppHeader } from '@/components/AppHeader';
 import { Button } from '@/components/ui/Button';
@@ -44,6 +51,7 @@ export function BoardPage() {
   const boardQuery = useBoard(projectId);
   const usersQuery = useUsers();
   const labelsQuery = useLabels(projectId);
+  const sprintsQuery = useSprints(projectId);
   const moveIssue = useMoveIssue(projectId);
   const updateStatus = useUpdateStatus(projectId);
   const deleteStatus = useDeleteStatus(projectId);
@@ -69,6 +77,13 @@ export function BoardPage() {
   const board = boardQuery.data;
   const myRole = useMyRole(board?.project.workspaceId);
   const editable = canEdit(myRole);
+  const activeSprint = useMemo<SprintDto | null>(
+    () =>
+      (sprintsQuery.data ?? []).find(
+        (s) => s.state === SprintState.ACTIVE,
+      ) ?? null,
+    [sprintsQuery.data],
+  );
   const statuses = useMemo<StatusDto[]>(
     () => (board ? [...board.statuses].sort((a, b) => a.order - b.order) : []),
     [board],
@@ -284,21 +299,22 @@ export function BoardPage() {
     <Shell
       projectId={projectId}
       header={
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 items-center gap-2 overflow-hidden">
           <Link
             to="/"
-            className="text-sm text-gray-400 hover:text-gray-600"
+            className="shrink-0 text-sm text-gray-400 hover:text-gray-600"
             aria-label="Back to projects"
           >
             Projects
           </Link>
-          <span className="text-gray-300">/</span>
-          <span className="truncate text-sm font-semibold text-gray-900">
+          <span className="shrink-0 text-gray-300">/</span>
+          <span className="min-w-0 truncate text-sm font-semibold text-gray-900">
             {board.project.name}
           </span>
-          <span className="rounded bg-gray-100 px-1.5 py-0.5 text-xs font-medium text-gray-500">
+          <span className="shrink-0 rounded bg-gray-100 px-1.5 py-0.5 text-xs font-medium text-gray-500">
             {board.project.key}
           </span>
+          <ActiveSprintBadge sprint={activeSprint} />
         </div>
       }
     >
@@ -633,6 +649,45 @@ function LabelFilter({
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Compact badge in the board header surfacing the active sprint's name and,
+ * when it has an end date, a relative countdown that turns amber as the
+ * deadline nears and red once overdue. Renders nothing when no sprint is
+ * active. Tells viewers why some backlog issues aren't on the board.
+ */
+function ActiveSprintBadge({ sprint }: { sprint: SprintDto | null }) {
+  if (!sprint) return null;
+  const end = endDateStatus(sprint.endDate);
+  const toneClass =
+    end?.tone === 'overdue'
+      ? 'border-red-200 bg-red-50 text-red-700'
+      : end?.tone === 'soon'
+        ? 'border-amber-200 bg-amber-50 text-amber-700'
+        : 'border-green-200 bg-green-50 text-green-700';
+  return (
+    <span
+      data-testid="active-sprint-badge"
+      className={cn(
+        'inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-medium',
+        toneClass,
+      )}
+      title={
+        end
+          ? `${sprint.name} · active · ${end.label}`
+          : `${sprint.name} · active`
+      }
+    >
+      <span
+        className="h-1.5 w-1.5 rounded-full bg-current"
+        aria-hidden="true"
+      />
+      <span className="max-w-[10rem] truncate">{sprint.name}</span>
+      <span className="opacity-70">· active</span>
+      {end && <span className="opacity-90">· {end.label}</span>}
+    </span>
   );
 }
 
