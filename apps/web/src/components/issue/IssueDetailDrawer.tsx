@@ -33,6 +33,7 @@ export function IssueDetailDrawer({
   projectId,
   statuses,
   users,
+  editable = true,
   onClose,
   onOpenIssue,
 }: {
@@ -40,6 +41,8 @@ export function IssueDetailDrawer({
   projectId: string;
   statuses: StatusDto[];
   users: UserDto[];
+  /** When false (VIEWER), all edit controls are hidden/disabled. */
+  editable?: boolean;
   onClose: () => void;
   onOpenIssue: (id: string) => void;
 }) {
@@ -96,6 +99,7 @@ export function IssueDetailDrawer({
             projectId={projectId}
             statuses={statuses}
             users={users}
+            editable={editable}
             onClose={onClose}
             onOpenIssue={onOpenIssue}
             onPatch={patch}
@@ -138,6 +142,7 @@ function DrawerBody({
   projectId,
   statuses,
   users,
+  editable,
   onClose,
   onOpenIssue,
   onPatch,
@@ -149,6 +154,7 @@ function DrawerBody({
   projectId: string;
   statuses: StatusDto[];
   users: UserDto[];
+  editable: boolean;
   onClose: () => void;
   onOpenIssue: (id: string) => void;
   onPatch: (field: keyof IssueDto, value: unknown) => void;
@@ -173,17 +179,27 @@ function DrawerBody({
           <IssueTypeIcon type={issue.type} />
           <span className="font-medium">{issue.key}</span>
           {saving && <span className="text-xs text-gray-400">Saving…</span>}
+          {!editable && (
+            <span
+              data-testid="readonly-hint"
+              className="inline-flex items-center gap-1 rounded bg-gray-100 px-1.5 py-0.5 text-[11px] font-medium text-gray-500"
+            >
+              View only
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-1">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onDelete}
-            loading={deleting}
-            className="text-red-600 hover:bg-red-50"
-          >
-            Delete
-          </Button>
+          {editable && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onDelete}
+              loading={deleting}
+              className="text-red-600 hover:bg-red-50"
+            >
+              Delete
+            </Button>
+          )}
           <button
             onClick={onClose}
             aria-label="Close"
@@ -202,12 +218,13 @@ function DrawerBody({
           <div className="space-y-5 md:col-span-2">
             <input
               value={title}
+              disabled={!editable}
               onChange={(e) => setTitle(e.target.value)}
               onBlur={() => {
-                if (title.trim() && title !== issue.title)
+                if (editable && title.trim() && title !== issue.title)
                   onPatch('title', title.trim());
               }}
-              className="w-full rounded-md border border-transparent px-1 text-lg font-semibold text-gray-900 hover:border-gray-200 focus:border-brand-400 focus:outline-none"
+              className="w-full rounded-md border border-transparent px-1 text-lg font-semibold text-gray-900 hover:border-gray-200 focus:border-brand-400 focus:outline-none disabled:cursor-default disabled:hover:border-transparent"
             />
 
             <div>
@@ -217,16 +234,17 @@ function DrawerBody({
               <Textarea
                 rows={6}
                 value={description}
-                placeholder="Add a description…"
+                disabled={!editable}
+                placeholder={editable ? 'Add a description…' : 'No description'}
                 onChange={(e) => setDescription(e.target.value)}
                 onBlur={() => {
-                  if (description !== (issue.description ?? ''))
+                  if (editable && description !== (issue.description ?? ''))
                     onPatch('description', description || null);
                 }}
               />
             </div>
 
-            <CommentsPanel issueId={issue.id} />
+            <CommentsPanel issueId={issue.id} editable={editable} />
           </div>
 
           {/* Sidebar */}
@@ -235,6 +253,7 @@ function DrawerBody({
               <Select
                 id="d-status"
                 value={issue.statusId}
+                disabled={!editable}
                 onChange={(e) => onPatch('statusId', e.target.value)}
               >
                 {statuses.map((s) => (
@@ -248,6 +267,7 @@ function DrawerBody({
               <Select
                 id="d-assignee"
                 value={issue.assigneeId ?? ''}
+                disabled={!editable}
                 onChange={(e) =>
                   onPatch('assigneeId', e.target.value || null)
                 }
@@ -264,6 +284,7 @@ function DrawerBody({
               <Select
                 id="d-priority"
                 value={issue.priority}
+                disabled={!editable}
                 onChange={(e) =>
                   onPatch('priority', e.target.value as Priority)
                 }
@@ -279,6 +300,7 @@ function DrawerBody({
               <Select
                 id="d-type"
                 value={issue.type}
+                disabled={!editable}
                 onChange={(e) => onPatch('type', e.target.value as IssueType)}
               >
                 {ISSUE_TYPES.map((t) => (
@@ -293,6 +315,7 @@ function DrawerBody({
               <Select
                 id="d-story-points"
                 value={issue.storyPoints == null ? '' : String(issue.storyPoints)}
+                disabled={!editable}
                 onChange={(e) =>
                   onPatch(
                     'storyPoints',
@@ -309,11 +332,16 @@ function DrawerBody({
               </Select>
             </Field>
 
-            <LabelPicker issue={issue} projectId={projectId} />
+            <LabelPicker
+              issue={issue}
+              projectId={projectId}
+              editable={editable}
+            />
 
             <ParentSubtasks
               issue={issue}
               projectId={projectId}
+              editable={editable}
               onPatch={onPatch}
               onOpenIssue={onOpenIssue}
             />

@@ -36,9 +36,12 @@ const SWATCHES = [
 export function LabelPicker({
   issue,
   projectId,
+  editable = true,
 }: {
   issue: IssueDto;
   projectId: string;
+  /** When false (VIEWER), the label chips are read-only (no Edit popover). */
+  editable?: boolean;
 }) {
   const labelsQuery = useLabels(projectId);
   const toggle = useToggleIssueLabel(projectId);
@@ -82,15 +85,17 @@ export function LabelPicker({
     <div ref={containerRef} className="relative">
       <div className="mb-1 flex items-center justify-between">
         <p className="text-xs font-medium text-gray-600">Labels</p>
-        <button
-          type="button"
-          onClick={() => setOpen((v) => !v)}
-          aria-expanded={open}
-          aria-haspopup="dialog"
-          className="rounded text-xs font-medium text-brand-600 hover:text-brand-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
-        >
-          Edit
-        </button>
+        {editable && (
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            aria-expanded={open}
+            aria-haspopup="dialog"
+            className="rounded text-xs font-medium text-brand-600 hover:text-brand-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+          >
+            Edit
+          </button>
+        )}
       </div>
 
       {assigned.length > 0 ? (

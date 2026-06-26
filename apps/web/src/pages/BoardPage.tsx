@@ -15,6 +15,8 @@ import { sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import type { IssueDto, LabelDto, StatusDto } from '@next-lane/shared';
 import { useBoard, useMoveIssue } from '@/api/issues';
 import { useLabels, useUsers } from '@/api/meta';
+import { useMyRole } from '@/api/workspaces';
+import { canEdit } from '@/lib/permissions';
 import { useBoardRealtime } from '@/api/socket';
 import { AppHeader } from '@/components/AppHeader';
 import { Button } from '@/components/ui/Button';
@@ -65,6 +67,8 @@ export function BoardPage() {
   const wantsNewIssue = searchParams.get('new') === '1';
 
   const board = boardQuery.data;
+  const myRole = useMyRole(board?.project.workspaceId);
+  const editable = canEdit(myRole);
   const statuses = useMemo<StatusDto[]>(
     () => (board ? [...board.statuses].sort((a, b) => a.order - b.order) : []),
     [board],
@@ -74,7 +78,7 @@ export function BoardPage() {
   // action): open the create modal on the first column, then drop the param.
   useEffect(() => {
     if (!wantsNewIssue || statuses.length === 0) return;
-    setCreateForStatus(statuses[0].id);
+    if (editable) setCreateForStatus(statuses[0].id);
     setSearchParams(
       (prev) => {
         const next = new URLSearchParams(prev);
@@ -83,7 +87,7 @@ export function BoardPage() {
       },
       { replace: true },
     );
-  }, [wantsNewIssue, statuses, setSearchParams]);
+  }, [wantsNewIssue, statuses, editable, setSearchParams]);
 
   // Group + filter + rank-sort issues per column.
   const issuesByStatus = useMemo(() => {
@@ -111,12 +115,16 @@ export function BoardPage() {
     return map;
   }, [board, statuses, search, assigneeFilter, labelFilter]);
 
-  const sensors = useSensors(
+  const dragSensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     }),
   );
+  // VIEWERs can't reorder/move cards: registering no sensors makes the board
+  // read-only for drag-and-drop while keeping cards clickable to open.
+  const noSensors = useSensors();
+  const sensors = editable ? dragSensors : noSensors;
 
   function onDragStart(event: DragStartEvent) {
     const issue = board?.issues.find((i) => i.id === event.active.id);
@@ -126,7 +134,7 @@ export function BoardPage() {
   function onDragEnd(event: DragEndEvent) {
     setActiveIssue(null);
     const { active, over } = event;
-    if (!over || !board) return;
+    if (!editable || !over || !board) return;
 
     const activeId = String(active.id);
     const dragged = board.issues.find((i) => i.id === activeId);
@@ -339,10 +347,25 @@ export function BoardPage() {
           selected={labelFilter}
           onChange={setLabelFilter}
         />
-        <div className="ml-auto">
-          <Button onClick={() => setCreateForStatus(statuses[0]?.id ?? null)}>
-            + Create issue
-          </Button>
+        <div className="ml-auto flex items-center gap-2">
+          {!editable && (
+            <span
+              data-testid="readonly-hint"
+              className="inline-flex items-center gap-1 rounded-md bg-gray-100 px-2 py-1 text-xs font-medium text-gray-500"
+              title="You have view-only access to this workspace."
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+              View only
+            </span>
+          )}
+          {editable && (
+            <Button onClick={() => setCreateForStatus(statuses[0]?.id ?? null)}>
+              + Create issue
+            </Button>
+          )}
         </div>
       </div>
 
@@ -350,11 +373,17 @@ export function BoardPage() {
         <div className="p-6">
           <EmptyState
             title="No columns yet"
-            description="Add a column to start organizing work on the board."
+            description={
+              editable
+                ? 'Add a column to start organizing work on the board.'
+                : 'This board has no columns yet.'
+            }
             action={
-              <Button onClick={() => setColumnModal({ mode: 'add' })}>
-                + Add column
-              </Button>
+              editable ? (
+                <Button onClick={() => setColumnModal({ mode: 'add' })}>
+                  + Add column
+                </Button>
+              ) : undefined
             }
           />
         </div>
@@ -372,6 +401,7 @@ export function BoardPage() {
                 key={status.id}
                 status={status}
                 issues={issuesByStatus.get(status.id) ?? []}
+                editable={editable}
                 onAdd={(id) => setCreateForStatus(id)}
                 onOpenIssue={openIssue}
                 onEdit={(s) => setColumnModal({ mode: 'edit', status: s })}
@@ -381,16 +411,18 @@ export function BoardPage() {
                 canMoveRight={index < statuses.length - 1}
               />
             ))}
-            <button
-              type="button"
-              onClick={() => setColumnModal({ mode: 'add' })}
-              className="flex h-11 w-72 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-dashed border-gray-300 text-sm font-medium text-gray-500 transition-colors hover:border-brand-300 hover:bg-brand-50/50 hover:text-brand-600"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                <path strokeLinecap="round" d="M12 5v14M5 12h14" />
-              </svg>
-              Add column
-            </button>
+            {editable && (
+              <button
+                type="button"
+                onClick={() => setColumnModal({ mode: 'add' })}
+                className="flex h-11 w-72 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-dashed border-gray-300 text-sm font-medium text-gray-500 transition-colors hover:border-brand-300 hover:bg-brand-50/50 hover:text-brand-600"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                  <path strokeLinecap="round" d="M12 5v14M5 12h14" />
+                </svg>
+                Add column
+              </button>
+            )}
           </div>
 
           <DragOverlay>
@@ -445,6 +477,7 @@ export function BoardPage() {
           projectId={projectId}
           statuses={statuses}
           users={users}
+          editable={editable}
           onClose={closeIssue}
           onOpenIssue={openIssue}
         />

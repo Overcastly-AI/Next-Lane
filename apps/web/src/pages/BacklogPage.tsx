@@ -19,6 +19,8 @@ import {
   useUpdateSprint,
   useDeleteSprint,
 } from '@/api/sprints';
+import { useMyRole } from '@/api/workspaces';
+import { canEdit } from '@/lib/permissions';
 import { AppHeader } from '@/components/AppHeader';
 import { ProjectNav } from '@/components/project/ProjectNav';
 import { Button } from '@/components/ui/Button';
@@ -57,6 +59,8 @@ export function BacklogPage() {
   const issues = issuesQuery.data ?? [];
   const users = usersQuery.data ?? [];
   const board = boardQuery.data;
+  const myRole = useMyRole(board?.project.workspaceId);
+  const editable = canEdit(myRole);
 
   // Statuses + which are DONE-category, to compute "incomplete on complete".
   const statuses = useMemo<StatusDto[]>(
@@ -182,7 +186,21 @@ export function BacklogPage() {
               Plan sprints and order your backlog.
             </p>
           </div>
-          <Button onClick={() => setCreateOpen(true)}>+ Create sprint</Button>
+          {editable ? (
+            <Button onClick={() => setCreateOpen(true)}>+ Create sprint</Button>
+          ) : (
+            <span
+              data-testid="readonly-hint"
+              className="inline-flex items-center gap-1 rounded-md bg-gray-100 px-2 py-1 text-xs font-medium text-gray-500"
+              title="You have view-only access to this workspace."
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+              View only
+            </span>
+          )}
         </div>
 
         {planningSprints.map((sprint) => {
@@ -198,6 +216,7 @@ export function BacklogPage() {
               users={users}
               statusById={statusById}
               sprintOptions={sprintOptions}
+              editable={editable}
               onOpenIssue={setOpenIssueId}
               onMove={moveIssue}
               onStart={() => startSprint(sprint)}
@@ -232,6 +251,7 @@ export function BacklogPage() {
                   status={statusById.get(issue.statusId)}
                   sprintOptions={sprintOptions}
                   currentSprintId={null}
+                  editable={editable}
                   onOpen={() => setOpenIssueId(issue.id)}
                   onMove={(sprintId) => moveIssue(issue, sprintId)}
                 />
@@ -270,6 +290,7 @@ export function BacklogPage() {
           projectId={projectId}
           statuses={statuses}
           users={users}
+          editable={editable}
           onClose={() => setOpenIssueId(null)}
           onOpenIssue={setOpenIssueId}
         />
@@ -284,6 +305,7 @@ function SprintSection({
   users,
   statusById,
   sprintOptions,
+  editable,
   onOpenIssue,
   onMove,
   onStart,
@@ -298,6 +320,7 @@ function SprintSection({
   users: UserDto[];
   statusById: Map<string, StatusDto>;
   sprintOptions: { id: string; name: string }[];
+  editable: boolean;
   onOpenIssue: (id: string) => void;
   onMove: (issue: IssueDto, sprintId: string | null) => void;
   onStart: () => void;
@@ -341,6 +364,7 @@ function SprintSection({
       count={issues.length}
       meta={meta || undefined}
       actions={
+        !editable ? undefined : (
         <div className="flex items-center gap-2">
           {isActive ? (
             <Button
@@ -372,6 +396,7 @@ function SprintSection({
             </>
           )}
         </div>
+        )
       }
     >
       {startDisabled && (
@@ -395,6 +420,7 @@ function SprintSection({
               status={statusById.get(issue.statusId)}
               sprintOptions={sprintOptions}
               currentSprintId={sprint.id}
+              editable={editable}
               onOpen={() => onOpenIssue(issue.id)}
               onMove={(sprintId) => onMove(issue, sprintId)}
             />
@@ -444,6 +470,7 @@ function IssueRow({
   status,
   sprintOptions,
   currentSprintId,
+  editable,
   onOpen,
   onMove,
 }: {
@@ -452,6 +479,7 @@ function IssueRow({
   status?: StatusDto;
   sprintOptions: { id: string; name: string }[];
   currentSprintId: string | null;
+  editable: boolean;
   onOpen: () => void;
   onMove: (sprintId: string | null) => void;
 }) {
@@ -491,11 +519,13 @@ function IssueRow({
         className="hidden h-4 w-4 sm:inline-flex"
       />
       <Avatar user={assignee} size="sm" />
-      <MoveMenu
-        currentSprintId={currentSprintId}
-        sprintOptions={sprintOptions}
-        onMove={onMove}
-      />
+      {editable && (
+        <MoveMenu
+          currentSprintId={currentSprintId}
+          sprintOptions={sprintOptions}
+          onMove={onMove}
+        />
+      )}
     </li>
   );
 }

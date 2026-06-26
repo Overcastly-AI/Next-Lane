@@ -3,6 +3,8 @@ export const qk = {
   me: ['me'] as const,
   myWork: ['myWork'] as const,
   workspaces: ['workspaces'] as const,
+  workspaceMembers: (workspaceId: string) =>
+    ['workspaceMembers', workspaceId] as const,
   users: ['users'] as const,
   projects: (workspaceId: string) => ['projects', workspaceId] as const,
   board: (projectId: string) => ['board', projectId] as const,

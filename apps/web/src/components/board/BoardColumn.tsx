@@ -17,6 +17,7 @@ const CATEGORY_DOT: Record<string, string> = {
 export function BoardColumn({
   status,
   issues,
+  editable = true,
   onAdd,
   onOpenIssue,
   onEdit,
@@ -27,6 +28,8 @@ export function BoardColumn({
 }: {
   status: StatusDto;
   issues: IssueDto[];
+  /** When false (VIEWER), hides add-issue and column-management affordances. */
+  editable?: boolean;
   onAdd: (statusId: string) => void;
   onOpenIssue: (id: string) => void;
   /** Open the rename/category editor for this column. */
@@ -60,25 +63,27 @@ export function BoardColumn({
             {issues.length}
           </span>
         </div>
-        <div className="flex items-center gap-0.5">
-          <button
-            onClick={() => onAdd(status.id)}
-            aria-label={`Add issue to ${status.name}`}
-            className="rounded p-1 text-gray-400 transition-colors hover:bg-gray-200 hover:text-gray-600"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path strokeLinecap="round" d="M12 5v14M5 12h14" />
-            </svg>
-          </button>
-          <ColumnMenu
-            status={status}
-            onEdit={onEdit}
-            onDelete={onDelete}
-            onMove={onMove}
-            canMoveLeft={canMoveLeft}
-            canMoveRight={canMoveRight}
-          />
-        </div>
+        {editable && (
+          <div className="flex items-center gap-0.5">
+            <button
+              onClick={() => onAdd(status.id)}
+              aria-label={`Add issue to ${status.name}`}
+              className="rounded p-1 text-gray-400 transition-colors hover:bg-gray-200 hover:text-gray-600"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" d="M12 5v14M5 12h14" />
+              </svg>
+            </button>
+            <ColumnMenu
+              status={status}
+              onEdit={onEdit}
+              onDelete={onDelete}
+              onMove={onMove}
+              canMoveLeft={canMoveLeft}
+              canMoveRight={canMoveRight}
+            />
+          </div>
+        )}
       </div>
 
       <div
@@ -101,7 +106,7 @@ export function BoardColumn({
           ))}
         </SortableContext>
 
-        {issues.length === 0 && (
+        {issues.length === 0 && editable && (
           <button
             onClick={() => onAdd(status.id)}
             className="rounded-lg border border-dashed border-gray-300 py-6 text-xs text-gray-400 transition-colors hover:border-brand-300 hover:text-brand-600"

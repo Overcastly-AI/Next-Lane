@@ -15,7 +15,14 @@ import { errorMessage } from '@/lib/errorMessage';
 import { useAuth } from '@/auth/AuthContext';
 import type { CommentDto } from '@next-lane/shared';
 
-export function CommentsPanel({ issueId }: { issueId: string }) {
+export function CommentsPanel({
+  issueId,
+  editable = true,
+}: {
+  issueId: string;
+  /** When false (VIEWER), the composer and per-comment actions are hidden. */
+  editable?: boolean;
+}) {
   const { user } = useAuth();
   const toast = useToast();
   const commentsQuery = useComments(issueId);
@@ -38,6 +45,7 @@ export function CommentsPanel({ issueId }: { issueId: string }) {
     <div className="space-y-3">
       <p className="text-xs font-medium text-gray-600">Comments</p>
 
+      {editable && (
       <form onSubmit={onSubmit} className="flex gap-2">
         <Avatar user={user} size="md" className="mt-0.5" />
         <div className="flex-1 space-y-2">
@@ -70,6 +78,7 @@ export function CommentsPanel({ issueId }: { issueId: string }) {
           )}
         </div>
       </form>
+      )}
 
       {commentsQuery.isLoading ? (
         <div className="flex justify-center py-4">
@@ -87,7 +96,7 @@ export function CommentsPanel({ issueId }: { issueId: string }) {
               key={c.id}
               comment={c}
               issueId={issueId}
-              isOwn={!!user && c.author.id === user.id}
+              isOwn={editable && !!user && c.author.id === user.id}
             />
           ))}
         </ul>

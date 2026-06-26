@@ -17,11 +17,14 @@ import { cn } from '@/lib/cn';
 export function ParentSubtasks({
   issue,
   projectId,
+  editable = true,
   onPatch,
   onOpenIssue,
 }: {
   issue: IssueDto;
   projectId: string;
+  /** When false (VIEWER), parent set/clear affordances are hidden. */
+  editable?: boolean;
   onPatch: (field: keyof IssueDto, value: unknown) => void;
   onOpenIssue: (id: string) => void;
 }) {
@@ -33,7 +36,7 @@ export function ParentSubtasks({
       <div>
         <div className="mb-1 flex items-center justify-between">
           <p className="text-xs font-medium text-gray-600">Parent</p>
-          {parent && (
+          {parent && editable && (
             <button
               type="button"
               onClick={() => onPatch('parentId', null)}
@@ -48,11 +51,13 @@ export function ParentSubtasks({
         ) : (
           <p className="text-xs text-gray-400">No parent</p>
         )}
-        <ParentPicker
-          issue={issue}
-          projectId={projectId}
-          onSelect={(id) => onPatch('parentId', id)}
-        />
+        {editable && (
+          <ParentPicker
+            issue={issue}
+            projectId={projectId}
+            onSelect={(id) => onPatch('parentId', id)}
+          />
+        )}
       </div>
 
       <div>
