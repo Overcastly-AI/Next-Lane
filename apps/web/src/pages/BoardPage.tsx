@@ -323,6 +323,7 @@ export function BoardPage() {
           statuses={statuses}
           users={users}
           onClose={closeIssue}
+          onOpenIssue={openIssue}
         />
       )}
     </Shell>

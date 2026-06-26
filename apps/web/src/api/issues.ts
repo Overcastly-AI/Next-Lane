@@ -25,6 +25,23 @@ export function useIssue(issueId: string | undefined) {
   });
 }
 
+/**
+ * Search a project's issues by title (server-side `contains`). Used by the
+ * parent picker in the issue drawer. Disabled until a query is non-empty to
+ * avoid loading the whole project on open.
+ */
+export function useIssueSearch(projectId: string, q: string) {
+  const trimmed = q.trim();
+  return useQuery({
+    queryKey: qk.issueSearch(projectId, trimmed),
+    enabled: !!projectId && trimmed.length > 0,
+    queryFn: () => {
+      const params = new URLSearchParams({ projectId, q: trimmed });
+      return request<IssueDto[]>(`/issues?${params.toString()}`);
+    },
+  });
+}
+
 export interface CreateIssueInput {
   projectId: string;
   title: string;
@@ -57,6 +74,7 @@ export interface UpdateIssueInput {
     priority: Priority;
     type: IssueType;
     storyPoints: number | null;
+    parentId: string | null;
     sprintId: string | null;
     labelIds: string[];
   }>;
@@ -68,7 +86,13 @@ export function useUpdateIssue() {
     mutationFn: ({ id, patch }: UpdateIssueInput) =>
       request<IssueDto>(`/issues/${id}`, { method: 'PATCH', body: patch }),
     onSuccess: (updated, vars) => {
-      qc.setQueryData(qk.issue(updated.id), updated);
+      // Merge the PATCH response into the cached issue for an instant update, but
+      // keep relations the response omits (parent/children/comments/activities)
+      // by refetching — the update endpoint returns the list-shaped issue only.
+      qc.setQueryData<IssueDto>(qk.issue(updated.id), (prev) =>
+        prev ? { ...prev, ...updated } : updated,
+      );
+      void qc.invalidateQueries({ queryKey: qk.issue(updated.id) });
       void qc.invalidateQueries({ queryKey: qk.board(vars.projectId) });
     },
   });

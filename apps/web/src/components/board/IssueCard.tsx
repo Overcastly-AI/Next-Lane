@@ -49,6 +49,14 @@ export const IssueCard = forwardRef<HTMLDivElement, IssueCardProps>(
             <PriorityIcon priority={issue.priority} className="h-3.5 w-4" />
           </div>
           <div className="flex items-center gap-2">
+            {issue.storyPoints != null && (
+              <span
+                title={`${issue.storyPoints} story points`}
+                className="inline-flex min-w-[18px] items-center justify-center rounded-full bg-gray-100 px-1.5 py-0.5 text-[11px] font-semibold text-gray-600"
+              >
+                {issue.storyPoints}
+              </span>
+            )}
             {typeof issue.commentCount === 'number' &&
               issue.commentCount > 0 && (
                 <span className="flex items-center gap-0.5 text-xs text-gray-400">

@@ -21,8 +21,12 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { ErrorState, LoadingState } from '@/components/ui/States';
 import { IssueTypeIcon, titleCase } from '@/components/issue/issueMeta';
 import { LabelPicker } from './LabelPicker';
+import { ParentSubtasks } from './ParentSubtasks';
 import { CommentsPanel } from './CommentsPanel';
 import { ActivityPanel } from './ActivityPanel';
+
+/** Common agile estimate values offered in the Story Points select. */
+const STORY_POINT_VALUES = [1, 2, 3, 5, 8, 13] as const;
 
 export function IssueDetailDrawer({
   issueId,
@@ -30,12 +34,14 @@ export function IssueDetailDrawer({
   statuses,
   users,
   onClose,
+  onOpenIssue,
 }: {
   issueId: string;
   projectId: string;
   statuses: StatusDto[];
   users: UserDto[];
   onClose: () => void;
+  onOpenIssue: (id: string) => void;
 }) {
   const issueQuery = useIssue(issueId);
   const update = useUpdateIssue();
@@ -91,6 +97,7 @@ export function IssueDetailDrawer({
             statuses={statuses}
             users={users}
             onClose={onClose}
+            onOpenIssue={onOpenIssue}
             onPatch={patch}
             saving={update.isPending}
             onDelete={() => setConfirmDelete(true)}
@@ -132,6 +139,7 @@ function DrawerBody({
   statuses,
   users,
   onClose,
+  onOpenIssue,
   onPatch,
   saving,
   onDelete,
@@ -142,6 +150,7 @@ function DrawerBody({
   statuses: StatusDto[];
   users: UserDto[];
   onClose: () => void;
+  onOpenIssue: (id: string) => void;
   onPatch: (field: keyof IssueDto, value: unknown) => void;
   saving: boolean;
   onDelete: () => void;
@@ -280,7 +289,34 @@ function DrawerBody({
               </Select>
             </Field>
 
+            <Field label="Story Points" htmlFor="d-story-points">
+              <Select
+                id="d-story-points"
+                value={issue.storyPoints == null ? '' : String(issue.storyPoints)}
+                onChange={(e) =>
+                  onPatch(
+                    'storyPoints',
+                    e.target.value === '' ? null : Number(e.target.value),
+                  )
+                }
+              >
+                <option value="">None</option>
+                {STORY_POINT_VALUES.map((v) => (
+                  <option key={v} value={v}>
+                    {v}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+
             <LabelPicker issue={issue} projectId={projectId} />
+
+            <ParentSubtasks
+              issue={issue}
+              projectId={projectId}
+              onPatch={onPatch}
+              onOpenIssue={onOpenIssue}
+            />
 
             <div className="border-t border-gray-100 pt-3 text-xs text-gray-400">
               Created {new Date(issue.createdAt).toLocaleDateString()}

@@ -61,6 +61,16 @@ export interface LabelDto {
   projectId: string;
 }
 
+/** Lightweight summary of a related issue (parent or sub-task) for the drawer. */
+export interface IssueRefDto {
+  id: string;
+  key: string; // e.g. "NL-12"
+  type: IssueType;
+  title: string;
+  statusId: string;
+  status?: StatusDto;
+}
+
 export interface IssueDto {
   id: string;
   key: string; // e.g. "NL-12"
@@ -78,6 +88,8 @@ export interface IssueDto {
   priority: Priority;
   storyPoints: number | null;
   parentId: string | null;
+  parent?: IssueRefDto | null;
+  children?: IssueRefDto[];
   sprintId: string | null;
   rank: string;
   labels?: LabelDto[];

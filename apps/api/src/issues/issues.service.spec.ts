@@ -141,3 +141,56 @@ describe('IssuesService.assertSameProject', () => {
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 });
+
+function callAssertNoParentCycle(
+  service: IssuesService,
+  id: string,
+  parentId: string,
+): Promise<void> {
+  return (
+    service as unknown as {
+      assertNoParentCycle: (id: string, parentId: string) => Promise<void>;
+    }
+  ).assertNoParentCycle(id, parentId);
+}
+
+describe('IssuesService.assertNoParentCycle', () => {
+  let prisma: MockPrisma;
+  let service: IssuesService;
+
+  beforeEach(() => {
+    prisma = makePrisma();
+    const realtime = {} as RealtimeService;
+    service = new IssuesService(prisma, realtime);
+  });
+
+  it('rejects an issue being its own parent', async () => {
+    await expect(
+      callAssertNoParentCycle(service, 'a', 'a'),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.issue.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('accepts a parent that has no ancestors', async () => {
+    // Walking up from parent "b" reaches a root (parentId null) without hitting "a".
+    prisma.issue.findUnique.mockResolvedValue({ parentId: null });
+
+    await expect(
+      callAssertNoParentCycle(service, 'a', 'b'),
+    ).resolves.toBeUndefined();
+  });
+
+  it('rejects when the issue is an ancestor of the proposed parent (cycle)', async () => {
+    // a -> set parent to c, but c's ancestor chain (c -> a) leads back to a.
+    prisma.issue.findUnique.mockImplementation(
+      ({ where }: { where: { id: string } }) => {
+        if (where.id === 'c') return Promise.resolve({ parentId: 'a' });
+        return Promise.resolve({ parentId: null });
+      },
+    );
+
+    await expect(
+      callAssertNoParentCycle(service, 'a', 'c'),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+});

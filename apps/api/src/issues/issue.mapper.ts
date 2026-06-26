@@ -2,6 +2,7 @@ import { toUserDto } from '../auth/auth.service';
 import { toStatusDto } from '../statuses/statuses.service';
 import type {
   IssueDto,
+  IssueRefDto,
   LabelDto,
   IssueType,
   Priority,
@@ -59,6 +60,37 @@ export interface IssueWithRelations {
     };
   }>;
   _count?: { comments: number } | null;
+  parent?: IssueRef | null;
+  children?: IssueRef[];
+}
+
+/** Subset of an Issue row sufficient to build an IssueRefDto. */
+interface IssueRef {
+  id: string;
+  number: number;
+  type: string;
+  title: string;
+  statusId: string;
+  project?: { key: string } | null;
+  status?: {
+    id: string;
+    name: string;
+    category: string;
+    order: number;
+    projectId: string;
+  } | null;
+}
+
+function toIssueRefDto(issue: IssueRef): IssueRefDto {
+  const ref: IssueRefDto = {
+    id: issue.id,
+    key: issue.project ? `${issue.project.key}-${issue.number}` : `${issue.number}`,
+    type: issue.type as IssueType,
+    title: issue.title,
+    statusId: issue.statusId,
+  };
+  if (issue.status) ref.status = toStatusDto(issue.status);
+  return ref;
 }
 
 function toLabelDto(l: {
@@ -98,6 +130,9 @@ export function toIssueDto(issue: IssueWithRelations): IssueDto {
     dto.reporter = issue.reporter ? toUserDto(issue.reporter) : null;
   if (issue.labels) dto.labels = issue.labels.map((il) => toLabelDto(il.label));
   if (issue._count) dto.commentCount = issue._count.comments;
+  if (issue.parent !== undefined)
+    dto.parent = issue.parent ? toIssueRefDto(issue.parent) : null;
+  if (issue.children) dto.children = issue.children.map(toIssueRefDto);
 
   return dto;
 }

@@ -166,12 +166,24 @@ export class IssuesService {
     userId: string,
     id: string,
   ): Promise<IssueDto & { comments: CommentDto[]; activities: ActivityDto[] }> {
+    const refSelect = {
+      id: true,
+      number: true,
+      type: true,
+      title: true,
+      statusId: true,
+      project: { select: { key: true } },
+      status: true,
+    } satisfies Prisma.IssueSelect;
+
     const issue = await this.prisma.issue.findUnique({
       where: { id },
       include: {
         ...listInclude,
         comments: { include: { author: true }, orderBy: { createdAt: 'asc' } },
         activities: { include: { actor: true }, orderBy: { createdAt: 'desc' } },
+        parent: { select: refSelect },
+        children: { select: refSelect, orderBy: { rank: 'asc' } },
       },
     });
     if (!issue) throw new NotFoundException('Issue not found');
@@ -298,6 +310,38 @@ export class IssuesService {
     await Promise.all(checks);
   }
 
+  /**
+   * Reject a parent assignment that would create a cycle. A cycle happens if the
+   * proposed parent is the issue itself, or if the issue is an ancestor of the
+   * proposed parent (i.e. walking up from `parentId` reaches `id`). We walk the
+   * ancestor chain with a hop cap as a defensive guard against any pre-existing
+   * corrupt data.
+   */
+  private async assertNoParentCycle(
+    id: string,
+    parentId: string,
+  ): Promise<void> {
+    if (parentId === id) {
+      throw new BadRequestException('An issue cannot be its own parent');
+    }
+    let cursor: string | null = parentId;
+    let hops = 0;
+    while (cursor && hops < 1000) {
+      if (cursor === id) {
+        throw new BadRequestException(
+          'parentId would create a cycle in the issue hierarchy',
+        );
+      }
+      const next: { parentId: string | null } | null =
+        await this.prisma.issue.findUnique({
+          where: { id: cursor },
+          select: { parentId: true },
+        });
+      cursor = next?.parentId ?? null;
+      hops += 1;
+    }
+  }
+
   async update(
     userId: string,
     id: string,
@@ -317,6 +361,9 @@ export class IssuesService {
       sprintId: dto.sprintId,
       parentId: dto.parentId,
     });
+    if (dto.parentId != null) {
+      await this.assertNoParentCycle(id, dto.parentId);
+    }
     await this.assertAssigneeInWorkspace(project.workspaceId, dto.assigneeId);
 
     const activities: Prisma.ActivityLogCreateManyInput[] = [];
