@@ -1,8 +1,10 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   assertProjectMember,
@@ -86,45 +88,64 @@ export class SprintsService {
       dto.state === SprintState.COMPLETED &&
       existing.state !== SprintState.COMPLETED;
 
-    // Only one ACTIVE sprint per project: reject the start if another is live.
-    if (startingSprint) {
-      await this.assertNoOtherActiveSprint(existing.projectId, id);
-    }
+    let sprint: SprintRow;
+    try {
+      sprint = await this.prisma.$transaction(async (tx) => {
+        // Only one ACTIVE sprint per project. Check-then-write atomically inside
+        // the transaction so two concurrent starts can't both pass; a partial
+        // unique index (sprint_one_active_per_project) is the hard backstop.
+        if (startingSprint) {
+          await this.assertNoOtherActiveSprint(tx, existing.projectId, id);
+        }
 
-    const sprint = await this.prisma.$transaction(async (tx) => {
-      const updated = await tx.sprint.update({
-        where: { id },
-        data: {
-          name: dto.name,
-          goal: dto.goal,
-          state: dto.state,
-          startDate: dto.startDate ? new Date(dto.startDate) : undefined,
-          endDate: dto.endDate ? new Date(dto.endDate) : undefined,
-        },
+        const updated = await tx.sprint.update({
+          where: { id },
+          data: {
+            name: dto.name,
+            goal: dto.goal,
+            state: dto.state,
+            startDate: dto.startDate ? new Date(dto.startDate) : undefined,
+            endDate: dto.endDate ? new Date(dto.endDate) : undefined,
+          },
+        });
+
+        // On completion, return incomplete issues (not in a DONE-category
+        // status) to the backlog so the next sprint can be planned with them.
+        if (completingSprint) {
+          const doneStatusIds = await tx.status.findMany({
+            where: {
+              projectId: existing.projectId,
+              category: StatusCategory.DONE,
+            },
+            select: { id: true },
+          });
+          const doneIds = doneStatusIds.map((s) => s.id);
+          await tx.issue.updateMany({
+            where: {
+              sprintId: id,
+              statusId: { notIn: doneIds.length > 0 ? doneIds : ['__none__'] },
+            },
+            data: { sprintId: null },
+          });
+        }
+
+        return updated;
       });
-
-      // On completion, return incomplete issues (not in a DONE-category status)
-      // to the backlog so the next sprint can be planned with them.
-      if (completingSprint) {
-        const doneStatusIds = await tx.status.findMany({
-          where: {
-            projectId: existing.projectId,
-            category: StatusCategory.DONE,
-          },
-          select: { id: true },
-        });
-        const doneIds = doneStatusIds.map((s) => s.id);
-        await tx.issue.updateMany({
-          where: {
-            sprintId: id,
-            statusId: { notIn: doneIds.length > 0 ? doneIds : ['__none__'] },
-          },
-          data: { sprintId: null },
-        });
+    } catch (err) {
+      // Backstop for the start TOCTOU race: if a concurrent transaction won the
+      // partial unique index (sprint_one_active_per_project), Prisma raises a
+      // unique-constraint violation. Map it to the same "already active" message.
+      if (
+        startingSprint &&
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2002'
+      ) {
+        throw new ConflictException(
+          'Another sprint is already active. Complete it before starting another sprint.',
+        );
       }
-
-      return updated;
-    });
+      throw err;
+    }
 
     return toSprintDto(sprint);
   }
@@ -132,13 +153,15 @@ export class SprintsService {
   /**
    * Reject starting a sprint when another sprint in the same project is already
    * ACTIVE. Keeps the "one active sprint at a time" invariant the board relies
-   * on (the board shows issues in the active sprint or the backlog).
+   * on (the board shows issues in the active sprint or the backlog). Runs on the
+   * transaction client so the check-then-write is atomic with the state update.
    */
   private async assertNoOtherActiveSprint(
+    tx: Prisma.TransactionClient,
     projectId: string,
     excludeId: string,
   ): Promise<void> {
-    const active = await this.prisma.sprint.findFirst({
+    const active = await tx.sprint.findFirst({
       where: {
         projectId,
         state: SprintState.ACTIVE,

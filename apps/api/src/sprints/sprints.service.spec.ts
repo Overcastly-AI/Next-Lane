@@ -1,4 +1,5 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { SprintState, StatusCategory } from '@next-lane/shared';
 import * as membership from '../common/membership.util';
 import { SprintsService } from './sprints.service';
@@ -18,16 +19,16 @@ const SPRINT_ID = 'sprint-1';
 
 function makePrisma() {
   const tx = {
-    sprint: { update: jest.fn() },
+    sprint: { update: jest.fn(), findFirst: jest.fn() },
     status: { findMany: jest.fn() },
     issue: { updateMany: jest.fn() },
   };
   return {
-    sprint: { findUnique: jest.fn(), findFirst: jest.fn() },
+    sprint: { findUnique: jest.fn() },
     $transaction: jest.fn((cb: (t: typeof tx) => unknown) => cb(tx)),
     __tx: tx,
   } as unknown as PrismaService & {
-    sprint: { findUnique: jest.Mock; findFirst: jest.Mock };
+    sprint: { findUnique: jest.Mock };
     __tx: typeof tx;
   };
 }
@@ -59,21 +60,41 @@ describe('SprintsService lifecycle (update)', () => {
 
   afterEach(() => jest.restoreAllMocks());
 
-  it('rejects starting a sprint when another is already ACTIVE', async () => {
+  it('rejects starting a sprint when another is already ACTIVE (checked in-tx)', async () => {
     prisma.sprint.findUnique.mockResolvedValue(sprintRow(SprintState.PLANNED));
-    prisma.sprint.findFirst.mockResolvedValue({ name: 'Sprint 2' });
+    prisma.__tx.sprint.findFirst.mockResolvedValue({ name: 'Sprint 2' });
 
     await expect(
       service.update('user-1', SPRINT_ID, { state: SprintState.ACTIVE }),
     ).rejects.toBeInstanceOf(BadRequestException);
 
+    // The active-sprint guard must run on the transaction client so the
+    // check-then-write is atomic and TOCTOU-safe.
+    expect(prisma.__tx.sprint.findFirst).toHaveBeenCalledTimes(1);
     // Must not have written the state change.
     expect(prisma.__tx.sprint.update).not.toHaveBeenCalled();
   });
 
+  it('maps the partial-unique-index race (P2002) to a 409 on start', async () => {
+    prisma.sprint.findUnique.mockResolvedValue(sprintRow(SprintState.PLANNED));
+    // The in-tx guard passes (no other ACTIVE seen) but a concurrent tx wins
+    // the partial unique index, so the write raises P2002.
+    prisma.__tx.sprint.findFirst.mockResolvedValue(null);
+    prisma.__tx.sprint.update.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: 'test',
+      }),
+    );
+
+    await expect(
+      service.update('user-1', SPRINT_ID, { state: SprintState.ACTIVE }),
+    ).rejects.toBeInstanceOf(ConflictException);
+  });
+
   it('allows starting a sprint when none other is ACTIVE', async () => {
     prisma.sprint.findUnique.mockResolvedValue(sprintRow(SprintState.PLANNED));
-    prisma.sprint.findFirst.mockResolvedValue(null);
+    prisma.__tx.sprint.findFirst.mockResolvedValue(null);
     prisma.__tx.sprint.update.mockResolvedValue(sprintRow(SprintState.ACTIVE));
 
     const result = await service.update('user-1', SPRINT_ID, {
@@ -116,7 +137,7 @@ describe('SprintsService lifecycle (update)', () => {
 
     await service.update('user-1', SPRINT_ID, { name: 'Renamed' });
 
-    expect(prisma.sprint.findFirst).not.toHaveBeenCalled();
+    expect(prisma.__tx.sprint.findFirst).not.toHaveBeenCalled();
     expect(prisma.__tx.issue.updateMany).not.toHaveBeenCalled();
   });
 });
