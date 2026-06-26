@@ -8,9 +8,9 @@ import { DEMO, login } from './helpers';
  * to render every edit/create affordance to VIEWERs, who then hit a confusing
  * 403 toast. These tests build a fresh workspace + project owned by the demo
  * ADMIN, add a freshly-registered VIEWER, then drive the real UI as each role:
- *  - VIEWER: no "+ Create issue", no "+ Add column", a "View only" hint, and the
- *    issue drawer shows no Delete and disabled fields.
- *  - ADMIN: still sees create/add affordances (positive control).
+ *  - VIEWER: no "+ Create issue", a "View only" hint, and the issue drawer
+ *    shows no Delete and disabled fields. (Column CRUD lives in Settings now.)
+ *  - ADMIN: still sees the create affordance (positive control).
  *
  * The API lives on :4000.
  */
@@ -104,9 +104,6 @@ test.describe('VIEWER-aware UI', () => {
     await expect(
       page.getByRole('button', { name: /create issue/i }),
     ).toHaveCount(0);
-    await expect(
-      page.getByRole('button', { name: /add column/i }),
-    ).toHaveCount(0);
 
     // Opening an issue: drawer is read-only (no Delete, status select disabled).
     await page.getByText(f.firstIssueKey).first().click();
@@ -119,7 +116,7 @@ test.describe('VIEWER-aware UI', () => {
     await expect(dialog.locator('#d-status')).toBeDisabled();
   });
 
-  test('ADMIN still sees create + add affordances (positive control)', async ({
+  test('ADMIN still sees the create-issue affordance (positive control)', async ({
     page,
     request,
   }) => {
@@ -130,9 +127,6 @@ test.describe('VIEWER-aware UI', () => {
     await expect(page.getByTestId('readonly-hint')).toHaveCount(0);
     await expect(
       page.getByRole('button', { name: /create issue/i }),
-    ).toBeVisible();
-    await expect(
-      page.getByRole('button', { name: /add column/i }).first(),
     ).toBeVisible();
   });
 

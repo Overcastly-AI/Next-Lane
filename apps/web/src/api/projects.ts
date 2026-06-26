@@ -12,6 +12,15 @@ export function useProjects(workspaceId: string | undefined) {
   });
 }
 
+/** Fetch a single project (used by the project settings page). */
+export function useProject(projectId: string | undefined) {
+  return useQuery({
+    queryKey: qk.project(projectId ?? ''),
+    enabled: !!projectId,
+    queryFn: () => request<ProjectDto>(`/projects/${projectId}`),
+  });
+}
+
 export interface CreateProjectInput {
   workspaceId: string;
   key: string;
@@ -31,6 +40,45 @@ export function useCreateProject() {
       void qc.invalidateQueries({
         queryKey: qk.projects(project.workspaceId),
       });
+    },
+  });
+}
+
+export interface UpdateProjectInput {
+  /** The project key is immutable, so only name/description are editable. */
+  name?: string;
+  description?: string;
+}
+
+/**
+ * Update a project's name/description. Refreshes the single-project cache, the
+ * workspace project list, and the board (its header shows the project name).
+ */
+export function useUpdateProject(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: UpdateProjectInput) =>
+      request<ProjectDto>(`/projects/${projectId}`, {
+        method: 'PATCH',
+        body: input,
+      }),
+    onSuccess: (project) => {
+      qc.setQueryData(qk.project(projectId), project);
+      void qc.invalidateQueries({ queryKey: qk.projects(project.workspaceId) });
+      void qc.invalidateQueries({ queryKey: qk.board(projectId) });
+    },
+  });
+}
+
+/** Archive a project (soft delete). ADMIN only on the server. */
+export function useArchiveProject(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      request<ProjectDto>(`/projects/${projectId}`, { method: 'DELETE' }),
+    onSuccess: (project) => {
+      qc.setQueryData(qk.project(projectId), project);
+      void qc.invalidateQueries({ queryKey: qk.projects(project.workspaceId) });
     },
   });
 }

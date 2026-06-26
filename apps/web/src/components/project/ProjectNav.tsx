@@ -10,6 +10,7 @@ export function ProjectNav({ projectId }: { projectId: string }) {
     { to: `/projects/${projectId}/board`, label: 'Board' },
     { to: `/projects/${projectId}/backlog`, label: 'Backlog' },
     { to: `/projects/${projectId}/reports`, label: 'Reports' },
+    { to: `/projects/${projectId}/settings`, label: 'Settings' },
   ];
   return (
     <nav className="flex items-center gap-1 border-b border-gray-200 bg-white px-4">

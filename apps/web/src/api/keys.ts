@@ -7,6 +7,7 @@ export const qk = {
     ['workspaceMembers', workspaceId] as const,
   users: ['users'] as const,
   projects: (workspaceId: string) => ['projects', workspaceId] as const,
+  project: (projectId: string) => ['project', projectId] as const,
   board: (projectId: string) => ['board', projectId] as const,
   projectIssues: (projectId: string) => ['projectIssues', projectId] as const,
   issueSearch: (projectId: string, q: string) =>

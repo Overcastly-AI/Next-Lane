@@ -17,6 +17,7 @@ import { MyWorkPage } from '@/pages/MyWorkPage';
 import { BoardPage } from '@/pages/BoardPage';
 import { BacklogPage } from '@/pages/BacklogPage';
 import { ReportsPage } from '@/pages/ReportsPage';
+import { SettingsPage } from '@/pages/SettingsPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -81,6 +82,14 @@ export default function App() {
               element={
                 <RequireAuth>
                   <ReportsPage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/projects/:projectId/settings"
+              element={
+                <RequireAuth>
+                  <SettingsPage />
                 </RequireAuth>
               }
             />
