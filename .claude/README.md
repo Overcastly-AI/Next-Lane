@@ -22,6 +22,9 @@ To get upstream updates (and the session-start hook) directly, you can also run 
 | `code-reviewer` | Reviewing a diff for correctness, conventions, and security |
 | `qa-tester` | Independent Playwright QA / user-acceptance testing on desktop + mobile |
 | `frontend-qa` | Front-end QA / UX: component consistency, a11y, responsive audit → `docs/UI-REVIEW.md` |
+| `product-auditor` | Independent deep product/UX audit; rates features, steers backlog → `docs/AUDIT-PRODUCT.md` |
+| `engineering-auditor` | Independent deep engineering audit (quality/security/debt); steers backlog → `docs/AUDIT-ENGINEERING.md` |
+| `backlog-groomer` | Maintains the dev board `docs/BACKLOG.md` from auditor + QA input; keeps a ready queue |
 
 ## Skills (`skills/`)
 
@@ -39,7 +42,8 @@ Plus the vendored Superpowers skills (TDD, systematic-debugging, writing-plans, 
 
 | Workflow | Purpose |
 |----------|---------|
-| `build-vertical-slice` | Take one roadmap feature from schema → API → UI → verify, in coordinated phases |
+| `build-vertical-slice` | Take one backlog item from schema → API → UI → review → QA, in coordinated phases |
 | `nightly-build-loop` | Pull the next roadmap item and implement it, looping until the MVP is complete |
+| `autonomous-dev-loop` | The org loop: 2 independent auditors → groom the board → build the top items with QA → repeat **on completion** (not on a timer) |
 
 Workflows here are documented as orchestration recipes. In Claude Code they are run with the `Workflow` tool (see each file for the script outline).
