@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   ISSUE_TYPES,
@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/Button';
 import { Select } from '@/components/ui/Select';
 import { Textarea } from '@/components/ui/Textarea';
 import { Field } from '@/components/ui/Field';
+import { useOverlay } from '@/lib/useOverlay';
 import { ErrorState, LoadingState } from '@/components/ui/States';
 import { IssueTypeIcon, titleCase } from '@/components/issue/issueMeta';
 import { CommentsPanel } from './CommentsPanel';
@@ -36,14 +37,9 @@ export function IssueDetailDrawer({
   const issueQuery = useIssue(issueId);
   const update = useUpdateIssue();
   const remove = useDeleteIssue(projectId);
+  const panelRef = useRef<HTMLElement>(null);
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  useOverlay({ open: true, onClose, containerRef: panelRef });
 
   function patch(field: keyof IssueDto, value: unknown) {
     if (!issueQuery.data) return;
@@ -55,14 +51,16 @@ export function IssueDetailDrawer({
   }
 
   return createPortal(
-    <div className="fixed inset-0 z-40 flex justify-end">
+    <div className="fixed inset-0 z-50 flex justify-end">
       <div
         className="absolute inset-0 bg-gray-900/30"
         onClick={onClose}
         aria-hidden="true"
       />
       <aside
-        className="relative z-10 flex h-full w-full max-w-2xl flex-col bg-white shadow-2xl"
+        ref={panelRef}
+        tabIndex={-1}
+        className="relative z-10 flex h-full w-full max-w-2xl flex-col bg-white shadow-2xl outline-none"
         role="dialog"
         aria-modal="true"
       >
