@@ -5,7 +5,11 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeService } from '../realtime/realtime.service';
-import { assertProjectMember } from '../common/membership.util';
+import {
+  assertProjectMember,
+  assertProjectRole,
+} from '../common/membership.util';
+import { Role } from '@next-lane/shared';
 import { toUserDto } from '../auth/auth.service';
 import { CreateCommentDto, UpdateCommentDto } from './dto/comment.dto';
 import { SocketEvents } from '@next-lane/shared';
@@ -61,7 +65,7 @@ export class CommentsService {
     dto: CreateCommentDto,
   ): Promise<CommentDto> {
     const issue = await this.getIssue(issueId);
-    await assertProjectMember(this.prisma, userId, issue.projectId);
+    await assertProjectRole(this.prisma, userId, issue.projectId, Role.MEMBER);
     const comment = await this.prisma.comment.create({
       data: { issueId, authorId: userId, body: dto.body },
       include: { author: true },

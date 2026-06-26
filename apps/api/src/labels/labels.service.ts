@@ -3,7 +3,11 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { assertProjectMember } from '../common/membership.util';
+import {
+  assertProjectMember,
+  assertProjectRole,
+} from '../common/membership.util';
+import { Role } from '@next-lane/shared';
 import { CreateLabelDto } from './dto/label.dto';
 import type { LabelDto } from '@next-lane/shared';
 
@@ -36,7 +40,7 @@ export class LabelsService {
     projectId: string,
     dto: CreateLabelDto,
   ): Promise<LabelDto> {
-    await assertProjectMember(this.prisma, userId, projectId);
+    await assertProjectRole(this.prisma, userId, projectId, Role.MEMBER);
     const label = await this.prisma.label.create({
       data: { projectId, name: dto.name, color: dto.color },
     });
@@ -46,7 +50,7 @@ export class LabelsService {
   async remove(userId: string, id: string): Promise<{ id: string }> {
     const existing = await this.prisma.label.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('Label not found');
-    await assertProjectMember(this.prisma, userId, existing.projectId);
+    await assertProjectRole(this.prisma, userId, existing.projectId, Role.ADMIN);
     await this.prisma.label.delete({ where: { id } });
     return { id };
   }
@@ -61,7 +65,7 @@ export class LabelsService {
       select: { id: true, projectId: true },
     });
     if (!issue) throw new NotFoundException('Issue not found');
-    await assertProjectMember(this.prisma, userId, issue.projectId);
+    await assertProjectRole(this.prisma, userId, issue.projectId, Role.MEMBER);
 
     const label = await this.prisma.label.findUnique({
       where: { id: labelId },
@@ -88,7 +92,7 @@ export class LabelsService {
       select: { id: true, projectId: true },
     });
     if (!issue) throw new NotFoundException('Issue not found');
-    await assertProjectMember(this.prisma, userId, issue.projectId);
+    await assertProjectRole(this.prisma, userId, issue.projectId, Role.MEMBER);
 
     await this.prisma.issueLabel.deleteMany({ where: { issueId, labelId } });
     return this.issueLabels(issueId);

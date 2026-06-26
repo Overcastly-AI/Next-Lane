@@ -5,11 +5,13 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import {
   assertProjectMember,
+  assertProjectRole,
   assertWorkspaceMember,
+  assertWorkspaceRole,
 } from '../common/membership.util';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
-import { StatusCategory } from '@next-lane/shared';
+import { StatusCategory, Role } from '@next-lane/shared';
 import type { ProjectDto } from '@next-lane/shared';
 
 type ProjectRow = {
@@ -50,7 +52,12 @@ export class ProjectsService {
   }
 
   async create(userId: string, dto: CreateProjectDto): Promise<ProjectDto> {
-    await assertWorkspaceMember(this.prisma, userId, dto.workspaceId);
+    await assertWorkspaceRole(
+      this.prisma,
+      userId,
+      dto.workspaceId,
+      Role.MEMBER,
+    );
     const key = dto.key.toUpperCase();
 
     const existing = await this.prisma.project.findUnique({
@@ -92,7 +99,7 @@ export class ProjectsService {
     id: string,
     dto: UpdateProjectDto,
   ): Promise<ProjectDto> {
-    await assertProjectMember(this.prisma, userId, id);
+    await assertProjectRole(this.prisma, userId, id, Role.MEMBER);
     const data: {
       key?: string;
       name?: string;
@@ -110,7 +117,7 @@ export class ProjectsService {
   }
 
   async archive(userId: string, id: string): Promise<ProjectDto> {
-    await assertProjectMember(this.prisma, userId, id);
+    await assertProjectRole(this.prisma, userId, id, Role.ADMIN);
     const project = await this.prisma.project.update({
       where: { id },
       data: { archived: true },

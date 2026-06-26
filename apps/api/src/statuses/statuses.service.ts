@@ -4,9 +4,12 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { assertProjectMember } from '../common/membership.util';
+import {
+  assertProjectMember,
+  assertProjectRole,
+} from '../common/membership.util';
 import { CreateStatusDto, UpdateStatusDto } from './dto/status.dto';
-import { StatusCategory } from '@next-lane/shared';
+import { StatusCategory, Role } from '@next-lane/shared';
 import type { StatusDto } from '@next-lane/shared';
 
 type StatusRow = {
@@ -45,7 +48,7 @@ export class StatusesService {
     projectId: string,
     dto: CreateStatusDto,
   ): Promise<StatusDto> {
-    await assertProjectMember(this.prisma, userId, projectId);
+    await assertProjectRole(this.prisma, userId, projectId, Role.MEMBER);
     let order = dto.order;
     if (order === undefined) {
       const last = await this.prisma.status.findFirst({
@@ -72,7 +75,12 @@ export class StatusesService {
   ): Promise<StatusDto> {
     const existing = await this.prisma.status.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('Status not found');
-    await assertProjectMember(this.prisma, userId, existing.projectId);
+    await assertProjectRole(
+      this.prisma,
+      userId,
+      existing.projectId,
+      Role.MEMBER,
+    );
 
     const status = await this.prisma.status.update({
       where: { id },
@@ -88,7 +96,7 @@ export class StatusesService {
   async remove(userId: string, id: string): Promise<{ id: string }> {
     const existing = await this.prisma.status.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('Status not found');
-    await assertProjectMember(this.prisma, userId, existing.projectId);
+    await assertProjectRole(this.prisma, userId, existing.projectId, Role.ADMIN);
 
     const count = await this.prisma.issue.count({ where: { statusId: id } });
     if (count > 0) {

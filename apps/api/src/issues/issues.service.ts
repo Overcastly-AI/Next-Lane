@@ -6,7 +6,10 @@ import {
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeService } from '../realtime/realtime.service';
-import { assertProjectMember } from '../common/membership.util';
+import {
+  assertProjectMember,
+  assertProjectRole,
+} from '../common/membership.util';
 import { toIssueDto } from './issue.mapper';
 import { toUserDto } from '../auth/auth.service';
 import { CreateIssueDto } from './dto/create-issue.dto';
@@ -17,6 +20,7 @@ import {
   StatusCategory,
   rankAfter,
   rankBetween,
+  Role,
 } from '@next-lane/shared';
 import type { IssueDto, CommentDto, ActivityDto } from '@next-lane/shared';
 
@@ -37,7 +41,7 @@ export class IssuesService {
   ) {}
 
   async create(userId: string, dto: CreateIssueDto): Promise<IssueDto> {
-    await assertProjectMember(this.prisma, userId, dto.projectId);
+    await assertProjectRole(this.prisma, userId, dto.projectId, Role.MEMBER);
 
     const issue = await this.prisma.$transaction(async (tx) => {
       const project = await tx.project.update({
@@ -280,7 +284,12 @@ export class IssuesService {
   ): Promise<IssueDto> {
     const existing = await this.prisma.issue.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('Issue not found');
-    await assertProjectMember(this.prisma, userId, existing.projectId);
+    await assertProjectRole(
+      this.prisma,
+      userId,
+      existing.projectId,
+      Role.MEMBER,
+    );
 
     await this.assertSameProject(existing.projectId, {
       statusId: dto.statusId,
@@ -356,7 +365,12 @@ export class IssuesService {
   ): Promise<IssueDto> {
     const existing = await this.prisma.issue.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('Issue not found');
-    await assertProjectMember(this.prisma, userId, existing.projectId);
+    await assertProjectRole(
+      this.prisma,
+      userId,
+      existing.projectId,
+      Role.MEMBER,
+    );
 
     await this.assertSameProject(existing.projectId, {
       statusId: dto.statusId,
@@ -412,7 +426,12 @@ export class IssuesService {
   async remove(userId: string, id: string): Promise<{ id: string }> {
     const existing = await this.prisma.issue.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('Issue not found');
-    await assertProjectMember(this.prisma, userId, existing.projectId);
+    await assertProjectRole(
+      this.prisma,
+      userId,
+      existing.projectId,
+      Role.MEMBER,
+    );
 
     await this.prisma.issue.delete({ where: { id } });
     this.realtime.emitToProject(

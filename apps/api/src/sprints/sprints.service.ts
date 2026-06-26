@@ -3,9 +3,12 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { assertProjectMember } from '../common/membership.util';
+import {
+  assertProjectMember,
+  assertProjectRole,
+} from '../common/membership.util';
 import { CreateSprintDto, UpdateSprintDto } from './dto/sprint.dto';
-import { SprintState } from '@next-lane/shared';
+import { SprintState, Role } from '@next-lane/shared';
 import type { SprintDto } from '@next-lane/shared';
 
 type SprintRow = {
@@ -48,7 +51,7 @@ export class SprintsService {
     projectId: string,
     dto: CreateSprintDto,
   ): Promise<SprintDto> {
-    await assertProjectMember(this.prisma, userId, projectId);
+    await assertProjectRole(this.prisma, userId, projectId, Role.MEMBER);
     const sprint = await this.prisma.sprint.create({
       data: {
         projectId,
@@ -68,7 +71,12 @@ export class SprintsService {
   ): Promise<SprintDto> {
     const existing = await this.prisma.sprint.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('Sprint not found');
-    await assertProjectMember(this.prisma, userId, existing.projectId);
+    await assertProjectRole(
+      this.prisma,
+      userId,
+      existing.projectId,
+      Role.MEMBER,
+    );
 
     const sprint = await this.prisma.sprint.update({
       where: { id },
@@ -86,7 +94,7 @@ export class SprintsService {
   async remove(userId: string, id: string): Promise<{ id: string }> {
     const existing = await this.prisma.sprint.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('Sprint not found');
-    await assertProjectMember(this.prisma, userId, existing.projectId);
+    await assertProjectRole(this.prisma, userId, existing.projectId, Role.ADMIN);
     await this.prisma.sprint.delete({ where: { id } });
     return { id };
   }

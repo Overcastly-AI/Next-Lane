@@ -3,7 +3,10 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { assertWorkspaceMember } from '../common/membership.util';
+import {
+  assertWorkspaceMember,
+  assertWorkspaceRole,
+} from '../common/membership.util';
 import { toUserDto } from '../auth/auth.service';
 import { CreateWorkspaceDto, AddMemberDto } from './dto/workspace.dto';
 import { Role } from '@next-lane/shared';
@@ -75,7 +78,7 @@ export class WorkspacesService {
     id: string,
     dto: AddMemberDto,
   ): Promise<MembershipDto> {
-    await assertWorkspaceMember(this.prisma, userId, id);
+    await assertWorkspaceRole(this.prisma, userId, id, Role.ADMIN);
     const target = await this.prisma.user.findUnique({
       where: { email: dto.email.toLowerCase() },
     });
