@@ -54,17 +54,18 @@ This project is built by a **team of specialized AI agents**, not one generalist
 - `frontend-builder` — React/Vite UI, query hooks, dnd-kit board
 - `code-reviewer` — review the diff before merge
 - `qa-tester` — **independent** Playwright QA / user-acceptance testing (desktop + mobile). Keep QA separate from whoever wrote the code.
+- `frontend-qa` — front-end QA / UX engineer: audits every component for visual consistency, design-system adherence, accessibility, responsive behavior, and missing states; files feedback to the dev team in `docs/UI-REVIEW.md` (read-only on app code).
 
 **Skills** (`.claude/skills/`) — invoke the matching skill before the work:
 - Build process: `brainstorming` → `writing-plans` → `test-driven-development` / `subagent-driven-development` → `requesting-code-review` → `verification-before-completion` → `finishing-a-development-branch` (vendored from Superpowers).
-- Project-specific: `add-domain-module`, `add-board-feature`, `run-stack`, `playwright-qa`.
+- Project-specific: `add-domain-module`, `add-board-feature`, `run-stack`, `playwright-qa`, `ui-consistency-review`.
 - Debugging: `systematic-debugging`. Parallel work: `dispatching-parallel-agents`.
 
 **Workflows** (`.claude/workflows/`) — orchestrate multi-phase work:
 - `build-vertical-slice` — feature → schema → backend → frontend → review → QA, in coordinated phases.
 - `nightly-build-loop` — work down the ROADMAP MVP items autonomously until done.
 
-**The loop for every feature:** plan → implement (specialist agent) → review (`code-reviewer`) → **QA with `qa-tester` on desktop AND mobile** → update `docs/ROADMAP.md` → commit. Never mark work done without the `verification-before-completion` evidence.
+**The loop for every feature:** plan → implement (specialist agent) → review (`code-reviewer`) → **functional QA with `qa-tester` on desktop AND mobile** → **UI/UX QA with `frontend-qa`** (consistency, a11y, responsive) feeding `docs/UI-REVIEW.md` back to the dev team → update `docs/ROADMAP.md` → commit. Never mark work done without the `verification-before-completion` evidence.
 
 ## Working style for autonomous build
 

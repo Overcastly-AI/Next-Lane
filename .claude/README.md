@@ -21,6 +21,7 @@ To get upstream updates (and the session-start hook) directly, you can also run 
 | `schema-architect` | Designing/evolving the Prisma data model and migrations |
 | `code-reviewer` | Reviewing a diff for correctness, conventions, and security |
 | `qa-tester` | Independent Playwright QA / user-acceptance testing on desktop + mobile |
+| `frontend-qa` | Front-end QA / UX: component consistency, a11y, responsive audit → `docs/UI-REVIEW.md` |
 
 ## Skills (`skills/`)
 
@@ -30,6 +31,7 @@ To get upstream updates (and the session-start hook) directly, you can also run 
 | `add-board-feature` | Work on the kanban/scrum board, drag-and-drop, or rank ordering |
 | `run-stack` | Bring the app up locally and verify it works end-to-end |
 | `playwright-qa` | QA / user-acceptance testing in a real browser, desktop + mobile |
+| `ui-consistency-review` | Design/UX audit of components → prioritized feedback in `docs/UI-REVIEW.md` |
 
 Plus the vendored Superpowers skills (TDD, systematic-debugging, writing-plans, subagent-driven-development, verification-before-completion, …) listed above.
 
