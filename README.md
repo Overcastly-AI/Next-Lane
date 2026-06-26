@@ -59,7 +59,9 @@ See [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) and [`docs/RESEARCH.md`](./
 ```bash
 git clone https://github.com/Overcastly-AI/Next-Lane.git
 cd Next-Lane
-cp .env.example .env        # tweak secrets for any real deployment
+cp .env.example .env
+# Set a JWT secret (required — the API refuses to start without one):
+echo "JWT_SECRET=$(openssl rand -hex 32)" >> .env
 docker compose up -d --build
 ```
 
