@@ -1,0 +1,24 @@
+# Development override: hot reload + source mounts.
+# Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+services:
+  api:
+    build:
+      dockerfile: apps/api/Dockerfile.dev
+    environment:
+      NODE_ENV: development
+    command: pnpm --filter @next-lane/api start:dev
+    volumes:
+      - ./apps/api:/app/apps/api
+      - ./packages/shared:/app/packages/shared
+      - /app/node_modules
+
+  web:
+    build:
+      dockerfile: apps/web/Dockerfile.dev
+    command: pnpm --filter @next-lane/web dev -- --host
+    ports:
+      - "${WEB_PORT:-3000}:5173"
+    volumes:
+      - ./apps/web:/app/apps/web
+      - ./packages/shared:/app/packages/shared
+      - /app/node_modules

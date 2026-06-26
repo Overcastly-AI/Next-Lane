@@ -1,0 +1,26 @@
+{
+  "name": "next-lane",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Next Lane — an open-source, self-hosted Jira alternative that runs locally via Docker.",
+  "license": "MIT",
+  "packageManager": "pnpm@9.12.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "pnpm -r --parallel dev",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test",
+    "format": "prettier --write \"**/*.{ts,tsx,js,json,md}\"",
+    "db:migrate": "pnpm --filter @next-lane/api prisma migrate dev",
+    "db:seed": "pnpm --filter @next-lane/api db:seed",
+    "docker:up": "docker compose up -d --build",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f"
+  },
+  "devDependencies": {
+    "prettier": "^3.3.3"
+  }
+}
