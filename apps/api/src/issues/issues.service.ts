@@ -9,6 +9,7 @@ import { RealtimeService } from '../realtime/realtime.service';
 import {
   assertProjectMember,
   assertProjectRole,
+  assertWorkspaceMember,
 } from '../common/membership.util';
 import { toIssueDto } from './issue.mapper';
 import { toUserDto } from '../auth/auth.service';
@@ -40,8 +41,28 @@ export class IssuesService {
     private readonly realtime: RealtimeService,
   ) {}
 
+  /**
+   * When an `assigneeId` is provided (non-null), reject it unless that user is a
+   * member of the project's workspace. Without this, any authenticated user from
+   * any tenant could be set as assignee on another tenant's issue. `null` is
+   * allowed (explicit unassign). `undefined` means "no change" and is skipped.
+   */
+  private async assertAssigneeInWorkspace(
+    workspaceId: string,
+    assigneeId: string | null | undefined,
+  ): Promise<void> {
+    if (assigneeId == null) return;
+    await assertWorkspaceMember(this.prisma, assigneeId, workspaceId);
+  }
+
   async create(userId: string, dto: CreateIssueDto): Promise<IssueDto> {
-    await assertProjectRole(this.prisma, userId, dto.projectId, Role.MEMBER);
+    const project = await assertProjectRole(
+      this.prisma,
+      userId,
+      dto.projectId,
+      Role.MEMBER,
+    );
+    await this.assertAssigneeInWorkspace(project.workspaceId, dto.assigneeId);
 
     const issue = await this.prisma.$transaction(async (tx) => {
       const project = await tx.project.update({
@@ -284,7 +305,7 @@ export class IssuesService {
   ): Promise<IssueDto> {
     const existing = await this.prisma.issue.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('Issue not found');
-    await assertProjectRole(
+    const project = await assertProjectRole(
       this.prisma,
       userId,
       existing.projectId,
@@ -296,6 +317,7 @@ export class IssuesService {
       sprintId: dto.sprintId,
       parentId: dto.parentId,
     });
+    await this.assertAssigneeInWorkspace(project.workspaceId, dto.assigneeId);
 
     const activities: Prisma.ActivityLogCreateManyInput[] = [];
     if (dto.statusId !== undefined && dto.statusId !== existing.statusId) {
