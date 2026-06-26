@@ -26,5 +26,26 @@ test.describe('Issue detail', () => {
     await commentBox.fill(comment);
     await page.getByRole('button', { name: 'Comment', exact: true }).click();
     await expect(page.getByText(comment).first()).toBeVisible({ timeout: 10_000 });
+
+    // Edit the comment in place: hover the item, click Edit, change text, Save.
+    const commentItem = page.getByRole('listitem').filter({ hasText: comment });
+    await commentItem.hover();
+    await commentItem.getByRole('button', { name: 'Edit', exact: true }).click();
+    const edited = `${comment} (edited)`;
+    const editBox = commentItem.getByRole('textbox');
+    await editBox.fill(edited);
+    await commentItem.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(page.getByText(edited).first()).toBeVisible({ timeout: 10_000 });
+
+    // Delete the comment: hover, click Delete, confirm in the themed dialog.
+    const editedItem = page.getByRole('listitem').filter({ hasText: edited });
+    await editedItem.hover();
+    await editedItem.getByRole('button', { name: 'Delete', exact: true }).click();
+    const confirm = page
+      .getByRole('dialog')
+      .filter({ hasText: 'Delete comment' });
+    await expect(confirm).toBeVisible();
+    await confirm.getByRole('button', { name: 'Delete', exact: true }).click();
+    await expect(page.getByText(edited)).toHaveCount(0, { timeout: 10_000 });
   });
 });

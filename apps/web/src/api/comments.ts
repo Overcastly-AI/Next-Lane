@@ -27,6 +27,56 @@ export function useAddComment(issueId: string) {
   });
 }
 
+export function useUpdateComment(issueId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: string }) =>
+      request<CommentDto>(`/comments/${id}`, {
+        method: 'PATCH',
+        body: { body },
+      }),
+    onMutate: async ({ id, body }) => {
+      await qc.cancelQueries({ queryKey: qk.comments(issueId) });
+      const previous = qc.getQueryData<CommentDto[]>(qk.comments(issueId));
+      qc.setQueryData<CommentDto[]>(qk.comments(issueId), (prev) =>
+        prev?.map((c) => (c.id === id ? { ...c, body } : c)),
+      );
+      return { previous };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previous) {
+        qc.setQueryData(qk.comments(issueId), context.previous);
+      }
+    },
+    onSuccess: (comment) => {
+      qc.setQueryData<CommentDto[]>(qk.comments(issueId), (prev) =>
+        prev?.map((c) => (c.id === comment.id ? comment : c)),
+      );
+    },
+  });
+}
+
+export function useDeleteComment(issueId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      request<void>(`/comments/${id}`, { method: 'DELETE' }),
+    onMutate: async (id) => {
+      await qc.cancelQueries({ queryKey: qk.comments(issueId) });
+      const previous = qc.getQueryData<CommentDto[]>(qk.comments(issueId));
+      qc.setQueryData<CommentDto[]>(qk.comments(issueId), (prev) =>
+        prev?.filter((c) => c.id !== id),
+      );
+      return { previous };
+    },
+    onError: (_err, _id, context) => {
+      if (context?.previous) {
+        qc.setQueryData(qk.comments(issueId), context.previous);
+      }
+    },
+  });
+}
+
 export function useActivity(issueId: string | undefined) {
   return useQuery({
     queryKey: qk.activity(issueId ?? ''),
