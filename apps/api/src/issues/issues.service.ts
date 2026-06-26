@@ -193,6 +193,86 @@ export class IssuesService {
     }));
   }
 
+  /**
+   * Reject any referenced id that does not belong to `projectId`. Guards against
+   * a member of one project attaching their issue to another project's
+   * status/sprint/parent (or reordering against a foreign issue), which would
+   * corrupt foreign boards and leak their rank ordering.
+   */
+  private async assertSameProject(
+    projectId: string,
+    refs: {
+      statusId?: string | null;
+      sprintId?: string | null;
+      parentId?: string | null;
+      issueId?: string | null;
+    },
+  ): Promise<void> {
+    const checks: Array<Promise<void>> = [];
+
+    if (refs.statusId != null) {
+      const statusId = refs.statusId;
+      checks.push(
+        this.prisma.status
+          .findUnique({ where: { id: statusId }, select: { projectId: true } })
+          .then((status) => {
+            if (!status || status.projectId !== projectId) {
+              throw new BadRequestException(
+                'statusId does not belong to this project',
+              );
+            }
+          }),
+      );
+    }
+
+    if (refs.sprintId != null) {
+      const sprintId = refs.sprintId;
+      checks.push(
+        this.prisma.sprint
+          .findUnique({ where: { id: sprintId }, select: { projectId: true } })
+          .then((sprint) => {
+            if (!sprint || sprint.projectId !== projectId) {
+              throw new BadRequestException(
+                'sprintId does not belong to this project',
+              );
+            }
+          }),
+      );
+    }
+
+    if (refs.parentId != null) {
+      const parentId = refs.parentId;
+      checks.push(
+        this.prisma.issue
+          .findUnique({ where: { id: parentId }, select: { projectId: true } })
+          .then((parent) => {
+            if (!parent || parent.projectId !== projectId) {
+              throw new BadRequestException(
+                'parentId does not belong to this project',
+              );
+            }
+          }),
+      );
+    }
+
+    if (refs.issueId != null) {
+      const issueId = refs.issueId;
+      checks.push(
+        this.prisma.issue
+          .findUnique({ where: { id: issueId }, select: { projectId: true } })
+          .then((neighbor) => {
+            if (!neighbor || neighbor.projectId !== projectId) {
+              throw new BadRequestException(
+                'neighbor issue does not belong to this project',
+              );
+            }
+          }),
+      );
+    }
+
+    await Promise.all(checks);
+  }
+
   async update(
     userId: string,
     id: string,
@@ -201,6 +281,12 @@ export class IssuesService {
     const existing = await this.prisma.issue.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('Issue not found');
     await assertProjectMember(this.prisma, userId, existing.projectId);
+
+    await this.assertSameProject(existing.projectId, {
+      statusId: dto.statusId,
+      sprintId: dto.sprintId,
+      parentId: dto.parentId,
+    });
 
     const activities: Prisma.ActivityLogCreateManyInput[] = [];
     if (dto.statusId !== undefined && dto.statusId !== existing.statusId) {
@@ -271,6 +357,14 @@ export class IssuesService {
     const existing = await this.prisma.issue.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('Issue not found');
     await assertProjectMember(this.prisma, userId, existing.projectId);
+
+    await this.assertSameProject(existing.projectId, {
+      statusId: dto.statusId,
+      issueId: dto.beforeId,
+    });
+    await this.assertSameProject(existing.projectId, {
+      issueId: dto.afterId,
+    });
 
     let beforeRank: string | null = null;
     let afterRank: string | null = null;
