@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -8,7 +9,7 @@ import {
   assertProjectRole,
 } from '../common/membership.util';
 import { CreateSprintDto, UpdateSprintDto } from './dto/sprint.dto';
-import { SprintState, Role } from '@next-lane/shared';
+import { SprintState, StatusCategory, Role } from '@next-lane/shared';
 import type { SprintDto } from '@next-lane/shared';
 
 type SprintRow = {
@@ -78,17 +79,78 @@ export class SprintsService {
       Role.MEMBER,
     );
 
-    const sprint = await this.prisma.sprint.update({
-      where: { id },
-      data: {
-        name: dto.name,
-        goal: dto.goal,
-        state: dto.state,
-        startDate: dto.startDate ? new Date(dto.startDate) : undefined,
-        endDate: dto.endDate ? new Date(dto.endDate) : undefined,
-      },
+    const startingSprint =
+      dto.state === SprintState.ACTIVE &&
+      existing.state !== SprintState.ACTIVE;
+    const completingSprint =
+      dto.state === SprintState.COMPLETED &&
+      existing.state !== SprintState.COMPLETED;
+
+    // Only one ACTIVE sprint per project: reject the start if another is live.
+    if (startingSprint) {
+      await this.assertNoOtherActiveSprint(existing.projectId, id);
+    }
+
+    const sprint = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.sprint.update({
+        where: { id },
+        data: {
+          name: dto.name,
+          goal: dto.goal,
+          state: dto.state,
+          startDate: dto.startDate ? new Date(dto.startDate) : undefined,
+          endDate: dto.endDate ? new Date(dto.endDate) : undefined,
+        },
+      });
+
+      // On completion, return incomplete issues (not in a DONE-category status)
+      // to the backlog so the next sprint can be planned with them.
+      if (completingSprint) {
+        const doneStatusIds = await tx.status.findMany({
+          where: {
+            projectId: existing.projectId,
+            category: StatusCategory.DONE,
+          },
+          select: { id: true },
+        });
+        const doneIds = doneStatusIds.map((s) => s.id);
+        await tx.issue.updateMany({
+          where: {
+            sprintId: id,
+            statusId: { notIn: doneIds.length > 0 ? doneIds : ['__none__'] },
+          },
+          data: { sprintId: null },
+        });
+      }
+
+      return updated;
     });
+
     return toSprintDto(sprint);
+  }
+
+  /**
+   * Reject starting a sprint when another sprint in the same project is already
+   * ACTIVE. Keeps the "one active sprint at a time" invariant the board relies
+   * on (the board shows issues in the active sprint or the backlog).
+   */
+  private async assertNoOtherActiveSprint(
+    projectId: string,
+    excludeId: string,
+  ): Promise<void> {
+    const active = await this.prisma.sprint.findFirst({
+      where: {
+        projectId,
+        state: SprintState.ACTIVE,
+        id: { not: excludeId },
+      },
+      select: { name: true },
+    });
+    if (active) {
+      throw new BadRequestException(
+        `"${active.name}" is already active. Complete it before starting another sprint.`,
+      );
+    }
   }
 
   async remove(userId: string, id: string): Promise<{ id: string }> {
