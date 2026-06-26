@@ -12,7 +12,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
   const [menuOpen, setMenuOpen] = useState(false);
 
   return (
-    <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b border-gray-200 bg-white px-4">
+    <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-gray-200 bg-white px-4 sm:gap-4">
       <Link to="/" className="shrink-0">
         <Logo />
       </Link>

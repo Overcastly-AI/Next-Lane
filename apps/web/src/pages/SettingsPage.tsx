@@ -695,7 +695,7 @@ function Shell({
   projectName: string | undefined;
 }) {
   return (
-    <div className="flex h-screen flex-col">
+    <div className="flex h-screen flex-col overflow-x-clip">
       <AppHeader>
         <div className="flex min-w-0 items-center gap-2 overflow-hidden">
           <Link

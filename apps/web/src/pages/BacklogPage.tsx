@@ -782,7 +782,7 @@ function Shell({
   projectName?: string;
 }) {
   return (
-    <div className="flex h-screen flex-col">
+    <div className="flex h-screen flex-col overflow-x-clip">
       <AppHeader>
         <div className="flex items-center gap-2">
           <Link

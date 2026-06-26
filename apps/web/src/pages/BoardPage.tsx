@@ -599,7 +599,7 @@ function Shell({
   projectId?: string;
 }) {
   return (
-    <div className="flex h-screen flex-col">
+    <div className="flex h-screen flex-col overflow-x-clip">
       <AppHeader>{header}</AppHeader>
       {projectId && <ProjectNav projectId={projectId} />}
       <main className="flex flex-1 flex-col overflow-hidden">{children}</main>
