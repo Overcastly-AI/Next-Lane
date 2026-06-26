@@ -15,7 +15,7 @@ Format: `- [ ] (P1, M) title — description [src]` · P0 critical / P1 now / P2
 
 ## Ready (top of queue)
 
-- [ ] (P0, M) Authenticate realtime gateway + membership-check `subscribe` — any client can `join` any projectId room and receive all issue/comment events; cross-tenant leak. Auth the handshake (JWT) and `assertProjectMember` before join [engineering-auditor]
+- [x] (P0, M) Authenticate realtime gateway + membership-check `subscribe` — any client can `join` any projectId room and receive all issue/comment events; cross-tenant leak. Auth the handshake (JWT) and `assertProjectMember` before join [engineering-auditor]
 - [ ] (P0, M) Validate tenant ownership of statusId/sprintId/parentId/beforeId/afterId on issue update & move — members can attach issues to another project's status/sprint/parent and corrupt foreign boards; verify every referenced id resolves to the issue's own projectId [engineering-auditor]
 - [ ] (P0, M) Enforce roles (VIEWER read-only; ADMIN-only member mgmt & deletes) — Role enum is stored but never checked; any member can self-upsert ADMIN via addMember. Add `assertWorkspaceRole(min)` + guard mutating endpoints [engineering-auditor, product-auditor]
 - [ ] (P0, S) Fail fast on missing `JWT_SECRET`; remove hardcoded `change-me` default — app boots with a globally-known signing key (trivial token forgery) if env unset [engineering-auditor]
