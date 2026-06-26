@@ -64,6 +64,11 @@ export function useBoardRealtime(
             void qc.invalidateQueries({ queryKey: qk.activity(id) });
           }
         }
+        if (event === SocketEvents.SprintUpdated) {
+          // A sprint start/complete reshuffles which issues are on the board
+          // (active sprint) vs. the backlog, so refresh both views.
+          void qc.invalidateQueries({ queryKey: qk.sprints(projectId) });
+        }
         handlerRef.current?.(event, payload);
       };
       s.on(event, fn);

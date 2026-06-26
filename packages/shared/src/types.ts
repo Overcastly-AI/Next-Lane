@@ -140,6 +140,7 @@ export const SocketEvents = {
   IssueMoved: 'issue.moved',
   IssueDeleted: 'issue.deleted',
   CommentCreated: 'comment.created',
+  SprintUpdated: 'sprint.updated',
 } as const;
 
 export type SocketEvent = (typeof SocketEvents)[keyof typeof SocketEvents];

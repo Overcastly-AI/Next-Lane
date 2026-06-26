@@ -6,12 +6,18 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { RealtimeService } from '../realtime/realtime.service';
 import {
   assertProjectMember,
   assertProjectRole,
 } from '../common/membership.util';
 import { CreateSprintDto, UpdateSprintDto } from './dto/sprint.dto';
-import { SprintState, StatusCategory, Role } from '@next-lane/shared';
+import {
+  SprintState,
+  StatusCategory,
+  Role,
+  SocketEvents,
+} from '@next-lane/shared';
 import type { SprintDto } from '@next-lane/shared';
 
 type SprintRow = {
@@ -38,7 +44,10 @@ function toSprintDto(s: SprintRow): SprintDto {
 
 @Injectable()
 export class SprintsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly realtime: RealtimeService,
+  ) {}
 
   async findAll(userId: string, projectId: string): Promise<SprintDto[]> {
     await assertProjectMember(this.prisma, userId, projectId);
@@ -147,7 +156,19 @@ export class SprintsService {
       throw err;
     }
 
-    return toSprintDto(sprint);
+    const dtoOut = toSprintDto(sprint);
+
+    // Notify the project room on lifecycle transitions so other tabs refresh
+    // their board/backlog instead of showing stale sprint state.
+    if (startingSprint || completingSprint) {
+      this.realtime.emitToProject(
+        existing.projectId,
+        SocketEvents.SprintUpdated,
+        dtoOut,
+      );
+    }
+
+    return dtoOut;
   }
 
   /**

@@ -4,6 +4,7 @@ import { SprintState, StatusCategory } from '@next-lane/shared';
 import * as membership from '../common/membership.util';
 import { SprintsService } from './sprints.service';
 import type { PrismaService } from '../prisma/prisma.service';
+import type { RealtimeService } from '../realtime/realtime.service';
 
 /**
  * DB-free unit tests for SprintsService lifecycle behavior, driving the real
@@ -48,10 +49,12 @@ const sprintRow = (state: SprintState) => ({
 describe('SprintsService lifecycle (update)', () => {
   let prisma: MockPrisma;
   let service: SprintsService;
+  let realtime: { emitToProject: jest.Mock };
 
   beforeEach(() => {
     prisma = makePrisma();
-    service = new SprintsService(prisma);
+    realtime = { emitToProject: jest.fn() };
+    service = new SprintsService(prisma, realtime as unknown as RealtimeService);
     // Membership is enforced elsewhere; permit it here so we test lifecycle.
     jest
       .spyOn(membership, 'assertProjectRole')
@@ -105,6 +108,12 @@ describe('SprintsService lifecycle (update)', () => {
     expect(prisma.__tx.sprint.update).toHaveBeenCalledTimes(1);
     // Completion-only cleanup must not run when merely starting.
     expect(prisma.__tx.issue.updateMany).not.toHaveBeenCalled();
+    // Other tabs must be notified the sprint started.
+    expect(realtime.emitToProject).toHaveBeenCalledWith(
+      PROJECT_ID,
+      'sprint.updated',
+      expect.objectContaining({ id: SPRINT_ID, state: SprintState.ACTIVE }),
+    );
   });
 
   it('returns incomplete issues to the backlog when completing a sprint', async () => {
@@ -127,6 +136,12 @@ describe('SprintsService lifecycle (update)', () => {
       where: { sprintId: SPRINT_ID, statusId: { notIn: ['done-1'] } },
       data: { sprintId: null },
     });
+    // Other tabs must be notified the sprint completed.
+    expect(realtime.emitToProject).toHaveBeenCalledWith(
+      PROJECT_ID,
+      'sprint.updated',
+      expect.objectContaining({ id: SPRINT_ID, state: SprintState.COMPLETED }),
+    );
   });
 
   it('does not touch issues when the state is unchanged (e.g. rename)', async () => {
@@ -139,5 +154,7 @@ describe('SprintsService lifecycle (update)', () => {
 
     expect(prisma.__tx.sprint.findFirst).not.toHaveBeenCalled();
     expect(prisma.__tx.issue.updateMany).not.toHaveBeenCalled();
+    // A plain rename is not a lifecycle transition, so no realtime emit.
+    expect(realtime.emitToProject).not.toHaveBeenCalled();
   });
 });
