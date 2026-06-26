@@ -1,4 +1,4 @@
-import { useEffect, type RefObject } from 'react';
+import { useEffect, useRef, type RefObject } from 'react';
 
 const FOCUSABLE_SELECTOR = [
   'a[href]',
@@ -29,6 +29,14 @@ export interface UseOverlayOptions {
  * Centralizing this keeps every overlay consistent and accessible.
  */
 export function useOverlay({ open, onClose, containerRef }: UseOverlayOptions): void {
+  // Hold the latest onClose in a ref so it is NOT an effect dependency.
+  // Modals typically pass an inline `onClose={() => ...}` whose identity changes
+  // every render; if it were a dependency, the effect below would tear down and
+  // re-run on every keystroke — refocusing the overlay and stealing focus from
+  // the input the user is typing in (the "types one char then loses focus" bug).
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
   useEffect(() => {
     if (!open) return;
 
@@ -38,7 +46,7 @@ export function useOverlay({ open, onClose, containerRef }: UseOverlayOptions): 
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.stopPropagation();
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (e.key === 'Tab' && container) {
@@ -81,5 +89,7 @@ export function useOverlay({ open, onClose, containerRef }: UseOverlayOptions): 
       // Restore focus to whatever was focused before the overlay opened.
       previouslyFocused?.focus?.();
     };
-  }, [open, onClose, containerRef]);
+    // containerRef is a stable ref object; onClose is read via onCloseRef.
+    // Effect runs only on open/close — never on every render.
+  }, [open, containerRef]);
 }
