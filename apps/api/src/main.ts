@@ -3,8 +3,12 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
+import { assertAuthConfig } from './auth/auth.config';
 
 async function bootstrap() {
+  // Fail fast on misconfigured secrets before doing any work or binding a port.
+  assertAuthConfig();
+
   const app = await NestFactory.create(AppModule);
 
   app.setGlobalPrefix('api', { exclude: ['health'] });
@@ -32,4 +36,8 @@ async function bootstrap() {
   console.log(`Next Lane API listening on :${port} (docs at /api)`);
 }
 
-void bootstrap();
+bootstrap().catch((err) => {
+  // eslint-disable-next-line no-console
+  console.error('Failed to start Next Lane API:', err);
+  process.exit(1);
+});
