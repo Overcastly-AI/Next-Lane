@@ -18,6 +18,7 @@ import { Field } from '@/components/ui/Field';
 import { useOverlay } from '@/lib/useOverlay';
 import { errorMessage } from '@/lib/errorMessage';
 import { useToast } from '@/components/ui/Toast';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { ErrorState, LoadingState } from '@/components/ui/States';
 import { IssueTypeIcon, titleCase } from '@/components/issue/issueMeta';
 import { CommentsPanel } from './CommentsPanel';
@@ -40,6 +41,7 @@ export function IssueDetailDrawer({
   const update = useUpdateIssue();
   const remove = useDeleteIssue(projectId);
   const toast = useToast();
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const panelRef = useRef<HTMLElement>(null);
 
   useOverlay({ open: true, onClose, containerRef: panelRef });
@@ -90,24 +92,34 @@ export function IssueDetailDrawer({
             onClose={onClose}
             onPatch={patch}
             saving={update.isPending}
-            onDelete={() => {
-              if (window.confirm('Delete this issue? This cannot be undone.')) {
-                remove.mutate(issueId, {
-                  onSuccess: () => {
-                    toast.success('Issue deleted.');
-                    onClose();
-                  },
-                  onError: (err) =>
-                    toast.error(
-                      errorMessage(err, 'Could not delete this issue.'),
-                    ),
-                });
-              }
-            }}
+            onDelete={() => setConfirmDelete(true)}
             deleting={remove.isPending}
           />
         )}
       </aside>
+
+      <ConfirmDialog
+        open={confirmDelete}
+        title="Delete issue"
+        message="Delete this issue? This cannot be undone."
+        confirmLabel="Delete"
+        variant="danger"
+        loading={remove.isPending}
+        onCancel={() => setConfirmDelete(false)}
+        onConfirm={() =>
+          remove.mutate(issueId, {
+            onSuccess: () => {
+              setConfirmDelete(false);
+              toast.success('Issue deleted.');
+              onClose();
+            },
+            onError: (err) => {
+              setConfirmDelete(false);
+              toast.error(errorMessage(err, 'Could not delete this issue.'));
+            },
+          })
+        }
+      />
     </div>,
     document.body,
   );

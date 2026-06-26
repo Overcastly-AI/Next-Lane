@@ -23,7 +23,7 @@ Format: `- [ ] (P1, M) title — description [src]` · P0 critical / P1 now / P2
 - [ ] (P1, M) API unit tests for authz/isolation paths + CI pipeline (lint, build, test) — zero unit tests today, stubbed test script, no `.github/` gate; lock the isolation fixes above with a regression net [engineering-auditor]
 - [x] (P1, S) Fix label-chip contrast in issue drawer — reuse `<Badge>` instead of inline raw-color chips so light labels stay legible [ui-review]
 - [x] (P1, S) Drawer as first-class overlay — add scroll-lock, focus trap + restore, align z-index with `Modal` via a shared hook [ui-review]
-- [ ] (P1, M) Replace native `window.prompt`/`window.confirm` (new workspace, delete issue) with themed modals [ui-review]
+- [x] (P1, M) Replace native `window.prompt`/`window.confirm` (new workspace, delete issue) with themed modals [ui-review]
 - [x] (P1, M) Add a lightweight toast system; surface drawer-patch + mutation errors consistently (also highlight remote realtime changes) [ui-review, product-auditor]
 
 ## Next (P1 — high value, queue these as Ready empties)

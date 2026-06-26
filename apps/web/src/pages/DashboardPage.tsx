@@ -15,18 +15,17 @@ import {
 } from '@/api/workspaces';
 import { useProjects } from '@/api/projects';
 import { CreateProjectModal } from '@/components/project/CreateProjectModal';
+import { CreateWorkspaceModal } from '@/components/workspace/CreateWorkspaceModal';
 import { ProjectCard } from '@/components/project/ProjectCard';
-import { useToast } from '@/components/ui/Toast';
-import { errorMessage } from '@/lib/errorMessage';
 
 export function DashboardPage() {
   const navigate = useNavigate();
-  const toast = useToast();
   const workspacesQuery = useWorkspaces();
   const createWorkspace = useCreateWorkspace();
   const [selectedWs, setSelectedWs] = useState<string | null>(null);
   const [creatingDefault, setCreatingDefault] = useState(false);
   const [projectModalOpen, setProjectModalOpen] = useState(false);
+  const [workspaceModalOpen, setWorkspaceModalOpen] = useState(false);
 
   const workspaces = workspacesQuery.data;
 
@@ -113,22 +112,13 @@ export function DashboardPage() {
                 </option>
               ))}
             </Select>
-            <NewWorkspaceButton
-              onCreate={(name) =>
-                createWorkspace
-                  .mutateAsync({ name })
-                  .then((ws) => {
-                    setSelectedWs(ws.id);
-                    toast.success(`Created workspace ${ws.name}.`);
-                  })
-                  .catch((err) =>
-                    toast.error(
-                      errorMessage(err, 'Could not create workspace.'),
-                    ),
-                  )
-              }
-              pending={createWorkspace.isPending}
-            />
+            <Button
+              variant="secondary"
+              size="md"
+              onClick={() => setWorkspaceModalOpen(true)}
+            >
+              + Workspace
+            </Button>
           </div>
         </div>
         <Button onClick={() => setProjectModalOpen(true)}>+ New Project</Button>
@@ -154,6 +144,15 @@ export function DashboardPage() {
           }}
         />
       )}
+
+      <CreateWorkspaceModal
+        open={workspaceModalOpen}
+        onClose={() => setWorkspaceModalOpen(false)}
+        onCreated={(ws) => {
+          setWorkspaceModalOpen(false);
+          setSelectedWs(ws.id);
+        }}
+      />
     </Shell>
   );
 }
@@ -202,24 +201,3 @@ function ProjectsGrid({
   );
 }
 
-function NewWorkspaceButton({
-  onCreate,
-  pending,
-}: {
-  onCreate: (name: string) => Promise<unknown>;
-  pending: boolean;
-}) {
-  return (
-    <Button
-      variant="secondary"
-      size="md"
-      loading={pending}
-      onClick={() => {
-        const name = window.prompt('New workspace name');
-        if (name && name.trim()) void onCreate(name.trim());
-      }}
-    >
-      + Workspace
-    </Button>
-  );
-}
