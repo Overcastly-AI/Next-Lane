@@ -169,6 +169,45 @@ export interface BurndownDto {
   series: BurndownPointDto[];
 }
 
+/**
+ * A single issue hit in a global/cross-project search. Lightweight by design:
+ * just enough to render a result row and navigate to the issue's board with the
+ * issue drawer open.
+ */
+export interface SearchIssueDto {
+  id: string;
+  key: string;
+  number: number;
+  title: string;
+  projectId: string;
+  projectKey: string;
+  statusId: string;
+  statusName: string;
+  statusCategory: StatusCategory;
+  type: IssueType;
+}
+
+/**
+ * A single project hit in a global/cross-project search. Mirrors the fields a
+ * result row needs to render and navigate to the project's board.
+ */
+export interface SearchProjectDto {
+  id: string;
+  key: string;
+  name: string;
+  workspaceId: string;
+}
+
+/**
+ * Cross-project search results, scoped to the workspaces the caller belongs to.
+ * Issues and projects are returned separately so the UI can group them.
+ */
+export interface SearchResultsDto {
+  query: string;
+  issues: SearchIssueDto[];
+  projects: SearchProjectDto[];
+}
+
 /** Realtime event names emitted over Socket.io. */
 export const SocketEvents = {
   IssueCreated: 'issue.created',
