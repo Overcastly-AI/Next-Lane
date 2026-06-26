@@ -19,6 +19,7 @@ import { MoveIssueDto, ListIssuesQueryDto } from './dto/move-issue.dto';
 import {
   SocketEvents,
   StatusCategory,
+  initialRanks,
   rankAfter,
   rankBetween,
   Role,
@@ -427,6 +428,54 @@ export class IssuesService {
     return dtoOut;
   }
 
+  /**
+   * Collision fallback for {@link move}: when the requested neighbors leave no
+   * representable gap, re-rank every issue in the destination column with fresh,
+   * evenly spaced ranks. The moved issue (`id`) is positioned immediately before
+   * `beforeId` (or appended to the end when `beforeId` is null). Returns the
+   * rank the moved issue should receive; the caller persists it together with
+   * the status change. Runs on the supplied transaction client so the rebalance
+   * and the move commit atomically.
+   */
+  private async rebalanceAndPlace(
+    tx: Prisma.TransactionClient,
+    id: string,
+    statusId: string,
+    beforeId: string | null,
+  ): Promise<string> {
+    const column = await tx.issue.findMany({
+      where: { statusId, id: { not: id } },
+      orderBy: { rank: 'asc' },
+      select: { id: true },
+    });
+
+    const order: string[] = [];
+    let inserted = false;
+    for (const issue of column) {
+      if (issue.id === beforeId) {
+        order.push(id);
+        inserted = true;
+      }
+      order.push(issue.id);
+    }
+    if (!inserted) order.push(id);
+
+    const ranks = initialRanks(order.length);
+    let movedRank: string | null = null;
+    for (let i = 0; i < order.length; i += 1) {
+      if (order[i] === id) {
+        movedRank = ranks[i];
+        continue; // caller writes the moved issue's rank + status together
+      }
+      await tx.issue.update({
+        where: { id: order[i] },
+        data: { rank: ranks[i] },
+      });
+    }
+    // order always contains `id`, so movedRank is assigned above.
+    return movedRank as string;
+  }
+
   async move(
     userId: string,
     id: string,
@@ -449,40 +498,64 @@ export class IssuesService {
       issueId: dto.afterId,
     });
 
-    let beforeRank: string | null = null;
-    let afterRank: string | null = null;
-    if (dto.beforeId) {
-      const before = await this.prisma.issue.findUnique({
-        where: { id: dto.beforeId },
-      });
-      beforeRank = before?.rank ?? null;
-    }
-    if (dto.afterId) {
-      const after = await this.prisma.issue.findUnique({
-        where: { id: dto.afterId },
-      });
-      afterRank = after?.rank ?? null;
-    }
-    const newRank = rankBetween(beforeRank, afterRank);
     const statusChanged = dto.statusId !== existing.statusId;
 
-    const issue = await this.prisma.issue.update({
-      where: { id },
-      data: { statusId: dto.statusId, rank: newRank },
-      include: listInclude,
-    });
+    // Read neighbor ranks, compute the new rank, and persist inside a single
+    // transaction. Doing the read + compute + write atomically prevents two
+    // concurrent moves from both reading the same neighbors and computing
+    // colliding ranks (lost-update / TOCTOU). If the neighbors leave no gap
+    // (equal, or already adjacent so `rankBetween` would throw), we fall back
+    // to rebalancing every issue in the destination column with fresh, evenly
+    // spaced ranks — still within the transaction — and re-derive the moved
+    // issue's rank from the rebalanced order.
+    const issue = await this.prisma.$transaction(async (tx) => {
+      let beforeRank: string | null = null;
+      let afterRank: string | null = null;
+      if (dto.beforeId) {
+        const before = await tx.issue.findUnique({
+          where: { id: dto.beforeId },
+        });
+        beforeRank = before?.rank ?? null;
+      }
+      if (dto.afterId) {
+        const after = await tx.issue.findUnique({
+          where: { id: dto.afterId },
+        });
+        afterRank = after?.rank ?? null;
+      }
 
-    if (statusChanged) {
-      await this.prisma.activityLog.create({
-        data: {
-          issueId: id,
-          actorId: userId,
-          field: 'status',
-          from: existing.statusId,
-          to: dto.statusId,
-        },
+      let newRank: string;
+      try {
+        newRank = rankBetween(beforeRank, afterRank);
+      } catch {
+        newRank = await this.rebalanceAndPlace(
+          tx,
+          id,
+          dto.statusId,
+          dto.beforeId ?? null,
+        );
+      }
+
+      const updated = await tx.issue.update({
+        where: { id },
+        data: { statusId: dto.statusId, rank: newRank },
+        include: listInclude,
       });
-    }
+
+      if (statusChanged) {
+        await tx.activityLog.create({
+          data: {
+            issueId: id,
+            actorId: userId,
+            field: 'status',
+            from: existing.statusId,
+            to: dto.statusId,
+          },
+        });
+      }
+
+      return updated;
+    });
 
     this.realtime.emitToProject(issue.projectId, SocketEvents.IssueMoved, {
       issueId: issue.id,
