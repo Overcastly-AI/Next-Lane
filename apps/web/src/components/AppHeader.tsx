@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, NavLink } from 'react-router-dom';
 import { Logo } from './Logo';
 import { Avatar } from './ui/Avatar';
+import { NotificationBell } from './NotificationBell';
 import { useAuth } from '@/auth/AuthContext';
 import { useCommandPalette } from './CommandPaletteProvider';
 
@@ -55,6 +56,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
           <path strokeLinecap="round" d="M21 21l-4.3-4.3" />
         </svg>
       </button>
+      <NotificationBell />
       <div className="relative shrink-0">
         <button
           onClick={() => setMenuOpen((v) => !v)}

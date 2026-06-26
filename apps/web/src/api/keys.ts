@@ -2,6 +2,8 @@
 export const qk = {
   me: ['me'] as const,
   myWork: ['myWork'] as const,
+  notifications: ['notifications'] as const,
+  unreadCount: ['unreadCount'] as const,
   workspaces: ['workspaces'] as const,
   workspaceMembers: (workspaceId: string) =>
     ['workspaceMembers', workspaceId] as const,

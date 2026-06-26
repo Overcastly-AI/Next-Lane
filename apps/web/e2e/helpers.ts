@@ -134,6 +134,41 @@ export async function createProject(
   return { id: body.id, key: body.key ?? key, name: body.name ?? name };
 }
 
+/** Add an existing user (by email) to a workspace as a co-member. */
+export async function addWorkspaceMember(
+  request: APIRequestContext,
+  token: string,
+  workspaceId: string,
+  email: string,
+  role = 'MEMBER',
+): Promise<void> {
+  const res = await request.post(
+    `${API_URL}/api/workspaces/${workspaceId}/members`,
+    { headers: authHeaders(token), data: { email, role } },
+  );
+  expect(res.ok(), `add member failed: ${res.status()}`).toBeTruthy();
+}
+
+/** Create an issue via the API; returns id + key. Optionally assign it. */
+export async function createIssue(
+  request: APIRequestContext,
+  token: string,
+  projectId: string,
+  opts: { title?: string; assigneeId?: string } = {},
+): Promise<{ id: string; key: string }> {
+  const res = await request.post(`${API_URL}/api/issues`, {
+    headers: authHeaders(token),
+    data: {
+      projectId,
+      title: opts.title ?? 'QA issue',
+      assigneeId: opts.assigneeId,
+    },
+  });
+  expect(res.ok(), `create issue failed: ${res.status()}`).toBeTruthy();
+  const body = (await res.json()) as { id: string; key: string };
+  return { id: body.id, key: body.key };
+}
+
 /** Create a label in a project; returns its id. */
 export async function createLabel(
   request: APIRequestContext,

@@ -21,6 +21,36 @@ export function getSocket(): Socket {
 
 export type RealtimeHandler = (event: SocketEvent, payload: unknown) => void;
 
+/**
+ * Subscribe to the current user's PRIVATE notification feed. The socket joins
+ * its own `user:<id>` room (authorized server-side from the JWT, never a
+ * client-supplied id) and, on each `notification.created` push, invalidates the
+ * notification list + unread-count queries so the bell updates live.
+ */
+export function useNotificationsRealtime(enabled: boolean): void {
+  const qc = useQueryClient();
+
+  useEffect(() => {
+    if (!enabled) return;
+    const s = getSocket();
+
+    const emitSubscribe = () => s.emit('subscribe:user');
+    if (s.connected) emitSubscribe();
+    s.on('connect', emitSubscribe);
+
+    const onNotification = () => {
+      void qc.invalidateQueries({ queryKey: qk.notifications });
+      void qc.invalidateQueries({ queryKey: qk.unreadCount });
+    };
+    s.on(SocketEvents.NotificationCreated, onNotification);
+
+    return () => {
+      s.off('connect', emitSubscribe);
+      s.off(SocketEvents.NotificationCreated, onNotification);
+    };
+  }, [enabled, qc]);
+}
+
 const ALL_EVENTS: SocketEvent[] = Object.values(SocketEvents);
 
 /**
