@@ -4,12 +4,17 @@ import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { assertAuthConfig } from './auth/auth.config';
+import { AllExceptionsFilter } from './common/all-exceptions.filter';
 
 async function bootstrap() {
   // Fail fast on misconfigured secrets before doing any work or binding a port.
   assertAuthConfig();
 
   const app = await NestFactory.create(AppModule);
+
+  // Catch-all filter: map Prisma errors and unexpected throws to clean,
+  // consistent envelopes and suppress internal detail in production.
+  app.useGlobalFilters(new AllExceptionsFilter());
 
   app.setGlobalPrefix('api', { exclude: ['health'] });
   // Restrict CORS to an explicit allowlist (comma-separated CORS_ORIGINS),
