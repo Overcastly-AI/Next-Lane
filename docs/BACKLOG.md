@@ -19,7 +19,7 @@ Format: `- [ ] (P1, M) title — description [src]` · P0 critical / P1 now / P2
 - [x] (P0, M) Validate tenant ownership of statusId/sprintId/parentId/beforeId/afterId on issue update & move — members can attach issues to another project's status/sprint/parent and corrupt foreign boards; verify every referenced id resolves to the issue's own projectId [engineering-auditor]
 - [x] (P0, M) Enforce roles (VIEWER read-only; ADMIN-only member mgmt & deletes) — Role enum is stored but never checked; any member can self-upsert ADMIN via addMember. Add `assertWorkspaceRole(min)` + guard mutating endpoints [engineering-auditor, product-auditor]
 - [x] (P0, S) Fail fast on missing `JWT_SECRET`; remove hardcoded `change-me` default — app boots with a globally-known signing key (trivial token forgery) if env unset [engineering-auditor]
-- [ ] (P1, S) CORS origin allowlist from env — drop `origin:true` + `credentials:true`; default to the web app URL [engineering-auditor]
+- [x] (P1, S) CORS origin allowlist from env — drop `origin:true` + `credentials:true`; default to the web app URL [engineering-auditor]
 - [ ] (P1, M) API unit tests for authz/isolation paths + CI pipeline (lint, build, test) — zero unit tests today, stubbed test script, no `.github/` gate; lock the isolation fixes above with a regression net [engineering-auditor]
 - [ ] (P1, S) Fix label-chip contrast in issue drawer — reuse `<Badge>` instead of inline raw-color chips so light labels stay legible [ui-review]
 - [ ] (P1, S) Drawer as first-class overlay — add scroll-lock, focus trap + restore, align z-index with `Modal` via a shared hook [ui-review]

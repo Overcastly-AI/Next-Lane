@@ -12,7 +12,14 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
   app.setGlobalPrefix('api', { exclude: ['health'] });
-  app.enableCors({ origin: true, credentials: true });
+  // Restrict CORS to an explicit allowlist (comma-separated CORS_ORIGINS),
+  // defaulting to the local web app. Credentials are only sent to allowed
+  // origins — never reflect arbitrary origins.
+  const allowedOrigins = (process.env.CORS_ORIGINS ?? 'http://localhost:3000')
+    .split(',')
+    .map((o) => o.trim())
+    .filter((o) => o.length > 0);
+  app.enableCors({ origin: allowedOrigins, credentials: true });
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
