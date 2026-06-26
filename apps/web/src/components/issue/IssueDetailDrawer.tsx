@@ -10,7 +10,6 @@ import {
   type UserDto,
 } from '@next-lane/shared';
 import { useIssue, useUpdateIssue, useDeleteIssue } from '@/api/issues';
-import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Select } from '@/components/ui/Select';
 import { Textarea } from '@/components/ui/Textarea';
@@ -21,6 +20,7 @@ import { useToast } from '@/components/ui/Toast';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { ErrorState, LoadingState } from '@/components/ui/States';
 import { IssueTypeIcon, titleCase } from '@/components/issue/issueMeta';
+import { LabelPicker } from './LabelPicker';
 import { CommentsPanel } from './CommentsPanel';
 import { ActivityPanel } from './ActivityPanel';
 
@@ -87,6 +87,7 @@ export function IssueDetailDrawer({
         ) : (
           <DrawerBody
             issue={issueQuery.data}
+            projectId={projectId}
             statuses={statuses}
             users={users}
             onClose={onClose}
@@ -127,6 +128,7 @@ export function IssueDetailDrawer({
 
 function DrawerBody({
   issue,
+  projectId,
   statuses,
   users,
   onClose,
@@ -136,6 +138,7 @@ function DrawerBody({
   deleting,
 }: {
   issue: IssueDto;
+  projectId: string;
   statuses: StatusDto[];
   users: UserDto[];
   onClose: () => void;
@@ -277,18 +280,7 @@ function DrawerBody({
               </Select>
             </Field>
 
-            {issue.labels && issue.labels.length > 0 && (
-              <div>
-                <p className="mb-1 text-xs font-medium text-gray-600">Labels</p>
-                <div className="flex flex-wrap gap-1">
-                  {issue.labels.map((l) => (
-                    <Badge key={l.id} color={l.color}>
-                      {l.name}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-            )}
+            <LabelPicker issue={issue} projectId={projectId} />
 
             <div className="border-t border-gray-100 pt-3 text-xs text-gray-400">
               Created {new Date(issue.createdAt).toLocaleDateString()}

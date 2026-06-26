@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useSearchParams, Link } from 'react-router-dom';
 import {
   DndContext,
@@ -12,15 +12,16 @@ import {
   type DragEndEvent,
 } from '@dnd-kit/core';
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable';
-import type { IssueDto, StatusDto } from '@next-lane/shared';
+import type { IssueDto, LabelDto, StatusDto } from '@next-lane/shared';
 import { useBoard, useMoveIssue } from '@/api/issues';
-import { useUsers } from '@/api/meta';
+import { useLabels, useUsers } from '@/api/meta';
 import { useBoardRealtime } from '@/api/socket';
 import { AppHeader } from '@/components/AppHeader';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Avatar } from '@/components/ui/Avatar';
+import { Badge } from '@/components/ui/Badge';
 import { ErrorState, LoadingState, EmptyState } from '@/components/ui/States';
 import { BoardColumn } from '@/components/board/BoardColumn';
 import { IssueCard } from '@/components/board/IssueCard';
@@ -28,12 +29,14 @@ import { CreateIssueModal } from '@/components/board/CreateIssueModal';
 import { IssueDetailDrawer } from '@/components/issue/IssueDetailDrawer';
 import { useToast } from '@/components/ui/Toast';
 import { errorMessage } from '@/lib/errorMessage';
+import { cn } from '@/lib/cn';
 
 export function BoardPage() {
   const { projectId = '' } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
   const boardQuery = useBoard(projectId);
   const usersQuery = useUsers();
+  const labelsQuery = useLabels(projectId);
   const moveIssue = useMoveIssue(projectId);
   const toast = useToast();
 
@@ -41,6 +44,8 @@ export function BoardPage() {
 
   const [search, setSearch] = useState('');
   const [assigneeFilter, setAssigneeFilter] = useState('');
+  // Selected label IDs the board is filtered to (a card must carry ALL of them).
+  const [labelFilter, setLabelFilter] = useState<string[]>([]);
   const [createForStatus, setCreateForStatus] = useState<string | null>(null);
   const [activeIssue, setActiveIssue] = useState<IssueDto | null>(null);
 
@@ -65,6 +70,10 @@ export function BoardPage() {
         if (assigneeFilter !== 'unassigned' && issue.assigneeId !== assigneeFilter)
           continue;
       }
+      if (labelFilter.length > 0) {
+        const ids = new Set((issue.labels ?? []).map((l) => l.id));
+        if (!labelFilter.every((id) => ids.has(id))) continue;
+      }
       const arr = map.get(issue.statusId);
       if (arr) arr.push(issue);
     }
@@ -72,7 +81,7 @@ export function BoardPage() {
       arr.sort((a, b) => (a.rank < b.rank ? -1 : a.rank > b.rank ? 1 : 0));
     }
     return map;
-  }, [board, statuses, search, assigneeFilter]);
+  }, [board, statuses, search, assigneeFilter, labelFilter]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -251,6 +260,11 @@ export function BoardPage() {
             size="sm"
           />
         )}
+        <LabelFilter
+          labels={labelsQuery.data ?? []}
+          selected={labelFilter}
+          onChange={setLabelFilter}
+        />
         <div className="ml-auto">
           <Button onClick={() => setCreateForStatus(statuses[0]?.id ?? null)}>
             + Create issue
@@ -330,6 +344,139 @@ function neighborsUnchanged(
   const currentBefore = ordered[idx - 1]?.id ?? null;
   const currentAfter = ordered[idx + 1]?.id ?? null;
   return currentBefore === beforeId && currentAfter === afterId;
+}
+
+/**
+ * Top-bar control to filter the board by one or more labels. A card is shown
+ * only when it carries every selected label. Lives next to the search and
+ * assignee filters; filtering itself is client-side over the loaded board.
+ */
+function LabelFilter({
+  labels,
+  selected,
+  onChange,
+}: {
+  labels: LabelDto[];
+  selected: string[];
+  onChange: (next: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDown(e: MouseEvent) {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setOpen(false);
+    }
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  // Drop any selected IDs that no longer exist (e.g. a label was deleted).
+  useEffect(() => {
+    if (selected.length === 0) return;
+    const ids = new Set(labels.map((l) => l.id));
+    const pruned = selected.filter((id) => ids.has(id));
+    if (pruned.length !== selected.length) onChange(pruned);
+  }, [labels, selected, onChange]);
+
+  const selectedSet = new Set(selected);
+  const count = selected.length;
+
+  function toggle(id: string) {
+    onChange(
+      selectedSet.has(id)
+        ? selected.filter((x) => x !== id)
+        : [...selected, id],
+    );
+  }
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        className={cn(
+          'inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-sm transition-colors',
+          'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200',
+          count > 0
+            ? 'border-brand-300 bg-brand-50 text-brand-700'
+            : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50',
+        )}
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
+          <circle cx="7" cy="7" r="1.2" fill="currentColor" />
+        </svg>
+        {count > 0 ? `Labels (${count})` : 'Labels'}
+      </button>
+
+      {open && (
+        <div
+          role="dialog"
+          aria-label="Filter by label"
+          className="absolute left-0 z-20 mt-2 w-60 rounded-lg border border-gray-200 bg-white p-2 shadow-cardHover"
+        >
+          {labels.length === 0 ? (
+            <p className="px-1 py-2 text-xs text-gray-400">No labels yet.</p>
+          ) : (
+            <ul className="max-h-64 space-y-0.5 overflow-y-auto">
+              {labels.map((label) => {
+                const checked = selectedSet.has(label.id);
+                return (
+                  <li key={label.id}>
+                    <button
+                      type="button"
+                      role="menuitemcheckbox"
+                      aria-checked={checked}
+                      onClick={() => toggle(label.id)}
+                      className="flex w-full items-center gap-2 rounded px-1.5 py-1 text-left hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+                    >
+                      <span
+                        className={cn(
+                          'flex h-4 w-4 flex-shrink-0 items-center justify-center rounded border',
+                          checked
+                            ? 'border-brand-600 bg-brand-600 text-white'
+                            : 'border-gray-300',
+                        )}
+                      >
+                        {checked && (
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" aria-hidden="true">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                          </svg>
+                        )}
+                      </span>
+                      <Badge color={label.color}>{label.name}</Badge>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          {count > 0 && (
+            <div className="mt-1 border-t border-gray-100 pt-1">
+              <button
+                type="button"
+                onClick={() => onChange([])}
+                className="w-full rounded px-1.5 py-1.5 text-left text-xs font-medium text-gray-500 hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+              >
+                Clear label filter
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function Shell({
