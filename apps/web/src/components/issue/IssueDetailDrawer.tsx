@@ -10,6 +10,7 @@ import {
   type UserDto,
 } from '@next-lane/shared';
 import { useIssue, useUpdateIssue, useDeleteIssue } from '@/api/issues';
+import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Select } from '@/components/ui/Select';
 import { Textarea } from '@/components/ui/Textarea';
@@ -253,13 +254,9 @@ function DrawerBody({
                 <p className="mb-1 text-xs font-medium text-gray-600">Labels</p>
                 <div className="flex flex-wrap gap-1">
                   {issue.labels.map((l) => (
-                    <span
-                      key={l.id}
-                      className="rounded px-1.5 py-0.5 text-[11px] font-medium"
-                      style={{ backgroundColor: l.color + '26', color: l.color }}
-                    >
+                    <Badge key={l.id} color={l.color}>
                       {l.name}
-                    </span>
+                    </Badge>
                   ))}
                 </div>
               </div>
