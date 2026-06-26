@@ -5,6 +5,7 @@ export const qk = {
   users: ['users'] as const,
   projects: (workspaceId: string) => ['projects', workspaceId] as const,
   board: (projectId: string) => ['board', projectId] as const,
+  projectIssues: (projectId: string) => ['projectIssues', projectId] as const,
   issueSearch: (projectId: string, q: string) =>
     ['issueSearch', projectId, q] as const,
   issue: (issueId: string) => ['issue', issueId] as const,

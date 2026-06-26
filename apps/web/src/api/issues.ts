@@ -17,6 +17,22 @@ export function useBoard(projectId: string | undefined) {
   });
 }
 
+/**
+ * All issues in a project (regardless of sprint), used by the backlog/sprint
+ * planning view. The board endpoint only returns backlog + active-sprint issues,
+ * so the planning view needs this unfiltered list.
+ */
+export function useProjectIssues(projectId: string | undefined) {
+  return useQuery({
+    queryKey: qk.projectIssues(projectId ?? ''),
+    enabled: !!projectId,
+    queryFn: () => {
+      const params = new URLSearchParams({ projectId: projectId ?? '' });
+      return request<IssueDto[]>(`/issues?${params.toString()}`);
+    },
+  });
+}
+
 export function useIssue(issueId: string | undefined) {
   return useQuery({
     queryKey: qk.issue(issueId ?? ''),
@@ -104,6 +120,65 @@ export function useDeleteIssue(projectId: string) {
     mutationFn: (id: string) =>
       request<void>(`/issues/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: qk.board(projectId) });
+    },
+  });
+}
+
+interface AssignSprintVars {
+  id: string;
+  /** Target sprint id, or null to send the issue back to the backlog. */
+  sprintId: string | null;
+}
+
+interface AssignSprintContext {
+  previous?: IssueDto[];
+}
+
+/**
+ * Move an issue between the backlog and a sprint (or between sprints) by setting
+ * its sprintId. Optimistically patches the cached project-issues list so the
+ * planning view re-groups instantly, rolling back on error. The board is
+ * invalidated on settle since the active sprint's membership may have changed.
+ */
+export function useAssignIssueToSprint(projectId: string) {
+  const qc = useQueryClient();
+  const listKey = qk.projectIssues(projectId);
+
+  return useMutation<IssueDto, Error, AssignSprintVars, AssignSprintContext>({
+    mutationFn: ({ id, sprintId }) =>
+      request<IssueDto>(`/issues/${id}`, {
+        method: 'PATCH',
+        body: { sprintId },
+      }),
+    onMutate: async (vars) => {
+      await qc.cancelQueries({ queryKey: listKey });
+      const previous = qc.getQueryData<IssueDto[]>(listKey);
+      if (previous) {
+        qc.setQueryData<IssueDto[]>(
+          listKey,
+          previous.map((i) =>
+            i.id === vars.id ? { ...i, sprintId: vars.sprintId } : i,
+          ),
+        );
+      }
+      return { previous };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.previous) qc.setQueryData(listKey, ctx.previous);
+    },
+    onSuccess: (updated) => {
+      qc.setQueryData<IssueDto[]>(listKey, (list) =>
+        list
+          ? list.map((i) => (i.id === updated.id ? { ...i, ...updated } : i))
+          : list,
+      );
+      qc.setQueryData(qk.issue(updated.id), (prev: IssueDto | undefined) =>
+        prev ? { ...prev, ...updated } : updated,
+      );
+    },
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: listKey });
       void qc.invalidateQueries({ queryKey: qk.board(projectId) });
     },
   });

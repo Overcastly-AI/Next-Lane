@@ -13,6 +13,7 @@ import { LoginPage } from '@/pages/LoginPage';
 import { RegisterPage } from '@/pages/RegisterPage';
 import { DashboardPage } from '@/pages/DashboardPage';
 import { BoardPage } from '@/pages/BoardPage';
+import { BacklogPage } from '@/pages/BacklogPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -52,6 +53,14 @@ export default function App() {
               element={
                 <RequireAuth>
                   <BoardPage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/projects/:projectId/backlog"
+              element={
+                <RequireAuth>
+                  <BacklogPage />
                 </RequireAuth>
               }
             />

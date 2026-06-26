@@ -23,6 +23,7 @@ import { Select } from '@/components/ui/Select';
 import { Avatar } from '@/components/ui/Avatar';
 import { Badge } from '@/components/ui/Badge';
 import { ErrorState, LoadingState, EmptyState } from '@/components/ui/States';
+import { ProjectNav } from '@/components/project/ProjectNav';
 import { BoardColumn } from '@/components/board/BoardColumn';
 import { IssueCard } from '@/components/board/IssueCard';
 import { CreateIssueModal } from '@/components/board/CreateIssueModal';
@@ -181,14 +182,14 @@ export function BoardPage() {
 
   if (boardQuery.isLoading) {
     return (
-      <Shell>
+      <Shell projectId={projectId}>
         <LoadingState label="Loading board…" />
       </Shell>
     );
   }
   if (boardQuery.isError || !board) {
     return (
-      <Shell>
+      <Shell projectId={projectId}>
         <ErrorState
           error={boardQuery.error ?? new Error('Board not found')}
           onRetry={() => boardQuery.refetch()}
@@ -201,6 +202,7 @@ export function BoardPage() {
 
   return (
     <Shell
+      projectId={projectId}
       header={
         <div className="flex items-center gap-2">
           <Link
@@ -483,13 +485,16 @@ function LabelFilter({
 function Shell({
   children,
   header,
+  projectId,
 }: {
   children: React.ReactNode;
   header?: React.ReactNode;
+  projectId?: string;
 }) {
   return (
     <div className="flex h-screen flex-col">
       <AppHeader>{header}</AppHeader>
+      {projectId && <ProjectNav projectId={projectId} />}
       <main className="flex flex-1 flex-col overflow-hidden">{children}</main>
     </div>
   );
