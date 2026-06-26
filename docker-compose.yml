@@ -41,7 +41,7 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-nextlane}:${POSTGRES_PASSWORD:-nextlane}@db:5432/${POSTGRES_DB:-nextlane}?schema=public
-      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set (see .env.example; generate with: openssl rand -hex 32)}
+      JWT_SECRET: "${JWT_SECRET:?JWT_SECRET must be set - see .env.example}"
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
       REDIS_URL: redis://redis:6379
       API_PORT: 4000
