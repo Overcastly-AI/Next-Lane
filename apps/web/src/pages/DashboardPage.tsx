@@ -16,9 +16,12 @@ import {
 import { useProjects } from '@/api/projects';
 import { CreateProjectModal } from '@/components/project/CreateProjectModal';
 import { ProjectCard } from '@/components/project/ProjectCard';
+import { useToast } from '@/components/ui/Toast';
+import { errorMessage } from '@/lib/errorMessage';
 
 export function DashboardPage() {
   const navigate = useNavigate();
+  const toast = useToast();
   const workspacesQuery = useWorkspaces();
   const createWorkspace = useCreateWorkspace();
   const [selectedWs, setSelectedWs] = useState<string | null>(null);
@@ -114,7 +117,15 @@ export function DashboardPage() {
               onCreate={(name) =>
                 createWorkspace
                   .mutateAsync({ name })
-                  .then((ws) => setSelectedWs(ws.id))
+                  .then((ws) => {
+                    setSelectedWs(ws.id);
+                    toast.success(`Created workspace ${ws.name}.`);
+                  })
+                  .catch((err) =>
+                    toast.error(
+                      errorMessage(err, 'Could not create workspace.'),
+                    ),
+                  )
               }
               pending={createWorkspace.isPending}
             />

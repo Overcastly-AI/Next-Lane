@@ -15,6 +15,7 @@ import { Textarea } from '@/components/ui/Textarea';
 import { Field } from '@/components/ui/Field';
 import { useCreateIssue } from '@/api/issues';
 import { ApiError } from '@/api/client';
+import { useToast } from '@/components/ui/Toast';
 import { titleCase } from '@/components/issue/issueMeta';
 
 export function CreateIssueModal({
@@ -33,6 +34,7 @@ export function CreateIssueModal({
   defaultStatusId?: string;
 }) {
   const create = useCreateIssue(projectId);
+  const toast = useToast();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [type, setType] = useState<IssueType>(IssueType.TASK);
@@ -65,7 +67,7 @@ export function CreateIssueModal({
     e.preventDefault();
     setError(null);
     try {
-      await create.mutateAsync({
+      const issue = await create.mutateAsync({
         projectId,
         title: title.trim(),
         type,
@@ -76,10 +78,12 @@ export function CreateIssueModal({
       });
       reset();
       onClose();
+      toast.success(`Created ${issue.key}.`);
     } catch (err) {
-      setError(
-        err instanceof ApiError ? err.message : 'Could not create issue.',
-      );
+      const message =
+        err instanceof ApiError ? err.message : 'Could not create issue.';
+      setError(message);
+      toast.error(message);
     }
   }
 

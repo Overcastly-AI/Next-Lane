@@ -16,6 +16,8 @@ import { Select } from '@/components/ui/Select';
 import { Textarea } from '@/components/ui/Textarea';
 import { Field } from '@/components/ui/Field';
 import { useOverlay } from '@/lib/useOverlay';
+import { errorMessage } from '@/lib/errorMessage';
+import { useToast } from '@/components/ui/Toast';
 import { ErrorState, LoadingState } from '@/components/ui/States';
 import { IssueTypeIcon, titleCase } from '@/components/issue/issueMeta';
 import { CommentsPanel } from './CommentsPanel';
@@ -37,17 +39,24 @@ export function IssueDetailDrawer({
   const issueQuery = useIssue(issueId);
   const update = useUpdateIssue();
   const remove = useDeleteIssue(projectId);
+  const toast = useToast();
   const panelRef = useRef<HTMLElement>(null);
 
   useOverlay({ open: true, onClose, containerRef: panelRef });
 
   function patch(field: keyof IssueDto, value: unknown) {
     if (!issueQuery.data) return;
-    update.mutate({
-      id: issueId,
-      projectId,
-      patch: { [field]: value } as never,
-    });
+    update.mutate(
+      {
+        id: issueId,
+        projectId,
+        patch: { [field]: value } as never,
+      },
+      {
+        onError: (err) =>
+          toast.error(errorMessage(err, 'Could not save your change.')),
+      },
+    );
   }
 
   return createPortal(
@@ -83,7 +92,16 @@ export function IssueDetailDrawer({
             saving={update.isPending}
             onDelete={() => {
               if (window.confirm('Delete this issue? This cannot be undone.')) {
-                remove.mutate(issueId, { onSuccess: onClose });
+                remove.mutate(issueId, {
+                  onSuccess: () => {
+                    toast.success('Issue deleted.');
+                    onClose();
+                  },
+                  onError: (err) =>
+                    toast.error(
+                      errorMessage(err, 'Could not delete this issue.'),
+                    ),
+                });
               }
             }}
             deleting={remove.isPending}

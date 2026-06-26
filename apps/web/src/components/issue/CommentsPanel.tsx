@@ -4,10 +4,13 @@ import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { Textarea } from '@/components/ui/Textarea';
 import { Spinner, ErrorState } from '@/components/ui/States';
+import { useToast } from '@/components/ui/Toast';
+import { errorMessage } from '@/lib/errorMessage';
 import { useAuth } from '@/auth/AuthContext';
 
 export function CommentsPanel({ issueId }: { issueId: string }) {
   const { user } = useAuth();
+  const toast = useToast();
   const commentsQuery = useComments(issueId);
   const addComment = useAddComment(issueId);
   const [body, setBody] = useState('');
@@ -19,8 +22,8 @@ export function CommentsPanel({ issueId }: { issueId: string }) {
     try {
       await addComment.mutateAsync(text);
       setBody('');
-    } catch {
-      // Error surfaced inline below.
+    } catch (err) {
+      toast.error(errorMessage(err, 'Could not post comment.'));
     }
   }
 

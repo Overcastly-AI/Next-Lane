@@ -26,6 +26,8 @@ import { BoardColumn } from '@/components/board/BoardColumn';
 import { IssueCard } from '@/components/board/IssueCard';
 import { CreateIssueModal } from '@/components/board/CreateIssueModal';
 import { IssueDetailDrawer } from '@/components/issue/IssueDetailDrawer';
+import { useToast } from '@/components/ui/Toast';
+import { errorMessage } from '@/lib/errorMessage';
 
 export function BoardPage() {
   const { projectId = '' } = useParams();
@@ -33,6 +35,7 @@ export function BoardPage() {
   const boardQuery = useBoard(projectId);
   const usersQuery = useUsers();
   const moveIssue = useMoveIssue(projectId);
+  const toast = useToast();
 
   useBoardRealtime(projectId);
 
@@ -131,12 +134,18 @@ export function BoardPage() {
       return;
     }
 
-    moveIssue.mutate({
-      id: activeId,
-      statusId: targetStatusId,
-      beforeId: beforeIssue?.id ?? null,
-      afterId: afterIssue?.id ?? null,
-    });
+    moveIssue.mutate(
+      {
+        id: activeId,
+        statusId: targetStatusId,
+        beforeId: beforeIssue?.id ?? null,
+        afterId: afterIssue?.id ?? null,
+      },
+      {
+        onError: (err) =>
+          toast.error(errorMessage(err, 'Could not move that card.')),
+      },
+    );
   }
 
   function openIssue(id: string) {

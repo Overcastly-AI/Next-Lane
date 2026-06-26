@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/Input';
 import { Field } from '@/components/ui/Field';
 import { useCreateProject } from '@/api/projects';
 import { ApiError } from '@/api/client';
+import { useToast } from '@/components/ui/Toast';
 
 export function CreateProjectModal({
   open,
@@ -19,6 +20,7 @@ export function CreateProjectModal({
   onCreated: (project: ProjectDto) => void;
 }) {
   const create = useCreateProject();
+  const toast = useToast();
   const [name, setName] = useState('');
   const [key, setKey] = useState('');
   const [keyTouched, setKeyTouched] = useState(false);
@@ -60,10 +62,12 @@ export function CreateProjectModal({
       });
       reset();
       onCreated(project);
+      toast.success(`Created project ${project.name}.`);
     } catch (err) {
-      setError(
-        err instanceof ApiError ? err.message : 'Could not create project.',
-      );
+      const message =
+        err instanceof ApiError ? err.message : 'Could not create project.';
+      setError(message);
+      toast.error(message);
     }
   }
 
