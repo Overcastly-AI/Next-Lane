@@ -32,8 +32,33 @@ export class UsersService {
     return users.map(toUserDto);
   }
 
-  async findOne(id: string): Promise<UserDto> {
-    const user = await this.prisma.user.findUnique({ where: { id } });
+  /**
+   * Fetch a single user by id, but only if they share at least one workspace
+   * with the caller (the caller may always fetch themselves). This applies the
+   * same co-member scoping as `findAll`: without it, any authenticated user
+   * could fetch any other user's name/email/avatar across tenants by id. A
+   * non-co-member is indistinguishable from a non-existent user — both 404 — so
+   * we don't leak the existence of foreign accounts.
+   */
+  async findOne(callerId: string, id: string): Promise<UserDto> {
+    if (id === callerId) {
+      const self = await this.prisma.user.findUnique({ where: { id } });
+      if (!self) throw new NotFoundException('User not found');
+      return toUserDto(self);
+    }
+
+    const memberships = await this.prisma.membership.findMany({
+      where: { userId: callerId },
+      select: { workspaceId: true },
+    });
+    const workspaceIds = memberships.map((m) => m.workspaceId);
+
+    const user = await this.prisma.user.findFirst({
+      where: {
+        id,
+        memberships: { some: { workspaceId: { in: workspaceIds } } },
+      },
+    });
     if (!user) throw new NotFoundException('User not found');
     return toUserDto(user);
   }

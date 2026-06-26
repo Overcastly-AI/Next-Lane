@@ -69,7 +69,7 @@ Format: `- [ ] (P1, M) title — description [src]` · P0 critical / P1 now / P2
 
 ## Next (P2)
 
-- [ ] (P2, S) GET /users/:id authorization — scope to co-members — any authenticated user can fetch any other user's name/email/avatar by CUID; the co-member guard from `findAll` should also apply to `findOne`; Low severity but consistent with the isolation model [engineering-auditor]
+- [x] (P2, S) GET /users/:id authorization — scope to co-members — any authenticated user can fetch any other user's name/email/avatar by CUID; the co-member guard from `findAll` should also apply to `findOne`; Low severity but consistent with the isolation model [engineering-auditor]
 - [ ] (P2, M) Replace assertNoParentCycle sequential waterfall with single recursive CTE — N sequential `findUnique` calls per hop (up to 1000 round-trips for deep trees); runs outside the update transaction (TOCTOU on concurrent parent reassignment); replace with a `WITH RECURSIVE` CTE via `$queryRaw` inside the transaction [engineering-auditor]
 - [ ] (P2, M) Cursor pagination for issue list and board — findAll/getBoard return all issues with full includes unbounded; degrades large projects and can cause OOM [engineering-auditor]
 - [ ] (P2, M) Transactional move + rank-collision rebalance — neighbor read/update outside a transaction can collide under concurrent moves; wrap in $transaction + add rebalance fallback [engineering-auditor]
