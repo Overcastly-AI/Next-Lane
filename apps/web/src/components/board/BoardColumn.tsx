@@ -87,7 +87,7 @@ export function BoardColumn({
           <button
             onClick={() => onAdd(status.id)}
             aria-label={`Add issue to ${status.name}`}
-            className="rounded-lg border border-dashed border-gray-300 py-6 text-xs text-gray-400 transition-colors hover:border-brand-300 hover:text-brand-600"
+            className="rounded-lg border border-dashed border-gray-300 py-6 text-sm text-gray-500 transition-colors hover:border-brand-300 hover:text-brand-600"
           >
             + Add issue
           </button>

@@ -310,10 +310,12 @@ Suggested fix: at minimum, document this as an intentional divergence; at best, 
 **P3 — BoardColumn empty-column CTA button has a 40 px touch target on mobile but the label is ambiguous.**
 `BoardColumn.tsx:87-94` renders a full-width dashed button reading "+ Add issue". This passes the tap-target size test (the full column width, `py-6`). However the text "+ Add issue" is a light `text-xs text-gray-400` style that renders at approximately 12 px — below the WCAG recommended minimum visible text size for interactive elements. The hover state turns it brand-colored which helps, but the default state is low-contrast.
 Suggested fix: increase the button text to `text-sm` and raise contrast to `text-gray-500` in the default state.
+- **RESOLVED 2026-06-27:** `text-xs text-gray-400` changed to `text-sm text-gray-500` on the empty-column CTA button in `BoardColumn.tsx`. Hover state unchanged (`hover:border-brand-300 hover:text-brand-600`).
 
 **P3 — No CTA action in the MyWork per-section `EmptyState` to guide the user.**
 Each `Section` in `MyWorkPage` passes `emptyTitle` and `emptyDescription` to `EmptyState` but no `action` prop. The `EmptyState` component supports an `action` slot (any `ReactNode`). For a new user, "Nothing assigned to you yet" with no next step is a dead end. A link to the board or to creating an issue would increase discoverability.
 Suggested fix: pass `action={<Link to="/"><Button size="sm" variant="secondary">Go to board</Button></Link>}` (or similar) in the "Assigned to me" empty section.
+- **RESOLVED 2026-06-27:** Both "Assigned to me" and "Reported by me" sections now pass `emptyAction={<Link to="/"><Button size="sm" variant="secondary">Go to board</Button></Link>}` as the `action` prop to `EmptyState`. `Section` component updated to accept `emptyAction?: React.ReactNode`. `Link` and `Button` imports added to `MyWorkPage.tsx`.
 
 ---
 
@@ -332,6 +334,7 @@ Suggested fix: pass `action={<Link to="/"><Button size="sm" variant="secondary">
    - **RESOLVED 2026-06-27:** Both trigger buttons changed to `aria-haspopup="menu"`.
 
 5. **P2 — Replace emoji icons in OnboardingPanel with SVGs** (`OnboardingPanel.tsx:79-91`): the `⬛`, `🗓`, `📊` emoji render inconsistently across platforms. Replace with inline SVGs using `stroke="currentColor"` from the existing icon vocabulary.
+   - **RESOLVED 2026-06-27:** `HIGHLIGHTS` array type changed from `{ icon: string }` to `{ icon: React.ReactNode }`. Three named SVG constants — `KanbanIcon` (three vertical bars), `SprintsIcon` (calendar outline), `ReportsIcon` (bar chart) — replaced the emoji strings. Icon wrapper changed from `text-base` to `h-5 w-5 text-gray-400`, matching the app's standard icon sizing. 16 e2e tests green (onboarding + my-work, desktop + mobile).
 
 ### Additional items resolved in the 2026-06-27 polish pass
 

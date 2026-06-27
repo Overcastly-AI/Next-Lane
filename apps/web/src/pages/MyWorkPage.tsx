@@ -1,7 +1,9 @@
-import { useNavigate } from 'react-router-dom';
+import type React from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { StatusCategory, type MyWorkIssueDto } from '@next-lane/shared';
 import { AppHeader } from '@/components/AppHeader';
 import { Badge } from '@/components/ui/Badge';
+import { Button } from '@/components/ui/Button';
 import { EmptyState, ErrorState, LoadingState } from '@/components/ui/States';
 import { IssueTypeIcon, PriorityIcon } from '@/components/issue/issueMeta';
 import { useMyWork } from '@/api/me';
@@ -60,6 +62,13 @@ export function MyWorkPage() {
             onOpen={open}
             emptyTitle="Nothing assigned to you yet"
             emptyDescription="Issues assigned to you will show up here."
+            emptyAction={
+              <Link to="/">
+                <Button size="sm" variant="secondary">
+                  Go to board
+                </Button>
+              </Link>
+            }
           />
           <Section
             title="Reported by me"
@@ -68,6 +77,13 @@ export function MyWorkPage() {
             onOpen={open}
             emptyTitle="You haven't reported any issues"
             emptyDescription="Issues you create will show up here."
+            emptyAction={
+              <Link to="/">
+                <Button size="sm" variant="secondary">
+                  Go to board
+                </Button>
+              </Link>
+            }
           />
         </div>
       )}
@@ -91,6 +107,7 @@ function Section({
   onOpen,
   emptyTitle,
   emptyDescription,
+  emptyAction,
 }: {
   title: string;
   count: number;
@@ -98,6 +115,7 @@ function Section({
   onOpen: (issue: MyWorkIssueDto) => void;
   emptyTitle: string;
   emptyDescription: string;
+  emptyAction?: React.ReactNode;
 }) {
   return (
     <section>
@@ -110,7 +128,7 @@ function Section({
         </span>
       </div>
       {issues.length === 0 ? (
-        <EmptyState title={emptyTitle} description={emptyDescription} />
+        <EmptyState title={emptyTitle} description={emptyDescription} action={emptyAction} />
       ) : (
         <ul className="divide-y divide-gray-100 overflow-hidden rounded-xl border border-gray-200 bg-white">
           {issues.map((issue) => (
