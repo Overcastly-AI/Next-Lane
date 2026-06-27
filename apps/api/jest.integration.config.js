@@ -31,4 +31,8 @@ module.exports = {
   // Run serially (no worker isolation needed; the tests share one NestJS app).
   maxWorkers: 1,
   clearMocks: true,
+  // The harness opens a socket.io-client + a Nest app whose handles can keep the
+  // process alive after specs pass; force exit so the run terminates cleanly
+  // instead of hanging on lingering handles.
+  forceExit: true,
 };
