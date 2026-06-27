@@ -148,12 +148,23 @@ export class PasswordResetService {
       );
     }
 
-    // Dev-mode fallback: log the full link. Operators can copy it from logs.
-    // In production, replace this with a real mailer and remove the log.
-    this.logger.log(
-      `[password-reset] Reset link for ${email} → ${link}  ` +
-        `(delivery: ${process.env.SMTP_HOST ? 'SMTP (stub)' : 'log'})`,
-    );
+    // Dev-mode fallback: log the full link so developers can copy it from the
+    // API logs.  NEVER emit the raw token in production — a log aggregator
+    // (Loki, CloudWatch, journald) would capture it beyond the token's own
+    // 1-hour validity window.
+    if (process.env.NODE_ENV !== 'production') {
+      this.logger.log(
+        `[password-reset] Reset link for ${email} → ${link}  ` +
+          `(delivery: ${process.env.SMTP_HOST ? 'SMTP (stub)' : 'log'})`,
+      );
+    } else {
+      // In production, log only the fact that a delivery was attempted — never
+      // the raw token.  Configure SMTP_HOST to enable actual email delivery.
+      this.logger.log(
+        `[password-reset] Reset link dispatched for ${email} ` +
+          `(delivery: ${process.env.SMTP_HOST ? 'SMTP (stub)' : 'log-suppressed-in-prod'})`,
+      );
+    }
   }
 
   // ---------------------------------------------------------------------------

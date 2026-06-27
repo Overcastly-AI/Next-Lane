@@ -11,6 +11,7 @@
  *   6. Already-used token: rejected with BadRequestException.
  *   7. Unknown token (not in DB): rejected with BadRequestException.
  *   8. forgot-password always returns 200 for unknown email (service contract).
+ *   9. (Pass 5) Raw token NOT logged when NODE_ENV=production.
  */
 
 import { BadRequestException } from '@nestjs/common';
@@ -141,6 +142,75 @@ describe('PasswordResetService', () => {
       // The service itself delegates to Prisma with the original case from the
       // DB lookup path; the important thing is it never throws.
       expect(prisma.passwordResetToken.create).not.toHaveBeenCalled();
+    });
+
+    // ── Pass 5: production log guard ──────────────────────────────────────────
+
+    it('(Pass 5) does NOT log the raw reset token when NODE_ENV=production', async () => {
+      prisma.user.findUnique.mockResolvedValue(USER);
+      prisma.passwordResetToken.updateMany.mockResolvedValue({ count: 0 });
+      prisma.passwordResetToken.create.mockResolvedValue({ id: 'tok-prod' });
+
+      const originalEnv = process.env.NODE_ENV;
+      process.env.NODE_ENV = 'production';
+
+      // Capture all logger.log calls on the service instance.
+      // NestJS Logger writes to process.stdout via console.log internally;
+      // we spy on the Logger prototype's log method.
+      const logSpy = jest.spyOn(
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        require('@nestjs/common').Logger.prototype,
+        'log',
+      );
+
+      try {
+        await service.requestReset(USER.email);
+      } finally {
+        process.env.NODE_ENV = originalEnv;
+      }
+
+      // Collect all messages logged during the call.
+      const logged = logSpy.mock.calls
+        .map((c) => String(c[0]))
+        .join('\n');
+
+      // The raw reset link (which contains the token) must NOT appear in the log.
+      // In production, only a sanitised "dispatched for <email>" line is emitted.
+      expect(logged).not.toMatch(/reset-password\?token=/i);
+      expect(logged).not.toMatch(/http.*token=/i);
+
+      logSpy.mockRestore();
+    });
+
+    it('(Pass 5) DOES log the reset link when NODE_ENV is not production (dev mode)', async () => {
+      prisma.user.findUnique.mockResolvedValue(USER);
+      prisma.passwordResetToken.updateMany.mockResolvedValue({ count: 0 });
+      prisma.passwordResetToken.create.mockResolvedValue({ id: 'tok-dev' });
+
+      const originalEnv = process.env.NODE_ENV;
+      // Explicitly set a non-production environment (or delete it — dev default).
+      process.env.NODE_ENV = 'development';
+
+      const logSpy = jest.spyOn(
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        require('@nestjs/common').Logger.prototype,
+        'log',
+      );
+
+      try {
+        await service.requestReset(USER.email);
+      } finally {
+        process.env.NODE_ENV = originalEnv;
+      }
+
+      const logged = logSpy.mock.calls
+        .map((c) => String(c[0]))
+        .join('\n');
+
+      // In dev mode the full reset link IS logged (so developers can copy it).
+      expect(logged).toMatch(/reset-password\?token=/i);
+
+      logSpy.mockRestore();
     });
   });
 
