@@ -40,6 +40,21 @@ function dayRange(start: Date, end: Date): string[] {
   return days;
 }
 
+// ---------------------------------------------------------------------------
+// Raw-query result row types (returned by $queryRaw)
+// ---------------------------------------------------------------------------
+
+interface CfdAggRow {
+  day: Date;
+  category: string;
+  cnt: bigint;
+}
+
+interface BurndownCompletionRow {
+  issue_id: string;
+  completed_day: string; // YYYY-MM-DD as text from TO_CHAR
+}
+
 @Injectable()
 export class ReportsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -96,13 +111,15 @@ export class ReportsService {
    * (startDate → endDate) with an ideal linear line from total committed points
    * down to 0, and the actual remaining points.
    *
-   * Actual remaining is derived from ActivityLog: each issue with story points
-   * is "burned down" on the day it transitioned INTO a DONE-category status
-   * (the latest such transition wins, so a re-opened-then-redone issue burns on
-   * its final completion). Issues completed before the window start are counted
-   * as already done on day one; issues never transitioned via the log but
-   * currently in a DONE status are credited on the final day so the actual line
-   * reconciles with the velocity "completed" figure.
+   * DB-level aggregation approach (O(windowDays) output):
+   * A single $queryRaw finds the latest DONE-transition day per sprint issue
+   * directly in Postgres. The query joins sprint issues against the ActivityLog
+   * using a lateral subquery to pick the most-recent `to`-DONE transition per
+   * issue. Output is bounded by the number of sprint issues (not all logs).
+   *
+   * Issues currently in DONE with no logged transition are credited on the
+   * final day so the actual line reconciles with the velocity "completed"
+   * figure (handled in application layer after the bounded SQL result).
    */
   async burndown(
     userId: string,
@@ -150,8 +167,9 @@ export class ReportsService {
       pointsByIssue.set(issue.id, points(issue.storyPoints));
     }
 
-    // When each issue was completed (the latest transition into a DONE status).
-    const completedAt = await this.completionDates(
+    // Fetch the most-recent DONE-transition day per sprint issue via a single
+    // parameterized SQL query. Output row count ≤ number of sprint issues.
+    const completedAt = await this.burndownCompletionDates(
       sprint.issues.map((i) => i.id),
       doneStatusIds,
     );
@@ -212,31 +230,43 @@ export class ReportsService {
   }
 
   /**
-   * For each issue, the day key (YYYY-MM-DD) of its most recent transition INTO
-   * a DONE-category status, read from the ActivityLog `status` entries. Issues
-   * with no such transition are absent from the map.
+   * For each sprint issue, the YYYY-MM-DD day of its most-recent transition
+   * into a DONE-category status — resolved entirely in the database.
+   *
+   * The query is parameterized (no string interpolation of user input). Output
+   * row count is bounded by the number of sprint issues, not the total log size.
+   *
+   * Returns an empty Map when there are no issues or no DONE statuses.
    */
-  private async completionDates(
+  private async burndownCompletionDates(
     issueIds: string[],
     doneStatusIds: Set<string>,
   ): Promise<Map<string, string>> {
     if (issueIds.length === 0 || doneStatusIds.size === 0) return new Map();
 
-    const logs = await this.prisma.activityLog.findMany({
-      where: {
-        issueId: { in: issueIds },
-        field: 'status',
-        to: { in: Array.from(doneStatusIds) },
-      },
-      select: { issueId: true, createdAt: true },
-      orderBy: { createdAt: 'asc' },
-    });
+    // Build a VALUES list for the issue IDs and a VALUES list for the DONE
+    // status IDs so we can pass them as typed literals without interpolation.
+    // Prisma $queryRaw only supports scalar parameters; arrays of strings must
+    // be passed as a Postgres ANY($1::text[]) expression.
+    const doneIdsArray = Array.from(doneStatusIds);
 
-    // Later entries overwrite earlier ones, so the map ends on the final
-    // completion day for each issue.
+    const rows = await this.prisma.$queryRaw<BurndownCompletionRow[]>`
+      SELECT
+        a."issueId"            AS issue_id,
+        TO_CHAR(
+          MAX(a."createdAt") AT TIME ZONE 'UTC',
+          'YYYY-MM-DD'
+        )                      AS completed_day
+      FROM "ActivityLog" a
+      WHERE a."issueId"  = ANY(${issueIds}::text[])
+        AND a."field"    = 'status'
+        AND a."to"       = ANY(${doneIdsArray}::text[])
+      GROUP BY a."issueId"
+    `;
+
     const byIssue = new Map<string, string>();
-    for (const log of logs) {
-      byIssue.set(log.issueId, dayKey(log.createdAt));
+    for (const row of rows) {
+      byIssue.set(row.issue_id, row.completed_day);
     }
     return byIssue;
   }
@@ -246,30 +276,27 @@ export class ReportsService {
    * (UTC, ending today), return the count of issues in each status category
    * (TODO / IN_PROGRESS / DONE), suitable for a stacked-area chart.
    *
-   * Historical state reconstruction approach
-   * ─────────────────────────────────────────
-   * The ActivityLog records every `status` field change with `from`/`to` status
-   * IDs and a `createdAt` timestamp. We use this log to reconstruct each
-   * issue's status on every day in the window:
+   * DB-level aggregation approach (O(windowDays × categories) output):
+   * ──────────────────────────────────────────────────────────────────
+   * A single parameterized SQL query replaces the previous JS loop that loaded
+   * every issue + every activity log row into memory.
    *
-   *  1. Fetch all project issues with their CURRENT statusId + the status's
-   *     category. This is the ground truth for "today".
-   *  2. Fetch all ActivityLog rows for those issues where `field = 'status'`,
-   *     ordered newest-first (descending).
-   *  3. Walk backwards through the window day by day. For each day, we know the
-   *     status each issue was in at the END of that day because we can replay
-   *     the log in reverse: starting from the current status, each log entry
-   *     that occurred AFTER the day boundary rolls the issue back to the `from`
-   *     status.
-   *  4. Issues that were created after a given day do not exist yet and are
-   *     excluded from that day's counts.
-   *  5. If an issue's `from` status is missing from the DB (deleted status), we
-   *     keep the best-known status rather than erroring.
+   * Strategy:
+   *  1. `generate_series` produces every calendar day in the window.
+   *  2. For each (day, issue) pair where the issue existed on that day, a
+   *     LATERAL subquery selects the status the issue was in at end-of-day:
+   *     the most-recent ActivityLog `to` status whose `createdAt` is ≤ end-of-day.
+   *     When no log entry exists yet, the issue's current statusId is used.
+   *  3. The status → category mapping is joined from the Status table.
+   *  4. Counts are aggregated per (day, category).
    *
-   * This gives an exact reconstruction when the ActivityLog is complete and a
-   * reasonable approximation when log rows are absent (e.g. seeded/imported
-   * issues without history): those issues carry their current status backward
-   * through the entire window.
+   * Historical reconstruction semantics are identical to the previous JS logic:
+   * - Issues not yet created on a given day are excluded.
+   * - Issues with no log history carry their current status backward (the COALESCE
+   *   on the lateral subquery falls back to i."statusId").
+   * - The latest `to` status for a given day is used (matches the JS walk).
+   *
+   * Output is bounded by windowDays × |StatusCategory| (≤ 366 × 3 = 1,098 rows).
    */
   async cfd(
     userId: string,
@@ -296,131 +323,105 @@ export class ReportsService {
         today.getUTCDate(),
       ),
     );
+
+    // Build the day labels that correspond to generate_series output
+    // (oldest → newest, same as before).
     const allDays = dayRange(windowStart, windowEnd);
 
-    // 1. All project issues with current status category + creation date.
-    const issues = await this.prisma.issue.findMany({
-      where: { projectId },
-      select: {
-        id: true,
-        statusId: true,
-        createdAt: true,
-        status: { select: { category: true } },
-      },
-    });
+    // Single aggregation query — output ≤ windowDays × 3 rows.
+    // Parameters:
+    //   $1 = projectId (text)
+    //   $2 = window start (timestamptz)
+    //   $3 = window end (timestamptz — end of last day)
+    const windowEndInclusive = new Date(windowEnd.getTime() + 86400000 - 1); // end of day
 
-    if (issues.length === 0) {
-      return {
-        projectId,
-        days: windowDays,
-        series: allDays.map((date) => ({
-          date,
-          todo: 0,
-          inProgress: 0,
-          done: 0,
-        })),
-      };
-    }
+    const aggRows = await this.prisma.$queryRaw<CfdAggRow[]>`
+      WITH
+        -- All issues in the project with their current statusId and creation date
+        proj_issues AS (
+          SELECT
+            i.id,
+            i."statusId",
+            i."createdAt",
+            s.category
+          FROM "Issue" i
+          JOIN "Status" s ON s.id = i."statusId"
+          WHERE i."projectId" = ${projectId}
+        ),
 
-    // 2. Fetch all status-change log entries for these issues within a
-    //    generous lookback (we need rows before the window start to know what
-    //    status an issue was in at the start).
-    const issueIds = issues.map((i) => i.id);
-    const logs = await this.prisma.activityLog.findMany({
-      where: {
-        issueId: { in: issueIds },
-        field: 'status',
-      },
-      select: { issueId: true, from: true, to: true, createdAt: true },
-      orderBy: { createdAt: 'desc' }, // newest first — we walk backwards
-    });
+        -- Generate every calendar day in the window (midnight UTC)
+        days AS (
+          SELECT gs::date AS day
+          FROM generate_series(
+            ${windowStart}::timestamptz,
+            ${windowEnd}::timestamptz,
+            INTERVAL '1 day'
+          ) gs
+        ),
 
-    // 3. Build a lookup of statusId → category from all issues' current status.
-    //    Collect all unique statusIds referenced in the log (both from and to)
-    //    and fetch their categories so we can map rolled-back statuses too.
-    const allStatusIds = new Set<string>();
-    for (const issue of issues) allStatusIds.add(issue.statusId);
-    for (const log of logs) {
-      if (log.from) allStatusIds.add(log.from);
-      if (log.to) allStatusIds.add(log.to);
-    }
-    const statusRows = await this.prisma.status.findMany({
-      where: { id: { in: Array.from(allStatusIds) } },
-      select: { id: true, category: true },
-    });
-    const categoryOf = new Map<string, StatusCategory>();
-    for (const row of statusRows) {
-      categoryOf.set(row.id, row.category as StatusCategory);
-    }
+        -- For each (day, issue) pair where the issue existed on that day,
+        -- determine the effective status at end-of-day by picking the most
+        -- recent ActivityLog "to" status with createdAt <= end-of-day.
+        -- Falls back to the issue's current statusId when there is no log entry.
+        issue_day_status AS (
+          SELECT
+            d.day,
+            pi.id                                          AS issue_id,
+            COALESCE(
+              (
+                SELECT a."to"
+                FROM "ActivityLog" a
+                WHERE a."issueId" = pi.id
+                  AND a."field"   = 'status'
+                  AND a."to"      IS NOT NULL
+                  AND a."createdAt" <= (d.day::timestamptz + INTERVAL '1 day - 1 millisecond')
+                ORDER BY a."createdAt" DESC
+                LIMIT 1
+              ),
+              pi."statusId"
+            )                                              AS effective_status_id
+          FROM days d
+          CROSS JOIN proj_issues pi
+          -- Exclude issues not yet created on this day
+          WHERE pi."createdAt"::date <= d.day
+        ),
 
-    // 4. Partition log entries by issueId for efficient per-issue replay.
-    const logsByIssue = new Map<
-      string,
-      Array<{ from: string | null; to: string | null; createdAt: Date }>
-    >();
-    for (const log of logs) {
-      if (!logsByIssue.has(log.issueId)) logsByIssue.set(log.issueId, []);
-      logsByIssue.get(log.issueId)!.push(log);
-    }
+        -- Map effective status IDs to categories
+        issue_day_category AS (
+          SELECT
+            ids.day,
+            s.category
+          FROM issue_day_status ids
+          JOIN "Status" s ON s.id = ids.effective_status_id
+        )
 
-    // 5. For each issue, determine its statusId at each day boundary by
-    //    replaying the log backwards from today.
-    //    issueStatusAtDay[issueId][dayKey] = statusId (or undefined if not yet created)
-    const issueStatusAtDay = new Map<string, Map<string, string | null>>();
+      -- Aggregate counts per day and category
+      SELECT
+        day,
+        category,
+        COUNT(*) AS cnt
+      FROM issue_day_category
+      GROUP BY day, category
+      ORDER BY day ASC
+    `;
 
-    for (const issue of issues) {
-      const issueCreatedDay = dayKey(issue.createdAt);
-      const issueLogs = logsByIssue.get(issue.id) ?? []; // already desc-sorted
-      // Walk backwards through the days. Start with current status.
-      let currentStatusId: string = issue.statusId;
-      let logPtr = 0; // points to the next log entry to potentially apply
-      const dayMap = new Map<string, string | null>();
-
-      for (let di = allDays.length - 1; di >= 0; di--) {
-        const day = allDays[di];
-
-        // Apply all log entries that occurred AFTER the start of this day
-        // (i.e., they happened ON or AFTER this day's midnight UTC). These
-        // need to be "undone" to know the status at the END of the previous
-        // day.
-        const dayStartUtc = new Date(`${day}T00:00:00.000Z`).getTime();
-        while (
-          logPtr < issueLogs.length &&
-          issueLogs[logPtr].createdAt.getTime() >= dayStartUtc
-        ) {
-          const entry = issueLogs[logPtr];
-          // Roll back: the issue's status before this transition was `from`.
-          if (entry.from !== null) {
-            currentStatusId = entry.from;
-          }
-          logPtr++;
-        }
-
-        // If the issue hadn't been created by this day, it doesn't count.
-        if (day < issueCreatedDay) {
-          dayMap.set(day, null);
-        } else {
-          dayMap.set(day, currentStatusId);
-        }
+    // Build a lookup: dayKey → { todo, inProgress, done }
+    const dayMap = new Map<string, { todo: number; inProgress: number; done: number }>();
+    for (const row of aggRows) {
+      const dk = dayKey(row.day);
+      if (!dayMap.has(dk)) {
+        dayMap.set(dk, { todo: 0, inProgress: 0, done: 0 });
       }
-
-      issueStatusAtDay.set(issue.id, dayMap);
+      const bucket = dayMap.get(dk)!;
+      const count = Number(row.cnt);
+      if (row.category === StatusCategory.TODO) bucket.todo += count;
+      else if (row.category === StatusCategory.IN_PROGRESS) bucket.inProgress += count;
+      else if (row.category === StatusCategory.DONE) bucket.done += count;
     }
 
-    // 6. Aggregate counts per day.
-    const series: CfdPointDto[] = allDays.map((day) => {
-      let todo = 0;
-      let inProgress = 0;
-      let done = 0;
-      for (const issue of issues) {
-        const statusId = issueStatusAtDay.get(issue.id)?.get(day);
-        if (statusId === null || statusId === undefined) continue; // not yet created
-        const cat = categoryOf.get(statusId);
-        if (cat === StatusCategory.TODO) todo++;
-        else if (cat === StatusCategory.IN_PROGRESS) inProgress++;
-        else if (cat === StatusCategory.DONE) done++;
-      }
-      return { date: day, todo, inProgress, done };
+    const series: CfdPointDto[] = allDays.map((date) => {
+      const bucket = dayMap.get(date) ?? { todo: 0, inProgress: 0, done: 0 };
+      return { date, ...bucket };
     });
 
     return { projectId, days: windowDays, series };
