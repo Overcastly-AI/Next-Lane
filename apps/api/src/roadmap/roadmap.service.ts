@@ -8,6 +8,13 @@ import type {
   SprintDto,
 } from '@next-lane/shared';
 
+/**
+ * Maximum number of epics returned in a single roadmap response.
+ * Prevents OOM on projects with a very large epic backlog. When the cap is
+ * hit, `epicsTruncated` is set to true so the UI can inform the user.
+ */
+export const ROADMAP_EPICS_CAP = 500;
+
 /** Minimum of two dates that may be null (null is ignored). */
 function minDate(a: Date | null, b: Date | null): Date | null {
   if (!a) return b;
@@ -48,7 +55,8 @@ export class RoadmapService {
 
     // All epics with their children's status + sprint window. Children are the
     // direct sub-issues (stories/tasks) parented to the epic.
-    const epicRows = await this.prisma.issue.findMany({
+    // Fetch one extra row beyond the cap to detect truncation without a COUNT.
+    const epicRowsFetched = await this.prisma.issue.findMany({
       where: { projectId, type: IssueType.EPIC },
       orderBy: [{ createdAt: 'asc' }],
       include: {
@@ -60,7 +68,13 @@ export class RoadmapService {
           },
         },
       },
+      take: ROADMAP_EPICS_CAP + 1,
     });
+
+    const epicsTruncated = epicRowsFetched.length > ROADMAP_EPICS_CAP;
+    const epicRows = epicsTruncated
+      ? epicRowsFetched.slice(0, ROADMAP_EPICS_CAP)
+      : epicRowsFetched;
 
     const epics: RoadmapEpicDto[] = epicRows.map((epic) => {
       const childCount = epic.children.length;
@@ -120,7 +134,7 @@ export class RoadmapService {
       projectId: s.projectId,
     }));
 
-    return { projectId, epics, sprints };
+    return { projectId, epics, sprints, epicsTruncated };
   }
 
   /** Set of status IDs in the project whose category is DONE. */

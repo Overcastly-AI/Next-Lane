@@ -142,6 +142,12 @@ export interface BoardDto {
   project: ProjectDto;
   statuses: StatusDto[];
   issues: IssueDto[];
+  /**
+   * True when the board's issue list was capped at the server-side limit and
+   * more issues exist that are not shown. The UI should surface a hint so users
+   * know results are partial.
+   */
+  issuesTruncated: boolean;
 }
 
 /**
@@ -215,6 +221,12 @@ export interface RoadmapDto {
   projectId: string;
   epics: RoadmapEpicDto[];
   sprints: SprintDto[];
+  /**
+   * True when the epic list was capped at the server-side limit and more epics
+   * exist that are not shown. The UI should surface a hint so users know
+   * results are partial.
+   */
+  epicsTruncated: boolean;
 }
 
 /**

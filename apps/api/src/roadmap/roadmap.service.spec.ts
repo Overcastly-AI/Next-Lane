@@ -1,6 +1,6 @@
 import { IssueType, StatusCategory, SprintState } from '@next-lane/shared';
 import * as membership from '../common/membership.util';
-import { RoadmapService } from './roadmap.service';
+import { RoadmapService, ROADMAP_EPICS_CAP } from './roadmap.service';
 import type { PrismaService } from '../prisma/prisma.service';
 
 const PROJECT_ID = 'proj-1';
@@ -146,5 +146,77 @@ describe('RoadmapService', () => {
     const result = await service.getRoadmap('user-1', PROJECT_ID);
     expect(result.epics[0].childCount).toBe(0);
     expect(result.epics[0].progress).toBe(0);
+  });
+
+  // -------------------------------------------------------------------------
+  // Cap / truncation tests
+  // -------------------------------------------------------------------------
+
+  function makeEpicRow(i: number) {
+    return {
+      id: `epic-${i}`,
+      number: i,
+      title: `Epic ${i}`,
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      status: { category: StatusCategory.TODO },
+      children: [],
+    };
+  }
+
+  it('returns epicsTruncated: false when under the cap', async () => {
+    prisma.status.findMany.mockResolvedValue([]);
+    prisma.issue.findMany.mockResolvedValue(
+      Array.from({ length: 5 }, (_, i) => makeEpicRow(i)),
+    );
+    prisma.sprint.findMany.mockResolvedValue([]);
+
+    const result = await service.getRoadmap('user-1', PROJECT_ID);
+    expect(result.epicsTruncated).toBe(false);
+    expect(result.epics).toHaveLength(5);
+  });
+
+  it('applies take: ROADMAP_EPICS_CAP + 1 to the epic Prisma query', async () => {
+    prisma.status.findMany.mockResolvedValue([]);
+    prisma.issue.findMany.mockResolvedValue([]);
+    prisma.sprint.findMany.mockResolvedValue([]);
+
+    await service.getRoadmap('user-1', PROJECT_ID);
+
+    expect(prisma.issue.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ take: ROADMAP_EPICS_CAP + 1 }),
+    );
+  });
+
+  it('sets epicsTruncated: true and slices to CAP when result exceeds cap', async () => {
+    prisma.status.findMany.mockResolvedValue([]);
+    // Return CAP + 1 rows to simulate truncation.
+    prisma.issue.findMany.mockResolvedValue(
+      Array.from({ length: ROADMAP_EPICS_CAP + 1 }, (_, i) => makeEpicRow(i)),
+    );
+    prisma.sprint.findMany.mockResolvedValue([]);
+
+    const result = await service.getRoadmap('user-1', PROJECT_ID);
+    expect(result.epicsTruncated).toBe(true);
+    expect(result.epics).toHaveLength(ROADMAP_EPICS_CAP);
+  });
+
+  it('preserves createdAt ordering when truncating epics', async () => {
+    prisma.status.findMany.mockResolvedValue([]);
+    const rows = Array.from({ length: ROADMAP_EPICS_CAP + 1 }, (_, i) =>
+      makeEpicRow(i),
+    );
+    prisma.issue.findMany.mockResolvedValue(rows);
+    prisma.sprint.findMany.mockResolvedValue([]);
+
+    const result = await service.getRoadmap('user-1', PROJECT_ID);
+
+    // First epic is row 0, last is row CAP-1 (extra row dropped at end).
+    expect(result.epics[0].id).toBe('epic-0');
+    expect(result.epics[ROADMAP_EPICS_CAP - 1].id).toBe(
+      `epic-${ROADMAP_EPICS_CAP - 1}`,
+    );
+    expect(prisma.issue.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ orderBy: [{ createdAt: 'asc' }] }),
+    );
   });
 });

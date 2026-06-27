@@ -319,6 +319,15 @@ export function BoardPage() {
         <TypeFilter selected={typeFilter} onChange={setTypeFilter} />
         <PriorityFilter selected={priorityFilter} onChange={setPriorityFilter} />
         <div className="ml-auto flex items-center gap-2">
+          {board?.issuesTruncated && (
+            <span
+              data-testid="board-truncated-hint"
+              className="inline-flex items-center gap-1 rounded-md bg-amber-50 border border-amber-200 px-2 py-1 text-xs font-medium text-amber-700"
+              title="This board has more than 500 issues. Showing the first 500."
+            >
+              Showing first 500 issues
+            </span>
+          )}
           {!editable && (
             <span
               data-testid="readonly-hint"
