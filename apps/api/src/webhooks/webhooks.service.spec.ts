@@ -4,6 +4,9 @@ import { Role, WebhookEventTypes } from '@next-lane/shared';
 import * as membership from '../common/membership.util';
 import { WebhooksService, signPayload, isBlockedIp } from './webhooks.service';
 import type { PrismaService } from '../prisma/prisma.service';
+import type { AuditService } from '../audit/audit.service';
+
+const mockAudit: Pick<AuditService, 'record'> = { record: jest.fn() };
 
 const PROJECT = 'project-1';
 const SUB_ID = 'sub-1';
@@ -80,7 +83,7 @@ describe('WebhooksService scoping', () => {
 
   beforeEach(() => {
     prisma = makePrisma();
-    service = new WebhooksService(prisma as unknown as PrismaService);
+    service = new WebhooksService(prisma as unknown as PrismaService, mockAudit as unknown as AuditService);
   });
 
   afterEach(() => jest.restoreAllMocks());
@@ -142,7 +145,7 @@ describe('WebhooksService dispatch / delivery', () => {
 
   beforeEach(() => {
     prisma = makePrisma();
-    service = new WebhooksService(prisma as unknown as PrismaService);
+    service = new WebhooksService(prisma as unknown as PrismaService, mockAudit as unknown as AuditService);
     // Mock DNS so delivery tests don't need a real network: "example.test"
     // resolves to a public IP address (not in any blocked range).
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -310,7 +313,7 @@ describe('WebhooksService SSRF delivery guard', () => {
 
   beforeEach(() => {
     prisma = makePrisma();
-    service = new WebhooksService(prisma as unknown as PrismaService);
+    service = new WebhooksService(prisma as unknown as PrismaService, mockAudit as unknown as AuditService);
     delete process.env.WEBHOOK_ALLOW_PRIVATE;
   });
 

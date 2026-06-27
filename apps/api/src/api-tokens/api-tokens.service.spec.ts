@@ -23,6 +23,9 @@ import {
   PAT_PREFIX,
 } from './api-tokens.service';
 import type { PrismaService } from '../prisma/prisma.service';
+import type { AuditService } from '../audit/audit.service';
+
+const mockAudit: Pick<AuditService, 'record'> = { record: jest.fn() };
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -37,6 +40,9 @@ interface MockPrisma {
     findUnique: jest.Mock;
     update: jest.Mock;
   };
+  membership: {
+    findMany: jest.Mock;
+  };
 }
 
 function makePrisma(): MockPrisma {
@@ -46,6 +52,10 @@ function makePrisma(): MockPrisma {
       findMany: jest.fn(),
       findUnique: jest.fn(),
       update: jest.fn(),
+    },
+    membership: {
+      // Return an empty list by default — audit fan-out is fire-and-forget.
+      findMany: jest.fn().mockResolvedValue([]),
     },
   };
 }
@@ -60,7 +70,7 @@ describe('ApiTokensService', () => {
 
   beforeEach(() => {
     prisma = makePrisma();
-    service = new ApiTokensService(prisma as unknown as PrismaService);
+    service = new ApiTokensService(prisma as unknown as PrismaService, mockAudit as unknown as AuditService);
   });
 
   // ── generateRawToken / hashToken helpers ────────────────────────────────────

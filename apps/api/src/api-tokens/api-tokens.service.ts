@@ -6,6 +6,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
 import type { CreateApiTokenDto, CreateApiTokenResponse, ApiTokenDto } from './dto/api-token.dto';
 
 /** Prefix for every generated personal API token. */
@@ -51,7 +52,10 @@ function toDto(row: {
 
 @Injectable()
 export class ApiTokensService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+  ) {}
 
   /**
    * Create a new personal API token for `userId`.
@@ -62,6 +66,7 @@ export class ApiTokensService {
   async create(
     userId: string,
     dto: CreateApiTokenDto,
+    ip?: string | null,
   ): Promise<CreateApiTokenResponse> {
     const rawToken = generateRawToken();
     const tokenHash = hashToken(rawToken);
@@ -73,6 +78,17 @@ export class ApiTokensService {
         tokenHash,
         expiresAt: dto.expiresAt ? new Date(dto.expiresAt) : null,
       },
+    });
+
+    // Record in every workspace the user belongs to (PATs are user-scoped,
+    // not workspace-scoped, so we fan out the audit event to all workspaces).
+    void this.recordForAllWorkspaces(userId, {
+      actorId: userId,
+      action: 'token.create',
+      targetType: 'ApiToken',
+      targetId: record.id,
+      metadata: { name: dto.name },
+      ip,
     });
 
     return {
@@ -103,7 +119,11 @@ export class ApiTokensService {
    * Only the owning user may revoke their own token — attempting to revoke
    * another user's token returns 404 (leaking no information about ownership).
    */
-  async revoke(userId: string, tokenId: string): Promise<{ id: string }> {
+  async revoke(
+    userId: string,
+    tokenId: string,
+    ip?: string | null,
+  ): Promise<{ id: string }> {
     const token = await this.prisma.apiToken.findUnique({
       where: { id: tokenId },
     });
@@ -117,7 +137,33 @@ export class ApiTokensService {
       data: { revokedAt: new Date() },
     });
 
+    void this.recordForAllWorkspaces(userId, {
+      actorId: userId,
+      action: 'token.revoke',
+      targetType: 'ApiToken',
+      targetId: tokenId,
+      metadata: { name: token.name },
+      ip,
+    });
+
     return { id: tokenId };
+  }
+
+  /**
+   * Record an audit event in every workspace the user belongs to.
+   * PATs are not workspace-scoped, so we fan out. Best-effort (errors swallowed).
+   */
+  private async recordForAllWorkspaces(
+    userId: string,
+    params: Omit<Parameters<AuditService['record']>[0], 'workspaceId'>,
+  ): Promise<void> {
+    const memberships = await this.prisma.membership.findMany({
+      where: { userId },
+      select: { workspaceId: true },
+    });
+    for (const { workspaceId } of memberships) {
+      this.audit.record({ ...params, workspaceId });
+    }
   }
 
   /**

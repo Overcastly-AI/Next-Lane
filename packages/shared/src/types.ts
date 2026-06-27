@@ -439,6 +439,34 @@ export interface WebhookEventPayload {
   data: unknown;
 }
 
+// ── Workspace Audit Log ──────────────────────────────────────────────────────
+
+/**
+ * A single workspace-level audit event.
+ * Immutable record of a security- or governance-relevant action.
+ * `actor` is null when the actor has been deleted or the event was system-generated.
+ */
+export interface AuditEventDto {
+  id: string;
+  workspaceId: string;
+  actor: { id: string; name: string; email: string } | null;
+  action: string; // e.g. "membership.add", "project.create", "token.revoke"
+  targetType: string; // e.g. "Membership", "Project", "ApiToken"
+  targetId: string;
+  metadata: Record<string, unknown> | null;
+  ip: string | null;
+  createdAt: string;
+}
+
+/**
+ * Cursor-paginated page of audit events for a workspace.
+ * `nextCursor` is null when there are no more results.
+ */
+export interface PaginatedAuditEventsDto {
+  items: AuditEventDto[];
+  nextCursor: string | null;
+}
+
 // ── Personal API Tokens (PATs) ───────────────────────────────────────────────
 
 /**

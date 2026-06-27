@@ -73,6 +73,7 @@ model User {
   passwordResetTokens PasswordResetToken[]
   apiTokens           ApiToken[]
   attachments         Attachment[]
+  auditEvents         AuditEvent[]
 }
 
 // Personal API Token (PAT) for scripting / CI access to the REST API.
@@ -116,8 +117,9 @@ model Workspace {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  memberships Membership[]
-  projects    Project[]
+  memberships  Membership[]
+  projects     Project[]
+  auditEvents  AuditEvent[]
 }
 
 model Membership {
@@ -333,6 +335,27 @@ model Attachment {
 
   @@index([issueId])
   @@index([uploaderId])
+}
+
+// Workspace-level audit log: immutable record of security- and
+// governance-relevant actions (membership changes, project lifecycle,
+// webhook config, API-token create/revoke, etc.).
+// actorId is nullable so system-generated events can still be recorded.
+model AuditEvent {
+  id          String   @id @default(cuid())
+  workspaceId String
+  actorId     String? // null = system / actor deleted
+  action      String // e.g. "membership.add", "project.create", "token.revoke"
+  targetType  String // e.g. "Membership", "Project", "ApiToken"
+  targetId    String // the id of the affected resource
+  metadata    Json?   // optional extra context (role, email, etc.)
+  ip          String? // caller's IP, best-effort
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  actor     User?     @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, createdAt])
 }
 
 // An outbound webhook endpoint registered by a project admin. When matching

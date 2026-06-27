@@ -6,11 +6,19 @@ import {
   Body,
   Param,
   HttpCode,
+  Req,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import type { Request } from 'express';
 import { ApiTokensService } from './api-tokens.service';
 import { CreateApiTokenDto } from './dto/api-token.dto';
 import { CurrentUser, AuthUser } from '../auth/current-user.decorator';
+
+function extractIp(req: Request): string | null {
+  const forwarded = req.headers['x-forwarded-for'];
+  if (typeof forwarded === 'string') return forwarded.split(',')[0].trim();
+  return req.socket?.remoteAddress ?? null;
+}
 
 @ApiTags('api-tokens')
 @ApiBearerAuth()
@@ -26,8 +34,12 @@ export class ApiTokensController {
    * The caller must copy the token immediately; it cannot be retrieved again.
    */
   @Post()
-  create(@CurrentUser() user: AuthUser, @Body() dto: CreateApiTokenDto) {
-    return this.apiTokens.create(user.id, dto);
+  create(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: CreateApiTokenDto,
+    @Req() req: Request,
+  ) {
+    return this.apiTokens.create(user.id, dto, extractIp(req));
   }
 
   /**
@@ -50,7 +62,11 @@ export class ApiTokensController {
    */
   @Delete(':id')
   @HttpCode(200)
-  revoke(@CurrentUser() user: AuthUser, @Param('id') id: string) {
-    return this.apiTokens.revoke(user.id, id);
+  revoke(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Req() req: Request,
+  ) {
+    return this.apiTokens.revoke(user.id, id, extractIp(req));
   }
 }
