@@ -1,5 +1,6 @@
 import { createHmac, randomBytes } from 'node:crypto';
 import {
+  BadRequestException,
   Injectable,
   Logger,
   NotFoundException,
@@ -18,6 +19,11 @@ import {
   assertProjectRole,
 } from '../common/membership.util';
 import { CreateWebhookDto, UpdateWebhookDto } from './dto/webhook.dto';
+import {
+  assertSafeWebhookUrl,
+  assertSafeWebhookUrlResolved,
+  UnsafeWebhookUrlError,
+} from './webhook-url.util';
 
 // How many recent delivery rows to keep per subscription; older rows are pruned
 // after each delivery to keep the log bounded.
@@ -103,6 +109,7 @@ export class WebhooksService {
     dto: CreateWebhookDto,
   ): Promise<WebhookSubscriptionDto> {
     await assertProjectRole(this.prisma, userId, projectId, Role.ADMIN);
+    this.assertSafeUrl(dto.url);
     const sub = await this.prisma.webhookSubscription.create({
       data: {
         projectId,
@@ -122,6 +129,7 @@ export class WebhooksService {
   ): Promise<WebhookSubscriptionDto> {
     const existing = await this.requireSubscription(id);
     await assertProjectRole(this.prisma, userId, existing.projectId, Role.ADMIN);
+    if (dto.url !== undefined) this.assertSafeUrl(dto.url);
     const sub = await this.prisma.webhookSubscription.update({
       where: { id },
       data: {
@@ -239,6 +247,26 @@ export class WebhooksService {
     let error: string | null = null;
     let success = false;
 
+    // Re-validate the target at delivery time and resolve the hostname so a
+    // host that was public when configured but now resolves to an internal
+    // address (DNS rebinding) is blocked before any request is made.
+    try {
+      await assertSafeWebhookUrlResolved(sub.url);
+    } catch (err) {
+      const message =
+        err instanceof UnsafeWebhookUrlError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : String(err);
+      await this.recordDelivery(sub.id, payload.event, {
+        success: false,
+        responseStatus: null,
+        error: `Blocked unsafe webhook target: ${message}`,
+      });
+      return;
+    }
+
     for (let attempt = 1; attempt <= MAX_DELIVERY_ATTEMPTS; attempt++) {
       try {
         const res = await fetch(sub.url, {
@@ -307,6 +335,21 @@ export class WebhooksService {
         id: { notIn: keep.map((k) => k.id) },
       },
     });
+  }
+
+  /**
+   * Reject webhook target URLs that point at internal/non-routable addresses
+   * (SSRF hardening) at configuration time. Surfaced to the admin as a 400.
+   */
+  private assertSafeUrl(url: string): void {
+    try {
+      assertSafeWebhookUrl(url);
+    } catch (err) {
+      if (err instanceof UnsafeWebhookUrlError) {
+        throw new BadRequestException(err.message);
+      }
+      throw err;
+    }
   }
 
   private async requireSubscription(id: string): Promise<SubscriptionRow & { secret: string }> {

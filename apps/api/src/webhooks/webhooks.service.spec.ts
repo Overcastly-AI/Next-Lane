@@ -1,5 +1,9 @@
+jest.mock('node:dns/promises', () => ({ lookup: jest.fn() }));
 import { createHmac } from 'node:crypto';
-import { ForbiddenException } from '@nestjs/common';
+import { lookup } from 'node:dns/promises';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
+
+const lookupMock = lookup as unknown as jest.Mock;
 import { Role, WebhookEventTypes } from '@next-lane/shared';
 import * as membership from '../common/membership.util';
 import { WebhooksService, signPayload } from './webhooks.service';
@@ -108,6 +112,34 @@ describe('WebhooksService scoping', () => {
     expect(dto.url).toBe('https://example.test/hook');
   });
 
+  it('rejects creating a subscription with an internal/loopback URL', async () => {
+    jest
+      .spyOn(membership, 'assertProjectRole')
+      .mockResolvedValue({} as never);
+
+    await expect(
+      service.create('user-1', PROJECT, { url: 'http://127.0.0.1:9000/x' }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    await expect(
+      service.create('user-1', PROJECT, {
+        url: 'http://169.254.169.254/latest/meta-data/',
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.webhookSubscription.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects updating a subscription to an internal URL', async () => {
+    prisma.webhookSubscription.findUnique.mockResolvedValue(subRow());
+    jest
+      .spyOn(membership, 'assertProjectRole')
+      .mockResolvedValue({} as never);
+
+    await expect(
+      service.update('user-1', SUB_ID, { url: 'http://10.0.0.5/x' }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.webhookSubscription.update).not.toHaveBeenCalled();
+  });
+
   it('enforces ADMIN on the owning project when updating by id', async () => {
     prisma.webhookSubscription.findUnique.mockResolvedValue(subRow());
     const spy = jest
@@ -130,6 +162,12 @@ describe('WebhooksService dispatch / delivery', () => {
   beforeEach(() => {
     prisma = makePrisma();
     service = new WebhooksService(prisma as unknown as PrismaService);
+    // Subscriptions use a hostname (example.test) that has no real DNS record;
+    // mock the delivery-time SSRF resolution to a public address by default so
+    // these tests exercise the happy delivery path. Tests that want to exercise
+    // the block override this.
+    lookupMock.mockReset();
+    lookupMock.mockResolvedValue([{ address: '93.184.216.34', family: 4 }]);
   });
 
   afterEach(() => {
@@ -199,6 +237,24 @@ describe('WebhooksService dispatch / delivery', () => {
     // 'a' (subscribed to issue.created) and 'c' (all) match; 'b' does not.
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(prisma.webhookDelivery.create).toHaveBeenCalledTimes(2);
+  });
+
+  it('blocks delivery and records a failure when the host resolves internal (DNS rebinding)', async () => {
+    prisma.webhookSubscription.findMany.mockResolvedValue([subRow()]);
+    // Host now resolves to a loopback address at delivery time.
+    lookupMock.mockResolvedValue([{ address: '127.0.0.1', family: 4 }]);
+    const fetchMock = jest.fn();
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    service.dispatch(PROJECT, WebhookEventTypes.IssueCreated, { id: 'i1' });
+    await flush();
+
+    // No outbound request was made.
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(prisma.webhookDelivery.create).toHaveBeenCalledTimes(1);
+    const row = prisma.webhookDelivery.create.mock.calls[0][0].data;
+    expect(row.status).toBe('failed');
+    expect(row.error).toContain('Blocked unsafe webhook target');
   });
 
   it('skips dispatch entirely when no active subscriptions match', async () => {

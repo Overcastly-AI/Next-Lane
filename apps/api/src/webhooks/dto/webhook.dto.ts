@@ -16,8 +16,10 @@ const EVENT_VALUES = [...WEBHOOK_EVENT_TYPES];
 
 export class CreateWebhookDto {
   @IsString()
-  // require_tld off so admins can target internal hostnames in their own infra;
-  // SSRF allowlisting is a documented follow-up (see docs/BACKLOG.md).
+  // require_tld off so admins can target hostnames without a public TLD in
+  // their own infra. SSRF protection (rejecting loopback/link-local/private
+  // ranges, enforcing http/https) is applied in WebhooksService via
+  // webhook-url.util at both create/update and delivery time.
   @IsUrl({ require_tld: false, protocols: ['http', 'https'] })
   @MaxLength(2048)
   url!: string;
