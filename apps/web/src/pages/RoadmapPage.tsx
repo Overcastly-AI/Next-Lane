@@ -41,7 +41,18 @@ export function RoadmapPage() {
               Epics and sprints across time. Click an epic to open it.
             </p>
           </div>
-          {roadmapQuery.isFetching && <Spinner className="h-4 w-4" />}
+          <div className="flex items-center gap-2">
+            {data?.epicsTruncated && (
+              <span
+                data-testid="roadmap-truncated-hint"
+                className="inline-flex items-center rounded-md bg-amber-50 border border-amber-200 px-2 py-1 text-xs font-medium text-amber-700"
+                title="This roadmap has more than 500 epics. Showing the first 500."
+              >
+                Showing first 500 epics
+              </span>
+            )}
+            {roadmapQuery.isFetching && <Spinner className="h-4 w-4" />}
+          </div>
         </div>
 
         <section

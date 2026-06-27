@@ -76,7 +76,7 @@ We are done with v1 when ALL of these hold (drive here, then polish, then stop):
 - [ ] **No known P0/P1 bugs.** CI (lint + typecheck + unit + e2e desktop/mobile) green on every push.
 - [x] **Security/multi-tenant solid:** isolation, roles, secrets, CORS, input bounds, webhook SSRF — all closed. (SSRF guard + pagination index + helmet + rate limiting shipped 2026-06-27.)
 - [ ] **Docs accurate:** README quickstart works verbatim; ROADMAP/BACKLOG reflect reality.
-- [ ] **Performance sane at scale:** large boards/lists don't OOM or hang (pagination).
+- [x] **Performance sane at scale:** large boards/lists don't OOM or hang (pagination). Board and roadmap endpoints now capped at 500 issues/epics with `issuesTruncated`/`epicsTruncated` flags.
 - [ ] **A short product demo passes:** a scripted "new user → create project → plan a sprint → work the board → see a report" walkthrough works without a hitch on desktop and mobile.
 
 Everything beyond this (custom fields, automation rules, time tracking, SSO, email-to-issue, importers) is **post-v1** and should not block the release.

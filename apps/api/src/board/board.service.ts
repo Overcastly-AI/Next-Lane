@@ -8,6 +8,14 @@ import { toIssueDto } from '../issues/issue.mapper';
 import { SprintState } from '@next-lane/shared';
 import type { BoardDto } from '@next-lane/shared';
 
+/**
+ * Maximum number of issues returned in a single board response.
+ * Prevents OOM on projects with thousands of issues. When the cap is hit,
+ * `issuesTruncated` is set to true in the response so the UI can inform
+ * the user that results are partial.
+ */
+export const BOARD_ISSUES_CAP = 500;
+
 const issueInclude = {
   status: true,
   assignee: true,
@@ -29,7 +37,9 @@ export class BoardService {
       orderBy: { order: 'asc' },
     });
 
-    const issues = await this.prisma.issue.findMany({
+    // Fetch one extra row beyond the cap so we can detect truncation without a
+    // separate COUNT query. If we get CAP+1 rows we slice to CAP and set the flag.
+    const rows = await this.prisma.issue.findMany({
       where: {
         projectId,
         project: { archived: false },
@@ -40,12 +50,17 @@ export class BoardService {
       },
       include: issueInclude,
       orderBy: [{ status: { order: 'asc' } }, { rank: 'asc' }],
+      take: BOARD_ISSUES_CAP + 1,
     });
+
+    const issuesTruncated = rows.length > BOARD_ISSUES_CAP;
+    const issues = issuesTruncated ? rows.slice(0, BOARD_ISSUES_CAP) : rows;
 
     return {
       project: toProjectDto(project),
       statuses: statuses.map(toStatusDto),
       issues: issues.map(toIssueDto),
+      issuesTruncated,
     };
   }
 }
