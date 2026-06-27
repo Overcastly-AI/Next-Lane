@@ -24,6 +24,7 @@ import { SettingsPage } from '@/pages/SettingsPage';
 import { TriagePage } from '@/pages/TriagePage';
 import { ProfileSettingsPage } from '@/pages/ProfileSettingsPage';
 import { WorkspaceAuditLogPage } from '@/pages/WorkspaceAuditLogPage';
+import { SharedBoardPage } from '@/pages/SharedBoardPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -133,6 +134,8 @@ export default function App() {
                 </RequireAuth>
               }
             />
+            {/* Public read-only board — no RequireAuth wrapper */}
+            <Route path="/share/:token" element={<SharedBoardPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
           </CommandPaletteProvider>

@@ -74,6 +74,7 @@ model User {
   apiTokens           ApiToken[]
   attachments         Attachment[]
   auditEvents         AuditEvent[]
+  shareTokens         ShareToken[]
 }
 
 // Personal API Token (PAT) for scripting / CI access to the REST API.
@@ -148,12 +149,13 @@ model Project {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  issues    Issue[]
-  statuses  Status[]
-  sprints   Sprint[]
-  labels    Label[]
-  webhooks  WebhookSubscription[]
+  workspace    Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  issues       Issue[]
+  statuses     Status[]
+  sprints      Sprint[]
+  labels       Label[]
+  webhooks     WebhookSubscription[]
+  shareTokens  ShareToken[]
 
   @@unique([workspaceId, key])
   @@index([workspaceId])
@@ -364,6 +366,25 @@ model AuditEvent {
   actor     User?     @relation(fields: [actorId], references: [id], onDelete: SetNull)
 
   @@index([workspaceId, createdAt])
+}
+
+// A read-only public share token for a project board. The URL encodes the raw
+// token; only a SHA-256 hash is stored so a DB breach does not expose live
+// share links. Revoked by setting revokedAt (soft-delete).
+// Token format: "nls_" + 32 random bytes base64url.
+model ShareToken {
+  id          String    @id @default(cuid())
+  projectId   String
+  tokenHash   String    @unique // SHA-256 hex of the raw "nls_..." token
+  createdById String
+  createdAt   DateTime  @default(now())
+  revokedAt   DateTime? // null = active; non-null = revoked
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy User    @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([createdById])
 }
 
 // An outbound webhook endpoint registered by a project admin. When matching
