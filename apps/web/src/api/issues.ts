@@ -4,6 +4,7 @@ import {
   type BoardDto,
   type IssueDto,
   type IssueType,
+  type PaginatedIssuesDto,
   type Priority,
 } from '@next-lane/shared';
 import { request } from './client';
@@ -26,9 +27,21 @@ export function useProjectIssues(projectId: string | undefined) {
   return useQuery({
     queryKey: qk.projectIssues(projectId ?? ''),
     enabled: !!projectId,
-    queryFn: () => {
-      const params = new URLSearchParams({ projectId: projectId ?? '' });
-      return request<IssueDto[]>(`/issues?${params.toString()}`);
+    queryFn: async () => {
+      // The list endpoint is cursor-paginated ({ items, nextCursor }); the
+      // planning view wants every issue, so walk all pages and flatten.
+      const all: IssueDto[] = [];
+      let cursor: string | null = null;
+      do {
+        const params = new URLSearchParams({ projectId: projectId ?? '' });
+        if (cursor) params.set('cursor', cursor);
+        const page: PaginatedIssuesDto = await request<PaginatedIssuesDto>(
+          `/issues?${params.toString()}`,
+        );
+        all.push(...page.items);
+        cursor = page.nextCursor;
+      } while (cursor);
+      return all;
     },
   });
 }
@@ -51,9 +64,12 @@ export function useIssueSearch(projectId: string, q: string) {
   return useQuery({
     queryKey: qk.issueSearch(projectId, trimmed),
     enabled: !!projectId && trimmed.length > 0,
-    queryFn: () => {
+    queryFn: async () => {
       const params = new URLSearchParams({ projectId, q: trimmed });
-      return request<IssueDto[]>(`/issues?${params.toString()}`);
+      const page = await request<PaginatedIssuesDto>(
+        `/issues?${params.toString()}`,
+      );
+      return page.items;
     },
   });
 }

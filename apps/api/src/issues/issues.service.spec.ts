@@ -1,6 +1,9 @@
 import { BadRequestException } from '@nestjs/common';
 import { Role, rankBetween } from '@next-lane/shared';
-import { IssuesService } from './issues.service';
+import {
+  IssuesService,
+  DEFAULT_ISSUES_PAGE_SIZE,
+} from './issues.service';
 import type { PrismaService } from '../prisma/prisma.service';
 import type { RealtimeService } from '../realtime/realtime.service';
 import type { NotificationsService } from '../notifications/notifications.service';
@@ -372,5 +375,154 @@ describe('IssuesService.move', () => {
       'issue.moved',
       expect.objectContaining({ issueId: MOVED }),
     );
+  });
+});
+
+/**
+ * Unit tests for IssuesService.findAll cursor pagination. Verifies the page
+ * boundary: when exactly one more row than the requested page exists, the
+ * service trims to the page size, emits a non-null nextCursor, and queries the
+ * next page strictly after the last returned issue (keyset predicate). When the
+ * page is not full, nextCursor is null.
+ */
+describe('IssuesService.findAll pagination', () => {
+  const PROJECT = 'proj-1';
+  const USER = 'user-1';
+
+  function makeIssueRow(id: string, createdAt: string) {
+    return {
+      id,
+      number: 1,
+      projectId: PROJECT,
+      type: 'TASK',
+      title: id,
+      description: null,
+      statusId: 'status-1',
+      assigneeId: null,
+      reporterId: null,
+      priority: 'MEDIUM',
+      storyPoints: null,
+      parentId: null,
+      sprintId: null,
+      rank: 'a0',
+      createdAt: new Date(createdAt),
+      updatedAt: new Date(createdAt),
+      status: {
+        id: 'status-1',
+        name: 'To Do',
+        category: 'TODO',
+        order: 0,
+        projectId: PROJECT,
+      },
+      assignee: null,
+      reporter: null,
+      labels: [],
+      project: { key: 'NL' },
+      _count: { comments: 0 },
+    };
+  }
+
+  function makePaginationPrisma() {
+    return {
+      issue: { findMany: jest.fn() },
+      project: { findUnique: jest.fn() },
+      membership: { findUnique: jest.fn() },
+    };
+  }
+
+  let prisma: ReturnType<typeof makePaginationPrisma>;
+  let service: IssuesService;
+
+  beforeEach(() => {
+    prisma = makePaginationPrisma();
+    // assertProjectMember: project + membership exist.
+    prisma.project.findUnique.mockResolvedValue({
+      id: PROJECT,
+      workspaceId: 'ws-1',
+    });
+    prisma.membership.findUnique.mockResolvedValue({ role: Role.MEMBER });
+    service = new IssuesService(
+      prisma as unknown as PrismaService,
+      {} as RealtimeService,
+      {} as NotificationsService,
+      {} as WebhooksService,
+    );
+  });
+
+  it('requires projectId', async () => {
+    await expect(service.findAll(USER, {})).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+  });
+
+  it('trims to the requested limit and returns a nextCursor when more exist', async () => {
+    // Request limit=2; service fetches take+1=3 rows to detect a further page.
+    const rows = [
+      makeIssueRow('i1', '2026-01-01T00:00:00.000Z'),
+      makeIssueRow('i2', '2026-01-02T00:00:00.000Z'),
+      makeIssueRow('i3', '2026-01-03T00:00:00.000Z'),
+    ];
+    prisma.issue.findMany.mockResolvedValue(rows);
+
+    const result = await service.findAll(USER, { projectId: PROJECT, limit: 2 });
+
+    expect(prisma.issue.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 3,
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      }),
+    );
+    // Only the first 2 are returned; the sentinel 3rd row is dropped.
+    expect(result.items).toHaveLength(2);
+    expect(result.items.map((i) => i.id)).toEqual(['i1', 'i2']);
+    // Cursor points at the last RETURNED item (i2), not the sentinel.
+    expect(result.nextCursor).not.toBeNull();
+    const decoded = Buffer.from(
+      result.nextCursor as string,
+      'base64url',
+    ).toString('utf8');
+    expect(decoded).toBe('2026-01-02T00:00:00.000Z|i2');
+  });
+
+  it('returns nextCursor=null when the page is not full', async () => {
+    const rows = [
+      makeIssueRow('i1', '2026-01-01T00:00:00.000Z'),
+      makeIssueRow('i2', '2026-01-02T00:00:00.000Z'),
+    ];
+    prisma.issue.findMany.mockResolvedValue(rows);
+
+    const result = await service.findAll(USER, { projectId: PROJECT, limit: 5 });
+
+    expect(result.items).toHaveLength(2);
+    expect(result.nextCursor).toBeNull();
+  });
+
+  it('applies a keyset predicate continuing after the cursor', async () => {
+    prisma.issue.findMany.mockResolvedValue([]);
+    const cursor = Buffer.from('2026-01-02T00:00:00.000Z|i2').toString(
+      'base64url',
+    );
+
+    await service.findAll(USER, { projectId: PROJECT, cursor });
+
+    const call = prisma.issue.findMany.mock.calls[0][0];
+    expect(call.where.OR).toEqual([
+      { createdAt: { gt: new Date('2026-01-02T00:00:00.000Z') } },
+      { createdAt: new Date('2026-01-02T00:00:00.000Z'), id: { gt: 'i2' } },
+    ]);
+  });
+
+  it('ignores a malformed cursor (starts from the beginning)', async () => {
+    prisma.issue.findMany.mockResolvedValue([]);
+
+    await service.findAll(USER, {
+      projectId: PROJECT,
+      cursor: 'not-a-valid-cursor!!!',
+    });
+
+    const call = prisma.issue.findMany.mock.calls[0][0];
+    expect(call.where.OR).toBeUndefined();
+    // Default page size applies when no limit is given.
+    expect(call.take).toBe(DEFAULT_ISSUES_PAGE_SIZE + 1);
   });
 });

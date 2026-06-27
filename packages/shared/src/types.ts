@@ -99,6 +99,16 @@ export interface IssueDto {
   updatedAt: string;
 }
 
+/**
+ * A page of issues from `GET /issues`. `nextCursor` is an opaque token to pass
+ * back as the `cursor` query param to fetch the following page; `null` means
+ * there are no more results.
+ */
+export interface PaginatedIssuesDto {
+  items: IssueDto[];
+  nextCursor: string | null;
+}
+
 export interface CommentDto {
   id: string;
   body: string;

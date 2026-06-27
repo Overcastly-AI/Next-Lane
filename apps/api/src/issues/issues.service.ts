@@ -27,7 +27,47 @@ import {
   rankBetween,
   Role,
 } from '@next-lane/shared';
-import type { IssueDto, CommentDto, ActivityDto } from '@next-lane/shared';
+import type {
+  IssueDto,
+  CommentDto,
+  ActivityDto,
+  PaginatedIssuesDto,
+} from '@next-lane/shared';
+
+/** Default number of issues returned by {@link IssuesService.findAll} per page. */
+export const DEFAULT_ISSUES_PAGE_SIZE = 50;
+/** Hard upper bound on the page size a caller may request. */
+export const MAX_ISSUES_PAGE_SIZE = 200;
+
+/**
+ * Encode a stable cursor from an issue's `createdAt` + `id`. Pagination orders
+ * by `(createdAt asc, id asc)`, which is total and immutable, so the cursor is
+ * unaffected by rank/status changes. Base64url keeps it opaque to clients.
+ */
+function encodeIssueCursor(createdAt: Date, id: string): string {
+  return Buffer.from(`${createdAt.toISOString()}|${id}`).toString('base64url');
+}
+
+/**
+ * Decode a cursor produced by {@link encodeIssueCursor}. Returns `null` for any
+ * malformed input so a bad cursor degrades to "start from the beginning"
+ * rather than throwing.
+ */
+function decodeIssueCursor(
+  cursor: string,
+): { createdAt: Date; id: string } | null {
+  try {
+    const decoded = Buffer.from(cursor, 'base64url').toString('utf8');
+    const sep = decoded.indexOf('|');
+    if (sep === -1) return null;
+    const createdAt = new Date(decoded.slice(0, sep));
+    const id = decoded.slice(sep + 1);
+    if (Number.isNaN(createdAt.getTime()) || !id) return null;
+    return { createdAt, id };
+  } catch {
+    return null;
+  }
+}
 
 const listInclude = {
   status: true,
@@ -171,10 +211,18 @@ export class IssuesService {
     });
   }
 
+  /**
+   * Cursor-paginated list of a project's issues. Results are ordered by
+   * `(createdAt asc, id asc)` — a total, immutable order — so the opaque
+   * `nextCursor` stays valid even as ranks/statuses change. Returns at most
+   * `limit` items (default {@link DEFAULT_ISSUES_PAGE_SIZE}, capped at
+   * {@link MAX_ISSUES_PAGE_SIZE}) plus the cursor for the next page, or `null`
+   * when the last page is reached. A malformed cursor is treated as the start.
+   */
   async findAll(
     userId: string,
     query: ListIssuesQueryDto,
-  ): Promise<IssueDto[]> {
+  ): Promise<PaginatedIssuesDto> {
     if (!query.projectId) {
       throw new BadRequestException('projectId is required');
     }
@@ -189,12 +237,37 @@ export class IssuesService {
       where.title = { contains: query.q, mode: 'insensitive' };
     }
 
-    const issues = await this.prisma.issue.findMany({
+    const take = Math.min(
+      Math.max(query.limit ?? DEFAULT_ISSUES_PAGE_SIZE, 1),
+      MAX_ISSUES_PAGE_SIZE,
+    );
+
+    const decoded = query.cursor ? decodeIssueCursor(query.cursor) : null;
+    if (decoded) {
+      // Keyset predicate for (createdAt asc, id asc): the next item is either
+      // strictly later, or same timestamp with a greater id.
+      where.OR = [
+        { createdAt: { gt: decoded.createdAt } },
+        { createdAt: decoded.createdAt, id: { gt: decoded.id } },
+      ];
+    }
+
+    // Fetch one extra row to detect whether a further page exists without a
+    // separate count query.
+    const rows = await this.prisma.issue.findMany({
       where,
       include: listInclude,
-      orderBy: { rank: 'asc' },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      take: take + 1,
     });
-    return issues.map(toIssueDto);
+
+    const hasMore = rows.length > take;
+    const page = hasMore ? rows.slice(0, take) : rows;
+    const last = page[page.length - 1];
+    const nextCursor =
+      hasMore && last ? encodeIssueCursor(last.createdAt, last.id) : null;
+
+    return { items: page.map(toIssueDto), nextCursor };
   }
 
   async findOne(

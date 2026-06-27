@@ -43,7 +43,7 @@ Status legend: ✅ done · 🚧 in progress · ⬜ planned
 - ✅ Command palette (Cmd-K) + cross-project search
 - ✅ "My Work" personal dashboard
 - ✅ CI pipeline (GitHub Actions) + API unit-test suite
-- 🚧 Cursor pagination for large lists (in flight)
+- ✅ Cursor pagination for large lists (keyset on `createdAt,id`; `GET /issues` → `{ items, nextCursor }`)
 - ⬜ Query DSL / saved views (filter builder → text query)
 - ⬜ Custom fields (typed, JSONB-backed)
 - ⬜ Workflow automation rules (trigger → action)
