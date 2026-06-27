@@ -14,6 +14,8 @@ import {
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import {
   SprintState,
+  IssueType,
+  Priority,
   type IssueDto,
   type LabelDto,
   type SprintDto,
@@ -57,6 +59,10 @@ export function BoardPage() {
   const [assigneeFilter, setAssigneeFilter] = useState('');
   // Selected label IDs the board is filtered to (a card must carry ALL of them).
   const [labelFilter, setLabelFilter] = useState<string[]>([]);
+  // Selected type values (card must match one of the selected types).
+  const [typeFilter, setTypeFilter] = useState<IssueType[]>([]);
+  // Selected priority values (card must match one of the selected priorities).
+  const [priorityFilter, setPriorityFilter] = useState<Priority[]>([]);
   const [createForStatus, setCreateForStatus] = useState<string | null>(null);
   const [activeIssue, setActiveIssue] = useState<IssueDto | null>(null);
 
@@ -110,6 +116,9 @@ export function BoardPage() {
         const ids = new Set((issue.labels ?? []).map((l) => l.id));
         if (!labelFilter.every((id) => ids.has(id))) continue;
       }
+      if (typeFilter.length > 0 && !typeFilter.includes(issue.type)) continue;
+      if (priorityFilter.length > 0 && !priorityFilter.includes(issue.priority))
+        continue;
       const arr = map.get(issue.statusId);
       if (arr) arr.push(issue);
     }
@@ -117,7 +126,7 @@ export function BoardPage() {
       arr.sort((a, b) => (a.rank < b.rank ? -1 : a.rank > b.rank ? 1 : 0));
     }
     return map;
-  }, [board, statuses, search, assigneeFilter, labelFilter]);
+  }, [board, statuses, search, assigneeFilter, labelFilter, typeFilter, priorityFilter]);
 
   const dragSensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -307,6 +316,8 @@ export function BoardPage() {
           selected={labelFilter}
           onChange={setLabelFilter}
         />
+        <TypeFilter selected={typeFilter} onChange={setTypeFilter} />
+        <PriorityFilter selected={priorityFilter} onChange={setPriorityFilter} />
         <div className="ml-auto flex items-center gap-2">
           {!editable && (
             <span
@@ -547,6 +558,246 @@ function LabelFilter({
         </div>
       )}
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Shared multi-select dropdown primitive used by TypeFilter and PriorityFilter.
+// ---------------------------------------------------------------------------
+
+interface MultiSelectOption {
+  value: string;
+  label: string;
+}
+
+/**
+ * Generic multi-select filter button + dropdown. Mirrors the LabelFilter
+ * pattern exactly: a toggle button that turns brand-colored when active, a
+ * popover list of checkboxes, and a "Clear" footer when any items are chosen.
+ */
+function MultiSelectFilter<T extends string>({
+  label,
+  icon,
+  options,
+  selected,
+  onChange,
+  ariaLabel,
+  clearLabel,
+}: {
+  label: string;
+  icon: React.ReactNode;
+  options: MultiSelectOption[];
+  selected: T[];
+  onChange: (next: T[]) => void;
+  ariaLabel: string;
+  clearLabel: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDown(e: MouseEvent) {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setOpen(false);
+    }
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  const selectedSet = new Set(selected);
+  const count = selected.length;
+
+  function toggle(value: T) {
+    onChange(
+      selectedSet.has(value)
+        ? selected.filter((x) => x !== value)
+        : [...selected, value],
+    );
+  }
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        className={cn(
+          'inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-sm transition-colors',
+          'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200',
+          count > 0
+            ? 'border-brand-300 bg-brand-50 text-brand-700'
+            : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50',
+        )}
+      >
+        {icon}
+        {count > 0 ? `${label} (${count})` : label}
+      </button>
+
+      {open && (
+        <div
+          role="dialog"
+          aria-label={ariaLabel}
+          className="absolute left-0 z-20 mt-2 w-52 rounded-lg border border-gray-200 bg-white p-2 shadow-cardHover"
+        >
+          <ul className="max-h-64 space-y-0.5 overflow-y-auto">
+            {options.map((opt) => {
+              const checked = selectedSet.has(opt.value as T);
+              return (
+                <li key={opt.value}>
+                  <button
+                    type="button"
+                    role="menuitemcheckbox"
+                    aria-checked={checked}
+                    onClick={() => toggle(opt.value as T)}
+                    className="flex w-full items-center gap-2 rounded px-1.5 py-1 text-left hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+                  >
+                    <span
+                      className={cn(
+                        'flex h-4 w-4 flex-shrink-0 items-center justify-center rounded border',
+                        checked
+                          ? 'border-brand-600 bg-brand-600 text-white'
+                          : 'border-gray-300',
+                      )}
+                    >
+                      {checked && (
+                        <svg
+                          width="11"
+                          height="11"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="3"
+                          aria-hidden="true"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M5 13l4 4L19 7"
+                          />
+                        </svg>
+                      )}
+                    </span>
+                    <span className="text-sm text-gray-700">{opt.label}</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+          {count > 0 && (
+            <div className="mt-1 border-t border-gray-100 pt-1">
+              <button
+                type="button"
+                onClick={() => onChange([])}
+                className="w-full rounded px-1.5 py-1.5 text-left text-xs font-medium text-gray-500 hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+              >
+                {clearLabel}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Human-readable labels for IssueType values shown in the filter. */
+const TYPE_OPTIONS: MultiSelectOption[] = [
+  { value: IssueType.TASK, label: 'Task' },
+  { value: IssueType.BUG, label: 'Bug' },
+  { value: IssueType.STORY, label: 'Story' },
+  { value: IssueType.EPIC, label: 'Epic' },
+  { value: IssueType.SUBTASK, label: 'Subtask' },
+];
+
+/** Human-readable labels for Priority values shown in the filter. */
+const PRIORITY_OPTIONS: MultiSelectOption[] = [
+  { value: Priority.HIGHEST, label: 'Highest' },
+  { value: Priority.HIGH, label: 'High' },
+  { value: Priority.MEDIUM, label: 'Medium' },
+  { value: Priority.LOW, label: 'Low' },
+  { value: Priority.LOWEST, label: 'Lowest' },
+];
+
+/**
+ * Board toolbar control to filter by one or more issue types.
+ * A card is shown only when its type is in the selected set.
+ */
+function TypeFilter({
+  selected,
+  onChange,
+}: {
+  selected: IssueType[];
+  onChange: (next: IssueType[]) => void;
+}) {
+  return (
+    <MultiSelectFilter<IssueType>
+      label="Type"
+      icon={
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          aria-hidden="true"
+        >
+          <rect x="3" y="3" width="7" height="7" rx="1" />
+          <rect x="14" y="3" width="7" height="7" rx="1" />
+          <rect x="3" y="14" width="7" height="7" rx="1" />
+          <rect x="14" y="14" width="7" height="7" rx="1" />
+        </svg>
+      }
+      options={TYPE_OPTIONS}
+      selected={selected}
+      onChange={onChange}
+      ariaLabel="Filter by type"
+      clearLabel="Clear type filter"
+    />
+  );
+}
+
+/**
+ * Board toolbar control to filter by one or more priority levels.
+ * A card is shown only when its priority is in the selected set.
+ */
+function PriorityFilter({
+  selected,
+  onChange,
+}: {
+  selected: Priority[];
+  onChange: (next: Priority[]) => void;
+}) {
+  return (
+    <MultiSelectFilter<Priority>
+      label="Priority"
+      icon={
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          aria-hidden="true"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M3 6h18M6 12h12M10 18h4" />
+        </svg>
+      }
+      options={PRIORITY_OPTIONS}
+      selected={selected}
+      onChange={onChange}
+      ariaLabel="Filter by priority"
+      clearLabel="Clear priority filter"
+    />
   );
 }
 

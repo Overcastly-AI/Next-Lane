@@ -17,7 +17,7 @@ Status legend: ✅ done · 🚧 in progress · ⬜ planned
 - ✅ Statuses (To Do / In Progress / Done) per project
 - ✅ Kanban board: columns from statuses, drag-and-drop with fractional rank
 - ✅ Comments (flat) + activity log
-- ✅ Search & filter (status / assignee / type / priority)
+- ✅ Search & filter (status / assignee / type / priority) — board toolbar: title search, assignee select, label multi-select, type multi-select, priority multi-select (shipped 2026-06-27)
 - ✅ Web UI: login, project list, board, issue detail drawer
 - ✅ Seed demo data; API verified end-to-end + Playwright QA (desktop + mobile)
 - 🚧 Verify full `docker compose up` on a host with Docker Hub access (built/validated; not runnable in the build sandbox)
