@@ -34,6 +34,7 @@ Status legend: ✅ done · 🚧 in progress · ⬜ planned
 - ✅ Story points
 - ✅ Roles & permissions (Admin/Member/Viewer) — enforced API + VIEWER-aware UI
 - ✅ Realtime updates (Socket.io) + in-app notifications & @mentions
+- ✅ @mention autocomplete in comment composer (MentionComposer + 16 e2e tests desktop+mobile; inserts `@email` matching backend mention parser)
 - ✅ Reports: burndown + velocity
 - ⬜ Remaining: custom workflow *transitions*, attachments (uploads), cumulative-flow report
 
@@ -62,7 +63,7 @@ Status legend: ✅ done · 🚧 in progress · ⬜ planned
 tracker (board, backlog, sprints, reports, roadmap, labels, story points, epics,
 comments, search, command palette, My Work, roles, notifications, webhooks, realtime).
 Security hardening pass is complete (SSRF guard, pagination index, helmet, rate limiting).
-Password reset shipped (PasswordResetToken model + migration, forgot/reset endpoints, dev-log delivery seam, frontend pages, 12 e2e tests).
+Board type/priority filters, @mention autocomplete (MentionComposer picker matching the backend fan-out parser), and password reset (token model + forgot/reset endpoints + frontend pages, dev-log delivery seam) all shipped.
 Remaining: query DSL/saved views, custom fields, automation rules, time tracking, email, dashboards, API tokens, audit log, bulk edit, importers, SSO.
 
 ## v1.0 release criteria — definition of "a good product"

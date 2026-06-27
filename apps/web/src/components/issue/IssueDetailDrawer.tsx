@@ -244,7 +244,7 @@ function DrawerBody({
               />
             </div>
 
-            <CommentsPanel issueId={issue.id} editable={editable} />
+            <CommentsPanel issueId={issue.id} users={users} editable={editable} />
           </div>
 
           {/* Sidebar */}
