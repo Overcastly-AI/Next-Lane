@@ -23,3 +23,22 @@ export class LoginDto {
   @MinLength(1)
   password!: string;
 }
+
+export class ForgotPasswordDto {
+  @IsEmail()
+  email!: string;
+}
+
+export class ResetPasswordDto {
+  /** The raw reset token from the delivery channel (URL query param). */
+  @IsString()
+  @MinLength(1)
+  @MaxLength(128)
+  token!: string;
+
+  /** New password — same constraints as registration. */
+  @IsString()
+  @MinLength(6)
+  @MaxLength(200)
+  newPassword!: string;
+}
