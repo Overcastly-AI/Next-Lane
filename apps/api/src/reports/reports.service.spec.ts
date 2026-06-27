@@ -4,6 +4,15 @@ import * as membership from '../common/membership.util';
 import { ReportsService } from './reports.service';
 import type { PrismaService } from '../prisma/prisma.service';
 
+// ---------------------------------------------------------------------------
+// CFD helpers
+// ---------------------------------------------------------------------------
+
+/** Build a UTC Date from an ISO date string (YYYY-MM-DD). */
+function utcDate(iso: string): Date {
+  return new Date(`${iso}T00:00:00.000Z`);
+}
+
 /**
  * DB-free unit tests for ReportsService, driving the real derivation logic with
  * a mocked Prisma client:
@@ -27,10 +36,12 @@ function makePrisma() {
     status: { findMany: jest.fn() },
     sprint: { findMany: jest.fn(), findFirst: jest.fn() },
     activityLog: { findMany: jest.fn() },
+    issue: { findMany: jest.fn() },
   } as unknown as PrismaService & {
     status: { findMany: jest.Mock };
     sprint: { findMany: jest.Mock; findFirst: jest.Mock };
     activityLog: { findMany: jest.Mock };
+    issue: { findMany: jest.Mock };
   };
 }
 
@@ -168,6 +179,175 @@ describe('ReportsService', () => {
 
       // Burns down to 0 on the final day so it reconciles with velocity.
       expect(result.series.map((s) => s.remaining)).toEqual([5, 0]);
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // CFD
+  // ─────────────────────────────────────────────────────────────────────────
+  describe('cfd', () => {
+    /**
+     * Helper: set up the three Prisma mocks that cfd() calls:
+     *   issue.findMany   → issues
+     *   activityLog.findMany → log entries
+     *   status.findMany  → all statuses (for category lookup)
+     */
+    function mockCfd(opts: {
+      issues: Array<{
+        id: string;
+        statusId: string;
+        createdAt: Date;
+        status: { category: StatusCategory };
+      }>;
+      logs?: Array<{
+        issueId: string;
+        from: string | null;
+        to: string | null;
+        createdAt: Date;
+      }>;
+      statuses?: Array<{ id: string; category: StatusCategory }>;
+    }) {
+      prisma.issue.findMany.mockResolvedValue(opts.issues);
+      prisma.activityLog.findMany.mockResolvedValue(opts.logs ?? []);
+      // Default statuses: expose at minimum the ones used in STATUS constant.
+      prisma.status.findMany.mockResolvedValue(
+        opts.statuses ?? [
+          { id: STATUS.todo.id, category: StatusCategory.TODO },
+          { id: STATUS.done.id, category: StatusCategory.DONE },
+        ],
+      );
+    }
+
+    it('returns a series with all-zero counts when the project has no issues', async () => {
+      prisma.issue.findMany.mockResolvedValue([]);
+      prisma.activityLog.findMany.mockResolvedValue([]);
+      prisma.status.findMany.mockResolvedValue([]);
+
+      const result = await service.cfd('user-1', PROJECT_ID, 7);
+
+      expect(result.projectId).toBe(PROJECT_ID);
+      expect(result.days).toBe(7);
+      expect(result.series).toHaveLength(7);
+      for (const point of result.series) {
+        expect(point.todo).toBe(0);
+        expect(point.inProgress).toBe(0);
+        expect(point.done).toBe(0);
+      }
+    });
+
+    it('counts all issues in their current status category when there are no log entries', async () => {
+      // Two issues, both in TODO — no log history.
+      const createdLongAgo = utcDate('2026-01-01');
+      mockCfd({
+        issues: [
+          {
+            id: 'i1',
+            statusId: STATUS.todo.id,
+            createdAt: createdLongAgo,
+            status: { category: StatusCategory.TODO },
+          },
+          {
+            id: 'i2',
+            statusId: STATUS.todo.id,
+            createdAt: createdLongAgo,
+            status: { category: StatusCategory.TODO },
+          },
+        ],
+      });
+
+      const result = await service.cfd('user-1', PROJECT_ID, 3);
+
+      expect(result.series).toHaveLength(3);
+      for (const point of result.series) {
+        // Without log history, both issues carry current status backward.
+        expect(point.todo).toBe(2);
+        expect(point.inProgress).toBe(0);
+        expect(point.done).toBe(0);
+      }
+    });
+
+    it('reconstructs historical state: todo→done transition splits counts across days', async () => {
+      // One issue transitions from TODO to DONE. Across the whole window
+      // (regardless of which day the test runs), the issue is always counted
+      // exactly once (either as todo or done, never both or neither).
+      const createdLongAgo = utcDate('2026-01-01');
+      const transitionAt = new Date('2026-06-02T12:00:00.000Z');
+
+      mockCfd({
+        issues: [
+          {
+            id: 'i1',
+            statusId: STATUS.done.id,
+            createdAt: createdLongAgo,
+            status: { category: StatusCategory.DONE },
+          },
+        ],
+        logs: [
+          {
+            issueId: 'i1',
+            from: STATUS.todo.id,
+            to: STATUS.done.id,
+            createdAt: transitionAt,
+          },
+        ],
+        statuses: [
+          { id: STATUS.todo.id, category: StatusCategory.TODO },
+          { id: STATUS.done.id, category: StatusCategory.DONE },
+        ],
+      });
+
+      const result = await service.cfd('user-1', PROJECT_ID, 3);
+      expect(result.series).toHaveLength(3);
+      for (const point of result.series) {
+        expect(point.inProgress).toBe(0);
+        // Exactly one issue exists every day: either todo or done.
+        expect(point.todo + point.done).toBe(1);
+      }
+    });
+
+    it('excludes issues not yet created on a given day', async () => {
+      // Issue created yesterday (noon UTC); the day before yesterday it should
+      // not be counted.
+      const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const createdYesterday = new Date(
+        Date.UTC(
+          yesterday.getUTCFullYear(),
+          yesterday.getUTCMonth(),
+          yesterday.getUTCDate(),
+          12,
+        ),
+      );
+
+      mockCfd({
+        issues: [
+          {
+            id: 'i1',
+            statusId: STATUS.todo.id,
+            createdAt: createdYesterday,
+            status: { category: StatusCategory.TODO },
+          },
+        ],
+      });
+
+      // 3-day window: [2 days ago, yesterday, today] (oldest first in series).
+      const result = await service.cfd('user-1', PROJECT_ID, 3);
+      expect(result.series).toHaveLength(3);
+
+      // Oldest day (2 days ago) — issue not yet created.
+      expect(result.series[0].todo).toBe(0);
+      // Yesterday and today — issue exists.
+      expect(result.series[1].todo).toBe(1);
+      expect(result.series[2].todo).toBe(1);
+    });
+
+    it('clamps the window to 366 days maximum', async () => {
+      prisma.issue.findMany.mockResolvedValue([]);
+      prisma.activityLog.findMany.mockResolvedValue([]);
+      prisma.status.findMany.mockResolvedValue([]);
+
+      const result = await service.cfd('user-1', PROJECT_ID, 9999);
+      expect(result.days).toBe(366);
+      expect(result.series).toHaveLength(366);
     });
   });
 });

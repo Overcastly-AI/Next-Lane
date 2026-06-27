@@ -36,7 +36,8 @@ Status legend: ✅ done · 🚧 in progress · ⬜ planned
 - ✅ Realtime updates (Socket.io) + in-app notifications & @mentions
 - ✅ @mention autocomplete in comment composer (MentionComposer + 16 e2e tests desktop+mobile; inserts `@email` matching backend mention parser)
 - ✅ Reports: burndown + velocity
-- ⬜ Remaining: custom workflow *transitions*, attachments (uploads), cumulative-flow report
+- ✅ cumulative-flow report (CFD stacked-area chart, 30/90-day window selector, historical reconstruction from ActivityLog)
+- ⬜ Remaining: custom workflow *transitions*, attachments (uploads)
 
 ## Phase 3 — Power features 🚧 (in progress)
 - ✅ Roadmap / timeline (epics + sprints as bars, progress, today marker)
@@ -53,7 +54,7 @@ Status legend: ✅ done · 🚧 in progress · ⬜ planned
 - ⬜ Workflow automation rules (trigger → action)
 - ⬜ Time tracking / worklogs
 - ⬜ Email (SMTP) notifications + email-to-issue
-- ⬜ Configurable dashboards; cumulative-flow
+- ⬜ Configurable dashboards
 - ⬜ REST API tokens, audit log
 - ⬜ Bulk edit, CSV import (and importers for other trackers), SSO/OIDC
 
