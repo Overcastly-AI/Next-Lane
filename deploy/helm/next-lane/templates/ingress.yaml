@@ -1,0 +1,60 @@
+{{- if .Values.ingress.enabled }}
+{{- $webSvc := include "next-lane.componentName" (dict "ctx" . "component" "web") -}}
+{{- $port := .Values.web.service.port -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "next-lane.fullname" . }}
+  labels:
+    {{- include "next-lane.componentLabels" (dict "ctx" . "component" "web") | nindent 4 }}
+  annotations:
+    {{- if and .Values.ingress.tls.enabled .Values.ingress.tls.certManager.enabled }}
+    {{- if eq .Values.ingress.tls.certManager.issuerKind "ClusterIssuer" }}
+    cert-manager.io/cluster-issuer: {{ .Values.ingress.tls.certManager.issuerName | quote }}
+    {{- else }}
+    cert-manager.io/issuer: {{ .Values.ingress.tls.certManager.issuerName | quote }}
+    {{- end }}
+    {{- end }}
+    {{- with .Values.ingress.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    {{- with .Values.commonAnnotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  {{- if .Values.ingress.className }}
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- end }}
+  {{- if .Values.ingress.tls.enabled }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.host | quote }}
+        {{- range .Values.ingress.extraHosts }}
+        - {{ . | quote }}
+        {{- end }}
+      secretName: {{ .Values.ingress.tls.secretName }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.host | quote }}
+      http:
+        paths:
+          - path: {{ .Values.ingress.path }}
+            pathType: {{ .Values.ingress.pathType }}
+            backend:
+              service:
+                name: {{ $webSvc }}
+                port:
+                  number: {{ $port }}
+    {{- range .Values.ingress.extraHosts }}
+    - host: {{ . | quote }}
+      http:
+        paths:
+          - path: {{ $.Values.ingress.path }}
+            pathType: {{ $.Values.ingress.pathType }}
+            backend:
+              service:
+                name: {{ $webSvc }}
+                port:
+                  number: {{ $port }}
+    {{- end }}
+{{- end }}

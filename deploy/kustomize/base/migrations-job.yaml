@@ -1,0 +1,63 @@
+# Runs `prisma migrate deploy` before/with a rollout. Unlike the Helm chart
+# (which uses a hook to gate this BEFORE the API), plain Kustomize has no hook
+# ordering — apply this Job and wait for completion before/with rolling the API:
+#
+#   kubectl apply -k deploy/kustomize/overlays/<env>
+#   kubectl -n next-lane wait --for=condition=complete job/next-lane-migrate --timeout=600s
+#
+# The name carries no hash suffix so re-applying replaces it; delete it first if
+# a previous run is still present:
+#   kubectl -n next-lane delete job next-lane-migrate --ignore-not-found
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: next-lane-migrate
+  labels:
+    app.kubernetes.io/name: next-lane
+    app.kubernetes.io/component: migrate
+spec:
+  backoffLimit: 3
+  activeDeadlineSeconds: 600
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: next-lane
+        app.kubernetes.io/component: migrate
+    spec:
+      restartPolicy: Never
+      serviceAccountName: next-lane
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: migrate
+          image: next-lane-api
+          command: ["npx", "prisma", "migrate", "deploy"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: next-lane-secrets
+                  key: DATABASE_URL
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+      volumes:
+        - name: tmp
+          emptyDir: {}

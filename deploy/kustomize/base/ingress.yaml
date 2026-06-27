@@ -1,0 +1,27 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: next-lane
+  labels:
+    app.kubernetes.io/name: next-lane
+    app.kubernetes.io/component: web
+  annotations:
+    # Overlays set the cert-manager issuer (prod) or strip TLS (dev).
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - tracker.example.local
+      secretName: next-lane-tls
+  rules:
+    - host: tracker.example.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: next-lane-web
+                port:
+                  number: 80

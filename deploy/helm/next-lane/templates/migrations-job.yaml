@@ -1,0 +1,68 @@
+{{- if .Values.migrations.enabled }}
+{{- /*
+  Pre-install / pre-upgrade hook that runs `prisma migrate deploy` BEFORE the
+  API Deployment is created/updated, so schema changes are applied exactly once
+  and never race multiple replicas. Uses the api image (Prisma client + schema
+  are baked in at apps/api). If this Job fails, the install/upgrade aborts and
+  the old API keeps running.
+*/ -}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "next-lane.componentName" (dict "ctx" . "component" "migrate") }}
+  labels:
+    {{- include "next-lane.componentLabels" (dict "ctx" . "component" "migrate") | nindent 4 }}
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": {{ .Values.migrations.hookWeight | quote }}
+    "helm.sh/hook-delete-policy": {{ .Values.migrations.hookDeletePolicy }}
+spec:
+  backoffLimit: {{ .Values.migrations.backoffLimit }}
+  activeDeadlineSeconds: {{ .Values.migrations.activeDeadlineSeconds }}
+  template:
+    metadata:
+      labels:
+        {{- include "next-lane.componentSelectorLabels" (dict "ctx" . "component" "migrate") | nindent 8 }}
+    spec:
+      restartPolicy: Never
+      serviceAccountName: {{ include "next-lane.serviceAccountName" . }}
+      {{- include "next-lane.imagePullSecrets" . | nindent 6 }}
+      {{- with .Values.api.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: migrate
+          image: {{ include "next-lane.apiImage" . }}
+          imagePullPolicy: {{ .Values.image.api.pullPolicy }}
+          {{- with .Values.api.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          # apps/api is the WORKDIR in the runtime image, where prisma/ lives.
+          command: ["npx", "prisma", "migrate", "deploy"]
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "next-lane.secretName" . }}
+                  key: DATABASE_URL
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          {{- with .Values.migrations.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+      {{- with .Values.api.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.api.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

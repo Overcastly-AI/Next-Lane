@@ -1,0 +1,18 @@
+# Non-secret API environment. Overlays patch values (LOG_LEVEL, CORS_ORIGINS,
+# RESET_BASE_URL, etc.). Secrets live in the Secret, NOT here.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: next-lane-api-config
+  labels:
+    app.kubernetes.io/name: next-lane
+    app.kubernetes.io/component: api
+data:
+  NODE_ENV: "production"
+  API_PORT: "4000"
+  LOG_LEVEL: "info"
+  JWT_EXPIRES_IN: "7d"
+  CORS_ORIGINS: "https://tracker.example.local"
+  RESET_BASE_URL: "https://tracker.example.local"
+  # Demo seed OFF for real installs.
+  AUTO_SEED: "false"

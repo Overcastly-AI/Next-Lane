@@ -1,0 +1,40 @@
+# Next Lane — Kustomize BASE (plain manifests, a Helm-free alternative).
+#
+# This base is a sensible SINGLE-REPLICA default. Overlays patch it for dev/prod
+# (replicas, host, datastores, secrets). Datastores are NOT bundled here — the
+# base expects an external Postgres (and optional Redis) via the Secret. For a
+# batteries-included quick-start, prefer the Helm chart with postgresql.enabled.
+#
+# Apply an overlay (not the base directly):
+#   kubectl apply -k deploy/kustomize/overlays/dev
+#   kubectl apply -k deploy/kustomize/overlays/prod
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: next-lane
+
+commonLabels:
+  app.kubernetes.io/part-of: next-lane
+  app.kubernetes.io/managed-by: kustomize
+
+resources:
+  # The Namespace object is declared by each overlay (so dev/prod can target
+  # different namespaces cleanly). The base only sets `namespace:` above.
+  - serviceaccount.yaml
+  - configmap-api.yaml
+  - configmap-web-nginx.yaml
+  - secret.example.yaml
+  - api-deployment.yaml
+  - api-service.yaml
+  - web-deployment.yaml
+  - web-service.yaml
+  - migrations-job.yaml
+  - ingress.yaml
+
+images:
+  - name: next-lane-api
+    newName: ghcr.io/next-lane/next-lane-api
+    newTag: "1.0.0"
+  - name: next-lane-web
+    newName: ghcr.io/next-lane/next-lane-web
+    newTag: "1.0.0"

@@ -1,0 +1,64 @@
+
+Next Lane has been deployed as release "{{ .Release.Name }}" in namespace "{{ .Release.Namespace }}".
+
+Components:
+  • API  (NestJS)        → Deployment/{{ include "next-lane.componentName" (dict "ctx" . "component" "api") }}  (replicas: {{ if .Values.api.autoscaling.enabled }}HPA {{ .Values.api.autoscaling.minReplicas }}-{{ .Values.api.autoscaling.maxReplicas }}{{ else }}{{ .Values.api.replicaCount }}{{ end }})
+  • Web  (nginx SPA)     → Deployment/{{ include "next-lane.componentName" (dict "ctx" . "component" "web") }}  (replicas: {{ if .Values.web.autoscaling.enabled }}HPA {{ .Values.web.autoscaling.minReplicas }}-{{ .Values.web.autoscaling.maxReplicas }}{{ else }}{{ .Values.web.replicaCount }}{{ end }})
+{{- if .Values.migrations.enabled }}
+  • Migrations           → ran as a pre-install/pre-upgrade Job (prisma migrate deploy) before the API rolled out.
+{{- end }}
+
+Datastores:
+{{- if .Values.postgresql.enabled }}
+  • PostgreSQL: BUNDLED (Bitnami subchart). NOT recommended for production — switch to a managed DB and set postgresql.enabled=false + externalDatabase.*.
+{{- else }}
+  • PostgreSQL: EXTERNAL (you are pointing at a managed/external instance). Good for production.
+{{- end }}
+{{- if .Values.redis.enabled }}
+  • Redis: BUNDLED → HA realtime ENABLED (Socket.io Redis adapter + BullMQ webhook queue).
+{{- else if or .Values.secrets.redisUrl .Values.externalRedis.host }}
+  • Redis: EXTERNAL → HA realtime ENABLED.
+{{- else }}
+  • Redis: NONE → SINGLE-REPLICA mode (in-memory Socket.io, in-process webhook fan-out).
+    Keep api.replicaCount=1. For multi-replica HA, enable redis or set externalRedis.host.
+{{- end }}
+
+Access the app:
+{{- if .Values.ingress.enabled }}
+  {{ if .Values.ingress.tls.enabled }}https{{ else }}http{{ end }}://{{ .Values.ingress.host }}
+  {{- if and .Values.ingress.tls.enabled .Values.ingress.tls.certManager.enabled }}
+  (TLS certificate is being issued by cert-manager {{ .Values.ingress.tls.certManager.issuerKind }} "{{ .Values.ingress.tls.certManager.issuerName }}" — may take a minute.)
+  {{- end }}
+{{- else }}
+  Ingress is disabled. Port-forward the web service to try it locally:
+    kubectl --namespace {{ .Release.Namespace }} port-forward svc/{{ include "next-lane.componentName" (dict "ctx" . "component" "web") }} 8080:{{ .Values.web.service.port }}
+  then open http://localhost:8080
+{{- end }}
+
+{{- if eq .Values.web.apiMode "same-origin" }}
+
+API routing: SAME-ORIGIN — the web pod's nginx reverse-proxies /api and
+/socket.io to the API Service. The web image MUST have been built with an EMPTY
+VITE_API_URL. One image works in every environment.
+{{- else }}
+
+API routing: EXTERNAL — the browser calls the API on a separate origin. The web
+image MUST have been built with VITE_API_URL={{ .Values.web.apiUrl | default "<your-api-url>" }}.
+Ensure the API CORS_ORIGINS includes the web origin.
+{{- end }}
+
+{{- if and (not .Values.secrets.existingSecret) (not .Values.secrets.jwtSecret) }}
+
+WARNING: No JWT secret configured. This should not happen (the chart fails fast).
+{{- end }}
+{{- if .Values.postgresql.enabled }}
+
+REMINDER: the bundled PostgreSQL password defaults to "nextlane". Change
+postgresql.auth.password before any real use.
+{{- end }}
+
+Useful:
+  kubectl --namespace {{ .Release.Namespace }} get pods -l app.kubernetes.io/instance={{ .Release.Name }}
+  kubectl --namespace {{ .Release.Namespace }} logs -l app.kubernetes.io/component=api --tail=100
+
+Full docs: docs/DEPLOY-KUBERNETES.md

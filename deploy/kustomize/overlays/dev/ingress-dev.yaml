@@ -1,0 +1,10 @@
+# Strip TLS + cert-manager and point at a local hostname for a dev cluster
+# (e.g. add `127.0.0.1 tracker.dev.local` to /etc/hosts and use an ingress
+# controller, or just port-forward the web service instead).
+- op: remove
+  path: /spec/tls
+- op: remove
+  path: /metadata/annotations/cert-manager.io~1cluster-issuer
+- op: replace
+  path: /spec/rules/0/host
+  value: tracker.dev.local

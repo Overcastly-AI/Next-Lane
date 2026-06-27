@@ -1,0 +1,27 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: next-lane-api
+  labels:
+    app.kubernetes.io/name: next-lane
+    app.kubernetes.io/component: api
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: next-lane
+      app.kubernetes.io/component: api
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: next-lane-web
+  labels:
+    app.kubernetes.io/name: next-lane
+    app.kubernetes.io/component: web
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: next-lane
+      app.kubernetes.io/component: web

@@ -1,0 +1,44 @@
+# PROD overlay — multi-replica HA, real host + cert-manager TLS, HPA + PDB.
+# Assumes EXTERNAL managed Postgres + Redis (configure the Secret out of band).
+# Apply:  kubectl apply -k deploy/kustomize/overlays/prod
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: next-lane
+
+resources:
+  - namespace.yaml
+  - ../../base
+  # HA add-ons not present in the single-replica base.
+  - hpa.yaml
+  - pdb.yaml
+
+# Pin exact image tags in prod.
+images:
+  - name: next-lane-api
+    newName: ghcr.io/next-lane/next-lane-api
+    newTag: "1.0.0"
+  - name: next-lane-web
+    newName: ghcr.io/next-lane/next-lane-web
+    newTag: "1.0.0"
+
+patches:
+  # 3 API replicas, 3 web replicas.
+  - path: replicas-prod.yaml
+    target:
+      kind: Deployment
+      name: next-lane-api
+  - path: replicas-web-prod.yaml
+    target:
+      kind: Deployment
+      name: next-lane-web
+  # Prod hostname + log level.
+  - path: configmap-prod.yaml
+    target:
+      kind: ConfigMap
+      name: next-lane-api-config
+  # Prod hostname on the ingress + TLS secret name.
+  - path: ingress-prod.yaml
+    target:
+      kind: Ingress
+      name: next-lane

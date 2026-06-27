@@ -1,0 +1,367 @@
+# ──────────────────────────────────────────────────────────────────────────
+# Next Lane — Helm values
+#
+# Every value below has a sensible default. The two things you almost always
+# set for a real install are:
+#   1. secrets.jwtSecret  (or secrets.existingSecret) — REQUIRED, no default.
+#   2. ingress.host       — the public hostname for the web UI.
+#
+# Quick start (bundled Postgres + Redis, single replica):
+#   helm install next-lane deploy/helm/next-lane \
+#     --set secrets.jwtSecret="$(openssl rand -hex 32)" \
+#     --set ingress.host=tracker.example.com
+#
+# Production (external managed datastores, HA): see values-prod.example.yaml
+# and docs/DEPLOY-KUBERNETES.md.
+# ──────────────────────────────────────────────────────────────────────────
+
+# Override the chart name used in resource names. Leave empty to use the chart name.
+nameOverride: ""
+# Override the full release-name prefix on resources.
+fullnameOverride: ""
+
+# Extra labels applied to every resource (e.g. team/cost-center tags).
+commonLabels: {}
+# Extra annotations applied to every resource.
+commonAnnotations: {}
+
+# ── Images ────────────────────────────────────────────────────────────────
+# The api and web images are published from this repo's Dockerfiles. Point at
+# your registry mirror if you don't pull from the public one.
+image:
+  # Pull secrets for private registries (list of {name: my-regcred}).
+  pullSecrets: []
+  api:
+    repository: ghcr.io/next-lane/next-lane-api
+    tag: ""          # defaults to .Chart.AppVersion when empty
+    pullPolicy: IfNotPresent
+  web:
+    repository: ghcr.io/next-lane/next-lane-web
+    tag: ""          # defaults to .Chart.AppVersion when empty
+    pullPolicy: IfNotPresent
+
+# ── API (NestJS) ──────────────────────────────────────────────────────────
+api:
+  # Set replicaCount > 1 ONLY when redis.enabled=true OR externalRedis is set,
+  # so Socket.io fans out across pods via the Redis adapter (see HA section in
+  # docs/DEPLOY-KUBERNETES.md). With no Redis, keep this at 1.
+  replicaCount: 1
+
+  # Container port the NestJS app listens on (env API_PORT). /health is exposed
+  # un-prefixed; all other routes are under /api.
+  port: 4000
+
+  # Non-secret environment (rendered into a ConfigMap). Secrets live under
+  # `.secrets` below and are injected from a Kubernetes Secret.
+  env:
+    NODE_ENV: production
+    LOG_LEVEL: info               # trace|debug|info|warn|error|fatal
+    JWT_EXPIRES_IN: 7d
+    # Comma-separated browser origins allowed to call the API with credentials.
+    # Defaults below to the ingress host over https; override for extra origins.
+    corsOrigins: ""               # e.g. "https://tracker.example.com"
+    # Public URL of the web app, used to build password-reset links.
+    resetBaseUrl: ""              # e.g. "https://tracker.example.com"
+    # Rate limiting (per client IP). Leave RATE_LIMIT_DISABLED unset/false in
+    # internet-facing prod; tune the throttle values instead.
+    throttleTtl: ""               # ms window, default 60000
+    throttleLimit: ""             # global req/window, default 100
+    throttleAuthLimit: ""         # auth-route req/window, default 10
+    rateLimitDisabled: false
+    # SSRF guard for outbound webhooks. NEVER enable on internet-facing /
+    # multi-tenant clusters — allows reaching internal infra & cloud metadata.
+    webhookAllowPrivate: false
+    # Auto-run the demo seed on first boot. Turn OFF for real installs.
+    autoSeed: false
+  # Arbitrary additional env vars (list of k8s EnvVar objects) for forward-compat
+  # (e.g. SMTP_*). Use `extraEnvFrom` to mount whole ConfigMaps/Secrets.
+  extraEnv: []
+  extraEnvFrom: []
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+
+  # Liveness/readiness/startup probes hit GET /health (returns 200 {status:ok}).
+  probes:
+    liveness:
+      enabled: true
+      initialDelaySeconds: 15
+      periodSeconds: 10
+      timeoutSeconds: 3
+      failureThreshold: 3
+    readiness:
+      enabled: true
+      initialDelaySeconds: 5
+      periodSeconds: 10
+      timeoutSeconds: 3
+      failureThreshold: 3
+    # Startup probe gives the app generous time to connect to the DB before
+    # liveness starts counting (avoids restart loops on a slow datastore).
+    startup:
+      enabled: true
+      periodSeconds: 5
+      failureThreshold: 30        # up to ~150s to become healthy
+
+  # Pod-level security context (the image runs Node as a normal process).
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 1000
+    seccompProfile:
+      type: RuntimeDefault
+  # Container-level security context.
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop: ["ALL"]
+  # The API writes uploaded attachments to /app/uploads. With a read-only root
+  # FS we mount an emptyDir there (and /tmp). For durable attachments across
+  # restarts, set persistence below.
+  uploads:
+    mountPath: /app/uploads
+    persistence:
+      enabled: false              # emptyDir when false (ephemeral)
+      size: 5Gi
+      storageClass: ""
+      accessModes: ["ReadWriteOnce"]
+      # NOTE: ReadWriteOnce + replicaCount>1 means only one pod can mount it.
+      # For HA attachments use a ReadWriteMany class or object storage.
+
+  service:
+    type: ClusterIP
+    port: 4000
+    annotations: {}
+
+  # Horizontal Pod Autoscaler for the API.
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: ""   # set to enable memory-based scaling
+
+  # PodDisruptionBudget — keep the API available during voluntary disruptions.
+  pdb:
+    enabled: false
+    minAvailable: 1
+    # maxUnavailable: ""   # set one of minAvailable / maxUnavailable, not both
+
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  topologySpreadConstraints: []
+  podAnnotations: {}
+  podLabels: {}
+
+# ── Web (React/Vite SPA served by nginx) ──────────────────────────────────
+web:
+  replicaCount: 2
+  port: 80
+
+  # HOW THE BROWSER REACHES THE API — read carefully.
+  #
+  # The web image bakes VITE_API_URL at BUILD time, and the SPA calls
+  # `${VITE_API_URL}/api/...` and connects Socket.io to `${VITE_API_URL}`.
+  #
+  # Two supported runtime modes (no app-source change needed):
+  #
+  #   mode: "same-origin"  (DEFAULT, recommended)
+  #     Build the web image with an EMPTY VITE_API_URL so the SPA calls
+  #     `/api/...` and `/socket.io` on its OWN origin. This chart then ships an
+  #     nginx config (ConfigMap) that reverse-proxies /api and /socket.io to the
+  #     API Service. One image works in every environment — nothing to rebuild.
+  #
+  #   mode: "external"
+  #     The SPA talks to the API on a SEPARATE origin. You MUST build the web
+  #     image with VITE_API_URL=https://api.example.com (build-time). Set
+  #     `web.apiUrl` here only for documentation; it cannot retro-fit a baked
+  #     image. Ensure the API's CORS_ORIGINS includes the web origin.
+  apiMode: same-origin
+  apiUrl: ""                       # informational in external mode (build-time)
+
+  resources:
+    requests:
+      cpu: 25m
+      memory: 32Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+  probes:
+    liveness:
+      enabled: true
+      initialDelaySeconds: 5
+      periodSeconds: 10
+    readiness:
+      enabled: true
+      initialDelaySeconds: 3
+      periodSeconds: 10
+
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 101                 # nginx user in nginx:alpine
+    runAsGroup: 101
+    fsGroup: 101
+    seccompProfile:
+      type: RuntimeDefault
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop: ["ALL"]
+
+  service:
+    type: ClusterIP
+    port: 80
+    annotations: {}
+
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 4
+    targetCPUUtilizationPercentage: 70
+
+  pdb:
+    enabled: false
+    minAvailable: 1
+
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  topologySpreadConstraints: []
+  podAnnotations: {}
+  podLabels: {}
+
+# ── Ingress ────────────────────────────────────────────────────────────────
+# Routes the public host to the web Service. In same-origin apiMode, nginx
+# inside the web pod proxies /api + /socket.io to the API, so a SINGLE host /
+# ingress rule is all you need. (In external apiMode add a second host for the
+# API or a separate ingress — see docs.)
+ingress:
+  enabled: true
+  className: nginx
+  host: tracker.example.local
+  # Extra hosts to route to the web service (e.g. apex + www).
+  extraHosts: []
+  path: /
+  pathType: Prefix
+  annotations: {}
+  # WebSocket / Socket.io note: most ingress controllers proxy WS by default.
+  # For the community nginx-ingress, no extra annotation is required for the
+  # in-pod proxy path. If you split the API onto its own ingress, you may need
+  #   nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+  tls:
+    enabled: true
+    # cert-manager: name of the ClusterIssuer/Issuer that signs the cert.
+    # Setting this adds the cert-manager.io/cluster-issuer annotation.
+    certManager:
+      enabled: true
+      issuerName: letsencrypt-prod
+      issuerKind: ClusterIssuer    # or Issuer (namespaced)
+    # Name of the Secret cert-manager writes the cert into (auto-created).
+    secretName: next-lane-tls
+
+# ── Secrets ────────────────────────────────────────────────────────────────
+# JWT_SECRET + database/redis credentials. The chart NEVER ships a default
+# secret value — you MUST provide one of:
+#
+#   (a) secrets.jwtSecret (and DB/Redis creds) via --set or a values file, OR
+#   (b) secrets.existingSecret = name of a Secret you manage out-of-band
+#       (recommended: external-secrets / sealed-secrets / SOPS / vendor secret
+#       manager). When set, the chart references it and creates NO Secret.
+#
+# Required keys when supplying your own existingSecret:
+#   JWT_SECRET      (always)
+#   DATABASE_URL    (when postgresql.enabled=false — see externalDatabase)
+#   REDIS_URL       (when redis.enabled=false and you want HA realtime)
+secrets:
+  # Name of a pre-existing Secret to consume instead of creating one.
+  existingSecret: ""
+  # Plaintext values used ONLY when existingSecret is empty (chart-managed Secret).
+  jwtSecret: ""                    # REQUIRED. e.g. `openssl rand -hex 32`
+  # Provide these only when using external datastores (subcharts disabled). When
+  # the bundled subcharts are enabled the chart derives these URLs for you.
+  databaseUrl: ""                  # postgresql://user:pass@host:5432/db?schema=public
+  redisUrl: ""                     # redis://[:pass@]host:6379
+
+# ── External datastores (used when the subcharts below are disabled) ────────
+# Prefer these in production (managed RDS/Cloud SQL/ElastiCache/etc.).
+externalDatabase:
+  # If you'd rather assemble DATABASE_URL from parts than paste a full URL,
+  # set these and leave secrets.databaseUrl empty. The chart will build the URL
+  # and put it in the managed Secret. (Password still goes through the Secret.)
+  host: ""
+  port: 5432
+  user: nextlane
+  database: nextlane
+  password: ""                     # stored in the chart-managed Secret
+  # Extra query params appended to the URL (sslmode, schema, etc.).
+  params: "schema=public"
+
+externalRedis:
+  # Leave host empty for SINGLE-REPLICA mode (no Redis → in-memory Socket.io +
+  # in-process webhook fan-out). Set it (or enable the redis subchart) for HA.
+  host: ""
+  port: 6379
+  password: ""                     # stored in the chart-managed Secret
+
+# ── Database migrations (Helm hook Job) ────────────────────────────────────
+# Runs `prisma migrate deploy` as a pre-install/pre-upgrade Job BEFORE the API
+# rolls out, so schema changes apply safely on every upgrade. Uses the api image.
+migrations:
+  enabled: true
+  # Hook weight orders the job before the workloads.
+  hookWeight: "-5"
+  # delete-policy: clean up old hook Jobs. before-hook-creation keeps the last
+  # failed job for debugging while removing it on the next run.
+  hookDeletePolicy: before-hook-creation,hook-succeeded
+  backoffLimit: 3
+  activeDeadlineSeconds: 600
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+
+# ── ServiceAccount ─────────────────────────────────────────────────────────
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}                  # e.g. IRSA / Workload Identity role ARN
+
+# ── Bundled datastore subcharts (quick-start only) ─────────────────────────
+# Bitnami PostgreSQL. Enable for a batteries-included demo/dev install. For
+# production prefer a managed DB (set this false + fill externalDatabase).
+postgresql:
+  enabled: true
+  auth:
+    username: nextlane
+    password: nextlane             # CHANGE ME — or use auth.existingSecret
+    database: nextlane
+  primary:
+    persistence:
+      enabled: true
+      size: 8Gi
+
+# Bitnami Redis. Enabling it turns on HA realtime (Socket.io adapter + BullMQ
+# webhook queue). Keep architecture=standalone for a single node; use
+# replication for HA. Leave DISABLED for single-replica installs.
+redis:
+  enabled: false
+  architecture: standalone
+  auth:
+    enabled: false                 # set true + password for a hardened install
+    password: ""
+  master:
+    persistence:
+      enabled: true
+      size: 2Gi
