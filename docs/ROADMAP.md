@@ -57,6 +57,34 @@ Status legend: ✅ done · 🚧 in progress · ⬜ planned
 - ⬜ REST API tokens, audit log
 - ⬜ Bulk edit, CSV import (and importers for other trackers), SSO/OIDC
 
+## Phase 4 — Cloud-native deployment (post-v1) ⬜
+
+Today's deploy story is single-host Docker Compose. Phase 4 makes Next Lane a
+first-class **Kubernetes** citizen so teams can self-host it on a cluster with
+HA, autoscaling, and managed datastores — without abandoning the one-command
+Compose path for small installs.
+
+**Foundation (prerequisites — already mostly true):**
+- ✅ 12-factor config: everything is env-driven (`DATABASE_URL`, `JWT_SECRET`, `CORS_ORIGINS`, `THROTTLE_*`, `WEBHOOK_ALLOW_PRIVATE`, `LOG_LEVEL`) — no config baked into images except `VITE_API_URL` (build-time; needs a runtime-config story for the web image).
+- ✅ Liveness/readiness signal: API exposes `/health`.
+- 🚧 Structured JSON logs (pino) — in flight; required for log shipping.
+
+**Deliverables:**
+- ⬜ **Publish container images** for `api` and `web` to a registry (GHCR) via CI, semver + `latest` tags, multi-arch (amd64/arm64), SBOM + image scan.
+- ⬜ **Helm chart** (`deploy/helm/next-lane`): Deployments for api + web, Services, Ingress (TLS via cert-manager), ConfigMap + Secret, resource requests/limits, liveness/readiness probes, HPA, PodDisruptionBudget, securityContext (non-root, read-only FS). Values toggles for replica counts and ingress host.
+- ⬜ **Datastore strategy in values:** bundle Postgres + Redis as optional subcharts (Bitnami) for quick-start, OR point at external/managed instances (recommended for prod) via connection envs/secrets.
+- ⬜ **Schema migrations as a Job/initContainer** (`prisma migrate deploy`) gated before api rollout (Helm hook / init job), so upgrades migrate safely.
+- ⬜ **Secrets**: K8s `Secret` for `JWT_SECRET` + DB/Redis creds; support `external-secrets`/sealed-secrets; never ship a default secret.
+- ⬜ **Web runtime config**: serve `VITE_API_URL` (and other public config) at runtime (env-substituted `config.js` or nginx templating) so one image works across environments without rebuilds.
+- ⬜ **Horizontal scale enablers (depend on backlog items):** Socket.io **Redis adapter** for multi-replica realtime (sticky sessions otherwise) + **Redis-backed webhook delivery queue (BullMQ)** so background work survives pod restarts and doesn't duplicate across replicas. These are prerequisites for `replicas > 1`.
+- ⬜ **Observability hooks:** optional `ServiceMonitor`/metrics endpoint, OTLP traces, and structured logs ready for a collector.
+- ⬜ **Kustomize base + overlays** as a Helm alternative; example overlays for a managed cluster (EKS/GKE/AKS).
+- ⬜ **Docs:** `docs/DEPLOY-KUBERNETES.md` quickstart (`helm install`), values reference, upgrade/migration runbook, and an HA topology diagram.
+
+> Sequencing: the **Socket.io Redis adapter** + **BullMQ webhook queue** (already
+> P2 on the backlog) are the gating prerequisites for true multi-replica HA, so
+> they should land before/with the Helm chart. Single-replica Helm can ship first.
+
 ---
 
 ### Current focus

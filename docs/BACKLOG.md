@@ -135,6 +135,23 @@ Format: `- [ ] (P1, M) title — description [src]` · P0 critical / P1 now / P2
 - [ ] (P3, L) JWT migration to httpOnly cookie + POST /auth/refresh (short-lived access tokens) — token in localStorage is XSS-extractable; cookie migration + short-lived access tokens is the durable fix; helmet CSP mitigates the XSS vector adequately for now; revisit when a rich-text editor lands [engineering-auditor Pass 4]
 - [x] (P3, S) Scrub trademarked category phrase from seed data — DONE: `seed.ts` now reads "issue & project tracker"; no trademarked terms remain [ui-review]
 
+## Cloud-native / Kubernetes (post-v1 epic — ROADMAP Phase 4)
+
+Make Next Lane deployable on Kubernetes with HA + autoscaling, keeping the
+single-host Compose path for small installs. Sequenced so single-replica Helm
+can ship first; multi-replica HA depends on the Redis items below.
+
+- [ ] (P3, M) Publish `api` + `web` container images to GHCR via CI — semver + `latest`, multi-arch (amd64/arm64), image scan + SBOM; precondition for any K8s/Helm install [roadmap]
+- [ ] (P3, S) Web runtime config for `VITE_API_URL` (+ public config) — currently baked at build time; serve env-substituted `config.js`/nginx template so one image works across environments without rebuilds (also closes the QA P3 "VITE_API_URL build-time" note) [roadmap, qa]
+- [ ] (P3, M) Socket.io Redis adapter — required for multi-replica realtime (sticky sessions otherwise); Redis already in compose but unused; gating prerequisite for `replicas > 1` [engineering-auditor]
+- [ ] (P3, M) Redis-backed webhook delivery queue (BullMQ) — durable, retried, deduped delivery across replicas; replaces in-process fan-out; gating prerequisite for HA [engineering-auditor Pass 4]
+- [ ] (P3, M) Schema migrations as a Helm pre-upgrade Job/initContainer (`prisma migrate deploy`) gated before api rollout — safe cluster upgrades [roadmap]
+- [ ] (P3, L) Helm chart `deploy/helm/next-lane` — Deployments (api/web), Services, Ingress + cert-manager TLS, ConfigMap/Secret, HPA, PDB, resource limits, liveness/readiness probes, non-root securityContext; values toggles for replicas/ingress/datastores (bundled Bitnami Postgres+Redis subcharts OR external/managed) [roadmap]
+- [ ] (P3, S) K8s Secret strategy — `JWT_SECRET` + DB/Redis creds via Secret; support external-secrets/sealed-secrets; never ship a default secret [roadmap]
+- [ ] (P3, M) Kustomize base + overlays as a Helm alternative; example managed-cluster overlays (EKS/GKE/AKS) [roadmap]
+- [ ] (P3, S) `docs/DEPLOY-KUBERNETES.md` — `helm install` quickstart, values reference, upgrade/migration runbook, HA topology diagram [roadmap]
+- [ ] (P3, S) Optional metrics endpoint + `ServiceMonitor` + OTLP traces (builds on pino structured logging) for operator-grade observability in-cluster [engineering-auditor]
+
 ---
 
 ## Changelog
