@@ -43,6 +43,19 @@ const subRow = (overrides: Partial<Record<string, unknown>> = {}) => ({
 // Wait for fire-and-forget dispatch microtasks to flush.
 const flush = () => new Promise((r) => setImmediate(r));
 
+// These tests exercise the in-process (no-Redis) delivery path. Force REDIS_URL
+// unset so the WebhooksService constructor never spins up a real BullMQ queue —
+// keeps the suite hermetic regardless of ambient env or sibling-suite leakage.
+let savedRedisUrl: string | undefined;
+beforeEach(() => {
+  savedRedisUrl = process.env.REDIS_URL;
+  delete process.env.REDIS_URL;
+});
+afterEach(() => {
+  if (savedRedisUrl === undefined) delete process.env.REDIS_URL;
+  else process.env.REDIS_URL = savedRedisUrl;
+});
+
 describe('signPayload', () => {
   it('computes a deterministic sha256 HMAC of the raw body', () => {
     const body = JSON.stringify({ a: 1, b: 'two' });
