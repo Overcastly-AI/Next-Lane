@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
-import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { ThrottlerModule } from '@nestjs/throttler';
+import { ConfigurableThrottlerGuard } from './common/configurable-throttler.guard';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
@@ -23,13 +24,14 @@ import { HealthController } from './health.controller';
 
 @Module({
   imports: [
-    // Global rate-limit: 100 requests per 60 seconds per IP.
-    // Auth routes apply a stricter 10 req/min limit via @Throttle() on the controller.
+    // Global rate-limit (per IP). Defaults to 100 req / 60s; tune via env.
+    // Auth routes apply a stricter limit via @Throttle() on the controller.
+    // Set RATE_LIMIT_DISABLED=true to switch off entirely (shared-IP / tests).
     ThrottlerModule.forRoot([
       {
         name: 'global',
-        ttl: 60000, // 60 seconds in ms
-        limit: 100,
+        ttl: Number(process.env.THROTTLE_TTL) || 60000, // window in ms
+        limit: Number(process.env.THROTTLE_LIMIT) || 100,
       },
     ]),
     PrismaModule,
@@ -53,8 +55,9 @@ import { HealthController } from './health.controller';
   ],
   controllers: [HealthController],
   providers: [
-    // Global throttle guard: enforces ThrottlerModule limits on every route.
-    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    // Global throttle guard: enforces ThrottlerModule limits on every route
+    // (skippable via RATE_LIMIT_DISABLED for shared-IP deployments / tests).
+    { provide: APP_GUARD, useClass: ConfigurableThrottlerGuard },
   ],
 })
 export class AppModule {}

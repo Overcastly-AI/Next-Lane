@@ -9,9 +9,15 @@ import { PrismaService } from '../prisma/prisma.service';
 
 @ApiTags('auth')
 @Controller('auth')
-// Stricter rate limit on auth endpoints: 10 requests per 60 seconds per IP.
-// This overrides the global 100 req/min limit from ThrottlerModule.
-@Throttle({ global: { ttl: 60000, limit: 10 } })
+// Stricter rate limit on auth endpoints (default 10 req / 60s per IP), tunable
+// via THROTTLE_AUTH_LIMIT/THROTTLE_TTL. Overrides the global ThrottlerModule
+// limit; fully skippable via RATE_LIMIT_DISABLED (see ConfigurableThrottlerGuard).
+@Throttle({
+  global: {
+    ttl: Number(process.env.THROTTLE_TTL) || 60000,
+    limit: Number(process.env.THROTTLE_AUTH_LIMIT) || 10,
+  },
+})
 export class AuthController {
   constructor(
     private readonly auth: AuthService,
