@@ -30,7 +30,13 @@ async function bootstrap() {
   // consistent envelopes and suppress internal detail in production.
   app.useGlobalFilters(new AllExceptionsFilter());
 
-  app.setGlobalPrefix('api', { exclude: ['health'] });
+  // Note: X-Request-Id echo is handled by CorrelationIdMiddleware registered in
+  // AppModule.configure().  It runs inside the NestJS middleware pipeline, after
+  // pino-http has set req.id, ensuring all responses carry the correlation id.
+
+  // Exclude both health endpoints from the /api prefix so they remain at
+  // /health (readiness) and /health/live (liveness) — not /api/health/*.
+  app.setGlobalPrefix('api', { exclude: ['health', 'health/live'] });
   // Restrict CORS to an explicit allowlist (comma-separated CORS_ORIGINS),
   // defaulting to the local web app. Credentials are only sent to allowed
   // origins — never reflect arbitrary origins.
