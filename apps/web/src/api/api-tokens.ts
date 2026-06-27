@@ -14,6 +14,8 @@ export function useApiTokens() {
 export interface CreateTokenInput {
   name: string;
   expiresAt?: string;
+  /** Optional scope list; omit or pass [] for an unrestricted token. */
+  scopes?: string[];
 }
 
 export function useCreateApiToken() {

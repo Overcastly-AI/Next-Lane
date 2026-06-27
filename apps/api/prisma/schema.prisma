@@ -81,6 +81,10 @@ model User {
 // Only the SHA-256 hex hash of the raw token is stored — the raw value
 // is shown once at creation and never retrievable again.
 // Token format on creation: "nlp_" + 32 random bytes base64url.
+//
+// `scopes` — optional list of scope strings (e.g. "issues:read", "webhooks:write").
+// An empty array means "unrestricted" (same as a JWT browser session).
+// See PAT_SCOPES in packages/shared for the full vocabulary.
 model ApiToken {
   id          String    @id @default(cuid())
   userId      String
@@ -90,6 +94,7 @@ model ApiToken {
   expiresAt   DateTime?
   createdAt   DateTime  @default(now())
   revokedAt   DateTime? // null = active; non-null = revoked
+  scopes      String[]  @default([]) // empty = unrestricted (backward-compat)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

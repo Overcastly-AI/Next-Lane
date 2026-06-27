@@ -4,10 +4,13 @@ import {
   MaxLength,
   IsOptional,
   IsISO8601,
+  IsArray,
+  IsIn,
   registerDecorator,
   ValidationOptions,
   ValidationArguments,
 } from 'class-validator';
+import { PAT_SCOPES } from '@next-lane/shared';
 
 /**
  * Custom class-validator decorator that rejects ISO 8601 date strings
@@ -53,6 +56,16 @@ export class CreateApiTokenDto {
   @IsISO8601()
   @IsFutureDate({ message: 'expiresAt must be a future date' })
   expiresAt?: string;
+
+  /**
+   * Optional list of PAT scopes to restrict this token to.
+   * Omit (or send []) to create an unrestricted token (full owner permissions).
+   * Each entry must be one of the values in PAT_SCOPES.
+   */
+  @IsOptional()
+  @IsArray()
+  @IsIn([...PAT_SCOPES], { each: true })
+  scopes?: string[];
 }
 
 /**
@@ -66,6 +79,8 @@ export interface CreateApiTokenResponse {
   rawToken: string;
   expiresAt: string | null;
   createdAt: string;
+  /** Granted scopes. Empty array = unrestricted. */
+  scopes: string[];
 }
 
 /** Metadata-only view returned by GET /me/tokens. */
@@ -76,4 +91,6 @@ export interface ApiTokenDto {
   expiresAt: string | null;
   createdAt: string;
   revokedAt: string | null;
+  /** Granted scopes. Empty array = unrestricted (full owner permissions). */
+  scopes: string[];
 }

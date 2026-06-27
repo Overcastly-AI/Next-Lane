@@ -525,6 +525,37 @@ export interface PublicBoardDto {
 // ── Personal API Tokens (PATs) ───────────────────────────────────────────────
 
 /**
+ * The complete vocabulary of PAT scope strings.
+ *
+ * Design notes:
+ * - Format: `<resource>:<action>` — keeps them readable and easily matched.
+ * - `issues:read`    — GET endpoints for issues (list, single, activity).
+ * - `issues:write`   — POST/PATCH/DELETE on issues (create, update, move, delete).
+ * - `projects:read`  — GET project metadata, statuses, labels, sprints.
+ * - `projects:write` — POST/PATCH/DELETE on projects, statuses, labels, sprints.
+ * - `webhooks:read`  — GET webhook subscriptions + delivery logs.
+ * - `webhooks:write` — POST/PATCH/DELETE on webhook subscriptions.
+ * - `comments:read`  — GET issue comments.
+ * - `comments:write` — POST/PATCH/DELETE on comments.
+ *
+ * An empty `scopes` array on a token means "unrestricted" (same as a browser
+ * JWT session — all routes are accessible). Only non-empty scopes arrays are
+ * enforced by `@RequireScope`.
+ */
+export const PAT_SCOPES = [
+  'issues:read',
+  'issues:write',
+  'projects:read',
+  'projects:write',
+  'webhooks:read',
+  'webhooks:write',
+  'comments:read',
+  'comments:write',
+] as const;
+
+export type PATScope = (typeof PAT_SCOPES)[number];
+
+/**
  * Metadata for an existing personal API token.
  * The raw token and its hash are never returned after creation.
  */
@@ -535,6 +566,8 @@ export interface ApiTokenDto {
   expiresAt: string | null;
   createdAt: string;
   revokedAt: string | null;
+  /** Granted scopes. Empty array = unrestricted (full owner permissions). */
+  scopes: string[];
 }
 
 /**
@@ -549,4 +582,6 @@ export interface CreateApiTokenResponse {
   rawToken: string;
   expiresAt: string | null;
   createdAt: string;
+  /** Granted scopes. Empty array = unrestricted. */
+  scopes: string[];
 }

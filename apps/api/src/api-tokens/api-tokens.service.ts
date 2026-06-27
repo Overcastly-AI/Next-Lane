@@ -39,6 +39,7 @@ function toDto(row: {
   expiresAt: Date | null;
   createdAt: Date;
   revokedAt: Date | null;
+  scopes: string[];
 }): ApiTokenDto {
   return {
     id: row.id,
@@ -47,6 +48,7 @@ function toDto(row: {
     expiresAt: row.expiresAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),
     revokedAt: row.revokedAt?.toISOString() ?? null,
+    scopes: row.scopes,
   };
 }
 
@@ -77,6 +79,7 @@ export class ApiTokensService {
         name: dto.name,
         tokenHash,
         expiresAt: dto.expiresAt ? new Date(dto.expiresAt) : null,
+        scopes: dto.scopes ?? [],
       },
     });
 
@@ -87,7 +90,7 @@ export class ApiTokensService {
       action: 'token.create',
       targetType: 'ApiToken',
       targetId: record.id,
-      metadata: { name: dto.name },
+      metadata: { name: dto.name, scopes: record.scopes },
       ip,
     });
 
@@ -97,6 +100,7 @@ export class ApiTokensService {
       rawToken,
       expiresAt: record.expiresAt?.toISOString() ?? null,
       createdAt: record.createdAt.toISOString(),
+      scopes: record.scopes,
     };
   }
 
@@ -178,7 +182,9 @@ export class ApiTokensService {
    * Bumps lastUsedAt asynchronously (fire-and-forget) to avoid adding latency
    * to the request path.
    */
-  async validateRawToken(rawToken: string): Promise<{ id: string; email: string; name: string }> {
+  async validateRawToken(
+    rawToken: string,
+  ): Promise<{ id: string; email: string; name: string; patScopes: string[] }> {
     const hash = hashToken(rawToken);
 
     const record = await this.prisma.apiToken.findUnique({
@@ -208,7 +214,9 @@ export class ApiTokensService {
         // Non-critical; log nothing to avoid log spam.
       });
 
-    return record.user;
+    // Return user + the token's scopes so the auth guard can attach them to
+    // the request principal for enforcement by ScopeGuard.
+    return { ...record.user, patScopes: record.scopes };
   }
 
   /**
