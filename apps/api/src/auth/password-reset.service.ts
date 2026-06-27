@@ -15,19 +15,21 @@
  * - POST /auth/forgot-password always returns 200 regardless of whether the
  *   email exists (anti-enumeration).
  *
- * Delivery seam:
- * - In production you wire SMTP via `SMTP_HOST`/`SMTP_PORT`/`SMTP_USER`/
- *   `SMTP_PASS` env vars (see `.env.example`). When those are absent the
- *   service falls back to the Nest logger, emitting the full reset URL so
- *   developers can copy it from the API log.
- * - `deliverResetLink()` is the extension point — replace or augment it to
- *   plug in any transport (SES, Mailgun, etc.).
+ * Delivery:
+ * - When SMTP_HOST is configured, MailService sends a real email via nodemailer.
+ * - When SMTP_HOST is absent (dev mode) MailService logs the full reset URL to
+ *   the Nest logger so developers can copy it from the API logs.
+ * - In production without SMTP_HOST configured, MailService emits a warning and
+ *   skips delivery (the raw token is never logged in that case).
+ * - `deliverResetLink()` delegates to MailService — SMTP vs log decision is made
+ *   inside MailService, keeping this service transport-agnostic.
  */
 
 import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { randomBytes, createHash } from 'crypto';
 import * as argon2 from 'argon2';
 import { PrismaService } from '../prisma/prisma.service';
+import { MailService } from '../mail/mail.service';
 
 /** How long a reset token remains valid. */
 const TOKEN_TTL_MS = 60 * 60 * 1_000; // 1 hour
@@ -40,7 +42,10 @@ const defaultBaseUrl = (): string =>
 export class PasswordResetService {
   private readonly logger = new Logger(PasswordResetService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly mail: MailService,
+  ) {}
 
   /**
    * Issue a reset token for the given email address.
@@ -120,17 +125,15 @@ export class PasswordResetService {
   // ---------------------------------------------------------------------------
 
   /**
-   * Send (or log) the reset link.
+   * Deliver the password-reset link to the user.
    *
-   * This is the extension point for SMTP / transactional email providers.
-   * When SMTP_HOST is set, wire your mailer here. Until then the link is
-   * written to the Nest logger so developers can grab it from the API logs.
+   * Delegates to MailService which handles:
+   *   - Real SMTP delivery when SMTP_HOST is configured (nodemailer).
+   *   - Dev-log fallback when SMTP_HOST is absent (link printed to Nest logger).
+   *   - Production-safe suppression (no body/token logged) when in prod without SMTP.
    *
-   * Environment variables used by the SMTP extension:
-   *   SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM
-   *   RESET_BASE_URL — base URL of the web app (default: http://localhost:3000)
-   *
-   * See .env.example for documentation.
+   * In development (non-production) without SMTP the link also appears here via
+   * Logger.log so it is still visible in the console even without reading MailService logs.
    */
   private async deliverResetLink(
     email: string,
@@ -139,32 +142,31 @@ export class PasswordResetService {
     const baseUrl = defaultBaseUrl();
     const link = `${baseUrl}/reset-password?token=${rawToken}`;
 
-    if (process.env.SMTP_HOST) {
-      // SMTP delivery would be wired here. Placeholder for future integration.
-      // Example: await this.mailer.sendMail({ to: email, subject: '...', html: ... });
+    // Dev convenience: also log directly from this service so the link is
+    // visible in one place even before MailService's log line.
+    if (process.env.NODE_ENV !== 'production' && !process.env.SMTP_HOST) {
       this.logger.log(
-        `[password-reset] SMTP_HOST is set but SMTP delivery is not yet ` +
-          `implemented. Falling back to log delivery for ${email}.`,
+        `[password-reset] Reset link for ${email} → ${link}  (delivery: dev-log)`,
       );
     }
 
-    // Dev-mode fallback: log the full link so developers can copy it from the
-    // API logs.  NEVER emit the raw token in production — a log aggregator
-    // (Loki, CloudWatch, journald) would capture it beyond the token's own
-    // 1-hour validity window.
-    if (process.env.NODE_ENV !== 'production') {
-      this.logger.log(
-        `[password-reset] Reset link for ${email} → ${link}  ` +
-          `(delivery: ${process.env.SMTP_HOST ? 'SMTP (stub)' : 'log'})`,
-      );
-    } else {
-      // In production, log only the fact that a delivery was attempted — never
-      // the raw token.  Configure SMTP_HOST to enable actual email delivery.
-      this.logger.log(
-        `[password-reset] Reset link dispatched for ${email} ` +
-          `(delivery: ${process.env.SMTP_HOST ? 'SMTP (stub)' : 'log-suppressed-in-prod'})`,
-      );
-    }
+    await this.mail.send({
+      to: email,
+      subject: 'Reset your Next Lane password',
+      text:
+        `Hi,\n\n` +
+        `You requested a password reset for your Next Lane account.\n\n` +
+        `Click the link below to choose a new password (valid for 1 hour):\n` +
+        `${link}\n\n` +
+        `If you did not request this, you can safely ignore this email.\n\n` +
+        `— Next Lane`,
+      html:
+        `<p>Hi,</p>` +
+        `<p>You requested a password reset for your Next Lane account.</p>` +
+        `<p><a href="${link}">Reset your password</a> (valid for 1 hour)</p>` +
+        `<p>If you did not request this, you can safely ignore this email.</p>` +
+        `<p>— Next Lane</p>`,
+    });
   }
 
   // ---------------------------------------------------------------------------

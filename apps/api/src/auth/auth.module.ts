@@ -9,6 +9,7 @@ import { JwtAuthGuard } from './jwt-auth.guard';
 import { getJwtExpiresIn, getJwtSecret } from './auth.config';
 import { PasswordResetService } from './password-reset.service';
 import { ApiTokensModule } from '../api-tokens/api-tokens.module';
+import { MailModule } from '../mail/mail.module';
 
 @Module({
   imports: [
@@ -20,6 +21,8 @@ import { ApiTokensModule } from '../api-tokens/api-tokens.module';
     // ApiTokensModule is imported so its service can be injected into JwtAuthGuard
     // to handle PAT authentication alongside normal JWT auth.
     ApiTokensModule,
+    // MailModule provides MailService for SMTP / dev-log email delivery.
+    MailModule,
   ],
   controllers: [AuthController],
   providers: [

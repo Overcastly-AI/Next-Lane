@@ -56,7 +56,7 @@ Status legend: ✅ done · 🚧 in progress · ⬜ planned
 - ✅ File attachments — `Attachment` model; `POST /issues/:id/attachments` (multer diskStorage, 10 MB cap, MIME allowlist); auth-gated streaming download; VIEWER-gated upload/delete; drag-drop AttachmentsPanel in IssueDetailDrawer (2026-06-27)
 - ✅ Cumulative-flow diagram (CFD) — stacked-area chart; 14/30/90-day window; historical ActivityLog replay; `GET /projects/:id/reports/cfd`; 5 unit tests + 6 e2e tests (desktop + mobile) (2026-06-27)
 - 🚧 Security hardening sprint (Pass 5): fixing plaintext token log, SVG-XSS in ALLOWED_MIME_TYPES, unbounded CFD/burndown queries (generate_series rewrite), null-file 500→400, webhook secret in Redis, PAT expiresAt validation, nginx CSP header, Helm Postgres fail-fast guard
-- ⬜ SMTP email delivery for password reset (nodemailer into existing stub seam)
+- ✅ SMTP email delivery for password reset — `MailModule`/`MailService` (nodemailer); real SMTP when `SMTP_HOST` set; dev-log fallback when absent; production-safe (no token logged); 8 `mail.service.spec` unit tests + updated `password-reset.service.spec` (255 tests total); shipped 2026-06-27
 - ⬜ WATCHED_UPDATED notification emission (fan-out to watchers on issue field change)
 - ⬜ Due date on issues (schema field + drawer picker + card chip + My Work overdue warning)
 - ⬜ Query DSL / saved views (filter builder → text query)
@@ -107,7 +107,9 @@ Engineering-auditor Pass 5 (2026-06-27) identified a fresh security hardening cl
 
 Product-auditor Pass 5 (2026-06-27) confirms the product has crossed the "credible daily-driver" threshold. Three product P1s remain: SMTP email delivery for password reset (current fallback is dev-log only — unacceptable for production self-hosters), `WATCHED_UPDATED` notification emission (watcher model inert for notifications despite enum being defined), and due date on issues (not yet in schema, most-requested primitive for "My Work" overdue surfacing).
 
-After the security batch clears, the build order is: SMTP wiring (S) → WATCHED_UPDATED emission (S) → due date (M) → full-text search (M, P1) → public share link (M, P2) → presence indicators + remaining P2s.
+SMTP email delivery for password reset shipped 2026-06-27: `MailModule`/`MailService` (nodemailer); real SMTP when `SMTP_HOST` set; dev-log fallback when absent; production-safe; 255 unit tests green.
+
+Next build order: WATCHED_UPDATED emission (S) → due date (M) → full-text search (M, P1) → public share link (M, P2) → presence indicators + remaining P2s.
 
 PATs shipped 2026-06-27: `nlp_`-prefixed (SHA-256 hashed) with create/list/revoke + JWT-guard extension + profile-settings UI.
 Workspace audit log shipped 2026-06-27: ADMIN-only cursor-paginated event table (membership/project/webhook/token events).

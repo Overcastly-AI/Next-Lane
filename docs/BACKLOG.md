@@ -41,7 +41,7 @@ _Remaining P2 security hardening from Pass 5 (small, high-signal):_
 
 _Product P1s — queue after security batch:_
 
-- [ ] (P1, S) Wire SMTP email delivery for password reset (nodemailer into existing stub seam) — `password-reset.service.ts` logs the reset URL to API logs as the only non-SMTP delivery path; a non-developer self-hoster who forgets their password must SSH into the server to recover; the seam (`if (process.env.SMTP_HOST)`) and env vars (SMTP_HOST/PORT/USER/PASS/FROM) are already documented in `.env.example`; wire nodemailer into the existing `deliverResetLink()` method [product-auditor Pass 5]
+- [x] (P1, S) Wire SMTP email delivery for password reset (nodemailer into existing stub seam) — `MailModule`/`MailService` added (`apps/api/src/mail/`); nodemailer transport when `SMTP_HOST` set; dev-log fallback when absent; production-safe (token never logged in prod without SMTP); all SMTP_* env vars documented in `.env.example`; `MailService.send()` injected into `PasswordResetService.deliverResetLink()`; 8 new `mail.service.spec.ts` tests + updated `password-reset.service.spec.ts`; 255 unit tests green; build clean; dev-log fallback verified on live instance ✅ shipped 2026-06-27 [product-auditor Pass 5]
 - [ ] (P1, S) Emit `WATCHED_UPDATED` notification on issue field changes — `NotificationType.WATCHED_UPDATED` is defined in the schema enum and the bell label map but never emitted anywhere; `IssuesService.update` does not fan-out to watchers when status/assignee/priority/sprint changes; watchers are auto-populated on assignment and comment but receive zero notification on subsequent edits; add a single fan-out call in `IssuesService.update` mirroring the `notifyComment` pattern [product-auditor Pass 5]
 - [ ] (P1, M) Due date on issues — add optional `dueDate DateTime?` to the `Issue` model (Prisma migration + DTO + drawer date-picker); show a due-date chip on the card when set; flag overdue issues in "My Work" with a warning color; add a due-date sort option to the backlog; the most commonly requested primitive in any issue tracker and the one missing from the schema [product-auditor Pass 4, Pass 5]
 
@@ -173,6 +173,7 @@ can ship first; multi-replica HA depends on the Redis items below.
 ---
 
 ## Changelog
+- 2026-06-27 — SMTP email delivery for password reset (P1, S): `MailModule`/`MailService` (nodemailer); real SMTP when `SMTP_HOST` set; dev-log fallback when absent; production-safe; SMTP_* env vars documented in `.env.example`; 255 unit tests green.
 - 2026-06-27 (Pass 5 groom) — Security hardening cluster + product P1s + deferrals captured.
   - **In-flight (current build batch, mark done when confirmed):** plaintext token log guard (P1, S); SVG-XSS from ALLOWED_MIME_TYPES (P1, S); CFD/burndown unbounded queries rewrite to generate_series (P1, M); null-file upload guard (P2, S); webhook secret out of BullMQ job body (P2, S); PAT expiresAt past-date validation (P2, S); nginx CSP header (P2, S); Helm Postgres fail-fast guard (P2, S). All confirmed as in-flight by engineering-auditor Pass 5; keeping as open items until build agent ticks them.
   - **Added to Ready (product P1s):** SMTP email delivery wiring for password reset (P1, S); WATCHED_UPDATED notification emission (P1, S); due date on issues (P1, M). These are the three highest-trust product gaps per product-auditor Pass 5.
