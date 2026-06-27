@@ -22,6 +22,7 @@ const myWorkSelect = {
   priority: true,
   projectId: true,
   statusId: true,
+  dueDate: true,
   updatedAt: true,
   project: { select: { key: true } },
   status: { select: { name: true, category: true } },
@@ -96,6 +97,7 @@ function toMyWorkIssue(r: MyWorkRow): MyWorkIssueDto {
     statusCategory: r.status.category as StatusCategory,
     sprintName: r.sprint?.name ?? null,
     sprintState: (r.sprint?.state as SprintState | undefined) ?? null,
+    dueDate: r.dueDate ? r.dueDate.toISOString() : null,
     updatedAt: r.updatedAt.toISOString(),
   };
 }

@@ -1,9 +1,28 @@
 import { forwardRef, type HTMLAttributes } from 'react';
-import type { IssueDto } from '@next-lane/shared';
+import { StatusCategory, type IssueDto } from '@next-lane/shared';
 import { Avatar } from '@/components/ui/Avatar';
 import { Badge } from '@/components/ui/Badge';
 import { IssueTypeIcon, PriorityIcon } from '@/components/issue/issueMeta';
 import { cn } from '@/lib/cn';
+
+/**
+ * Returns true when the issue's due date is in the past and it is NOT in a
+ * Done-category status. Used to apply overdue warning styling.
+ */
+function isOverdue(issue: IssueDto): boolean {
+  if (!issue.dueDate) return false;
+  const isDone = issue.status?.category === StatusCategory.DONE;
+  if (isDone) return false;
+  return new Date(issue.dueDate) < new Date();
+}
+
+/** Format an ISO due date string as a compact readable label for the chip. */
+function formatDueDate(iso: string): string {
+  return new Date(iso).toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+  });
+}
 
 export interface IssueCardProps extends HTMLAttributes<HTMLDivElement> {
   issue: IssueDto;
@@ -37,6 +56,38 @@ export const IssueCard = forwardRef<HTMLDivElement, IssueCardProps>(
                 {l.name}
               </Badge>
             ))}
+          </div>
+        )}
+
+        {issue.dueDate && (
+          <div className="mb-2">
+            <span
+              aria-label={`Due ${formatDueDate(issue.dueDate)}${isOverdue(issue) ? ' (overdue)' : ''}`}
+              className={cn(
+                'inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium',
+                isOverdue(issue)
+                  ? 'bg-amber-100 text-amber-800'
+                  : 'bg-gray-100 text-gray-600',
+              )}
+            >
+              {/* Calendar icon */}
+              <svg
+                width="11"
+                height="11"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                aria-hidden="true"
+              >
+                <rect x="3" y="4" width="18" height="18" rx="2" />
+                <path strokeLinecap="round" d="M16 2v4M8 2v4M3 10h18" />
+              </svg>
+              {formatDueDate(issue.dueDate)}
+              {isOverdue(issue) && (
+                <span className="sr-only"> (overdue)</span>
+              )}
+            </span>
           </div>
         )}
 

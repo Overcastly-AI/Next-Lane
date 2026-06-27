@@ -155,6 +155,7 @@ export class IssuesService {
           parentId: dto.parentId,
           sprintId: dto.sprintId,
           storyPoints: dto.storyPoints,
+          dueDate: dto.dueDate ? new Date(dto.dueDate) : undefined,
           rank,
         },
         include: listInclude,
@@ -526,6 +527,21 @@ export class IssuesService {
         to: dto.priority,
       });
     }
+    const existingDueDateStr = existing.dueDate?.toISOString() ?? null;
+    const incomingDueDateStr =
+      dto.dueDate === undefined ? undefined : dto.dueDate;
+    if (
+      incomingDueDateStr !== undefined &&
+      incomingDueDateStr !== existingDueDateStr
+    ) {
+      activities.push({
+        issueId: id,
+        actorId: userId,
+        field: 'dueDate',
+        from: existingDueDateStr,
+        to: incomingDueDateStr,
+      });
+    }
 
     // Run cycle-check + write atomically so a concurrent parent reassignment
     // cannot slip through between the check and the UPDATE (TOCTOU fix).
@@ -546,6 +562,13 @@ export class IssuesService {
           storyPoints: dto.storyPoints,
           parentId: dto.parentId,
           sprintId: dto.sprintId,
+          // dueDate: undefined = no-op; null = clear; string = set new date
+          dueDate:
+            dto.dueDate === undefined
+              ? undefined
+              : dto.dueDate === null
+                ? null
+                : new Date(dto.dueDate),
         },
         include: listInclude,
       });

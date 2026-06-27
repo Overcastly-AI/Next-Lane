@@ -58,7 +58,7 @@ Status legend: ✅ done · 🚧 in progress · ⬜ planned
 - 🚧 Security hardening sprint (Pass 5): fixing plaintext token log, SVG-XSS in ALLOWED_MIME_TYPES, unbounded CFD/burndown queries (generate_series rewrite), null-file 500→400, webhook secret in Redis, PAT expiresAt validation, nginx CSP header, Helm Postgres fail-fast guard
 - ⬜ SMTP email delivery for password reset (nodemailer into existing stub seam)
 - ⬜ WATCHED_UPDATED notification emission (fan-out to watchers on issue field change)
-- ⬜ Due date on issues (schema field + drawer picker + card chip + My Work overdue warning)
+- ✅ Due date on issues — `dueDate DateTime?` on Issue model (migration `20260627220000_add_issue_due_date` + `@@index([dueDate])`); create/update DTOs + nullable/clearable; `IssueDto.dueDate` + `MyWorkIssueDto.dueDate` in shared types; drawer date picker with clear button + overdue amber styling; card chip (amber when overdue, neutral when future); My Work overdue sort + badge; 5 new unit tests + 8 e2e tests (desktop + mobile) — 2026-06-27
 - ⬜ Query DSL / saved views (filter builder → text query)
 - ⬜ Custom fields (typed, JSONB-backed)
 - ⬜ Workflow automation rules (trigger → action)
@@ -105,9 +105,11 @@ Compose path for small installs.
 
 Engineering-auditor Pass 5 (2026-06-27) identified a fresh security hardening cluster now being fixed: password reset token logged in plaintext to production logs (P1, S); SVG attachment served as `image/svg+xml` allowing direct-navigate XSS (P1, S); CFD/burndown unbounded queries that will OOM for any active project (P1, M — rewriting as Postgres `generate_series` aggregation); null-file upload returning 500 instead of 400 (P2, S); webhook HMAC secret stored in plaintext BullMQ job body (P2, S); PAT `expiresAt` accepting past dates (P2, S); nginx container missing Content-Security-Policy header (P2, S); Helm bundled-Postgres default password lacking a fail-fast guard (P2, S). All being addressed in the current build batch.
 
-Product-auditor Pass 5 (2026-06-27) confirms the product has crossed the "credible daily-driver" threshold. Three product P1s remain: SMTP email delivery for password reset (current fallback is dev-log only — unacceptable for production self-hosters), `WATCHED_UPDATED` notification emission (watcher model inert for notifications despite enum being defined), and due date on issues (not yet in schema, most-requested primitive for "My Work" overdue surfacing).
+Product-auditor Pass 5 (2026-06-27) confirms the product has crossed the "credible daily-driver" threshold. Two product P1s remain: SMTP email delivery for password reset (current fallback is dev-log only — unacceptable for production self-hosters), and `WATCHED_UPDATED` notification emission (watcher model inert for notifications despite enum being defined). Due date on issues is now shipped (2026-06-27).
 
-After the security batch clears, the build order is: SMTP wiring (S) → WATCHED_UPDATED emission (S) → due date (M) → full-text search (M, P1) → public share link (M, P2) → presence indicators + remaining P2s.
+After the security batch clears, the build order is: SMTP wiring (S) → WATCHED_UPDATED emission (S) → full-text search (M, P1) → public share link (M, P2) → presence indicators + remaining P2s.
+
+Due dates shipped 2026-06-27: `dueDate DateTime?` on Issue model (migration `20260627220000_add_issue_due_date`); create/update DTOs; `IssueDto.dueDate` + `MyWorkIssueDto.dueDate`; drawer date picker with clear button + overdue amber styling; card chip; My Work overdue badge + sort; 5 unit tests + 8 e2e (desktop + mobile).
 
 PATs shipped 2026-06-27: `nlp_`-prefixed (SHA-256 hashed) with create/list/revoke + JWT-guard extension + profile-settings UI.
 Workspace audit log shipped 2026-06-27: ADMIN-only cursor-paginated event table (membership/project/webhook/token events).

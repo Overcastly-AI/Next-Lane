@@ -5,6 +5,7 @@ import {
   PRIORITIES,
   IssueType,
   Priority,
+  StatusCategory,
   type IssueDto,
   type StatusDto,
   type UserDto,
@@ -335,6 +336,13 @@ function DrawerBody({
               </Select>
             </Field>
 
+            <DueDateField
+              dueDate={issue.dueDate ?? null}
+              statusCategory={issue.status?.category}
+              editable={editable}
+              onPatch={onPatch}
+            />
+
             <LabelPicker
               issue={issue}
               projectId={projectId}
@@ -362,5 +370,91 @@ function DrawerBody({
         </div>
       </div>
     </>
+  );
+}
+
+/**
+ * Due date picker sidebar field. Shows a native date input when editable,
+ * or a read-only formatted date when not. Displays in an overdue warning
+ * color (amber) when the issue is past due and not in a Done-category status.
+ */
+function DueDateField({
+  dueDate,
+  statusCategory,
+  editable,
+  onPatch,
+}: {
+  dueDate: string | null;
+  statusCategory: string | undefined;
+  editable: boolean;
+  onPatch: (field: keyof IssueDto, value: unknown) => void;
+}) {
+  const isDone = statusCategory === StatusCategory.DONE;
+  const isOverdue =
+    !isDone && dueDate !== null && new Date(dueDate) < new Date();
+
+  // Format a stored ISO datetime as a YYYY-MM-DD string for the date input.
+  const toInputValue = (iso: string | null) => {
+    if (!iso) return '';
+    // Take just the date part (handles both full ISO and date-only strings).
+    return iso.slice(0, 10);
+  };
+
+  return (
+    <Field label="Due date" htmlFor="d-due-date">
+      {editable ? (
+        <div className="flex items-center gap-1.5">
+          <input
+            id="d-due-date"
+            type="date"
+            aria-label="Due date"
+            value={toInputValue(dueDate)}
+            onChange={(e) => {
+              const val = e.target.value;
+              // val is '' when the user clears via the date input's clear button.
+              onPatch('dueDate', val ? val : null);
+            }}
+            className={
+              'rounded-md border px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 ' +
+              (isOverdue
+                ? 'border-amber-300 bg-amber-50 text-amber-800'
+                : 'border-gray-200 bg-white text-gray-700')
+            }
+          />
+          {dueDate && (
+            <button
+              type="button"
+              aria-label="Clear due date"
+              onClick={() => onPatch('dueDate', null)}
+              className="rounded p-0.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" d="M6 6l12 12M6 18L18 6" />
+              </svg>
+            </button>
+          )}
+        </div>
+      ) : dueDate ? (
+        <span
+          className={
+            'text-sm ' +
+            (isOverdue ? 'font-medium text-amber-700' : 'text-gray-700')
+          }
+        >
+          {new Date(dueDate).toLocaleDateString(undefined, {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+          })}
+          {isOverdue && (
+            <span className="ml-1.5 rounded bg-amber-100 px-1 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
+              Overdue
+            </span>
+          )}
+        </span>
+      ) : (
+        <span className="text-sm text-gray-400">None</span>
+      )}
+    </Field>
   );
 }

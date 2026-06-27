@@ -124,6 +124,8 @@ export interface UpdateIssueInput {
     parentId: string | null;
     sprintId: string | null;
     labelIds: string[];
+    /** ISO 8601 date string or null to clear the due date. */
+    dueDate: string | null;
   }>;
 }
 

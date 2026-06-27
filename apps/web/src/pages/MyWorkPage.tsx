@@ -9,6 +9,23 @@ import { IssueTypeIcon, PriorityIcon } from '@/components/issue/issueMeta';
 import { useMyWork } from '@/api/me';
 import { cn } from '@/lib/cn';
 
+/** True when an issue is past its due date and not in a Done-category status. */
+function isIssueOverdue(issue: MyWorkIssueDto): boolean {
+  if (!issue.dueDate) return false;
+  if (issue.statusCategory === StatusCategory.DONE) return false;
+  return new Date(issue.dueDate) < new Date();
+}
+
+/** Sort overdue issues to the top, then by updatedAt descending (default API order). */
+function sortByOverdueThenUpdated(issues: MyWorkIssueDto[]): MyWorkIssueDto[] {
+  return [...issues].sort((a, b) => {
+    const aOver = isIssueOverdue(a) ? 0 : 1;
+    const bOver = isIssueOverdue(b) ? 0 : 1;
+    if (aOver !== bOver) return aOver - bOver;
+    return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+  });
+}
+
 export function MyWorkPage() {
   const navigate = useNavigate();
   const query = useMyWork();
@@ -58,7 +75,7 @@ export function MyWorkPage() {
           <Section
             title="Assigned to me"
             count={query.data.assigned.length}
-            issues={query.data.assigned}
+            issues={sortByOverdueThenUpdated(query.data.assigned)}
             onOpen={open}
             emptyTitle="Nothing assigned to you yet"
             emptyDescription="Issues assigned to you will show up here."
@@ -73,7 +90,7 @@ export function MyWorkPage() {
           <Section
             title="Reported by me"
             count={query.data.reported.length}
-            issues={query.data.reported}
+            issues={sortByOverdueThenUpdated(query.data.reported)}
             onOpen={open}
             emptyTitle="You haven't reported any issues"
             emptyDescription="Issues you create will show up here."
@@ -147,6 +164,7 @@ function IssueRow({
   issue: MyWorkIssueDto;
   onOpen: (issue: MyWorkIssueDto) => void;
 }) {
+  const overdue = isIssueOverdue(issue);
   return (
     <li>
       <button
@@ -161,6 +179,28 @@ function IssueRow({
         <span className="min-w-0 flex-1 truncate text-sm text-gray-800">
           {issue.title}
         </span>
+        {overdue && (
+          <span
+            aria-label="Overdue"
+            className="hidden shrink-0 items-center gap-1 rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-semibold text-amber-800 sm:inline-flex"
+          >
+            {/* Calendar icon */}
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <rect x="3" y="4" width="18" height="18" rx="2" />
+              <path strokeLinecap="round" d="M16 2v4M8 2v4M3 10h18" />
+            </svg>
+            Overdue
+          </span>
+        )}
+        {!overdue && issue.dueDate && (
+          <span className="hidden shrink-0 items-center gap-1 rounded bg-gray-100 px-1.5 py-0.5 text-[11px] font-medium text-gray-600 sm:inline-flex">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <rect x="3" y="4" width="18" height="18" rx="2" />
+              <path strokeLinecap="round" d="M16 2v4M8 2v4M3 10h18" />
+            </svg>
+            {new Date(issue.dueDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+          </span>
+        )}
         {issue.sprintName && (
           <Badge className="hidden sm:inline-flex">{issue.sprintName}</Badge>
         )}
