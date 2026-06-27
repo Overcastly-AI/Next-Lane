@@ -7,19 +7,22 @@ import {
 } from '@/api/comments';
 import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
-import { Textarea } from '@/components/ui/Textarea';
 import { Spinner, ErrorState } from '@/components/ui/States';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { useToast } from '@/components/ui/Toast';
 import { errorMessage } from '@/lib/errorMessage';
 import { useAuth } from '@/auth/AuthContext';
-import type { CommentDto } from '@next-lane/shared';
+import { MentionComposer } from './MentionComposer';
+import type { CommentDto, UserDto } from '@next-lane/shared';
 
 export function CommentsPanel({
   issueId,
+  users = [],
   editable = true,
 }: {
   issueId: string;
+  /** Co-members available for @mention autocomplete. */
+  users?: UserDto[];
   /** When false (VIEWER), the composer and per-comment actions are hidden. */
   editable?: boolean;
 }) {
@@ -49,11 +52,13 @@ export function CommentsPanel({
       <form onSubmit={onSubmit} className="flex gap-2">
         <Avatar user={user} size="md" className="mt-0.5" />
         <div className="flex-1 space-y-2">
-          <Textarea
+          <MentionComposer
             rows={2}
             value={body}
-            onChange={(e) => setBody(e.target.value)}
-            placeholder="Add a comment…"
+            onChange={setBody}
+            users={users}
+            placeholder="Add a comment… (type @ to mention)"
+            data-testid="comment-composer"
             onKeyDown={(e) => {
               if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
                 void onSubmit(e as unknown as FormEvent);
@@ -73,7 +78,7 @@ export function CommentsPanel({
           </div>
           {addComment.isError && (
             <p className="text-xs text-red-600">
-              Couldn’t post comment. Try again.
+              Couldn't post comment. Try again.
             </p>
           )}
         </div>
@@ -96,6 +101,7 @@ export function CommentsPanel({
               key={c.id}
               comment={c}
               issueId={issueId}
+              users={users}
               isOwn={editable && !!user && c.author.id === user.id}
             />
           ))}
@@ -110,10 +116,12 @@ export function CommentsPanel({
 function CommentItem({
   comment,
   issueId,
+  users,
   isOwn,
 }: {
   comment: CommentDto;
   issueId: string;
+  users: UserDto[];
   isOwn: boolean;
 }) {
   const toast = useToast();
@@ -187,11 +195,12 @@ function CommentItem({
 
         {editing ? (
           <form onSubmit={saveEdit} className="mt-1 space-y-2">
-            <Textarea
+            <MentionComposer
               rows={2}
-              autoFocus
               value={draft}
-              onChange={(e) => setDraft(e.target.value)}
+              onChange={setDraft}
+              users={users}
+              aria-label="Edit comment"
               onKeyDown={(e) => {
                 if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
                   void saveEdit(e as unknown as FormEvent);
@@ -207,7 +216,7 @@ function CommentItem({
                 disabled={!draft.trim()}
               >
                 Save
-              </Button>
+            </Button>
               <Button
                 type="button"
                 size="sm"
@@ -228,7 +237,7 @@ function CommentItem({
       <ConfirmDialog
         open={confirmDelete}
         title="Delete comment"
-        message="This comment will be permanently removed. This can’t be undone."
+        message="This comment will be permanently removed. This can't be undone."
         confirmLabel="Delete"
         variant="danger"
         loading={deleteComment.isPending}
