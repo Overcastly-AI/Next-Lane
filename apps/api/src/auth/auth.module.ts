@@ -8,6 +8,7 @@ import { JwtStrategy } from './jwt.strategy';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { getJwtExpiresIn, getJwtSecret } from './auth.config';
 import { PasswordResetService } from './password-reset.service';
+import { ApiTokensModule } from '../api-tokens/api-tokens.module';
 
 @Module({
   imports: [
@@ -16,6 +17,9 @@ import { PasswordResetService } from './password-reset.service';
       secret: getJwtSecret(),
       signOptions: { expiresIn: getJwtExpiresIn() },
     }),
+    // ApiTokensModule is imported so its service can be injected into JwtAuthGuard
+    // to handle PAT authentication alongside normal JWT auth.
+    ApiTokensModule,
   ],
   controllers: [AuthController],
   providers: [

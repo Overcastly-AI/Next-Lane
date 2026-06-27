@@ -38,6 +38,7 @@ export function ConfirmDialog({
       onClose={onCancel}
       title={title}
       size="max-w-md"
+      role="alertdialog"
       footer={
         <>
           <Button variant="secondary" type="button" onClick={onCancel}>
