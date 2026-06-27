@@ -187,6 +187,29 @@ export interface BurndownDto {
 }
 
 /**
+ * One day in a Cumulative Flow Diagram: the count of issues in each status
+ * category on that calendar day. `date` is an ISO date (YYYY-MM-DD). Suitable
+ * for a stacked-area chart.
+ */
+export interface CfdPointDto {
+  date: string;
+  todo: number;
+  inProgress: number;
+  done: number;
+}
+
+/**
+ * Full CFD payload for a project over a rolling day window. `statuses` gives
+ * the display names resolved from the project's own status categories so the
+ * chart can label the legend bands.
+ */
+export interface CfdDto {
+  projectId: string;
+  days: number;
+  series: CfdPointDto[];
+}
+
+/**
  * One epic on the roadmap timeline. The date window is derived: from the
  * earliest start to the latest end of the sprints its child issues belong to;
  * when no child has a dated sprint, it falls back to the epic's own createdAt.

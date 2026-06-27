@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import type { VelocityPointDto, BurndownDto } from '@next-lane/shared';
+import type { VelocityPointDto, BurndownDto, CfdDto } from '@next-lane/shared';
 import { request } from './client';
 
 /** Velocity per active/completed sprint for a project. */
@@ -24,5 +24,18 @@ export function useBurndown(
       request<BurndownDto>(
         `/projects/${projectId}/sprints/${sprintId}/burndown`,
       ),
+  });
+}
+
+/** Cumulative Flow Diagram: per-day issue counts per status category. */
+export function useCfd(
+  projectId: string | undefined,
+  days: number = 30,
+) {
+  return useQuery({
+    queryKey: ['reports', 'cfd', projectId ?? '', days],
+    enabled: !!projectId,
+    queryFn: () =>
+      request<CfdDto>(`/projects/${projectId}/reports/cfd?days=${days}`),
   });
 }

@@ -6,6 +6,8 @@ import type {
   VelocityPointDto,
   BurndownDto,
   BurndownPointDto,
+  CfdDto,
+  CfdPointDto,
 } from '@next-lane/shared';
 
 /** Story points are optional on issues; a null value contributes 0 points. */
@@ -237,5 +239,190 @@ export class ReportsService {
       byIssue.set(log.issueId, dayKey(log.createdAt));
     }
     return byIssue;
+  }
+
+  /**
+   * Cumulative Flow Diagram: for each calendar day over the past `days` days
+   * (UTC, ending today), return the count of issues in each status category
+   * (TODO / IN_PROGRESS / DONE), suitable for a stacked-area chart.
+   *
+   * Historical state reconstruction approach
+   * ─────────────────────────────────────────
+   * The ActivityLog records every `status` field change with `from`/`to` status
+   * IDs and a `createdAt` timestamp. We use this log to reconstruct each
+   * issue's status on every day in the window:
+   *
+   *  1. Fetch all project issues with their CURRENT statusId + the status's
+   *     category. This is the ground truth for "today".
+   *  2. Fetch all ActivityLog rows for those issues where `field = 'status'`,
+   *     ordered newest-first (descending).
+   *  3. Walk backwards through the window day by day. For each day, we know the
+   *     status each issue was in at the END of that day because we can replay
+   *     the log in reverse: starting from the current status, each log entry
+   *     that occurred AFTER the day boundary rolls the issue back to the `from`
+   *     status.
+   *  4. Issues that were created after a given day do not exist yet and are
+   *     excluded from that day's counts.
+   *  5. If an issue's `from` status is missing from the DB (deleted status), we
+   *     keep the best-known status rather than erroring.
+   *
+   * This gives an exact reconstruction when the ActivityLog is complete and a
+   * reasonable approximation when log rows are absent (e.g. seeded/imported
+   * issues without history): those issues carry their current status backward
+   * through the entire window.
+   */
+  async cfd(
+    userId: string,
+    projectId: string,
+    days: number,
+  ): Promise<CfdDto> {
+    await assertProjectMember(this.prisma, userId, projectId);
+
+    // Clamp the window to a sensible maximum (1 year) to prevent abuse.
+    const windowDays = Math.min(Math.max(1, days), 366);
+
+    const today = new Date();
+    const windowStart = new Date(
+      Date.UTC(
+        today.getUTCFullYear(),
+        today.getUTCMonth(),
+        today.getUTCDate() - windowDays + 1,
+      ),
+    );
+    const windowEnd = new Date(
+      Date.UTC(
+        today.getUTCFullYear(),
+        today.getUTCMonth(),
+        today.getUTCDate(),
+      ),
+    );
+    const allDays = dayRange(windowStart, windowEnd);
+
+    // 1. All project issues with current status category + creation date.
+    const issues = await this.prisma.issue.findMany({
+      where: { projectId },
+      select: {
+        id: true,
+        statusId: true,
+        createdAt: true,
+        status: { select: { category: true } },
+      },
+    });
+
+    if (issues.length === 0) {
+      return {
+        projectId,
+        days: windowDays,
+        series: allDays.map((date) => ({
+          date,
+          todo: 0,
+          inProgress: 0,
+          done: 0,
+        })),
+      };
+    }
+
+    // 2. Fetch all status-change log entries for these issues within a
+    //    generous lookback (we need rows before the window start to know what
+    //    status an issue was in at the start).
+    const issueIds = issues.map((i) => i.id);
+    const logs = await this.prisma.activityLog.findMany({
+      where: {
+        issueId: { in: issueIds },
+        field: 'status',
+      },
+      select: { issueId: true, from: true, to: true, createdAt: true },
+      orderBy: { createdAt: 'desc' }, // newest first — we walk backwards
+    });
+
+    // 3. Build a lookup of statusId → category from all issues' current status.
+    //    Collect all unique statusIds referenced in the log (both from and to)
+    //    and fetch their categories so we can map rolled-back statuses too.
+    const allStatusIds = new Set<string>();
+    for (const issue of issues) allStatusIds.add(issue.statusId);
+    for (const log of logs) {
+      if (log.from) allStatusIds.add(log.from);
+      if (log.to) allStatusIds.add(log.to);
+    }
+    const statusRows = await this.prisma.status.findMany({
+      where: { id: { in: Array.from(allStatusIds) } },
+      select: { id: true, category: true },
+    });
+    const categoryOf = new Map<string, StatusCategory>();
+    for (const row of statusRows) {
+      categoryOf.set(row.id, row.category as StatusCategory);
+    }
+
+    // 4. Partition log entries by issueId for efficient per-issue replay.
+    const logsByIssue = new Map<
+      string,
+      Array<{ from: string | null; to: string | null; createdAt: Date }>
+    >();
+    for (const log of logs) {
+      if (!logsByIssue.has(log.issueId)) logsByIssue.set(log.issueId, []);
+      logsByIssue.get(log.issueId)!.push(log);
+    }
+
+    // 5. For each issue, determine its statusId at each day boundary by
+    //    replaying the log backwards from today.
+    //    issueStatusAtDay[issueId][dayKey] = statusId (or undefined if not yet created)
+    const issueStatusAtDay = new Map<string, Map<string, string | null>>();
+
+    for (const issue of issues) {
+      const issueCreatedDay = dayKey(issue.createdAt);
+      const issueLogs = logsByIssue.get(issue.id) ?? []; // already desc-sorted
+      // Walk backwards through the days. Start with current status.
+      let currentStatusId: string = issue.statusId;
+      let logPtr = 0; // points to the next log entry to potentially apply
+      const dayMap = new Map<string, string | null>();
+
+      for (let di = allDays.length - 1; di >= 0; di--) {
+        const day = allDays[di];
+
+        // Apply all log entries that occurred AFTER the start of this day
+        // (i.e., they happened ON or AFTER this day's midnight UTC). These
+        // need to be "undone" to know the status at the END of the previous
+        // day.
+        const dayStartUtc = new Date(`${day}T00:00:00.000Z`).getTime();
+        while (
+          logPtr < issueLogs.length &&
+          issueLogs[logPtr].createdAt.getTime() >= dayStartUtc
+        ) {
+          const entry = issueLogs[logPtr];
+          // Roll back: the issue's status before this transition was `from`.
+          if (entry.from !== null) {
+            currentStatusId = entry.from;
+          }
+          logPtr++;
+        }
+
+        // If the issue hadn't been created by this day, it doesn't count.
+        if (day < issueCreatedDay) {
+          dayMap.set(day, null);
+        } else {
+          dayMap.set(day, currentStatusId);
+        }
+      }
+
+      issueStatusAtDay.set(issue.id, dayMap);
+    }
+
+    // 6. Aggregate counts per day.
+    const series: CfdPointDto[] = allDays.map((day) => {
+      let todo = 0;
+      let inProgress = 0;
+      let done = 0;
+      for (const issue of issues) {
+        const statusId = issueStatusAtDay.get(issue.id)?.get(day);
+        if (statusId === null || statusId === undefined) continue; // not yet created
+        const cat = categoryOf.get(statusId);
+        if (cat === StatusCategory.TODO) todo++;
+        else if (cat === StatusCategory.IN_PROGRESS) inProgress++;
+        else if (cat === StatusCategory.DONE) done++;
+      }
+      return { date: day, todo, inProgress, done };
+    });
+
+    return { projectId, days: windowDays, series };
   }
 }

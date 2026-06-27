@@ -1,4 +1,4 @@
-import { Controller, Get, Param } from '@nestjs/common';
+import { Controller, Get, Param, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { ReportsService } from './reports.service';
 import { CurrentUser, AuthUser } from '../auth/current-user.decorator';
@@ -26,5 +26,20 @@ export class ReportsController {
     @Param('sprintId') sprintId: string,
   ) {
     return this.reports.burndown(user.id, projectId, sprintId);
+  }
+
+  /**
+   * Cumulative Flow Diagram: per-day count of issues in each status category
+   * (TODO / IN_PROGRESS / DONE) over the requested window. Defaults to 30 days.
+   * Historical state is reconstructed from ActivityLog status-change entries.
+   */
+  @Get('projects/:projectId/reports/cfd')
+  cfd(
+    @CurrentUser() user: AuthUser,
+    @Param('projectId') projectId: string,
+    @Query('days') daysStr?: string,
+  ) {
+    const days = daysStr ? Math.round(Number(daysStr)) : 30;
+    return this.reports.cfd(user.id, projectId, isNaN(days) ? 30 : days);
   }
 }

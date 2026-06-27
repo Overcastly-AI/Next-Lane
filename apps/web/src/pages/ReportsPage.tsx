@@ -3,13 +3,14 @@ import { useParams, Link } from 'react-router-dom';
 import { SprintState, type SprintDto } from '@next-lane/shared';
 import { useBoard } from '@/api/issues';
 import { useSprints } from '@/api/meta';
-import { useVelocity, useBurndown } from '@/api/reports';
+import { useVelocity, useBurndown, useCfd } from '@/api/reports';
 import { AppHeader } from '@/components/AppHeader';
 import { ProjectNav } from '@/components/project/ProjectNav';
 import { Select } from '@/components/ui/Select';
 import { ErrorState, LoadingState, EmptyState, Spinner } from '@/components/ui/States';
 import { VelocityChart } from '@/components/reports/VelocityChart';
 import { BurndownChart } from '@/components/reports/BurndownChart';
+import { CumulativeFlowChart } from '@/components/reports/CumulativeFlowChart';
 
 export function ReportsPage() {
   const { projectId = '' } = useParams();
@@ -32,6 +33,10 @@ export function ReportsPage() {
 
   const burndownQuery = useBurndown(projectId, selectedSprintId || undefined);
 
+  // CFD window selector: 14, 30, or 90 days.
+  const [cfdDays, setCfdDays] = useState<number>(30);
+  const cfdQuery = useCfd(projectId, cfdDays);
+
   const projectName = boardQuery.data?.project.name;
   const velocity = velocityQuery.data ?? [];
   const burndown = burndownQuery.data;
@@ -42,7 +47,7 @@ export function ReportsPage() {
         <div>
           <h1 className="text-lg font-semibold text-gray-900">Reports</h1>
           <p className="text-sm text-gray-500">
-            Sprint velocity and burndown for this project.
+            Sprint velocity, burndown, and cumulative flow for this project.
           </p>
         </div>
 
@@ -144,6 +149,62 @@ export function ReportsPage() {
             <EmptyState
               title="No burndown data"
               description="This sprint has no dates or story-pointed issues yet."
+            />
+          )}
+        </section>
+
+        {/* Cumulative Flow Diagram */}
+        <section
+          className="rounded-xl border border-gray-200 bg-white p-4 shadow-card sm:p-5"
+          aria-labelledby="cfd-heading"
+        >
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div>
+              <h2
+                id="cfd-heading"
+                className="text-sm font-semibold text-gray-900"
+              >
+                Cumulative Flow
+              </h2>
+              <p className="text-xs text-gray-500">
+                Issue counts per status category over time, stacked by area.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              {cfdQuery.isFetching && <Spinner className="h-4 w-4" />}
+              <div className="w-28 shrink-0">
+                <label htmlFor="cfd-days" className="sr-only">
+                  Time window
+                </label>
+                <Select
+                  id="cfd-days"
+                  value={String(cfdDays)}
+                  onChange={(e) => setCfdDays(Number(e.target.value))}
+                >
+                  <option value="14">Last 14 days</option>
+                  <option value="30">Last 30 days</option>
+                  <option value="90">Last 90 days</option>
+                </Select>
+              </div>
+            </div>
+          </div>
+
+          {cfdQuery.isLoading ? (
+            <LoadingState label="Loading cumulative flow…" />
+          ) : cfdQuery.isError ? (
+            <ErrorState
+              error={cfdQuery.error}
+              onRetry={() => cfdQuery.refetch()}
+            />
+          ) : cfdQuery.data && cfdQuery.data.series.length > 0 &&
+            cfdQuery.data.series.some(
+              (p) => p.todo + p.inProgress + p.done > 0,
+            ) ? (
+            <CumulativeFlowChart series={cfdQuery.data.series} />
+          ) : (
+            <EmptyState
+              title="No issues yet"
+              description="Create issues in this project to see the cumulative flow."
             />
           )}
         </section>

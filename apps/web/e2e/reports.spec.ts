@@ -7,7 +7,8 @@ import { openDemoBoard } from './helpers';
  *  - the Reports tab is reachable from ProjectNav,
  *  - the velocity bar chart renders,
  *  - the burndown line chart renders and defaults to the active sprint,
- *  - switching the sprint selector keeps the burndown chart visible.
+ *  - switching the sprint selector keeps the burndown chart visible,
+ *  - the Cumulative Flow Diagram section renders with its stacked-area chart.
  *
  * Read-only against shared seed data, so it is safe on desktop + mobile in
  * parallel (no writes, no cross-test contention).
@@ -58,5 +59,67 @@ test.describe('Reports', () => {
       );
     await sprintSelect.selectOption(optionValues[0]);
     await expect(burndownChart).toBeVisible();
+  });
+
+  test('cumulative flow chart renders with stacked areas and window selector', async ({
+    page,
+  }) => {
+    await openDemoBoard(page);
+
+    // Navigate to Reports.
+    await page.getByRole('link', { name: 'Reports' }).click();
+    await expect(page).toHaveURL(/\/reports$/, { timeout: 15_000 });
+
+    // Cumulative Flow section heading.
+    await expect(
+      page.getByRole('heading', { name: 'Cumulative Flow', level: 2 }),
+    ).toBeVisible();
+
+    // The CFD SVG chart should be present (either the chart or an empty state).
+    // The demo project has issues so the chart should render.
+    const cfdChart = page.getByRole('img', {
+      name: /cumulative flow diagram/i,
+    });
+    await expect(cfdChart).toBeVisible({ timeout: 15_000 });
+
+    // The stacked-area chart uses <path> for each band (3 bands: TODO,
+    // IN_PROGRESS, DONE) plus <polyline> border strokes — at least 3 paths.
+    expect(await cfdChart.locator('path').count()).toBeGreaterThanOrEqual(3);
+
+    // The time-window selector should default to "Last 30 days".
+    const windowSelect = page.getByRole('combobox', { name: /time window/i });
+    await expect(windowSelect).toBeVisible();
+    await expect(windowSelect).toHaveValue('30');
+
+    // Switching to 14 days reloads the chart (still visible).
+    await windowSelect.selectOption('14');
+    await expect(cfdChart).toBeVisible({ timeout: 10_000 });
+
+    // Switching to 90 days (may have more data points).
+    await windowSelect.selectOption('90');
+    await expect(cfdChart).toBeVisible({ timeout: 10_000 });
+  });
+
+  test('cumulative flow chart legend shows status categories', async ({
+    page,
+  }) => {
+    await openDemoBoard(page);
+    await page.getByRole('link', { name: 'Reports' }).click();
+    await expect(page).toHaveURL(/\/reports$/, { timeout: 15_000 });
+
+    // Wait for chart to load.
+    await expect(
+      page.getByRole('img', { name: /cumulative flow diagram/i }),
+    ).toBeVisible({ timeout: 15_000 });
+
+    // Legend labels for all three categories must be visible.
+    // Scope to the section via aria-labelledby to avoid matching SVG tooltip text.
+    const cfdSection = page.locator('section[aria-labelledby="cfd-heading"]');
+    // The legend spans have class text-xs and text-gray-500; match by role or
+    // class to exclude the SVG <title> elements which are not visible text nodes.
+    const legendItems = cfdSection.locator('.text-xs.text-gray-500');
+    await expect(legendItems.filter({ hasText: 'Done' })).toBeVisible();
+    await expect(legendItems.filter({ hasText: 'In Progress' })).toBeVisible();
+    await expect(legendItems.filter({ hasText: 'To Do' })).toBeVisible();
   });
 });
