@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { Logger } from 'nestjs-pino';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { assertAuthConfig } from './auth/auth.config';
@@ -11,7 +12,16 @@ async function bootstrap() {
   // Fail fast on misconfigured secrets before doing any work or binding a port.
   assertAuthConfig();
 
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, {
+    // Buffer Nest's own startup logs so they are flushed through pino after
+    // the logger is initialised (rather than falling through to the default
+    // console logger during bootstrap).
+    bufferLogs: true,
+  });
+
+  // Route all of Nest's internal logger calls through the pino logger so every
+  // log line (framework + application) shares the same structured format.
+  app.useLogger(app.get(Logger));
 
   // Security headers via Helmet (XSS, clickjacking, MIME sniff, etc.).
   app.use(helmet());
@@ -48,12 +58,14 @@ async function bootstrap() {
 
   const port = Number(process.env.API_PORT ?? 4000);
   await app.listen(port, '0.0.0.0');
-  // eslint-disable-next-line no-console
-  console.log(`Next Lane API listening on :${port} (docs at /api)`);
+
+  const logger = app.get(Logger);
+  logger.log(`Next Lane API listening on :${port} (docs at /api)`, 'Bootstrap');
 }
 
 bootstrap().catch((err) => {
-  // eslint-disable-next-line no-console
-  console.error('Failed to start Next Lane API:', err);
+  // Use process.stderr at this point — the pino logger may not be available
+  // if bootstrap itself failed before the app was created.
+  process.stderr.write(`Failed to start Next Lane API: ${String(err)}\n`);
   process.exit(1);
 });

@@ -116,4 +116,6 @@ container-registry access** — it can't run in this build sandbox (Docker Hub e
 blocked), so it needs a maintainer to run the README quickstart verbatim and confirm.
 Everything else above is met.
 
+**Observability baseline (2026-06-27):** structured logging via `nestjs-pino` + `pino-http` shipped. All NestJS and application logs now emit JSON in production (level, time, pid, hostname, context, msg) and pretty-printed output in development (pino-pretty). Sensitive fields (`authorization` header, `cookie`, `password`, `token`, `newPassword`) are redacted. Health-check requests are silenced in logs. Log level configurable via `LOG_LEVEL` env var (default `info`). `bufferLogs: true` ensures startup logs route through pino. The two remaining `console.*` calls in `main.ts` have been replaced with the pino Logger and `process.stderr`.
+
 Everything beyond this (custom fields, automation rules, time tracking, SSO, email-to-issue, importers) is **post-v1** and should not block the release.
