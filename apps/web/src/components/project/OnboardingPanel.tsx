@@ -1,3 +1,4 @@
+import type React from 'react';
 import { Button } from '@/components/ui/Button';
 
 /**
@@ -60,7 +61,7 @@ export function OnboardingPanel({
             key={h.label}
             className="flex flex-col gap-1 rounded-xl bg-gray-50 px-4 py-3"
           >
-            <span className="text-base" aria-hidden="true">
+            <span className="h-5 w-5 text-gray-400" aria-hidden="true">
               {h.icon}
             </span>
             <span className="text-xs font-semibold text-gray-800">
@@ -74,19 +75,43 @@ export function OnboardingPanel({
   );
 }
 
-const HIGHLIGHTS: { icon: string; label: string; description: string }[] = [
+/** Inline SVG for Kanban board: three vertical bars at different heights */
+const KanbanIcon = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true">
+    <rect x="3" y="3" width="4" height="14" rx="1" />
+    <rect x="10" y="3" width="4" height="10" rx="1" />
+    <rect x="17" y="3" width="4" height="18" rx="1" />
+  </svg>
+);
+
+/** Inline SVG for Sprints / calendar: a simple calendar outline */
+const SprintsIcon = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <rect x="3" y="4" width="18" height="17" rx="2" />
+    <path d="M16 2v4M8 2v4M3 10h18" />
+  </svg>
+);
+
+/** Inline SVG for Reports: a simple bar/trend chart */
+const ReportsIcon = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M3 20h18M6 20V13m4 7V9m4 11V5m4 15v-7" />
+  </svg>
+);
+
+const HIGHLIGHTS: { icon: React.ReactNode; label: string; description: string }[] = [
   {
-    icon: '⬛',
+    icon: KanbanIcon,
     label: 'Kanban board',
     description: 'Drag and drop issues across custom columns.',
   },
   {
-    icon: '🗓',
+    icon: SprintsIcon,
     label: 'Sprints & backlog',
     description: 'Plan work in time-boxed sprints with a prioritised backlog.',
   },
   {
-    icon: '📊',
+    icon: ReportsIcon,
     label: 'Reports',
     description: 'Track velocity and burndown to understand team pace.',
   },

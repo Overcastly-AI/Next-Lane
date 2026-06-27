@@ -33,7 +33,11 @@ export function useProjectIssues(projectId: string | undefined) {
       const all: IssueDto[] = [];
       let cursor: string | null = null;
       do {
-        const params = new URLSearchParams({ projectId: projectId ?? '' });
+        // Use the API's maximum page size (200) to minimize round-trips.
+        const params = new URLSearchParams({
+          projectId: projectId ?? '',
+          limit: '200',
+        });
         if (cursor) params.set('cursor', cursor);
         const page: PaginatedIssuesDto = await request<PaginatedIssuesDto>(
           `/issues?${params.toString()}`,
