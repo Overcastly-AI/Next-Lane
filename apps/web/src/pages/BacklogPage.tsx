@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
+  IssueType,
+  Priority,
   SprintState,
   StatusCategory,
   type IssueDto,
@@ -12,6 +14,7 @@ import {
   useProjectIssues,
   useAssignIssueToSprint,
   useBoard,
+  useCreateIssue,
 } from '@/api/issues';
 import { useSprints, useUsers } from '@/api/meta';
 import {
@@ -51,6 +54,7 @@ export function BacklogPage() {
 
   const assign = useAssignIssueToSprint(projectId);
   const updateSprint = useUpdateSprint(projectId);
+  const createIssue = useCreateIssue(projectId);
 
   const [createOpen, setCreateOpen] = useState(false);
   const [openIssueId, setOpenIssueId] = useState<string | null>(null);
@@ -124,6 +128,26 @@ export function BacklogPage() {
           toast.error(errorMessage(err, 'Could not move that issue.')),
       },
     );
+  }
+
+  async function createInline(
+    title: string,
+    sprintId: string | null,
+  ): Promise<void> {
+    try {
+      await createIssue.mutateAsync({
+        projectId,
+        title: title.trim(),
+        type: IssueType.TASK,
+        priority: Priority.MEDIUM,
+        sprintId,
+      });
+      // GhostRow clears its own input and keeps focus for the next title.
+    } catch (err) {
+      toast.error(errorMessage(err, 'Could not create that issue.'));
+      // Re-throw so the GhostRow keeps the typed text for a retry.
+      throw err;
+    }
   }
 
   function startSprint(sprint: SprintDto) {
@@ -220,6 +244,7 @@ export function BacklogPage() {
               editable={editable}
               onOpenIssue={setOpenIssueId}
               onMove={moveIssue}
+              onCreate={(title) => createInline(title, sprint.id)}
               onStart={() => startSprint(sprint)}
               onComplete={() => setCompleteTarget(sprint)}
               onDelete={() => setDeleteTarget(sprint)}
@@ -258,6 +283,13 @@ export function BacklogPage() {
                 />
               ))}
             </ul>
+          )}
+          {editable && (
+            <GhostRow
+              testId="ghost-row-backlog"
+              placeholder="+ Add an issue to the backlog…"
+              onCreate={(title) => createInline(title, null)}
+            />
           )}
         </Section>
       </div>
@@ -309,6 +341,7 @@ function SprintSection({
   editable,
   onOpenIssue,
   onMove,
+  onCreate,
   onStart,
   onComplete,
   onDelete,
@@ -324,6 +357,7 @@ function SprintSection({
   editable: boolean;
   onOpenIssue: (id: string) => void;
   onMove: (issue: IssueDto, sprintId: string | null) => void;
+  onCreate: (title: string) => Promise<void>;
   onStart: () => void;
   onComplete: () => void;
   onDelete: () => void;
@@ -455,6 +489,13 @@ function SprintSection({
           ))}
         </ul>
       )}
+      {editable && (
+        <GhostRow
+          testId={`ghost-row-sprint-${sprint.id}`}
+          placeholder={`+ Add an issue to ${sprint.name}…`}
+          onCreate={onCreate}
+        />
+      )}
     </Section>
   );
 }
@@ -555,6 +596,67 @@ function IssueRow({
         />
       )}
     </li>
+  );
+}
+
+/**
+ * Inline "ghost row" create: type a title, press Enter to create an issue in this
+ * section (sprint or backlog) without opening the modal. The input clears and stays
+ * focused for rapid entry. Errors are surfaced by the caller via toast; on error we
+ * keep the typed text so nothing is lost.
+ */
+function GhostRow({
+  placeholder,
+  onCreate,
+  testId,
+}: {
+  placeholder: string;
+  onCreate: (title: string) => Promise<void>;
+  testId: string;
+}) {
+  const [title, setTitle] = useState('');
+  const [pending, setPending] = useState(false);
+
+  async function submit() {
+    const trimmed = title.trim();
+    if (!trimmed || pending) return;
+    setPending(true);
+    try {
+      await onCreate(trimmed);
+      setTitle('');
+    } catch {
+      // Keep the text so the user can retry; the caller already toasted.
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-3 px-2 py-2">
+      <span className="h-4 w-4 shrink-0 text-gray-300" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v14M5 12h14" />
+        </svg>
+      </span>
+      <input
+        type="text"
+        data-testid={testId}
+        value={title}
+        disabled={pending}
+        onChange={(e) => setTitle(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            void submit();
+          }
+        }}
+        placeholder={placeholder}
+        className={cn(
+          'min-w-0 flex-1 bg-transparent text-sm text-gray-900 placeholder:text-gray-400',
+          'focus:outline-none disabled:opacity-50',
+        )}
+      />
+    </div>
   );
 }
 

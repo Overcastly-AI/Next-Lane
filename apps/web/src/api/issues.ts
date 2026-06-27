@@ -66,6 +66,8 @@ export interface CreateIssueInput {
   statusId?: string;
   assigneeId?: string | null;
   description?: string;
+  /** Assign the new issue to a sprint on creation (e.g. inline backlog/sprint create). */
+  sprintId?: string | null;
 }
 
 export function useCreateIssue(projectId: string) {
@@ -73,7 +75,16 @@ export function useCreateIssue(projectId: string) {
   return useMutation({
     mutationFn: (input: CreateIssueInput) =>
       request<IssueDto>('/issues', { method: 'POST', body: input }),
-    onSuccess: () => {
+    onSuccess: (created) => {
+      // Push the new issue into the planning view's project-issues list so the
+      // backlog/sprint sections reflect it immediately, then invalidate to
+      // reconcile with the server.
+      qc.setQueryData<IssueDto[]>(qk.projectIssues(projectId), (list) =>
+        list && !list.some((i) => i.id === created.id)
+          ? [...list, created]
+          : list,
+      );
+      void qc.invalidateQueries({ queryKey: qk.projectIssues(projectId) });
       void qc.invalidateQueries({ queryKey: qk.board(projectId) });
     },
   });
