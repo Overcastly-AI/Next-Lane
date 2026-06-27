@@ -1,5 +1,16 @@
-export const API_URL: string =
-  import.meta.env.VITE_API_URL ?? 'http://localhost:4000';
+import { getApiUrl } from './config';
+
+/**
+ * Resolved API base URL for this runtime.
+ *
+ * Reads window.__NL_CONFIG__.apiUrl first (injected at container start by the
+ * nginx entrypoint), then falls back to the Vite build-time env var, then a
+ * sane localhost default.  See src/api/config.ts for the full priority chain.
+ *
+ * Exported for the socket client and any legacy import sites; prefer calling
+ * getApiUrl() directly in new code.
+ */
+export const API_URL: string = getApiUrl();
 
 export const TOKEN_KEY = 'nl_token';
 export const USER_KEY = 'nl_user';
