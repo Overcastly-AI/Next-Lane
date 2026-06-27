@@ -1,7 +1,7 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { io, type Socket } from 'socket.io-client';
 import { useQueryClient } from '@tanstack/react-query';
-import { SocketEvents, type SocketEvent } from '@next-lane/shared';
+import { SocketEvents, type SocketEvent, type PresenceViewer } from '@next-lane/shared';
 import { API_URL, getToken } from './client';
 import { qk } from './keys';
 
@@ -110,4 +110,54 @@ export function useBoardRealtime(
       listeners.forEach(({ event, fn }) => s.off(event, fn));
     };
   }, [projectId, qc]);
+}
+
+/**
+ * Subscribe to `presence.update` events for a project board and return the
+ * current list of viewers. Self is excluded from the returned list using the
+ * caller-supplied `selfUserId`.
+ *
+ * The hook also emits `unsubscribe` on unmount so the gateway can eagerly evict
+ * this socket from the presence set without waiting for a disconnect event
+ * (which only fires when the whole socket closes, not when the component
+ * navigates away).
+ */
+export function usePresence(
+  projectId: string | undefined,
+  selfUserId: string | undefined,
+): PresenceViewer[] {
+  const [viewers, setViewers] = useState<PresenceViewer[]>([]);
+
+  useEffect(() => {
+    if (!projectId) {
+      setViewers([]);
+      return;
+    }
+    const s = getSocket();
+
+    const onPresenceUpdate = (payload: { projectId: string; viewers: PresenceViewer[] }) => {
+      if (payload.projectId !== projectId) return;
+      // Deduplicate and exclude self.
+      const unique = new Map<string, PresenceViewer>();
+      for (const v of payload.viewers) {
+        if (v.userId !== selfUserId) {
+          unique.set(v.userId, v);
+        }
+      }
+      setViewers(Array.from(unique.values()));
+    };
+
+    s.on(SocketEvents.PresenceUpdate, onPresenceUpdate);
+
+    return () => {
+      s.off(SocketEvents.PresenceUpdate, onPresenceUpdate);
+      // Eagerly leave presence when navigating away from the board.
+      if (s.connected) {
+        s.emit('unsubscribe', projectId);
+      }
+      setViewers([]);
+    };
+  }, [projectId, selfUserId]);
+
+  return viewers;
 }

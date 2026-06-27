@@ -26,7 +26,8 @@ import { useLabels, useSprints, useUsers } from '@/api/meta';
 import { useMyRole } from '@/api/workspaces';
 import { canEdit } from '@/lib/permissions';
 import { endDateStatus } from '@/lib/sprintDates';
-import { useBoardRealtime } from '@/api/socket';
+import { useBoardRealtime, usePresence } from '@/api/socket';
+import { useAuth } from '@/auth/AuthContext';
 import { AppHeader } from '@/components/AppHeader';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -39,6 +40,7 @@ import { BoardColumn } from '@/components/board/BoardColumn';
 import { IssueCard } from '@/components/board/IssueCard';
 import { CreateIssueModal } from '@/components/board/CreateIssueModal';
 import { IssueDetailDrawer } from '@/components/issue/IssueDetailDrawer';
+import { PresenceAvatars } from '@/components/board/PresenceAvatars';
 import { useToast } from '@/components/ui/Toast';
 import { errorMessage } from '@/lib/errorMessage';
 import { cn } from '@/lib/cn';
@@ -52,8 +54,10 @@ export function BoardPage() {
   const sprintsQuery = useSprints(projectId);
   const moveIssue = useMoveIssue(projectId);
   const toast = useToast();
+  const { user: currentUser } = useAuth();
 
   useBoardRealtime(projectId);
+  const presenceViewers = usePresence(projectId, currentUser?.id);
 
   const [search, setSearch] = useState('');
   const [assigneeFilter, setAssigneeFilter] = useState('');
@@ -328,7 +332,10 @@ export function BoardPage() {
           <PriorityFilter selected={priorityFilter} onChange={setPriorityFilter} />
         </div>
 
-        <div className="ml-auto flex items-center gap-2 sm:ml-auto">
+        <div className="ml-auto flex items-center gap-3 sm:ml-auto">
+          {/* Live board presence — other people currently viewing this board */}
+          <PresenceAvatars viewers={presenceViewers} />
+
           {board?.issuesTruncated && (
             <span
               data-testid="board-truncated-hint"

@@ -116,7 +116,7 @@ _Product P1s — queue after security batch:_
 - [ ] (P2, M) Public read-only project share link — `ShareToken` model + unauthenticated board endpoint + readonly board view (no DnD, no create); top self-hosted adoption lever ("show this to my PM without giving them login") [product-auditor]
 - [ ] (P2, S) Fix stale socket token after re-auth — getSocket() captures the token once at init; when refresh tokens land the socket will carry a stale credential until page reload [engineering-auditor]
 - [ ] (P2, S) Inline card status transition (right-click / keyboard shortcut) — tiny context menu on the card showing 2–4 statuses; eliminates drawer round-trip for status changes [product-auditor]
-- [ ] (P2, M) Live board presence indicators (per-project viewer avatars via WebSocket) — gateway already tracks connections; augment handleSubscribe to maintain a per-project presence map and emit presence.update; zero new API routes [engineering-auditor, product-auditor Pass 5]
+- [x] (P2, M) Live board presence indicators (per-project viewer avatars via WebSocket) — `RealtimeGateway` maintains in-memory presence map; `presence.update` event emitted on subscribe/unsubscribe/disconnect; `PresenceAvatars` component (stacked avatars, +N overflow, aria-label, tooltip); `usePresence` hook (self-exclusion, cleanup unsubscribe); 7 unit tests + 6 e2e (desktop + mobile) — ✅ shipped 2026-06-27 [engineering-auditor, product-auditor Pass 5]
 - [ ] (P2, S) Board-overview prefetch endpoint + stale-while-revalidate caching — collapses 4 sequential requests into 1 on first load [engineering-auditor]
 - [ ] (P2, M) Slim planning-view endpoint (or virtual scroll) to avoid all-pages waterfall — full elimination: add `GET /projects/:id/issues/planning` with slim projection (id, title, type, priority, statusId, sprintId, rank — no description, no labels, no comment count) [engineering-auditor Pass 4, Pass 5]
 - [ ] (P2, M) Batch notifyComment inserts (createMany) + rebalanceAndPlace (executeRaw batch UPDATE) — serial N inserts per watcher; serial N updates in rebalance tx [engineering-auditor Pass 4, Pass 5]
@@ -173,6 +173,7 @@ can ship first; multi-replica HA depends on the Redis items below.
 ---
 
 ## Changelog
+- 2026-06-27 — Live board presence indicators (P2, M): per-project in-memory presence map in gateway; `presence.update` socket event; `PresenceAvatars` component + `usePresence` hook; self-excluded from viewer list; 7 unit + 6 e2e (desktop + mobile) green; 276 unit tests total.
 - 2026-06-27 — SMTP email delivery for password reset (P1, S): `MailModule`/`MailService` (nodemailer); real SMTP when `SMTP_HOST` set; dev-log fallback when absent; production-safe; SMTP_* env vars documented in `.env.example`; 255 unit tests green.
 - 2026-06-27 (Pass 5 groom) — Security hardening cluster + product P1s + deferrals captured.
   - **In-flight (current build batch, mark done when confirmed):** plaintext token log guard (P1, S); SVG-XSS from ALLOWED_MIME_TYPES (P1, S); CFD/burndown unbounded queries rewrite to generate_series (P1, M); null-file upload guard (P2, S); webhook secret out of BullMQ job body (P2, S); PAT expiresAt past-date validation (P2, S); nginx CSP header (P2, S); Helm Postgres fail-fast guard (P2, S). All confirmed as in-flight by engineering-auditor Pass 5; keeping as open items until build agent ticks them.
