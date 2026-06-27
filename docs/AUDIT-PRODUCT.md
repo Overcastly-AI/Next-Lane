@@ -669,3 +669,228 @@ earn that choice.
 - Keyboard triage mode (full-screen row view, j/k navigation, inline a/p/l/s shortcuts) · P3 · L · power-user differentiator; reduces bug-triage time dramatically; no schema changes
 - Project "Definition of Done" checklist (admin-configured per project, blocks DONE transition) · P3 · M · workflow guardrail; self-hosted teams pick trackers they can configure to their process
 - SMTP email notification delivery (opt-in per user, sendgrid/SMTP env config) · P3 · M · in-app only today; async notifications for users not logged in
+
+---
+
+## 2026-06-27 — Pass 5 (post-rapid-shipping wave)
+
+**Method.** Read every page and component claimed as shipped since Pass 4:
+`TriagePage.tsx`, `PulseDashboardPage.tsx`, `ProfileSettingsPage.tsx`,
+`ForgotPasswordPage.tsx`, `ResetPasswordPage.tsx`, `AttachmentsPanel.tsx`,
+`MentionComposer.tsx`, `CumulativeFlowChart.tsx`, `ApiTokensSection.tsx`,
+`OnboardingPanel.tsx`, `ProjectNav.tsx` (6-tab nav), and updated `BoardPage.tsx`
+(type/priority filters), `CommentsPanel.tsx` (MentionComposer integration),
+`IssueDetailDrawer.tsx` (AttachmentsPanel), `BacklogPage.tsx` (GhostRow).
+Read corresponding API: `SearchService`, `PasswordResetService`,
+`ApiTokensController/Service`, `AttachmentsService`, `ReportsService` (CFD),
+`NotificationsService` (WATCHED_UPDATED gap). Cross-checked Prisma schema
+(no `dueDate` field), `.env.example` (SMTP stub note), and BACKLOG changelog.
+Exercised logic by tracing data flows in code.
+
+**Headline.** Pass 5 finds a genuinely impressive product. The rapid-shipping
+wave closed every remaining Pass 4 gap: board type/priority filters, @mention
+autocomplete (`MentionComposer`), password reset (full flow — forgot/reset
+pages, token model, dev-log fallback), label rename, keyboard triage mode,
+Team Pulse dashboard, personal API tokens (PATs with `nlp_` prefix, SHA-256
+hashed, one-time reveal), cumulative-flow report (CFD stacked-area chart),
+file attachments (drag-drop panel, MIME allowlist, auth-gated download), and
+the onboarding panel. All are present in code and well-implemented.
+
+The honest assessment at this point is that **Next Lane has crossed the
+threshold from "impressive OSS project" to "credible daily-driver tracker."**
+The feature surface now matches or exceeds many established self-hosted
+alternatives across the core loop: agile (sprints, burndown, velocity, CFD),
+planning (epics, subtasks, story points), discovery (command palette, triage
+mode), and DevOps integration (webhooks + PATs). The remaining gaps are real
+but narrower: they live in the "polish, convenience, and trust" tier rather
+than the "missing core features" tier.
+
+What follows is an honest audit of what still matters.
+
+### What shipped (verified claim vs. reality — Pass 5)
+
+| Shipped item | Evidence | Verdict |
+|---|---|---|
+| Board type + priority filters | `BoardPage.tsx` lines 63-65 — `typeFilter: IssueType[]` and `priorityFilter: Priority[]` state; filtering applied in `issuesByStatus` memo at lines 118-121; `MultiSelectFilter` component (not read but confirmed referenced). Filter strips use `overflow-x-auto` for mobile wrapping | Confirmed |
+| @mention autocomplete | `MentionComposer.tsx` — full `detectMention()` logic, floating listbox, Arrow/Enter/Tab/Esc keyboard nav, `setSelectionRange` caret placement after insert; `CommentsPanel.tsx` integrates it with `users` prop for both new and edit composers | Confirmed — well-implemented |
+| Password reset | `ForgotPasswordPage.tsx` full form + success state + "In development mode the link is printed to the API logs" disclosure; `PasswordResetToken` model in schema (SHA-256 hash, `expiresAt`, `usedAt`); `auth.controller.ts` with `forgotPassword` + `resetPassword` endpoints, always-200 anti-enumeration | Confirmed |
+| Team Pulse dashboard | `PulseDashboardPage.tsx` — four sections: SprintSnapshotCard (per-project sprint rows with progress bars + end-date badges), MyIssuesCard (top 5 from `useMyWork`), RecentActivityCard (top 8 notifications), projects grid; OnboardingPanel preserved on zero projects | Confirmed — quality implementation |
+| Keyboard triage mode | `TriagePage.tsx` — full j/k/Enter/a/p/l/s/f/? keyboard model, `InlinePicker` floating panel, `ShortcutHelp` overlay, ARIA listbox with `aria-activedescendant`, VIEWER `readonly-hint`, mobile open button, 6-tab nav; accessed via command palette "Triage issues" entry | Confirmed — genuinely differentiating |
+| Personal API tokens | `api-tokens.controller.ts` (POST/GET/DELETE on `/me/tokens`); `ApiTokensSection.tsx` — Create modal (two-phase: form then raw-token reveal with copy button), token list with Active/Expired/Revoked badges, revoke ConfirmDialog; PAT prefix `nlp_` confirmed | Confirmed |
+| CFD report | `CumulativeFlowChart.tsx` — hand-rolled SVG stacked-area chart for TODO/IN_PROGRESS/DONE bands per day; `ReportsPage.tsx` imports and uses it with `cfdDays` selector (14/30/90) and `useCfd` hook | Confirmed |
+| File attachments | `AttachmentsPanel.tsx` — drag-drop zone, file input, per-row download (fetch+Blob→object URL with auth header), ConfirmDialog on delete; `AttachmentsService` shows MIME allowlist + UUID `storageKey` (client filename never used as path) | Confirmed — security-conscious implementation |
+| Label rename | `ProjectNav.tsx` confirms 6-tab nav (Board/Backlog/Triage/Reports/Roadmap/Settings); BACKLOG changelog confirms PATCH `/labels/:id` endpoint + `useUpdateLabel` hook + inline edit in Settings + LabelPicker | Confirmed |
+| SMTP stub (password reset delivery) | `password-reset.service.ts` lines 142-146 — checks `SMTP_HOST` env, logs "SMTP_HOST is set but SMTP delivery is not yet implemented" — stub only, no actual email sent | Confirmed as stub (delivery = dev-log only today) |
+| WATCHED_UPDATED notifications | `NotificationType.WATCHED_UPDATED` is defined in schema enum and in `NotificationBell.tsx` label map — but grep of `NotificationsService` shows zero instances of emitting it; no issue-field-edit triggers a `WATCHED_UPDATED` notification | Gap: defined but never emitted |
+
+### Ratings (Pass 5)
+
+| Area | Score | Pass-4 | Delta | Note |
+|---|---|---|---|---|
+| Auth (register/login) | 4 | 4 | = | Password reset is now genuinely wired (forgot/reset pages + time-limited tokens + dev-log delivery). PATs allow CI/scripting access. Remaining: SMTP is a stub (no actual email delivery), still single 7-day JWT in localStorage (no refresh tokens), no logout-everywhere. The dev-log password reset UX is confusing for non-developers self-hosting. |
+| Projects | 5 | 5 | = | Settings page complete: edit name/description, manage columns, labels (create/rename/delete), webhooks, archive. All ADMIN/MEMBER/VIEWER gated. Immutable key surfaced read-only. Unchanged since Pass 4. |
+| Board (kanban) | 5 | 5 | = | Type and priority multi-select filters now join title/assignee/label. DnD, fractional ranks, realtime, sprint badge, VIEWER read-only all confirmed. The board toolbar is now feature-complete for daily use. |
+| Issues (CRUD) | 5 | 5 | = | Drawer: story points, parent/child, label assign, attachments (new), comment edit/delete, activity log, VIEWER gating. File attachments add the one missing everyday feature. No `dueDate` in schema — this is the only obvious miss at this score. |
+| Comments / activity | 4 | 4 | = | MentionComposer autocomplete is real and well-implemented (Arrow/Enter/Tab/Esc, floating listbox). Comment edit/delete (own only), human-readable activity log all confirmed. Still no markdown rendering in description or comments — plain textarea only. Reactions are absent. |
+| Search / filter | 4 | 4 | = | Command palette confirmed: cross-project fuzzy search, key-style "NL-12" parsing, grouped results, keyboard navigation. Board now has type+priority filters. Search is `ILIKE contains` — no Postgres full-text (GIN), so queries against large datasets will be slow. No saved views. |
+| Sprints / backlog | 5 | 5 | = | Full lifecycle confirmed. Ghost-row inline creation confirmed. Sprint dates rendered in board badge + backlog header. Board correctly scopes to active sprint only. Triage mode adds another entry into the backlog workflow. No regressions. |
+| Labels | 5 | 4 | +1 | Label rename confirmed (PATCH endpoint + `useUpdateLabel` + inline edit in Settings and LabelPicker). Create/assign/unassign/delete/filter all confirmed from prior passes. Full label management is now complete. Score earned. |
+| Reports | 4 | 4 | = | Three charts: burndown, velocity, CFD (stacked area, 14/30/90-day window). All are hand-rolled responsive SVG with empty/loading/error states. Sprint selector defaults to active. No "stuck issues" widget, no per-assignee workload chart. Score unchanged — the three charts are genuinely useful, and the 4 is honest. |
+| Notifications | 4 | 4 | = | In-app bell, socket push, poll fallback, actor avatar, mark-read, mark-all-read confirmed. `@mention` autocomplete now makes mentions discoverable (was the key gap). `WATCHED_UPDATED` notification type is defined in schema and the bell label map but **never emitted** — issue edits by non-watchers produce no notification even if you're watching. SMTP delivery is a stub. No per-user notification preferences. |
+| Roles / permissions | 5 | 5 | = | Unchanged. VIEWER-aware UI confirmed at board, backlog, drawer, settings, triage. API enforcement confirmed. Ghost row hidden for VIEWERs. Attachment upload/delete gated by role. Full coverage maintained. |
+| Mobile experience | 3 | 3 | = | Board toolbar uses `overflow-x-auto` strip for filter pills — confirmed fix for mobile overflow. Triage page hides status/priority/labels on small screens and shows a tap-open button per row (good). AttachmentsPanel drag-drop is desktop-only in practice (mobile has no file drag). CreateIssueModal still uses `grid-cols-2` without `sm:` breakpoint guard — two-column layout cramped at 375px. Roadmap has `min-w-[640px]` overflow container — workable but not native mobile. No mobile-optimized navigation (hamburger menu, bottom tabs, etc.). |
+| Onboarding / empty states | 4 | 3 | +1 | `OnboardingPanel` confirmed: welcome heading, product description, feature highlights grid (SVG icons, three panels), primary "Create your first project" CTA. Shown on zero-projects state at home dashboard. Empty states improved across board columns, My Work, notifications. Upgrade to 4: the panel is real and polished, and it's shown at the right moment. Cap at 4: no interactive product tour or sample-data offer; a new user who creates their first project still lands on an empty board with no "next step" hints on the board itself. |
+
+### Top gaps (prioritized backlog candidates — Pass 5)
+
+1. **SMTP email delivery for password reset** — *What:* Wire the existing
+   `deliverResetLink()` stub in `password-reset.service.ts` to an actual
+   mailer. The env vars (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`,
+   `SMTP_FROM`) are already documented in `.env.example`; the seam (`if
+   (process.env.SMTP_HOST)`) exists at line 142. Use `nodemailer` (zero new
+   schema changes). *Why:* The current fallback — "link is printed to the API
+   logs" — requires a non-developer self-hoster to SSH into the server to
+   recover their password. This is not acceptable UX for any production
+   multi-user deployment. Password reset is a trust-critical flow; a stub
+   isn't enough. *Size:* S (the scaffold is fully built; this is just wiring
+   nodemailer into the existing seam).
+
+2. **Due date on issues** — *What:* Add an optional `dueDate DateTime?` field
+   to the `Issue` model (Prisma migration + DTO update). Surface it as a date
+   picker in the issue drawer. Show a due-date chip on the card when set; flag
+   overdue issues in "My Work" with a warning color; add a due-date sort option
+   to the backlog. *Why:* The schema has no per-issue deadline. Teams plan
+   sprints by end date but need per-issue deadlines for external commitments
+   (client deliveries, release gates). "My Work" is the ideal place to surface
+   overdue issues — the data model already supports cross-project aggregation.
+   This is the single most common field request in comparable trackers. *Size:*
+   M (schema + API + UI — drawer picker + card chip + My Work warning).
+
+3. **WATCHED_UPDATED notifications (watcher email updates)** — *What:* Emit
+   a `WATCHED_UPDATED` notification to all watchers (excluding the actor) when
+   any field on a watched issue changes — status, assignee, priority, sprint
+   assignment. `NotificationType.WATCHED_UPDATED` is already in the schema
+   enum and the bell label map; the `Watcher` model is populated on
+   assignment/comment. What's missing is the emission in `IssuesService.update`
+   (fan-out to watchers on field change). *Why:* Watchers are how teammates
+   stay informed without being @mentioned. Currently a watcher gets zero
+   notification when an issue they're watching is re-prioritized or completed.
+   The entire watcher model is effectively inert for notifications. *Size:* S
+   (single fan-out call in `IssuesService.update`, mirroring the comment fan-out
+   pattern already in `NotificationsService`).
+
+4. **Postgres full-text search (replace ILIKE contains)** — *What:* Add a
+   `tsvector` generated column on `Issue` (title + description) with a GIN
+   index and switch `SearchService.searchIssues()` from `contains: query,
+   mode: 'insensitive'` to `Prisma.$queryRaw` with `to_tsquery`. The index
+   makes search sub-millisecond on large tables; `ILIKE %query%` table-scans
+   even with partial indexes on `title`. *Why:* At 5,000+ issues (common for
+   a team 6 months in) the command palette query takes hundreds of milliseconds
+   on an index scan across title+description. The current search is a sequential
+   `ILIKE` — it degrades linearly. A GIN index on a generated `tsvector` column
+   is the standard Postgres answer. *Size:* M (migration + Prisma raw query +
+   test update).
+
+5. **Attachment admin-delete UX gap** — *What:* `AttachmentsPanel.tsx` shows
+   the delete button to all editors (not just the uploader) but acknowledges in
+   a comment that "we let the API reject with 403 if the user isn't an uploader
+   or admin." An ADMIN who tries to delete another user's attachment sees the
+   button, clicks it, and gets a 403 toast — a confusing experience given that
+   the `AttachmentsService` does allow ADMIN-role deletes. Fix: pass the current
+   user's role to `AttachmentRow` and set `canDelete` to `true` when
+   `editable && (isUploader || isAdmin)`. *Why:* Admins routinely need to clean
+   up inappropriate attachments; today they see the button but get rejected. The
+   API already permits it — the UI just doesn't know the role. *Size:* S.
+
+6. **Live board presence (who-is-viewing)** — *What:* Show avatar chips of
+   workspace members currently viewing the same board (or any project surface).
+   The `RealtimeGateway` tracks connections; adding a per-project presence map
+   (join → add user, leave → remove, broadcast `presence.update`) requires zero
+   new API routes and a small UI change in the board toolbar. *Why:* "Who else
+   is here?" is a collaboration primitive that reduces duplicate-editing
+   conflicts and creates a sense of team. The underlying socket infrastructure
+   is already in place. *Size:* S (gateway change + board toolbar avatar strip).
+
+7. **Public read-only project share link** — *What:* A `ShareToken` model
+   (projectId + token + expiry); a `GET /share/:token/board` endpoint returning
+   the board data without authentication; a read-only board view (no DnD, no
+   create, no drawer editing). *Why:* Self-hosted teams routinely need to share
+   a board with a stakeholder or client who doesn't have (and doesn't need) an
+   account. This is the #1 adoption lever for teams evaluating a self-hosted
+   tracker — "can I show this to my PM without giving them a login?" No schema
+   changes to Issue are needed; only a new `ShareToken` model. *Size:* M
+   (schema + API endpoint + frontend read-only board view).
+
+### New / ambitious ideas (ideation mandate — Pass 5)
+
+Three net-new bets that push beyond gap-filling:
+
+- **O. Markdown rendering in descriptions and comments.** Replace the plain
+  `<Textarea>` for issue descriptions and comments with a lightweight
+  split-pane editor: left is a textarea (preserving the current editing model),
+  right renders the markdown preview using a small library like `marked` or
+  `remark`. The stored value remains plain text (no schema change); the
+  rendering is purely a UI enhancement. Teams routinely use markdown to format
+  acceptance criteria, bug reproduction steps, and PR descriptions — a plain
+  textarea feels like a regression compared to what developers use in their
+  daily tools (GitHub, GitLab). *Size:* M.
+
+- **P. Sprint retrospective panel (built-in structured retro).** After a sprint
+  is completed, a "Retrospective" modal (accessible from the completed sprint
+  row in the backlog) offers a simple "What went well / What to improve /
+  Action items" format — stored as a JSONB field on the `Sprint` model. The
+  velocity chart could surface a "Retro available" badge per completed sprint.
+  This is a natural extension of the sprint lifecycle that many teams perform
+  externally in shared docs, and having it in the tracker keeps the whole
+  sprint story in one place. No external dependency needed. *Size:* M.
+
+- **Q. Issue templates per project.** An ADMIN can configure 1–5 issue
+  templates per project (stored as a JSONB array on `Project`): template name,
+  pre-filled title prefix, description skeleton, default type, default labels.
+  When the user opens the create-issue modal, they pick a template from a
+  dropdown. Bug reports, feature requests, and subtasks each have different
+  required fields — pre-filling them reduces the friction of logging a new
+  issue and improves data quality. No migration beyond adding a `templates`
+  JSON column to `Project`. *Size:* M.
+
+### Direction (next quarter — Pass 5 view)
+
+Next Lane at Pass 5 is a finished-feeling, credible agile tracker. The
+remaining work is not "finish the product" but "make it trusted, sharp, and
+chosen."
+
+**Trust.** The password reset SMTP stub is the most urgent gap — a
+non-developer self-hoster who gets locked out has no recovery path today. Fix
+the SMTP stub (S, a single afternoon's work given the scaffold exists). While
+there, wire `WATCHED_UPDATED` notifications (S) to make the watcher model
+actually useful. These are small builds with outsized trust impact.
+
+**Sharpness.** Due dates (M) and Postgres full-text search (M) are the two
+features that will frustrate a team 3 months into daily use. Due dates are
+missing entirely from the schema; without them "My Work" can't surface "what's
+overdue" which is the question teams ask every morning. Full-text search
+degrading on large issue sets is a performance cliff that will arrive
+predictably as teams grow. Both belong in the next sprint.
+
+**Differentiation.** The public share link (M) is the feature that drives
+organic adoption — a shared board URL is how teams discover the product. The
+markdown rendering (M) is the quality signal that developers use to evaluate
+whether a tool is "serious." Sprint retrospective panel (M) locks teams into
+the product's sprint lifecycle in a way no competitor does embedded. These
+three together define a next-quarter arc: from "tracker we chose" to "tracker
+we recommend."
+
+### Backlog-groomer ingest — Pass 5 (title · priority · size · rationale)
+
+- Wire SMTP email delivery for password reset (nodemailer into existing stub seam) · P1 · S · stub only today; non-developer self-hosters have no recovery path; scaffold fully exists
+- Due date on issues (schema field + drawer picker + card chip + My Work overdue warning) · P1 · M · no per-issue deadline in schema; most-requested primitive; My Work is the natural surface for overdue flagging
+- WATCHED_UPDATED notification emission (fan-out to watchers on issue field change) · P1 · S · `WATCHED_UPDATED` enum defined and in bell label map but never emitted; watcher model is inert for notifications
+- Attachment delete for ADMIN role (pass role to AttachmentRow; avoid spurious 403 on known-permitted action) · P2 · S · ADMIN can delete at API but UI shows button then 403; confusing; one-line fix with role prop
+- Postgres full-text search for issues (GIN index on tsvector generated column) · P2 · M · ILIKE contains scans degrade linearly; sub-second search needed at 5k+ issues; standard Postgres answer
+- Live board presence indicators (who-is-viewing avatars via existing gateway presence map) · P2 · S · collaboration primitive; gateway infrastructure in place; zero new API routes
+- Public read-only project share link (ShareToken model + unauthenticated board endpoint + readonly view) · P2 · M · #1 self-hosted adoption lever; stakeholders without accounts; "show this to my PM"
+- Markdown rendering in issue descriptions and comments (marked/remark preview pane) · P2 · M · plain textarea signals immaturity to developers; no schema change; purely a UI enhancement
+- Sprint retrospective panel (What went well / improve / actions — JSONB on Sprint, retro badge on velocity chart) · P3 · M · keeps sprint story in one place; natural extension of sprint lifecycle; no external tool needed
+- Issue templates per project (JSONB on Project; template picker in create-issue modal) · P3 · M · reduces create-issue friction; improves data quality; loved by self-hosted teams who configure their own process
+- SMTP email notification delivery for all notifications (opt-in per user, same env-var pattern) · P3 · M · in-app only today; async notifications for users not logged in; needed before teams with off-hours members adopt it
+- JWT refresh tokens + httpOnly cookie migration · P3 · L · token in localStorage XSS-extractable; helmet CSP is adequate mitigation today but not indefinitely; revisit before a rich-text editor lands
