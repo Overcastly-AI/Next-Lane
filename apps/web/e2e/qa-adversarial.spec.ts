@@ -206,7 +206,7 @@ test.describe('Long title overflow', () => {
 
 // 6. First-run: new user auto workspace + empty state
 test.describe('First-run empty state', () => {
-  test('new user sees auto workspace and "No projects yet" guidance', async ({
+  test('new user sees auto workspace and onboarding guidance', async ({
     page, request,
   }) => {
     const API_URL = process.env.PW_API_URL ?? 'http://localhost:4000';
@@ -222,10 +222,14 @@ test.describe('First-run empty state', () => {
     await page.getByRole('button', { name: /(log ?in|sign ?in)/i }).click();
     await expect(page).not.toHaveURL(/\/login/, { timeout: 15_000 });
 
+    // First-run shows the onboarding panel (welcome + "create your first
+    // project" CTA), not an empty void.
     await expect(
-      page.getByRole('button', { name: /\+ New Project/i }).first(),
+      page.getByRole('heading', { name: /welcome to next lane/i }),
     ).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByText(/no projects yet/i)).toBeVisible({ timeout: 10_000 });
+    await expect(
+      page.getByRole('button', { name: /create your first project/i }),
+    ).toBeVisible();
     await expect(
       page.getByRole('button', { name: /\+ New Project/i }).first(),
     ).toBeEnabled();

@@ -132,8 +132,11 @@ test.describe('Project settings — columns', () => {
     // --- Put an issue in the renamed column (via the board) -----------------
     await page.goto(`/projects/${f.projectId}/board`);
     const issueTitle = `QA col issue ${stamp}`;
+    // A column exposes two add-issue affordances (header icon + empty-state
+    // dashed button) sharing the same accessible name; the header one is first.
     await page
       .getByRole('button', { name: new RegExp(`Add issue to ${renamed}`, 'i') })
+      .first()
       .click();
     const issueDialog = page.getByRole('dialog');
     await expect(issueDialog).toBeVisible();

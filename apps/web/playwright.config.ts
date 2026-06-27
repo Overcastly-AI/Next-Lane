@@ -7,6 +7,12 @@ import { defineConfig, devices } from '@playwright/test';
  * Preconditions: the API must be running on :4000 with seeded demo data.
  * The web app is started automatically via the `webServer` block below
  * (set PW_NO_WEBSERVER=1 to test against an already-running web server).
+ *
+ * Start the API for e2e with rate limiting and the webhook SSRF guard relaxed —
+ * the suite logs in/registers far more than 10/min from one IP, and the webhook
+ * spec delivers to a localhost mock:
+ *   RATE_LIMIT_DISABLED=true WEBHOOK_ALLOW_PRIVATE=true node dist/main.js
+ * (These default to OFF/strict in production.)
  */
 const WEB_PORT = Number(process.env.PW_WEB_PORT ?? 3000);
 const BASE_URL = process.env.PW_BASE_URL ?? `http://localhost:${WEB_PORT}`;
