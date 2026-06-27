@@ -69,7 +69,7 @@ We are done with v1 when ALL of these hold (drive here, then polish, then stop):
 
 - [ ] **Runs first-try:** `git clone && cp .env.example .env && docker compose up -d --build` yields a working app with seeded demo + working login, no manual steps. (Validated against the real Docker artifact, not a proxy.)
 - [ ] **Core flows are bug-free on desktop AND mobile**, verified with real-user QA (per-keystroke typing, real clicks/scroll): auth, create/edit/move issue, drag-and-drop, comments, labels, sprints, backlog, reports, roadmap, search, settings/columns, My Work, notifications.
-- [ ] **First-run experience isn't an empty void:** onboarding offers a sample project or clear "create your first project" guidance.
+- [x] **First-run experience isn't an empty void:** onboarding offers a sample project or clear "create your first project" guidance. (Welcome panel + feature highlights shown on empty project list; improved empty states on board, My Work, and notifications; e2e covered desktop + mobile.)
 - [ ] **No known P0/P1 bugs.** CI (lint + typecheck + unit + e2e desktop/mobile) green on every push.
 - [x] **Security/multi-tenant solid:** isolation, roles, secrets, CORS, input bounds, webhook SSRF — all closed. (SSRF guard + pagination index + helmet + rate limiting shipped 2026-06-27.)
 - [ ] **Docs accurate:** README quickstart works verbatim; ROADMAP/BACKLOG reflect reality.

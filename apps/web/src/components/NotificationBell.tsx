@@ -117,9 +117,33 @@ export function NotificationBell() {
                 </p>
               )}
               {!isLoading && !isError && items.length === 0 && (
-                <p className="px-3 py-8 text-center text-sm text-gray-500">
-                  You're all caught up.
-                </p>
+                <div
+                  data-testid="notifications-empty"
+                  className="flex flex-col items-center gap-2 px-3 py-8 text-center"
+                >
+                  <svg
+                    className="h-8 w-8 text-gray-200"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    aria-hidden="true"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"
+                    />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M13.7 21a2 2 0 0 1-3.4 0" />
+                  </svg>
+                  <p className="text-sm font-medium text-gray-500">
+                    You&rsquo;re all caught up
+                  </p>
+                  <p className="text-xs text-gray-400">
+                    Notifications appear here when you&rsquo;re assigned to an
+                    issue or someone mentions you.
+                  </p>
+                </div>
               )}
               <ul>
                 {items.map((n) => (

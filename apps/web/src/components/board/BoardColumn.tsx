@@ -86,10 +86,16 @@ export function BoardColumn({
         {issues.length === 0 && editable && (
           <button
             onClick={() => onAdd(status.id)}
+            aria-label={`Add issue to ${status.name}`}
             className="rounded-lg border border-dashed border-gray-300 py-6 text-xs text-gray-400 transition-colors hover:border-brand-300 hover:text-brand-600"
           >
             + Add issue
           </button>
+        )}
+        {issues.length === 0 && !editable && (
+          <p className="py-6 text-center text-xs text-gray-300">
+            No issues
+          </p>
         )}
       </div>
     </div>
