@@ -55,7 +55,7 @@ Status legend: ✅ done · 🚧 in progress · ⬜ planned
 - ⬜ Workflow automation rules (trigger → action)
 - ⬜ Time tracking / worklogs
 - ⬜ Email (SMTP) notifications + email-to-issue
-- ⬜ Configurable dashboards
+- ✅ "Team pulse" home dashboard (sprint snapshot, assigned issues, recent activity, projects grid — first-run onboarding preserved; 20 e2e tests desktop+mobile)
 - ⬜ REST API tokens, audit log
 - ⬜ Bulk edit, CSV import (and importers for other trackers), SSO/OIDC
 
@@ -100,7 +100,8 @@ UX/a11y polish pass (2026-06-27): MentionComposer no-results state; password min
 Perf + polish pass #2 (2026-06-27): useProjectIssues passes `limit=200` (API cap) — reduces planning-view round-trips 5x; BoardColumn empty-button contrast raised to `text-sm text-gray-500` (WCAG-AA); OnboardingPanel emoji icons replaced with consistent inline SVGs; MyWork per-section EmptyState now has "Go to board" action. 16 e2e green (onboarding + my-work, desktop + mobile).
 Socket.io Redis adapter + BullMQ webhook queue (2026-06-27): `REDIS_URL`-gated — when set, Socket.io uses `@socket.io/redis-adapter` for multi-replica fan-out and webhook delivery is queued via BullMQ (3 attempts, exponential backoff, concurrency 10); when unset, existing in-memory adapter and in-process p-limit fan-out are unchanged. Phase 4 multi-replica HA prerequisites now met.
 Keyboard triage mode shipped 2026-06-27: `/projects/:id/triage` with full j/k/s/p/a/l/Enter/f/? keyboard model, ARIA listbox, VIEWER read-only, mobile open button, command palette entry, 12 e2e tests green.
-**v1 is feature-complete and green** (all release criteria met except the real `docker compose up` first-run check, which requires a host with registry access — see below). Remaining work is **post-v1**: query DSL/saved views, custom fields, automation rules, time tracking, email, dashboards, API tokens, audit log, bulk edit, importers, SSO — plus hardening (wire e2e into CI, JWT→httpOnly cookie) and the rest of Phase 4 packaging (GHCR images, Helm chart, web runtime-config).
+Team Pulse dashboard shipped 2026-06-27: `PulseDashboardPage` replaces the bare project-list dashboard at `/`; four sections assembled client-side from existing hooks (sprint snapshot with progress bars + end-date countdowns, assigned-issues quick list, recent activity feed, projects grid); first-run OnboardingPanel preserved; 20 e2e tests green (desktop + mobile).
+**v1 is feature-complete and green** (all release criteria met except the real `docker compose up` first-run check, which requires a host with registry access — see below). Remaining work is **post-v1**: query DSL/saved views, custom fields, automation rules, time tracking, email, API tokens, audit log, bulk edit, importers, SSO — plus hardening (wire e2e into CI, JWT→httpOnly cookie) and the rest of Phase 4 packaging (GHCR images, Helm chart, web runtime-config).
 
 ## v1.0 release criteria — definition of "a good product"
 
