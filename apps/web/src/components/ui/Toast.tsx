@@ -113,8 +113,8 @@ const variantStyles: Record<
   { container: string; icon: ReactNode; iconColor: string }
 > = {
   success: {
-    container: 'border-green-200 bg-green-50',
-    iconColor: 'text-green-600',
+    container: 'border-emerald-200 bg-emerald-50',
+    iconColor: 'text-emerald-600',
     icon: (
       <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
     ),
@@ -175,8 +175,8 @@ function ToastItem({
       data-toast
       data-variant={toast.variant}
       className={cn(
-        'pointer-events-auto flex w-full max-w-sm items-start gap-3 rounded-lg border px-4 py-3 shadow-cardHover',
-        'animate-[nl-toast-in_160ms_ease-out]',
+        'pointer-events-auto flex w-full max-w-sm items-start gap-3 rounded-xl border px-4 py-3 shadow-dropdown',
+        'animate-nl-toast-in',
         style.container,
       )}
     >
@@ -192,15 +192,15 @@ function ToastItem({
       </svg>
       <div className="min-w-0 flex-1 text-sm">
         {toast.title && (
-          <p className="font-semibold text-gray-900">{toast.title}</p>
+          <p className="font-semibold text-slate-900">{toast.title}</p>
         )}
-        <p className="text-gray-700">{toast.message}</p>
+        <p className="text-slate-700">{toast.message}</p>
       </div>
       <button
         type="button"
         onClick={() => onDismiss(toast.id)}
         aria-label="Dismiss notification"
-        className="-mr-1 -mt-0.5 rounded-md p-1 text-gray-400 transition-colors hover:bg-black/5 hover:text-gray-600"
+        className="-mr-1 -mt-0.5 rounded-md p-1 text-slate-400 transition-colors hover:bg-black/5 hover:text-slate-600"
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path strokeLinecap="round" d="M6 6l12 12M6 18L18 6" />

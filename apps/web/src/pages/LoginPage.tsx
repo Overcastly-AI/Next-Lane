@@ -44,7 +44,7 @@ export function LoginPage() {
       title="Welcome back"
       subtitle="Sign in to your Next Lane workspace"
       footer={
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-slate-500">
           New here?{' '}
           <Link to="/register" className="font-medium text-brand-600 hover:text-brand-700">
             Create an account
@@ -67,7 +67,7 @@ export function LoginPage() {
         </Field>
         <div>
           <div className="flex items-center justify-between mb-1">
-            <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+            <label htmlFor="password" className="block text-sm font-medium text-slate-700">
               Password
             </label>
             <Link

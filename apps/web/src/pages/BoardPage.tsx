@@ -289,16 +289,16 @@ export function BoardPage() {
         <div className="flex min-w-0 items-center gap-2 overflow-hidden">
           <Link
             to="/"
-            className="shrink-0 text-sm text-gray-400 hover:text-gray-600"
+            className="shrink-0 text-sm text-slate-400 hover:text-slate-600"
             aria-label="Back to projects"
           >
             Projects
           </Link>
-          <span className="shrink-0 text-gray-300">/</span>
-          <span className="min-w-0 truncate text-sm font-semibold text-gray-900">
+          <span className="shrink-0 text-slate-300">/</span>
+          <span className="min-w-0 truncate text-sm font-semibold text-slate-900">
             {board.project.name}
           </span>
-          <span className="shrink-0 rounded bg-gray-100 px-1.5 py-0.5 text-xs font-medium text-gray-500">
+          <span className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-500">
             {board.project.key}
           </span>
           <ActiveSprintBadge sprint={activeSprint} />
@@ -312,7 +312,7 @@ export function BoardPage() {
         <div className="flex items-center gap-3">
           <div className="relative">
             <svg
-              className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400"
+              className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400"
               width="15"
               height="15"
               viewBox="0 0 24 24"
@@ -378,7 +378,7 @@ export function BoardPage() {
           {!editable && (
             <span
               data-testid="readonly-hint"
-              className="inline-flex items-center gap-1 rounded-md bg-gray-100 px-2 py-1 text-xs font-medium text-gray-500"
+              className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-500"
               title="You have view-only access to this workspace."
             >
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
@@ -551,7 +551,7 @@ function LabelFilter({
           'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200',
           count > 0
             ? 'border-brand-300 bg-brand-50 text-brand-700'
-            : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50',
+            : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50',
         )}
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
@@ -565,10 +565,10 @@ function LabelFilter({
         <div
           role="dialog"
           aria-label="Filter by label"
-          className="absolute left-0 z-20 mt-2 w-60 rounded-lg border border-gray-200 bg-white p-2 shadow-cardHover"
+          className="absolute left-0 z-20 mt-2 w-60 rounded-lg border border-slate-200 bg-white p-2 shadow-cardHover"
         >
           {labels.length === 0 ? (
-            <p className="px-1 py-2 text-xs text-gray-400">No labels yet.</p>
+            <p className="px-1 py-2 text-xs text-slate-400">No labels yet.</p>
           ) : (
             <ul className="max-h-64 space-y-0.5 overflow-y-auto">
               {labels.map((label) => {
@@ -580,14 +580,14 @@ function LabelFilter({
                       role="menuitemcheckbox"
                       aria-checked={checked}
                       onClick={() => toggle(label.id)}
-                      className="flex w-full items-center gap-2 rounded px-1.5 py-1 text-left hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+                      className="flex w-full items-center gap-2 rounded px-1.5 py-1 text-left hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                     >
                       <span
                         className={cn(
                           'flex h-4 w-4 flex-shrink-0 items-center justify-center rounded border',
                           checked
                             ? 'border-brand-600 bg-brand-600 text-white'
-                            : 'border-gray-300',
+                            : 'border-slate-300',
                         )}
                       >
                         {checked && (
@@ -604,11 +604,11 @@ function LabelFilter({
             </ul>
           )}
           {count > 0 && (
-            <div className="mt-1 border-t border-gray-100 pt-1">
+            <div className="mt-1 border-t border-slate-100 pt-1">
               <button
                 type="button"
                 onClick={() => onChange([])}
-                className="w-full rounded px-1.5 py-1.5 text-left text-xs font-medium text-gray-500 hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+                className="w-full rounded px-1.5 py-1.5 text-left text-xs font-medium text-slate-500 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
               >
                 Clear label filter
               </button>
@@ -693,7 +693,7 @@ function MultiSelectFilter<T extends string>({
           'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200',
           count > 0
             ? 'border-brand-300 bg-brand-50 text-brand-700'
-            : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50',
+            : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50',
         )}
       >
         {icon}
@@ -704,7 +704,7 @@ function MultiSelectFilter<T extends string>({
         <div
           role="dialog"
           aria-label={ariaLabel}
-          className="absolute left-0 z-20 mt-2 w-52 rounded-lg border border-gray-200 bg-white p-2 shadow-cardHover"
+          className="absolute left-0 z-20 mt-2 w-52 rounded-lg border border-slate-200 bg-white p-2 shadow-cardHover"
         >
           <ul className="max-h-64 space-y-0.5 overflow-y-auto">
             {options.map((opt) => {
@@ -716,14 +716,14 @@ function MultiSelectFilter<T extends string>({
                     role="menuitemcheckbox"
                     aria-checked={checked}
                     onClick={() => toggle(opt.value as T)}
-                    className="flex w-full items-center gap-2 rounded px-1.5 py-1 text-left hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+                    className="flex w-full items-center gap-2 rounded px-1.5 py-1 text-left hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                   >
                     <span
                       className={cn(
                         'flex h-4 w-4 flex-shrink-0 items-center justify-center rounded border',
                         checked
                           ? 'border-brand-600 bg-brand-600 text-white'
-                          : 'border-gray-300',
+                          : 'border-slate-300',
                       )}
                     >
                       {checked && (
@@ -744,18 +744,18 @@ function MultiSelectFilter<T extends string>({
                         </svg>
                       )}
                     </span>
-                    <span className="text-sm text-gray-700">{opt.label}</span>
+                    <span className="text-sm text-slate-700">{opt.label}</span>
                   </button>
                 </li>
               );
             })}
           </ul>
           {count > 0 && (
-            <div className="mt-1 border-t border-gray-100 pt-1">
+            <div className="mt-1 border-t border-slate-100 pt-1">
               <button
                 type="button"
                 onClick={() => onChange([])}
-                className="w-full rounded px-1.5 py-1.5 text-left text-xs font-medium text-gray-500 hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+                className="w-full rounded px-1.5 py-1.5 text-left text-xs font-medium text-slate-500 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
               >
                 {clearLabel}
               </button>

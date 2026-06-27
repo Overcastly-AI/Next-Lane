@@ -80,14 +80,14 @@ export function IssueDetailDrawer({
   return createPortal(
     <div className="fixed inset-0 z-50 flex justify-end">
       <div
-        className="absolute inset-0 bg-gray-900/30"
+        className="absolute inset-0 bg-slate-900/30 backdrop-blur-[1px]"
         onClick={onClose}
         aria-hidden="true"
       />
       <aside
         ref={panelRef}
         tabIndex={-1}
-        className="relative z-10 flex h-full w-full max-w-2xl flex-col bg-white shadow-2xl outline-none"
+        className="nl-drawer-animate relative z-10 flex h-full w-full max-w-2xl flex-col bg-white shadow-modal outline-none border-l border-slate-200"
         role="dialog"
         aria-modal="true"
       >
@@ -190,15 +190,16 @@ function DrawerBody({
 
   return (
     <>
-      <header className="flex items-center justify-between border-b border-gray-100 px-5 py-3">
-        <div className="flex items-center gap-2 text-sm text-gray-500">
-          <IssueTypeIcon type={issue.type} />
-          <span className="font-medium">{issue.key}</span>
-          {saving && <span className="text-xs text-gray-400">Saving…</span>}
+      <header className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
+        <div className="flex items-center gap-2">
+          <IssueTypeIcon type={issue.type} className="h-4 w-4 text-slate-400" />
+          {/* Issue key — monospace teal signature */}
+          <span className="nl-issue-key">{issue.key}</span>
+          {saving && <span className="text-xs text-slate-400">Saving…</span>}
           {!editable && (
             <span
               data-testid="readonly-hint"
-              className="inline-flex items-center gap-1 rounded bg-gray-100 px-1.5 py-0.5 text-[11px] font-medium text-gray-500"
+              className="inline-flex items-center gap-1 rounded-sm bg-slate-100 px-1.5 py-0.5 text-[11px] font-semibold text-slate-500"
             >
               View only
             </span>
@@ -211,7 +212,7 @@ function DrawerBody({
               size="sm"
               onClick={onDelete}
               loading={deleting}
-              className="text-red-600 hover:bg-red-50"
+              className="text-red-600 hover:bg-red-50 hover:text-red-700"
             >
               Delete
             </Button>
@@ -219,9 +220,9 @@ function DrawerBody({
           <button
             onClick={onClose}
             aria-label="Close"
-            className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+            className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
           >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
               <path strokeLinecap="round" d="M6 6l12 12M6 18L18 6" />
             </svg>
           </button>
@@ -240,17 +241,17 @@ function DrawerBody({
                 if (editable && title.trim() && title !== issue.title)
                   onPatch('title', title.trim());
               }}
-              className="w-full rounded-md border border-transparent px-1 text-lg font-semibold text-gray-900 hover:border-gray-200 focus:border-brand-400 focus:outline-none disabled:cursor-default disabled:hover:border-transparent"
+              className="w-full rounded-md border border-transparent px-1 text-lg font-semibold tracking-[-0.01em] text-slate-900 transition-colors hover:border-slate-200 focus:border-brand-400 focus:outline-none disabled:cursor-default disabled:hover:border-transparent"
             />
 
             <div>
               <div className="mb-1 flex items-center justify-between">
-                <p className="text-xs font-medium text-gray-600">Description</p>
+                <p className="text-[11px] font-bold uppercase tracking-widest text-slate-500">Description</p>
                 {editable && !descriptionEditing && (
                   <button
                     type="button"
                     onClick={() => setDescriptionEditing(true)}
-                    className="text-xs text-gray-400 hover:text-brand-600 focus:outline-none"
+                    className="text-xs font-medium text-slate-400 transition-colors hover:text-brand-600 focus:outline-none"
                   >
                     Edit
                   </button>
@@ -291,7 +292,7 @@ function DrawerBody({
                     }}
                     data-testid="description-editor"
                   />
-                  <p className="mt-1 text-[11px] text-gray-400">
+                  <p className="mt-1 text-[11px] text-slate-400">
                     Markdown supported — blur or press Esc to exit
                   </p>
                 </div>
@@ -306,9 +307,9 @@ function DrawerBody({
                       setDescriptionEditing(true);
                   }}
                   className={[
-                    'min-h-[3rem] rounded-md border px-2 py-1.5',
+                    'min-h-[3rem] rounded-md border px-2 py-1.5 transition-colors duration-150',
                     editable
-                      ? 'cursor-text border-transparent hover:border-gray-200 focus:border-brand-400 focus:outline-none'
+                      ? 'cursor-text border-transparent hover:border-slate-200 focus:border-brand-400 focus:outline-none'
                       : 'border-transparent',
                   ].join(' ')}
                   data-testid="description-rendered"
@@ -316,7 +317,7 @@ function DrawerBody({
                 >
                   <MarkdownRenderer content={description} />
                   {editable && (
-                    <p className="mt-1.5 text-[11px] text-gray-400">
+                    <p className="mt-1.5 text-[11px] text-slate-400">
                       Markdown supported
                     </p>
                   )}
@@ -332,10 +333,10 @@ function DrawerBody({
                       setDescriptionEditing(true);
                   }}
                   className={[
-                    'min-h-[3rem] rounded-md border px-2 py-1.5 text-sm',
+                    'min-h-[3rem] rounded-md border px-2 py-1.5 text-sm transition-colors duration-150',
                     editable
-                      ? 'cursor-text border-dashed border-gray-200 text-gray-400 hover:border-brand-300 focus:border-brand-400 focus:outline-none'
-                      : 'border-transparent text-gray-400',
+                      ? 'cursor-text border-dashed border-slate-200 text-slate-400 hover:border-brand-300 hover:bg-brand-50/30 focus:border-brand-400 focus:outline-none'
+                      : 'border-transparent text-slate-400',
                   ].join(' ')}
                   data-testid="description-empty"
                 >
@@ -459,7 +460,7 @@ function DrawerBody({
               onOpenIssue={onOpenIssue}
             />
 
-            <div className="border-t border-gray-100 pt-3 text-xs text-gray-400">
+            <div className="border-t border-slate-100 pt-3 text-xs text-slate-400">
               Created {new Date(issue.createdAt).toLocaleDateString()}
             </div>
 
@@ -517,10 +518,10 @@ function DueDateField({
               onPatch('dueDate', val ? val : null);
             }}
             className={
-              'rounded-md border px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 ' +
+              'rounded-md border px-2 py-1 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-brand-400 ' +
               (isOverdue
                 ? 'border-amber-300 bg-amber-50 text-amber-800'
-                : 'border-gray-200 bg-white text-gray-700')
+                : 'border-slate-200 bg-white text-slate-700')
             }
           />
           {dueDate && (
@@ -528,7 +529,7 @@ function DueDateField({
               type="button"
               aria-label="Clear due date"
               onClick={() => onPatch('dueDate', null)}
-              className="rounded p-0.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+              className="rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path strokeLinecap="round" d="M6 6l12 12M6 18L18 6" />
@@ -540,7 +541,7 @@ function DueDateField({
         <span
           className={
             'text-sm ' +
-            (isOverdue ? 'font-medium text-amber-700' : 'text-gray-700')
+            (isOverdue ? 'font-semibold text-amber-700' : 'text-slate-700')
           }
         >
           {new Date(dueDate).toLocaleDateString(undefined, {
@@ -549,13 +550,13 @@ function DueDateField({
             day: 'numeric',
           })}
           {isOverdue && (
-            <span className="ml-1.5 rounded bg-amber-100 px-1 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
+            <span className="ml-1.5 rounded-sm bg-amber-100 px-1 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-700">
               Overdue
             </span>
           )}
         </span>
       ) : (
-        <span className="text-sm text-gray-400">None</span>
+        <span className="text-sm text-slate-400">None</span>
       )}
     </Field>
   );

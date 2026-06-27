@@ -42,7 +42,7 @@ export function RegisterPage() {
       title="Create your account"
       subtitle="Get started with Next Lane"
       footer={
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-slate-500">
           Already have an account?{' '}
           <Link to="/login" className="font-medium text-brand-600 hover:text-brand-700">
             Sign in

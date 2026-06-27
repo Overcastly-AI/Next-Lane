@@ -15,7 +15,7 @@ export function ProjectNav({ projectId }: { projectId: string }) {
     { to: `/projects/${projectId}/settings`, label: 'Settings' },
   ];
   return (
-    <nav className="flex items-center gap-1 border-b border-gray-200 bg-white px-4">
+    <nav className="flex items-center gap-1 border-b border-slate-200 bg-white px-4">
       {tabs.map((tab) => (
         <NavLink
           key={tab.to}
@@ -25,7 +25,7 @@ export function ProjectNav({ projectId }: { projectId: string }) {
               'relative -mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors',
               isActive
                 ? 'border-brand-600 text-brand-700'
-                : 'border-transparent text-gray-500 hover:text-gray-800',
+                : 'border-transparent text-slate-500 hover:text-slate-800',
             )
           }
         >

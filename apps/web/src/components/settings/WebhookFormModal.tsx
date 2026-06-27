@@ -168,10 +168,10 @@ export function WebhookFormModal({
         </Field>
 
         <fieldset className="space-y-2">
-          <legend className="text-sm font-medium text-gray-700">
+          <legend className="text-sm font-medium text-slate-700">
             Events
           </legend>
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-slate-500">
             Select which events trigger this webhook. Leave all unchecked to
             receive every event.
           </p>
@@ -179,11 +179,11 @@ export function WebhookFormModal({
             {WEBHOOK_EVENT_TYPES.map((event) => (
               <label
                 key={event}
-                className="flex cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 text-sm text-gray-700 hover:bg-gray-50"
+                className="flex cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 text-sm text-slate-700 hover:bg-slate-50"
               >
                 <input
                   type="checkbox"
-                  className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-400"
+                  className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-400"
                   checked={events.includes(event)}
                   onChange={() => toggleEvent(event)}
                 />
@@ -193,10 +193,10 @@ export function WebhookFormModal({
           </div>
         </fieldset>
 
-        <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-700">
+        <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-700">
           <input
             type="checkbox"
-            className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-400"
+            className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-400"
             checked={active}
             onChange={(e) => setActive(e.target.checked)}
           />

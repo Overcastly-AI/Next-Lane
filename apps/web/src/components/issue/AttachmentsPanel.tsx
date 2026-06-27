@@ -129,7 +129,7 @@ export function AttachmentsPanel({
 
   return (
     <div className="space-y-3">
-      <p className="text-xs font-medium text-gray-600">Attachments</p>
+      <p className="text-xs font-medium text-slate-600">Attachments</p>
 
       {/* Drop zone / upload button */}
       {editable && (
@@ -148,19 +148,19 @@ export function AttachmentsPanel({
             'flex cursor-pointer flex-col items-center justify-center rounded-md border-2 border-dashed px-4 py-4 text-center transition-colors',
             dragging
               ? 'border-brand-400 bg-brand-50'
-              : 'border-gray-200 hover:border-brand-300 hover:bg-gray-50',
+              : 'border-slate-200 hover:border-brand-300 hover:bg-slate-50',
           ].join(' ')}
           data-testid="attachment-drop-zone"
         >
           {upload.isPending ? (
-            <div className="flex items-center gap-2 text-sm text-gray-500">
+            <div className="flex items-center gap-2 text-sm text-slate-500">
               <Spinner />
               <span>Uploading…</span>
             </div>
           ) : (
             <>
               <svg
-                className="mb-1.5 h-6 w-6 text-gray-400"
+                className="mb-1.5 h-6 w-6 text-slate-400"
                 fill="none"
                 stroke="currentColor"
                 strokeWidth={1.5}
@@ -172,11 +172,11 @@ export function AttachmentsPanel({
                   d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"
                 />
               </svg>
-              <span className="text-xs text-gray-500">
+              <span className="text-xs text-slate-500">
                 Drag & drop or{' '}
                 <span className="font-medium text-brand-600">browse</span>
               </span>
-              <span className="mt-0.5 text-[11px] text-gray-400">
+              <span className="mt-0.5 text-[11px] text-slate-400">
                 Images, PDF, docs, zip · max {formatBytes(MAX_BYTES)}
               </span>
             </>
@@ -219,7 +219,7 @@ export function AttachmentsPanel({
           ))}
         </ul>
       ) : (
-        <p className="py-1 text-sm text-gray-400">No attachments yet.</p>
+        <p className="py-1 text-sm text-slate-400">No attachments yet.</p>
       )}
     </div>
   );
@@ -252,23 +252,23 @@ function AttachmentRow({
 
   return (
     <li
-      className="group flex items-center gap-2 rounded-md border border-gray-100 bg-gray-50 px-3 py-2 text-sm"
+      className="group flex items-center gap-2 rounded-md border border-slate-100 bg-slate-50 px-3 py-2 text-sm"
       data-testid="attachment-row"
     >
       {/* Icon badge */}
-      <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded bg-gray-200 text-[10px] font-bold text-gray-600">
+      <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded bg-slate-200 text-[10px] font-bold text-slate-600">
         {fileTypeIcon(attachment.mimeType)}
       </span>
 
       {/* Details */}
       <div className="min-w-0 flex-1">
         <p
-          className="truncate font-medium text-gray-800"
+          className="truncate font-medium text-slate-800"
           title={attachment.filename}
         >
           {attachment.filename}
         </p>
-        <p className="text-[11px] text-gray-400">
+        <p className="text-[11px] text-slate-400">
           {formatBytes(attachment.sizeBytes)} · {attachment.uploader.name} ·{' '}
           {new Date(attachment.createdAt).toLocaleDateString()}
         </p>
@@ -281,7 +281,7 @@ function AttachmentRow({
           onClick={handleDownload}
           disabled={downloading}
           aria-label={`Download ${attachment.filename}`}
-          className="rounded p-1 text-gray-500 hover:bg-gray-200 hover:text-gray-800 disabled:opacity-50"
+          className="rounded p-1 text-slate-500 hover:bg-slate-200 hover:text-slate-800 disabled:opacity-50"
           data-testid="attachment-download"
         >
           {downloading ? (
@@ -307,7 +307,7 @@ function AttachmentRow({
             type="button"
             onClick={() => setConfirmDelete(true)}
             aria-label={`Delete ${attachment.filename}`}
-            className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600"
+            className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600"
             data-testid="attachment-delete"
           >
             <svg

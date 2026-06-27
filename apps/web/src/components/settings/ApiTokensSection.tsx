@@ -49,12 +49,12 @@ function SectionCard({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-card sm:p-5">
+    <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:p-5">
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold text-gray-900">{title}</h2>
+          <h2 className="text-sm font-semibold text-slate-900">{title}</h2>
           {description && (
-            <p className="mt-0.5 text-xs text-gray-500">{description}</p>
+            <p className="mt-0.5 text-xs text-slate-500">{description}</p>
           )}
         </div>
         {action}
@@ -154,17 +154,17 @@ function CreateTokenModal({
               onChange={(e) => setExpiresAt(e.target.value)}
               min={new Date().toISOString().slice(0, 10)}
             />
-            <p className="mt-1 text-xs text-gray-400">
+            <p className="mt-1 text-xs text-slate-400">
               Leave blank to create a non-expiring token.
             </p>
           </Field>
 
           {/* Scope selection */}
           <fieldset>
-            <legend className="mb-1.5 text-xs font-medium text-gray-700">
+            <legend className="mb-1.5 text-xs font-medium text-slate-700">
               Scopes (optional)
             </legend>
-            <p className="mb-2 text-xs text-gray-400">
+            <p className="mb-2 text-xs text-slate-400">
               Leave all unchecked for an unrestricted token with full owner
               permissions. Selecting scopes restricts this token to only those
               operations.
@@ -176,11 +176,11 @@ function CreateTokenModal({
               {PAT_SCOPES.map((scope) => (
                 <label
                   key={scope}
-                  className="flex cursor-pointer items-center gap-2 text-sm text-gray-700"
+                  className="flex cursor-pointer items-center gap-2 text-sm text-slate-700"
                 >
                   <input
                     type="checkbox"
-                    className="h-3.5 w-3.5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                    className="h-3.5 w-3.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
                     checked={selectedScopes.includes(scope)}
                     onChange={() => toggleScope(scope)}
                     data-testid={`pat-scope-${scope}`}
@@ -217,13 +217,13 @@ function CreateTokenModal({
           </div>
 
           <div className="space-y-2">
-            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+            <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">
               Your new token
             </p>
-            <div className="flex items-center gap-2 rounded-md border border-gray-200 bg-gray-50 p-2.5">
+            <div className="flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 p-2.5">
               <code
                 data-testid="pat-raw-token"
-                className="min-w-0 flex-1 break-all font-mono text-xs text-gray-800"
+                className="min-w-0 flex-1 break-all font-mono text-xs text-slate-800"
               >
                 {result.rawToken}
               </code>
@@ -240,26 +240,26 @@ function CreateTokenModal({
 
           <div className="grid grid-cols-2 gap-3 text-sm">
             <div>
-              <p className="text-xs text-gray-500">Name</p>
-              <p className="font-medium text-gray-900">{result.name}</p>
+              <p className="text-xs text-slate-500">Name</p>
+              <p className="font-medium text-slate-900">{result.name}</p>
             </div>
             {result.expiresAt && (
               <div>
-                <p className="text-xs text-gray-500">Expires</p>
-                <p className="font-medium text-gray-900">
+                <p className="text-xs text-slate-500">Expires</p>
+                <p className="font-medium text-slate-900">
                   {fmtDate(result.expiresAt)}
                 </p>
               </div>
             )}
             <div>
-              <p className="text-xs text-gray-500">Created</p>
-              <p className="font-medium text-gray-900">
+              <p className="text-xs text-slate-500">Created</p>
+              <p className="font-medium text-slate-900">
                 {fmtDate(result.createdAt)}
               </p>
             </div>
             <div className="col-span-2">
-              <p className="text-xs text-gray-500">Scopes</p>
-              <p className="font-medium text-gray-900">
+              <p className="text-xs text-slate-500">Scopes</p>
+              <p className="font-medium text-slate-900">
                 {result.scopes.length > 0
                   ? result.scopes.map((s) => SCOPE_LABELS[s] ?? s).join(', ')
                   : 'Unrestricted (full owner permissions)'}
@@ -315,13 +315,13 @@ export function ApiTokensSection() {
       }
     >
       {tokensQuery.isLoading ? (
-        <p className="py-4 text-sm text-gray-400">Loading tokens…</p>
+        <p className="py-4 text-sm text-slate-400">Loading tokens…</p>
       ) : tokens.length === 0 ? (
-        <p className="py-2 text-sm text-gray-400">
+        <p className="py-2 text-sm text-slate-400">
           No tokens yet. Create one to authenticate scripts and CI pipelines.
         </p>
       ) : (
-        <ul className="divide-y divide-gray-100" data-testid="pat-token-list">
+        <ul className="divide-y divide-slate-100" data-testid="pat-token-list">
           {tokens.map((token) => (
             <TokenRow
               key={token.id}
@@ -343,7 +343,7 @@ export function ApiTokensSection() {
         message={
           <>
             Revoke{' '}
-            <span className="font-medium text-gray-900">
+            <span className="font-medium text-slate-900">
               {pendingRevoke?.name}
             </span>
             ? Any scripts or integrations using this token will stop working
@@ -383,16 +383,16 @@ function TokenRow({
       <span
         className={cn(
           'h-2 w-2 shrink-0 rounded-full',
-          isActive ? 'bg-green-500' : 'bg-gray-300',
+          isActive ? 'bg-green-500' : 'bg-slate-300',
         )}
         aria-hidden="true"
       />
 
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-gray-800">
+        <p className="truncate text-sm font-medium text-slate-800">
           {token.name}
         </p>
-        <p className="text-xs text-gray-500">
+        <p className="text-xs text-slate-500">
           {isRevoked
             ? `Revoked ${fmtDate(token.revokedAt!)}`
             : isExpired
@@ -418,7 +418,7 @@ function TokenRow({
             ))}
           </div>
         ) : (
-          <p className="mt-0.5 text-xs text-gray-400" data-testid="pat-scopes-unrestricted">
+          <p className="mt-0.5 text-xs text-slate-400" data-testid="pat-scopes-unrestricted">
             Unrestricted
           </p>
         )}
@@ -444,7 +444,7 @@ function TokenRow({
           type="button"
           aria-label={`Revoke token ${token.name}`}
           onClick={onRevoke}
-          className="shrink-0 rounded p-1.5 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-300"
+          className="shrink-0 rounded p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-300"
         >
           <svg
             width="15"

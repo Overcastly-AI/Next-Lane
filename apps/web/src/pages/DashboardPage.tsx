@@ -94,7 +94,7 @@ export function DashboardPage() {
     <Shell>
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div className="space-y-1">
-          <label className="block text-xs font-medium text-gray-500">
+          <label className="block text-xs font-medium text-slate-500">
             Workspace
           </label>
           <div className="flex items-center gap-2">

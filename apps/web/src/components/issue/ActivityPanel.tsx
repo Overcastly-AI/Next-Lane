@@ -66,35 +66,35 @@ export function ActivityPanel({
   }, [users]);
 
   return (
-    <div className="border-t border-gray-100 pt-3">
-      <p className="mb-2 text-xs font-medium text-gray-600">Activity</p>
+    <div className="border-t border-slate-100 pt-3">
+      <p className="mb-2 text-xs font-medium text-slate-600">Activity</p>
       {activityQuery.isLoading ? (
         <div className="flex justify-center py-2">
           <Spinner className="h-4 w-4" />
         </div>
       ) : activityQuery.isError ? (
-        <p className="text-xs text-gray-400">Couldn’t load activity.</p>
+        <p className="text-xs text-slate-400">Couldn’t load activity.</p>
       ) : activityQuery.data && activityQuery.data.length > 0 ? (
         <ul className="space-y-2">
           {activityQuery.data.map((a) => {
             const { verb, from, to } = describe(a, statusName, userName);
             return (
-              <li key={a.id} className="text-xs text-gray-500">
-                <span className="font-medium text-gray-700">{a.actor.name}</span>{' '}
+              <li key={a.id} className="text-xs text-slate-500">
+                <span className="font-medium text-slate-700">{a.actor.name}</span>{' '}
                 {verb}
                 {from && (
                   <>
                     {' '}
-                    from <span className="text-gray-600">{from}</span>
+                    from <span className="text-slate-600">{from}</span>
                   </>
                 )}
                 {to && (
                   <>
                     {' '}
-                    to <span className="text-gray-600">{to}</span>
+                    to <span className="text-slate-600">{to}</span>
                   </>
                 )}
-                <span className="ml-1 text-gray-400">
+                <span className="ml-1 text-slate-400">
                   · {new Date(a.createdAt).toLocaleDateString()}
                 </span>
               </li>
@@ -102,7 +102,7 @@ export function ActivityPanel({
           })}
         </ul>
       ) : (
-        <p className="text-xs text-gray-400">No activity yet.</p>
+        <p className="text-xs text-slate-400">No activity yet.</p>
       )}
     </div>
   );

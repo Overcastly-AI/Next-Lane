@@ -17,10 +17,10 @@ export function ProfileSettingsPage() {
       <main className="flex flex-1 flex-col overflow-y-auto">
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 p-4 sm:p-6">
           <div>
-            <h1 className="text-lg font-semibold text-gray-900">
+            <h1 className="text-lg font-semibold text-slate-900">
               Profile settings
             </h1>
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-slate-500">
               Manage your personal account settings.
             </p>
           </div>

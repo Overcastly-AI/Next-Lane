@@ -16,16 +16,17 @@ import { StatusCategory, type StatusDto } from '@next-lane/shared';
 import { cn } from '@/lib/cn';
 
 // Colour mapping for category dots — matches the column header dots in BoardColumn.
+// Status progression arc: stone (resting) → amber (in motion) → emerald (resolved)
 const CATEGORY_DOT: Record<string, string> = {
-  TODO: 'bg-gray-400',
-  IN_PROGRESS: 'bg-blue-500',
-  DONE: 'bg-green-500',
+  TODO: 'bg-stone-400',
+  IN_PROGRESS: 'bg-amber-500',
+  DONE: 'bg-emerald-500',
 };
 
 const CATEGORY_RING: Record<string, string> = {
-  TODO: 'hover:ring-gray-300',
-  IN_PROGRESS: 'hover:ring-blue-300',
-  DONE: 'hover:ring-green-300',
+  TODO: 'hover:ring-stone-300',
+  IN_PROGRESS: 'hover:ring-amber-300',
+  DONE: 'hover:ring-emerald-300',
 };
 
 // Human-readable label for each category used in aria-labels.
@@ -93,9 +94,9 @@ export function CardStatusPicker({
 
   if (!editable) return null;
 
-  const dotClass = CATEGORY_DOT[currentStatus?.category ?? ''] ?? 'bg-gray-400';
+  const dotClass = CATEGORY_DOT[currentStatus?.category ?? ''] ?? 'bg-stone-400';
   const ringClass =
-    CATEGORY_RING[currentStatus?.category ?? ''] ?? 'hover:ring-gray-300';
+    CATEGORY_RING[currentStatus?.category ?? ''] ?? 'hover:ring-slate-300';
 
   function handleTriggerClick(e: React.MouseEvent) {
     // Prevent the card-body click handler from opening the drawer.
@@ -193,11 +194,8 @@ export function CardStatusPicker({
           aria-label="Change status"
           data-testid="card-status-menu"
           className={cn(
-            'absolute left-0 top-6 z-50 min-w-[10rem] rounded-lg border border-gray-200',
-            'bg-white py-1 shadow-cardHover',
-            // On mobile the menu can clip if the card is near the right edge;
-            // use `right-0` instead via a sm breakpoint would help but the
-            // popover is narrow enough (160px) that left-anchor is fine.
+            'absolute left-0 top-6 z-50 min-w-[10rem] rounded-lg border border-slate-200',
+            'bg-white py-1 shadow-dropdown',
           )}
         >
           {statuses.map((s) => {
@@ -213,10 +211,10 @@ export function CardStatusPicker({
                   onKeyDown={(e) => handleOptionKeyDown(e, s.id)}
                   className={cn(
                     'flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm',
-                    'focus:outline-none focus-visible:bg-gray-50',
+                    'focus:outline-none focus-visible:bg-slate-50',
                     isCurrent
-                      ? 'bg-gray-50 font-medium text-gray-900'
-                      : 'text-gray-700 hover:bg-gray-50',
+                      ? 'bg-slate-50 font-semibold text-slate-900'
+                      : 'text-slate-700 hover:bg-slate-50',
                   )}
                 >
                   <span

@@ -277,7 +277,7 @@ export const MentionComposer = forwardRef<
           aria-label="Select a member to mention"
           className={cn(
             'absolute top-full left-0 z-50 mt-1 w-72',
-            'max-h-48 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-cardHover',
+            'max-h-48 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-cardHover',
           )}
         >
           {hasResults ? (
@@ -292,7 +292,7 @@ export const MentionComposer = forwardRef<
                   'flex cursor-pointer items-center gap-2.5 px-3 py-2 text-sm',
                   idx === selectedIndex
                     ? 'bg-brand-50 text-brand-700'
-                    : 'text-gray-700 hover:bg-gray-50',
+                    : 'text-slate-700 hover:bg-slate-50',
                 )}
                 // onMouseDown instead of onClick keeps the textarea focused
                 onMouseDown={(e) => {
@@ -303,7 +303,7 @@ export const MentionComposer = forwardRef<
                 <Avatar user={user} size="sm" />
                 <div className="min-w-0">
                   <p className="truncate font-medium">{user.name}</p>
-                  <p className="truncate text-xs text-gray-400">{user.email}</p>
+                  <p className="truncate text-xs text-slate-400">{user.email}</p>
                 </div>
               </li>
             ))
@@ -313,7 +313,7 @@ export const MentionComposer = forwardRef<
               aria-selected={false}
               aria-disabled="true"
               data-testid="mention-no-results"
-              className="px-3 py-2 text-sm text-gray-400"
+              className="px-3 py-2 text-sm text-slate-400"
             >
               No members match &ldquo;@{mentionQuery}&rdquo;
             </li>

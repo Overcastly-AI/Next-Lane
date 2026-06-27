@@ -13,10 +13,10 @@ export function Badge({ children, className, color }: BadgeProps) {
     return (
       <span
         className={cn(
-          'inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-medium leading-none',
+          'inline-flex items-center rounded-sm px-1.5 py-0.5 text-[11px] font-semibold leading-none tracking-wide',
           className,
         )}
-        style={{ backgroundColor: hexWithAlpha(color, 0.15), color: darken(color) }}
+        style={{ backgroundColor: hexWithAlpha(color, 0.14), color: darken(color) }}
       >
         {children}
       </span>
@@ -25,7 +25,7 @@ export function Badge({ children, className, color }: BadgeProps) {
   return (
     <span
       className={cn(
-        'inline-flex items-center rounded bg-gray-100 px-1.5 py-0.5 text-[11px] font-medium leading-none text-gray-600',
+        'inline-flex items-center rounded-sm bg-slate-100 px-1.5 py-0.5 text-[11px] font-semibold leading-none tracking-wide text-slate-600',
         className,
       )}
     >
@@ -46,8 +46,8 @@ function hexWithAlpha(hex: string, alpha: number): string {
 function darken(hex: string): string {
   const c = hex.replace('#', '');
   if (c.length !== 6) return hex;
-  const r = Math.round(parseInt(c.slice(0, 2), 16) * 0.65);
-  const g = Math.round(parseInt(c.slice(2, 4), 16) * 0.65);
-  const b = Math.round(parseInt(c.slice(4, 6), 16) * 0.65);
+  const r = Math.round(parseInt(c.slice(0, 2), 16) * 0.6);
+  const g = Math.round(parseInt(c.slice(2, 4), 16) * 0.6);
+  const b = Math.round(parseInt(c.slice(4, 6), 16) * 0.6);
   return `rgb(${r}, ${g}, ${b})`;
 }

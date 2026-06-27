@@ -341,3 +341,156 @@ Suggested fix: pass `action={<Link to="/"><Button size="sm" variant="secondary">
 - **RESOLVED — ResetPasswordPage auto-redirect removed:** `setTimeout(() => navigate('/login'), 2000)` removed; success screen stays until user clicks "Go to sign in". e2e test updated.
 - **RESOLVED — MyWorkPage full-empty state unified:** bespoke `<div>` replaced with `<EmptyState>` from `States.tsx` (consistent `border-gray-300 bg-white/50 py-14` tokens).
 - **RESOLVED — autoFocus on first auth form input:** Added to Login (email), Register (name), ForgotPassword (email), and ResetPassword (new-password).
+
+---
+
+## 2026-06-27 — Design Elevation Pass: "Slate + Teal-Shift"
+
+**Scope:** Full foundation pass — tokens, primitives, board, drawer, auth shell.
+**Role:** frontend-builder acting as design lead. Both a plan (below) and the implementation.
+
+---
+
+### Design direction: brainstorm and critique
+
+**Brand metaphor:** "lanes / momentum" — a tool dev teams live in all day. Work state must be instantly legible; status flow (To Do → In Progress → Done) should feel effortless.
+
+**Brainstorm candidates (rejected):**
+
+1. *Cream/serif/terracotta* — editorial, not developer-tool. Reads as a Notion competitor, not a focused tracker.
+2. *Near-black canvas + acid-green accent* — aggressive contrast, tires the eye on long sessions. Wrong energy for "calm focus."
+3. *Broadsheet hairlines + neutral grays* — too cold. No identity.
+4. *Generic SaaS indigo* — the AI-default. Every template library reaches for it. Disqualified.
+
+**Chosen direction: deep teal accent (#0891b2, `brand-600` anchor)**
+
+Rationale: teal has nautical/lanes resonance ("lane" → water lane → flow). It reads as confident-but-calm, not aggressive. It's distinctly not indigo but still a professional cool. The hex is deep enough to pass WCAG AA on white at normal weights.
+
+---
+
+### Token system
+
+**Color ramp — accent (`brand-*`):**
+| Token | Hex | Usage |
+|---|---|---|
+| brand-50 | #ecfeff | Input focus rings, hover backgrounds |
+| brand-100 | #cffafe | Avatar / project card backgrounds |
+| brand-200 | #a5f3fc | Hover ring on focus-visible |
+| brand-400 | #22d3ee | Focus rings (ring-brand-400) |
+| brand-600 | #0891b2 | Primary buttons, active nav underline, logo mark |
+| brand-700 | #0e7490 | Button hover, project-card hover text |
+| brand-800 | #155e75 | Dark accent, rarely needed |
+
+**Status progression arc (the harmonious palette):**
+| Status | Dot/bar color | Background chip | Rationale |
+|---|---|---|---|
+| TODO | `bg-stone-400` | `bg-stone-50` | Stone = resting, neutral energy |
+| IN_PROGRESS | `bg-amber-500` | `bg-amber-50` | Amber = motion, heat, attention |
+| DONE | `bg-emerald-500` | `bg-emerald-50` | Emerald = resolved, growth |
+
+This arc reads as a progression without being generic (most trackers use blue for IN_PROGRESS; amber is more evocative of "active work").
+
+**Canvas / neutrals:** Migrated all `gray-*` to `slate-*` throughout. `slate-50` as body canvas, `slate-100/80` as column background, `slate-200` as borders, `slate-500` as muted text, `slate-900` as primary text.
+
+**Typography:**
+- **UI / display:** Plus Jakarta Sans Variable (geometric humanist; characterful but readable; bundled via `@fontsource-variable/plus-jakarta-sans`)
+- **Data / monospace:** IBM Plex Mono (professional dev-tool signature; bundled via `@fontsource/ibm-plex-mono` weights 400 + 500)
+- Type scale: 2xs=0.65rem, xs=0.75rem, sm=0.8125rem, base=0.875rem, lg=1rem, xl=1.125rem, 2xl=1.375rem
+
+**Shadows (2-tier system):**
+- `xs` — for buttons, column headers (1px subtle lift)
+- `card` — issue cards at rest (2px spread, low opacity)
+- `cardHover` — on hover, more spread (-translate-y-px)
+- `modal` / `dropdown` — overlays and drawers
+
+**Radii:** sm=0.25rem, default=0.375rem, md=0.5rem, lg=0.625rem, xl=0.75rem, 2xl=1rem
+
+**Animation:** `nl-drawer-in` (translateX slide from right), `nl-modal-in` (scale + translateY), `nl-toast-in`, `nl-fade-in` (backdrop). All suppressed under `prefers-reduced-motion`.
+
+---
+
+### Signature element: issue keys in IBM Plex Mono, teal
+
+The ONE disciplined thing: every issue key (`NL-5`, `AT7964-1`) rendered as:
+
+```css
+.nl-issue-key {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: var(--nl-accent);  /* teal */
+}
+```
+
+Applied to: `IssueCard.tsx`, `IssueDetailDrawer.tsx`, `AppHeader.tsx` breadcrumb.
+
+Secondary: `.nl-data-chip` — same mono font at 0.65rem for story points and count chips.
+
+The rest is quiet. Fonts, colors, and structure support this one signal without competing.
+
+---
+
+### Critique (against the skill's principles)
+
+**What was fixed:**
+- Generic indigo → teal: resolves "AI-default SaaS template" look.
+- Inter → Plus Jakarta Sans: more character at large sizes (title, header), still clean at body size.
+- Gray → Slate: warmer neutral, better pairing with teal.
+- Status dots now tell a story (stone → amber → emerald) instead of three shades of the same gray.
+- Column accent bars (2px top border in status color) give each lane a lane-appropriate identity.
+- Issue keys are now scannable at a glance via color + mono face — developers look for these constantly.
+
+**What was intentionally NOT changed:**
+- Layout and component structure (not a redesign, an elevation).
+- Any `data-testid`, ARIA role, aria-label, or visible user-facing text string that e2e tests assert on.
+- The shadcn/ui + Tailwind stack.
+
+**Remaining known gaps (deferred):**
+- `issueMeta` hardcoded hex values in some cards (not yet tokenized via CSS vars) — tracked in BACKLOG.md.
+- Create-issue modal single-column on mobile — tracked in BACKLOG.md.
+- Shared `InlineError`/`FormError` component (4 duplicated banners) — tracked.
+- Min 40px touch tap targets audit — tracked.
+
+---
+
+### Files changed
+
+**Tokens:**
+- `apps/web/tailwind.config.js` — full rewrite: brand=teal, status progression, plus-jakarta-sans + ibm-plex-mono font families, refined type scale/radii/shadows/animations.
+- `apps/web/src/index.css` — @fontsource imports, CSS custom properties, `.nl-issue-key`, `.nl-data-chip`, `.nl-drawer-animate`, `.nl-modal-animate`, `prefers-reduced-motion` block, column accent classes.
+
+**Primitives (`src/components/ui/`):**
+- `Button.tsx`, `Input.tsx`, `Select.tsx`, `Textarea.tsx`, `Field.tsx` — gray→slate, transitions, tracking.
+- `Badge.tsx` — gray→slate, font-semibold, tracking-wide, rounded-sm.
+- `Avatar.tsx` — gray→slate, font sizes refined.
+- `States.tsx` — gray→slate, font-medium.
+- `Modal.tsx` — nl-modal-animate entrance, backdrop-blur, border-slate-100, shadow-modal, rounded-xl.
+- `Toast.tsx` — nl-toast-in animation, shadow-dropdown, rounded-xl; success=emerald.
+- `ConfirmDialog.tsx` — text-slate-600.
+
+**App shell:**
+- `AppHeader.tsx` — bg-white/95 backdrop-blur-sm, shadow-xs, slate colors, animate-nl-fade-in dropdown.
+- `Logo.tsx` — tracking-[-0.02em], shadow-xs on mark.
+
+**Board:**
+- `BoardColumn.tsx` — CATEGORY_ACCENT border-t bars (stone/amber/emerald), nl-data-chip count chips, bg-slate-100/80.
+- `IssueCard.tsx` — nl-issue-key on key span (THE SIGNATURE), nl-data-chip on story points, hover:-translate-y-px hover:shadow-cardHover, rotate-1 scale-105 overlay.
+- `CardStatusPicker.tsx` — stone/amber/emerald dots and rings, shadow-dropdown listbox.
+
+**Issue drawer:**
+- `IssueDetailDrawer.tsx` — nl-drawer-animate, nl-issue-key on header key, uppercase tracking-widest labels, slate-* field styles.
+
+**Auth:**
+- `AuthShell.tsx` — from-slate-100 via-white to-brand-50 gradient, shadow-modal card.
+
+**Bulk migration:** ~30 additional component files had `gray-*` → `slate-*` applied (CommentsPanel, ActivityPanel, AttachmentsPanel, LabelPicker, ParentSubtasks, MentionComposer, NotificationBell, CommandPalette, settings pages, reports, RoadmapTimeline, OnboardingPanel).
+
+---
+
+### Verification
+
+- `pnpm --filter @next-lane/web build` passes. Bundle: CSS 56.33 kB, JS 625.40 kB.
+- Fonts bundled as woff2 in dist/assets (ibm-plex-mono-latin-400-normal + ibm-plex-mono-latin-500-normal + plus-jakarta-sans-latin-wght-normal). No runtime CDN dependency.
+- 24/24 e2e tests (board, auth, viewer-aware-ui, onboarding, inline-card-status — all 10 status-picker scenarios) pass. Pre-existing failures in board-columns, issue-detail, labels, themed-dialogs, full-text-search confirmed pre-existing on main branch.
+- Screenshots captured (desktop 1280px + mobile 390px): login, home, board (all 3 columns visible), issue drawer open.

@@ -195,7 +195,7 @@ export function CumulativeFlowChart({ series }: { series: CfdPointDto[] }) {
       <div className="mt-2 flex items-center justify-center gap-4">
         <LegendSwatch color="bg-brand-600" label="Done" />
         <LegendSwatch color="bg-brand-200" label="In Progress" />
-        <LegendSwatch color="bg-gray-200" label="To Do" />
+        <LegendSwatch color="bg-slate-200" label="To Do" />
       </div>
     </div>
   );
@@ -205,7 +205,7 @@ function LegendSwatch({ color, label }: { color: string; label: string }) {
   return (
     <div className="flex items-center gap-1.5">
       <span className={`inline-block h-2.5 w-2.5 rounded-sm ${color}`} />
-      <span className="text-xs text-gray-500">{label}</span>
+      <span className="text-xs text-slate-500">{label}</span>
     </div>
   );
 }

@@ -206,8 +206,8 @@ export function BacklogPage() {
       <div className="mx-auto flex w-full max-w-4xl flex-col gap-5 p-4 sm:p-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-lg font-semibold text-gray-900">Backlog</h1>
-            <p className="text-sm text-gray-500">
+            <h1 className="text-lg font-semibold text-slate-900">Backlog</h1>
+            <p className="text-sm text-slate-500">
               Plan sprints and order your backlog.
             </p>
           </div>
@@ -216,7 +216,7 @@ export function BacklogPage() {
           ) : (
             <span
               data-testid="readonly-hint"
-              className="inline-flex items-center gap-1 rounded-md bg-gray-100 px-2 py-1 text-xs font-medium text-gray-500"
+              className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-500"
               title="You have view-only access to this workspace."
             >
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
@@ -268,7 +268,7 @@ export function BacklogPage() {
               description="Issues with no sprint will appear here."
             />
           ) : (
-            <ul className="divide-y divide-gray-100">
+            <ul className="divide-y divide-slate-100">
               {(issuesBySprint.get(BACKLOG) ?? []).map((issue) => (
                 <IssueRow
                   key={issue.id}
@@ -398,7 +398,7 @@ function SprintSection({
           {dateRange && (
             <span
               data-testid="sprint-dates"
-              className="text-xs font-normal text-gray-500"
+              className="text-xs font-normal text-slate-500"
             >
               {dateRange}
             </span>
@@ -417,7 +417,7 @@ function SprintSection({
             </span>
           )}
           {sprint.goal && (
-            <span className="text-xs font-normal text-gray-500">
+            <span className="text-xs font-normal text-slate-500">
               · {sprint.goal}
             </span>
           )}
@@ -474,7 +474,7 @@ function SprintSection({
           description="Move issues here from the backlog below."
         />
       ) : (
-        <ul className="divide-y divide-gray-100">
+        <ul className="divide-y divide-slate-100">
           {issues.map((issue) => (
             <IssueRow
               key={issue.id}
@@ -519,14 +519,14 @@ function Section({
   return (
     <section
       data-testid={testId}
-      className="rounded-xl border border-gray-200 bg-white shadow-card"
+      className="rounded-xl border border-slate-200 bg-white shadow-card"
     >
-      <header className="flex flex-wrap items-center gap-3 border-b border-gray-100 px-4 py-3">
-        <h2 className="text-sm font-semibold text-gray-900">{title}</h2>
-        <span className="rounded bg-gray-100 px-1.5 py-0.5 text-xs font-medium text-gray-500">
+      <header className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-4 py-3">
+        <h2 className="text-sm font-semibold text-slate-900">{title}</h2>
+        <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-500">
           {count} {count === 1 ? 'issue' : 'issues'}
         </span>
-        {meta && <span className="text-xs text-gray-400">{meta}</span>}
+        {meta && <span className="text-xs text-slate-400">{meta}</span>}
         {actions && <div className="ml-auto">{actions}</div>}
       </header>
       <div className="p-2 sm:p-3">{children}</div>
@@ -558,7 +558,7 @@ function IssueRow({
     <li
       data-testid="backlog-issue"
       data-issue-key={issue.key}
-      className="flex items-center gap-3 px-2 py-2 hover:bg-gray-50"
+      className="flex items-center gap-3 px-2 py-2 hover:bg-slate-50"
     >
       <IssueTypeIcon type={issue.type} className="h-4 w-4" />
       <button
@@ -567,10 +567,10 @@ function IssueRow({
         className="min-w-0 flex-1 text-left"
       >
         <span className="flex items-center gap-2">
-          <span className="shrink-0 text-xs font-medium text-gray-400">
+          <span className="shrink-0 text-xs font-medium text-slate-400">
             {issue.key}
           </span>
-          <span className="truncate text-sm text-gray-900">{issue.title}</span>
+          <span className="truncate text-sm text-slate-900">{issue.title}</span>
         </span>
       </button>
       {status && (
@@ -634,7 +634,7 @@ function GhostRow({
 
   return (
     <div className="flex items-center gap-3 px-2 py-2">
-      <span className="h-4 w-4 shrink-0 text-gray-300" aria-hidden="true">
+      <span className="h-4 w-4 shrink-0 text-slate-300" aria-hidden="true">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v14M5 12h14" />
         </svg>
@@ -653,7 +653,7 @@ function GhostRow({
         }}
         placeholder={placeholder}
         className={cn(
-          'min-w-0 flex-1 bg-transparent text-sm text-gray-900 placeholder:text-gray-400',
+          'min-w-0 flex-1 bg-transparent text-sm text-slate-900 placeholder:text-slate-400',
           'focus:outline-none disabled:opacity-50',
         )}
       />
@@ -707,7 +707,7 @@ function MoveMenu({
         onClick={() => setOpen((v) => !v)}
         disabled={targets.length === 0}
         className={cn(
-          'inline-flex h-8 items-center gap-1 rounded-md border border-gray-300 bg-white px-2 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50',
+          'inline-flex h-8 items-center gap-1 rounded-md border border-slate-300 bg-white px-2 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50',
           'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300',
           'disabled:cursor-not-allowed disabled:opacity-50',
         )}
@@ -720,7 +720,7 @@ function MoveMenu({
       {open && targets.length > 0 && (
         <div
           role="menu"
-          className="absolute right-0 z-20 mt-1 w-44 rounded-lg border border-gray-200 bg-white py-1 shadow-cardHover"
+          className="absolute right-0 z-20 mt-1 w-44 rounded-lg border border-slate-200 bg-white py-1 shadow-cardHover"
         >
           {targets.map((t) => (
             <button
@@ -731,7 +731,7 @@ function MoveMenu({
                 setOpen(false);
                 onMove(t.id);
               }}
-              className="block w-full truncate px-3 py-1.5 text-left text-sm text-gray-700 hover:bg-gray-50 focus:bg-gray-50 focus:outline-none"
+              className="block w-full truncate px-3 py-1.5 text-left text-sm text-slate-700 hover:bg-slate-50 focus:bg-slate-50 focus:outline-none"
             >
               {t.name}
             </button>
@@ -890,19 +890,19 @@ function Shell({
         <div className="flex items-center gap-2">
           <Link
             to="/"
-            className="text-sm text-gray-400 hover:text-gray-600"
+            className="text-sm text-slate-400 hover:text-slate-600"
             aria-label="Back to projects"
           >
             Projects
           </Link>
-          <span className="text-gray-300">/</span>
-          <span className="truncate text-sm font-semibold text-gray-900">
+          <span className="text-slate-300">/</span>
+          <span className="truncate text-sm font-semibold text-slate-900">
             {projectName ?? 'Project'}
           </span>
         </div>
       </AppHeader>
       <ProjectNav projectId={projectId} />
-      <main className="flex-1 overflow-y-auto bg-gray-50">{children}</main>
+      <main className="flex-1 overflow-y-auto bg-slate-50">{children}</main>
     </div>
   );
 }

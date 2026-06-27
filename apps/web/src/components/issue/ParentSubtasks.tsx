@@ -35,12 +35,12 @@ export function ParentSubtasks({
     <div className="space-y-3">
       <div>
         <div className="mb-1 flex items-center justify-between">
-          <p className="text-xs font-medium text-gray-600">Parent</p>
+          <p className="text-xs font-medium text-slate-600">Parent</p>
           {parent && editable && (
             <button
               type="button"
               onClick={() => onPatch('parentId', null)}
-              className="rounded text-xs font-medium text-gray-400 hover:text-gray-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+              className="rounded text-xs font-medium text-slate-400 hover:text-slate-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
             >
               Clear
             </button>
@@ -49,7 +49,7 @@ export function ParentSubtasks({
         {parent ? (
           <IssueRefChip refIssue={parent} onClick={() => onOpenIssue(parent.id)} />
         ) : (
-          <p className="text-xs text-gray-400">No parent</p>
+          <p className="text-xs text-slate-400">No parent</p>
         )}
         {editable && (
           <ParentPicker
@@ -61,7 +61,7 @@ export function ParentSubtasks({
       </div>
 
       <div>
-        <p className="mb-1 text-xs font-medium text-gray-600">
+        <p className="mb-1 text-xs font-medium text-slate-600">
           Sub-tasks{children.length > 0 ? ` (${children.length})` : ''}
         </p>
         {children.length > 0 ? (
@@ -77,7 +77,7 @@ export function ParentSubtasks({
             ))}
           </ul>
         ) : (
-          <p className="text-xs text-gray-400">No sub-tasks</p>
+          <p className="text-xs text-slate-400">No sub-tasks</p>
         )}
       </div>
     </div>
@@ -97,17 +97,17 @@ function IssueRefChip({
     <button
       type="button"
       onClick={onClick}
-      className="flex w-full items-center gap-2 rounded-md border border-gray-200 px-2 py-1.5 text-left hover:border-brand-200 hover:bg-brand-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+      className="flex w-full items-center gap-2 rounded-md border border-slate-200 px-2 py-1.5 text-left hover:border-brand-200 hover:bg-brand-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
     >
       <IssueTypeIcon type={refIssue.type} className="h-4 w-4" />
-      <span className="shrink-0 text-xs font-medium text-gray-400">
+      <span className="shrink-0 text-xs font-medium text-slate-400">
         {refIssue.key}
       </span>
-      <span className="flex-1 truncate text-sm text-gray-800">
+      <span className="flex-1 truncate text-sm text-slate-800">
         {refIssue.title}
       </span>
       {showStatus && refIssue.status && (
-        <span className="shrink-0 rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-500">
+        <span className="shrink-0 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">
           {refIssue.status.name}
         </span>
       )}
@@ -169,7 +169,7 @@ function ParentPicker({
         <div
           role="dialog"
           aria-label="Set parent issue"
-          className="absolute left-0 z-20 mt-2 w-72 rounded-lg border border-gray-200 bg-white p-2 shadow-cardHover"
+          className="absolute left-0 z-20 mt-2 w-72 rounded-lg border border-slate-200 bg-white p-2 shadow-cardHover"
         >
           <Input
             autoFocus
@@ -180,13 +180,13 @@ function ParentPicker({
           />
           <div className="mt-1 max-h-56 overflow-y-auto">
             {query.trim().length === 0 ? (
-              <p className="px-1 py-2 text-xs text-gray-400">
+              <p className="px-1 py-2 text-xs text-slate-400">
                 Type to search issues.
               </p>
             ) : search.isLoading ? (
-              <p className="px-1 py-2 text-xs text-gray-400">Searching…</p>
+              <p className="px-1 py-2 text-xs text-slate-400">Searching…</p>
             ) : results.length === 0 ? (
-              <p className="px-1 py-2 text-xs text-gray-400">No matches.</p>
+              <p className="px-1 py-2 text-xs text-slate-400">No matches.</p>
             ) : (
               <ul className="space-y-0.5">
                 {results.map((candidate) => (
@@ -199,15 +199,15 @@ function ParentPicker({
                         setQuery('');
                       }}
                       className={cn(
-                        'flex w-full items-center gap-2 rounded px-1.5 py-1 text-left hover:bg-gray-50',
+                        'flex w-full items-center gap-2 rounded px-1.5 py-1 text-left hover:bg-slate-50',
                         'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300',
                       )}
                     >
                       <IssueTypeIcon type={candidate.type} className="h-4 w-4" />
-                      <span className="shrink-0 text-xs font-medium text-gray-400">
+                      <span className="shrink-0 text-xs font-medium text-slate-400">
                         {candidate.key}
                       </span>
-                      <span className="flex-1 truncate text-sm text-gray-800">
+                      <span className="flex-1 truncate text-sm text-slate-800">
                         {candidate.title}
                       </span>
                     </button>

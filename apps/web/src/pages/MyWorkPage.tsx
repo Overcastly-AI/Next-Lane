@@ -36,8 +36,8 @@ export function MyWorkPage() {
   return (
     <Shell>
       <div className="mb-6">
-        <h1 className="text-xl font-semibold text-gray-900">My Work</h1>
-        <p className="mt-1 text-sm text-gray-500">
+        <h1 className="text-xl font-semibold text-slate-900">My Work</h1>
+        <p className="mt-1 text-sm text-slate-500">
           Your issues across every project you belong to.
         </p>
       </div>
@@ -137,17 +137,17 @@ function Section({
   return (
     <section>
       <div className="mb-2 flex items-baseline gap-2">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
           {title}
         </h2>
-        <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500">
+        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">
           {count}
         </span>
       </div>
       {issues.length === 0 ? (
         <EmptyState title={emptyTitle} description={emptyDescription} action={emptyAction} />
       ) : (
-        <ul className="divide-y divide-gray-100 overflow-hidden rounded-xl border border-gray-200 bg-white">
+        <ul className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white">
           {issues.map((issue) => (
             <IssueRow key={issue.id} issue={issue} onOpen={onOpen} />
           ))}
@@ -170,13 +170,13 @@ function IssueRow({
       <button
         type="button"
         onClick={() => onOpen(issue)}
-        className="flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-gray-50"
+        className="flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-slate-50"
       >
         <IssueTypeIcon type={issue.type} />
-        <span className="shrink-0 font-mono text-xs text-gray-400">
+        <span className="shrink-0 font-mono text-xs text-slate-400">
           {issue.key}
         </span>
-        <span className="min-w-0 flex-1 truncate text-sm text-gray-800">
+        <span className="min-w-0 flex-1 truncate text-sm text-slate-800">
           {issue.title}
         </span>
         {overdue && (
@@ -193,7 +193,7 @@ function IssueRow({
           </span>
         )}
         {!overdue && issue.dueDate && (
-          <span className="hidden shrink-0 items-center gap-1 rounded bg-gray-100 px-1.5 py-0.5 text-[11px] font-medium text-gray-600 sm:inline-flex">
+          <span className="hidden shrink-0 items-center gap-1 rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-600 sm:inline-flex">
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
               <rect x="3" y="4" width="18" height="18" rx="2" />
               <path strokeLinecap="round" d="M16 2v4M8 2v4M3 10h18" />
@@ -215,7 +215,7 @@ function IssueRow({
 }
 
 const CATEGORY_PILL: Record<StatusCategory, string> = {
-  [StatusCategory.TODO]: 'bg-gray-100 text-gray-600',
+  [StatusCategory.TODO]: 'bg-slate-100 text-slate-600',
   [StatusCategory.IN_PROGRESS]: 'bg-blue-100 text-blue-700',
   [StatusCategory.DONE]: 'bg-green-100 text-green-700',
 };

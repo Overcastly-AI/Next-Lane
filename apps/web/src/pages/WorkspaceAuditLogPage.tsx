@@ -50,16 +50,16 @@ const TARGET_COLORS: Record<string, string> = {
 };
 
 function targetBadgeClass(targetType: string): string {
-  return TARGET_COLORS[targetType] ?? 'bg-gray-100 text-gray-600';
+  return TARGET_COLORS[targetType] ?? 'bg-slate-100 text-slate-600';
 }
 
 // ── Row ───────────────────────────────────────────────────────────────────────
 
 function AuditRow({ event }: { event: AuditEventDto }) {
   return (
-    <tr className="border-b border-gray-100 last:border-0 hover:bg-gray-50 transition-colors">
+    <tr className="border-b border-slate-100 last:border-0 hover:bg-slate-50 transition-colors">
       {/* Time */}
-      <td className="whitespace-nowrap px-3 py-3 text-xs text-gray-400 sm:px-4">
+      <td className="whitespace-nowrap px-3 py-3 text-xs text-slate-400 sm:px-4">
         <time
           dateTime={event.createdAt}
           title={new Date(event.createdAt).toLocaleString()}
@@ -72,19 +72,19 @@ function AuditRow({ event }: { event: AuditEventDto }) {
       <td className="px-3 py-3 sm:px-4">
         {event.actor ? (
           <div className="min-w-0">
-            <p className="truncate text-sm font-medium text-gray-900">
+            <p className="truncate text-sm font-medium text-slate-900">
               {event.actor.name}
             </p>
-            <p className="truncate text-xs text-gray-400">{event.actor.email}</p>
+            <p className="truncate text-xs text-slate-400">{event.actor.email}</p>
           </div>
         ) : (
-          <span className="text-xs text-gray-400 italic">System / deleted user</span>
+          <span className="text-xs text-slate-400 italic">System / deleted user</span>
         )}
       </td>
 
       {/* Action */}
       <td className="px-3 py-3 sm:px-4">
-        <span className="text-sm text-gray-800">{actionLabel(event.action)}</span>
+        <span className="text-sm text-slate-800">{actionLabel(event.action)}</span>
       </td>
 
       {/* Target */}
@@ -97,16 +97,16 @@ function AuditRow({ event }: { event: AuditEventDto }) {
       </td>
 
       {/* Details */}
-      <td className="px-3 py-3 text-xs text-gray-500 sm:px-4 max-w-xs">
+      <td className="px-3 py-3 text-xs text-slate-500 sm:px-4 max-w-xs">
         {event.metadata ? (
           <MetadataSnippet metadata={event.metadata} action={event.action} />
         ) : (
-          <span className="text-gray-300">—</span>
+          <span className="text-slate-300">—</span>
         )}
       </td>
 
       {/* IP */}
-      <td className="hidden px-3 py-3 font-mono text-xs text-gray-400 sm:table-cell sm:px-4">
+      <td className="hidden px-3 py-3 font-mono text-xs text-slate-400 sm:table-cell sm:px-4">
         {event.ip ?? '—'}
       </td>
     </tr>
@@ -191,7 +191,7 @@ export function WorkspaceAuditLogPage() {
       <Shell workspaceName={workspaceName} workspaceId={workspaceId}>
         <div className="mx-auto flex w-full max-w-4xl flex-col items-center justify-center gap-4 p-12 text-center">
           <svg
-            className="h-12 w-12 text-gray-300"
+            className="h-12 w-12 text-slate-300"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
@@ -201,10 +201,10 @@ export function WorkspaceAuditLogPage() {
             <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
             <path d="M7 11V7a5 5 0 0 1 10 0v4" />
           </svg>
-          <h2 className="text-base font-semibold text-gray-700">
+          <h2 className="text-base font-semibold text-slate-700">
             Admin access required
           </h2>
-          <p className="max-w-xs text-sm text-gray-500">
+          <p className="max-w-xs text-sm text-slate-500">
             Only workspace administrators can view the audit log.
           </p>
         </div>
@@ -218,8 +218,8 @@ export function WorkspaceAuditLogPage() {
     <Shell workspaceName={workspaceName} workspaceId={workspaceId}>
       <div className="mx-auto w-full max-w-6xl p-4 sm:p-6" data-testid="audit-log-page">
         <div className="mb-5">
-          <h1 className="text-lg font-semibold text-gray-900">Audit log</h1>
-          <p className="mt-0.5 text-sm text-gray-500">
+          <h1 className="text-lg font-semibold text-slate-900">Audit log</h1>
+          <p className="mt-0.5 text-sm text-slate-500">
             Security- and governance-relevant actions in this workspace.
           </p>
         </div>
@@ -235,7 +235,7 @@ export function WorkspaceAuditLogPage() {
           <EmptyState
             icon={
               <svg
-                className="h-10 w-10 text-gray-300"
+                className="h-10 w-10 text-slate-300"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
@@ -250,30 +250,30 @@ export function WorkspaceAuditLogPage() {
           />
         ) : (
           <>
-            <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-card">
+            <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-card">
               <table
                 className="min-w-full text-left"
                 aria-label="Audit log events"
                 data-testid="audit-log-table"
               >
                 <thead>
-                  <tr className="border-b border-gray-100 bg-gray-50">
-                    <th className="px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-gray-400 sm:px-4">
+                  <tr className="border-b border-slate-100 bg-slate-50">
+                    <th className="px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-slate-400 sm:px-4">
                       Time
                     </th>
-                    <th className="px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-gray-400 sm:px-4">
+                    <th className="px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-slate-400 sm:px-4">
                       Actor
                     </th>
-                    <th className="px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-gray-400 sm:px-4">
+                    <th className="px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-slate-400 sm:px-4">
                       Action
                     </th>
-                    <th className="px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-gray-400 sm:px-4">
+                    <th className="px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-slate-400 sm:px-4">
                       Target
                     </th>
-                    <th className="px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-gray-400 sm:px-4">
+                    <th className="px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-slate-400 sm:px-4">
                       Details
                     </th>
-                    <th className="hidden px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-gray-400 sm:table-cell sm:px-4">
+                    <th className="hidden px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-slate-400 sm:table-cell sm:px-4">
                       IP
                     </th>
                   </tr>
@@ -323,24 +323,24 @@ function Shell({
         <div className="flex min-w-0 items-center gap-2 overflow-hidden">
           <Link
             to="/"
-            className="shrink-0 text-sm text-gray-400 hover:text-gray-600"
+            className="shrink-0 text-sm text-slate-400 hover:text-slate-600"
             aria-label="Back to dashboard"
           >
             Dashboard
           </Link>
-          <span className="shrink-0 text-gray-300">/</span>
-          <span className="min-w-0 truncate text-sm text-gray-500">
+          <span className="shrink-0 text-slate-300">/</span>
+          <span className="min-w-0 truncate text-sm text-slate-500">
             {workspaceName ?? 'Workspace'}
           </span>
-          <span className="shrink-0 text-gray-300">/</span>
-          <span className="shrink-0 text-sm font-semibold text-gray-900">
+          <span className="shrink-0 text-slate-300">/</span>
+          <span className="shrink-0 text-sm font-semibold text-slate-900">
             Audit log
           </span>
         </div>
       </AppHeader>
       {/* Workspace sub-nav */}
       <nav
-        className="flex items-center gap-1 border-b border-gray-100 bg-white px-4 py-1"
+        className="flex items-center gap-1 border-b border-slate-100 bg-white px-4 py-1"
         aria-label="Workspace navigation"
       >
         <NavLink
@@ -349,7 +349,7 @@ function Shell({
             `rounded-md px-3 py-1.5 text-sm font-medium ${
               isActive
                 ? 'bg-brand-50 text-brand-700'
-                : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
             }`
           }
         >
@@ -361,7 +361,7 @@ function Shell({
             `rounded-md px-3 py-1.5 text-sm font-medium ${
               isActive
                 ? 'bg-brand-50 text-brand-700'
-                : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
             }`
           }
           aria-current="page"
