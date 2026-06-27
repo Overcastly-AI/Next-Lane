@@ -4,7 +4,7 @@ import { Role, StatusCategory, type StatusDto } from '@next-lane/shared';
 import { useProject, useUpdateProject, useArchiveProject } from '@/api/projects';
 import { useStatuses, useLabels } from '@/api/meta';
 import { useUpdateStatus, useDeleteStatus } from '@/api/statuses';
-import { useCreateLabel, useDeleteLabel } from '@/api/labels';
+import { useCreateLabel, useDeleteLabel, useUpdateLabel } from '@/api/labels';
 import { useMyRole } from '@/api/workspaces';
 import { canEdit } from '@/lib/permissions';
 import { AppHeader } from '@/components/AppHeader';
@@ -420,6 +420,97 @@ function ColumnsSection({
 
 /* ------------------------------------------------------------------- labels */
 
+/** Inline edit form for a single existing label (name + color swatch). */
+function EditLabelForm({
+  label,
+  projectId,
+  onDone,
+}: {
+  label: { id: string; name: string; color: string };
+  projectId: string;
+  onDone: () => void;
+}) {
+  const updateLabel = useUpdateLabel(projectId);
+  const toast = useToast();
+  const [name, setName] = useState(label.name);
+  const [color, setColor] = useState(
+    SWATCHES.includes(label.color) ? label.color : SWATCHES[5],
+  );
+
+  function submit(e: FormEvent) {
+    e.preventDefault();
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    updateLabel.mutate(
+      { labelId: label.id, input: { name: trimmed, color } },
+      {
+        onSuccess: () => {
+          toast.success('Label updated.');
+          onDone();
+        },
+        onError: (err) =>
+          toast.error(errorMessage(err, 'Could not update the label.')),
+      },
+    );
+  }
+
+  return (
+    <form
+      onSubmit={submit}
+      className="flex flex-wrap items-end gap-3 rounded-lg border border-brand-200 bg-brand-50 px-3 py-2"
+      data-testid="edit-label-form"
+    >
+      <div className="min-w-[10rem] flex-1">
+        <Input
+          autoFocus
+          value={name}
+          aria-label="Label name"
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Label name"
+          maxLength={50}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              e.preventDefault();
+              onDone();
+            }
+          }}
+        />
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5 pb-1">
+        {SWATCHES.map((s) => (
+          <button
+            key={s}
+            type="button"
+            aria-label={`Color ${s}`}
+            aria-pressed={s === color}
+            onClick={() => setColor(s)}
+            style={{ backgroundColor: s }}
+            className={cn(
+              'h-5 w-5 rounded-full transition-transform focus:outline-none',
+              s === color
+                ? 'ring-2 ring-gray-900 ring-offset-1'
+                : 'hover:scale-110',
+            )}
+          />
+        ))}
+      </div>
+      <div className="flex items-center gap-1.5 pb-1">
+        <Button variant="ghost" size="sm" type="button" onClick={onDone}>
+          Cancel
+        </Button>
+        <Button
+          size="sm"
+          type="submit"
+          loading={updateLabel.isPending}
+          disabled={!name.trim()}
+        >
+          Save
+        </Button>
+      </div>
+    </form>
+  );
+}
+
 function LabelsSection({
   projectId,
   editable,
@@ -440,6 +531,7 @@ function LabelsSection({
     id: string;
     name: string;
   } | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   const labels = labelsQuery.data ?? [];
 
@@ -468,30 +560,50 @@ function LabelsSection({
       {labels.length === 0 ? (
         <p className="py-2 text-sm text-gray-400">No labels yet.</p>
       ) : (
-        <ul className="flex flex-wrap gap-2">
-          {labels.map((label) => (
-            <li
-              key={label.id}
-              className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50 py-0.5 pl-1.5 pr-1"
-              data-testid="settings-label-row"
-            >
-              <Badge color={label.color}>{label.name}</Badge>
-              {editable && isAdmin && (
-                <button
-                  type="button"
-                  aria-label={`Delete label ${label.name}`}
-                  onClick={() =>
-                    setPendingDelete({ id: label.id, name: label.name })
-                  }
-                  className="rounded p-0.5 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-300"
-                >
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                    <path strokeLinecap="round" d="M6 6l12 12M6 18L18 6" />
-                  </svg>
-                </button>
-              )}
-            </li>
-          ))}
+        <ul className="space-y-1.5">
+          {labels.map((label) =>
+            editingId === label.id ? (
+              <li key={label.id}>
+                <EditLabelForm
+                  label={label}
+                  projectId={projectId}
+                  onDone={() => setEditingId(null)}
+                />
+              </li>
+            ) : (
+              <li
+                key={label.id}
+                className="flex items-center gap-2 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2"
+                data-testid="settings-label-row"
+              >
+                <Badge color={label.color}>{label.name}</Badge>
+                <span className="flex-1" />
+                {editable && (
+                  <IconButton
+                    aria-label={`Edit label ${label.name}`}
+                    onClick={() => setEditingId(label.id)}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z" />
+                    </svg>
+                  </IconButton>
+                )}
+                {editable && isAdmin && (
+                  <IconButton
+                    aria-label={`Delete label ${label.name}`}
+                    danger
+                    onClick={() =>
+                      setPendingDelete({ id: label.id, name: label.name })
+                    }
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                      <path strokeLinecap="round" d="M6 6l12 12M6 18L18 6" />
+                    </svg>
+                  </IconButton>
+                )}
+              </li>
+            ),
+          )}
         </ul>
       )}
 

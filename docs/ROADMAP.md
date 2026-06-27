@@ -50,6 +50,7 @@ Status legend: ✅ done · 🚧 in progress · ⬜ planned
 - ✅ `assertNoParentCycle` replaced with atomic recursive CTE (`WITH RECURSIVE` via `$queryRaw` inside `$transaction`; TOCTOU-safe; O(1) round-trips; 100-hop depth cap; 6 new unit tests)
 - ✅ Password reset (POST /auth/forgot-password + time-limited token + dev-log delivery + frontend forgot/reset pages)
 - ✅ Keyboard triage mode (`/projects/:id/triage`): j/k navigate, s/p/a/l inline pickers, Enter drawer, f filter, ? help overlay, VIEWER read-only, mobile open button, command palette entry
+- ✅ Label rename / edit — `PATCH /labels/:id` (name + color, MEMBER+; VIEWER rejected; cross-project rejected); `useUpdateLabel` hook; inline edit affordance in Settings Labels section and LabelPicker popover; cache invalidation propagates to board cards + drawer chips; 6 unit tests + 12 e2e tests (desktop + mobile)
 - ⬜ Query DSL / saved views (filter builder → text query)
 - ⬜ Custom fields (typed, JSONB-backed)
 - ⬜ Workflow automation rules (trigger → action)

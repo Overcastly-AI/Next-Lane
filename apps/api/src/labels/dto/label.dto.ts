@@ -21,6 +21,21 @@ export class CreateLabelDto {
   color?: string;
 }
 
+export class UpdateLabelDto {
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(50)
+  name?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9a-fA-F]{6}$/, {
+    message: 'color must be a valid 6-digit hex color, e.g. #ef4444',
+  })
+  color?: string;
+}
+
 export class AddIssueLabelDto {
   @IsString()
   labelId!: string;
