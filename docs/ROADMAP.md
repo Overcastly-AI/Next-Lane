@@ -66,6 +66,7 @@ Status legend: ✅ done · 🚧 in progress · ⬜ planned
 - ⬜ Email (SMTP) notifications + email-to-issue
 - ✅ "Team pulse" home dashboard (sprint snapshot, assigned issues, recent activity, projects grid — first-run onboarding preserved; 20 e2e tests desktop+mobile)
 - ✅ REST API tokens (PATs: `nlp_` prefix, SHA-256 hash stored, create/list/revoke endpoints, JWT guard extension, profile settings UI, 14 e2e + 22 unit tests)
+- ✅ PAT authentication at WebSocket handshake — `nlp_` PATs accepted in `RealtimeGateway.handleConnection` via `ApiTokensService.validateRawToken()`; revoked/expired PATs disconnected; JWT path unchanged; `ApiTokensModule` imported into `RealtimeModule`; 11 new unit tests (252 total) (2026-06-27)
 - ✅ Audit log (workspace-scoped, ADMIN-only, cursor-paginated; AuditEvent model + migration; AuditService.record() best-effort fire-and-forget; events on membership add/remove/role-change, project create/archive, webhook CRUD, API-token create/revoke; GET /workspaces/:id/audit-log; WorkspaceAuditLogPage with paginated table + load-more; 11 unit tests + shared AuditEventDto/PaginatedAuditEventsDto types — 2026-06-27)
 - ⬜ Bulk edit, CSV import (and importers for other trackers), SSO/OIDC
 
@@ -110,6 +111,7 @@ Product-auditor Pass 5 (2026-06-27) confirms the product has crossed the "credib
 After the security batch clears, the build order is: SMTP wiring (S) → WATCHED_UPDATED emission (S) → due date (M) → full-text search (M, P1) → public share link (M, P2) → presence indicators + remaining P2s.
 
 PATs shipped 2026-06-27: `nlp_`-prefixed (SHA-256 hashed) with create/list/revoke + JWT-guard extension + profile-settings UI.
+PAT-at-WS-handshake shipped 2026-06-27: `RealtimeGateway.handleConnection` now detects `nlp_` prefix and validates via `ApiTokensService.validateRawToken()`; revoked/expired/unknown PATs disconnect the socket immediately; JWT path unchanged; 11 new unit tests.
 Workspace audit log shipped 2026-06-27: ADMIN-only cursor-paginated event table (membership/project/webhook/token events).
 Attachments shipped 2026-06-27: multer disk storage, MIME allowlist, auth-gated streaming download, drag-drop panel.
 Label rename shipped 2026-06-27: PATCH /labels/:id + inline edit in Settings + LabelPicker.
