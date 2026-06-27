@@ -16,6 +16,16 @@ data:
       root /usr/share/nginx/html;
       index index.html;
 
+      # Security headers — the SPA needs its own (the API uses Helmet). In
+      # same-origin mode connect-src 'self' covers /api + the /socket.io
+      # WebSocket. For a SEPARATE API origin, widen connect-src to that origin
+      # + ws/wss, e.g. connect-src 'self' https://api.example.com wss://api.example.com;
+      # style-src allows 'unsafe-inline' (inline styles); scripts stay 'self'.
+      add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'self'; base-uri 'self'; form-action 'self'; object-src 'none'" always;
+      add_header X-Content-Type-Options "nosniff" always;
+      add_header X-Frame-Options "SAMEORIGIN" always;
+      add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
       location / {
         try_files $uri $uri/ /index.html;
       }
@@ -23,6 +33,11 @@ data:
       location /assets/ {
         expires 1y;
         add_header Cache-Control "public, immutable";
+        # Re-emit security headers (nginx drops inherited add_header here).
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'self'; base-uri 'self'; form-action 'self'; object-src 'none'" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
       }
 
       location /api/ {

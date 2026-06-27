@@ -345,7 +345,19 @@ postgresql:
   enabled: true
   auth:
     username: nextlane
-    password: nextlane             # CHANGE ME — or use auth.existingSecret
+    # REQUIRED CHANGE. The chart FAILS FAST (refuses to render) when the bundled
+    # PostgreSQL is enabled and this is empty or the insecure default 'nextlane'
+    # — mirroring the secrets.jwtSecret guard. Set a strong value, e.g.:
+    #   --set postgresql.auth.password="$(openssl rand -hex 24)"
+    # or point auth.existingSecret at a managed Secret, or disable the bundled
+    # DB (postgresql.enabled=false) and use externalDatabase.
+    password: nextlane
+    # Escape hatch ONLY for throwaway demos — set true to bypass the fail-fast
+    # and deploy with the known default password. NEVER use in real installs.
+    allowInsecurePassword: false
+    # Name of a pre-existing Secret holding the PG password (skips the guard;
+    # passed through to the Bitnami subchart).
+    existingSecret: ""
     database: nextlane
   primary:
     persistence:
