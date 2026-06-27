@@ -421,3 +421,32 @@ export interface WebhookEventPayload {
   timestamp: string;
   data: unknown;
 }
+
+// ── Personal API Tokens (PATs) ───────────────────────────────────────────────
+
+/**
+ * Metadata for an existing personal API token.
+ * The raw token and its hash are never returned after creation.
+ */
+export interface ApiTokenDto {
+  id: string;
+  name: string;
+  lastUsedAt: string | null;
+  expiresAt: string | null;
+  createdAt: string;
+  revokedAt: string | null;
+}
+
+/**
+ * Response from POST /me/tokens.
+ * Contains the raw token (shown ONCE — caller must copy it immediately)
+ * plus the token metadata.
+ */
+export interface CreateApiTokenResponse {
+  id: string;
+  name: string;
+  /** Raw "nlp_..." token — shown exactly once and never retrievable again. */
+  rawToken: string;
+  expiresAt: string | null;
+  createdAt: string;
+}

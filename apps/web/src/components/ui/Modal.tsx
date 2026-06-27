@@ -11,6 +11,8 @@ export interface ModalProps {
   footer?: ReactNode;
   /** Tailwind max-width class, e.g. 'max-w-lg'. */
   size?: string;
+  /** ARIA role for the dialog container. Use 'alertdialog' for destructive confirmations. */
+  role?: 'dialog' | 'alertdialog';
 }
 
 export function Modal({
@@ -20,6 +22,7 @@ export function Modal({
   children,
   footer,
   size = 'max-w-lg',
+  role = 'dialog',
 }: ModalProps) {
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -30,7 +33,7 @@ export function Modal({
   return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 sm:p-8"
-      role="dialog"
+      role={role}
       aria-modal="true"
     >
       <div

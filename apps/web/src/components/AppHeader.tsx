@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, NavLink } from 'react-router-dom';
+import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { Logo } from './Logo';
 import { Avatar } from './ui/Avatar';
 import { NotificationBell } from './NotificationBell';
@@ -10,6 +10,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
   const { user, logout } = useAuth();
   const { open: openPalette } = useCommandPalette();
   const [menuOpen, setMenuOpen] = useState(false);
+  const navigate = useNavigate();
 
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-gray-200 bg-white px-4 sm:gap-4">
@@ -63,6 +64,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
           className="flex items-center gap-2 rounded-full p-0.5 transition-colors hover:bg-gray-100"
           aria-haspopup="menu"
           aria-expanded={menuOpen}
+          data-testid="user-menu-button"
         >
           <Avatar user={user} size="md" />
         </button>
@@ -82,6 +84,15 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
                   <p className="truncate text-xs text-gray-500">{user.email}</p>
                 </div>
               )}
+              <button
+                onClick={() => {
+                  setMenuOpen(false);
+                  navigate('/me/settings');
+                }}
+                className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+              >
+                Profile settings
+              </button>
               <button
                 onClick={logout}
                 className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"

@@ -56,7 +56,8 @@ Status legend: ✅ done · 🚧 in progress · ⬜ planned
 - ⬜ Time tracking / worklogs
 - ⬜ Email (SMTP) notifications + email-to-issue
 - ⬜ Configurable dashboards
-- ⬜ REST API tokens, audit log
+- ✅ REST API tokens (PATs: `nlp_` prefix, SHA-256 hash stored, create/list/revoke endpoints, JWT guard extension, profile settings UI, 14 e2e + 22 unit tests)
+- ⬜ Audit log
 - ⬜ Bulk edit, CSV import (and importers for other trackers), SSO/OIDC
 
 ## Phase 4 — Cloud-native deployment (post-v1) ⬜
@@ -115,7 +116,7 @@ We are done with v1 when ALL of these hold (drive here, then polish, then stop):
 - [x] **Performance sane at scale:** large boards/lists don't OOM or hang (pagination). Board and roadmap endpoints now capped at 500 issues/epics with `issuesTruncated`/`epicsTruncated` flags.
 - [x] **A short product demo passes:** the scripted "new user → create project → plan a sprint → work the board → see a report" walkthrough runs end-to-end on desktop and mobile (covered by the e2e acceptance suite + qa-tester sweep).
 
-**v1 status (2026-06-27):** feature-complete and green. The single remaining gate is
+**v1 status (2026-06-27):** feature-complete and green. Personal API tokens (PATs) shipped 2026-06-27 (Phase 3 power feature). The single remaining gate is
 the **real `docker compose up -d --build` first-run validation on a host with
 container-registry access** — it can't run in this build sandbox (Docker Hub egress
 blocked), so it needs a maintainer to run the README quickstart verbatim and confirm.

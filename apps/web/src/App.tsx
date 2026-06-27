@@ -22,6 +22,7 @@ import { ReportsPage } from '@/pages/ReportsPage';
 import { RoadmapPage } from '@/pages/RoadmapPage';
 import { SettingsPage } from '@/pages/SettingsPage';
 import { TriagePage } from '@/pages/TriagePage';
+import { ProfileSettingsPage } from '@/pages/ProfileSettingsPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -112,6 +113,14 @@ export default function App() {
               element={
                 <RequireAuth>
                   <SettingsPage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/me/settings"
+              element={
+                <RequireAuth>
+                  <ProfileSettingsPage />
                 </RequireAuth>
               }
             />

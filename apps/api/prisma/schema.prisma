@@ -71,6 +71,26 @@ model User {
   notifications      Notification[]      @relation("recipient")
   actedNotifications Notification[]      @relation("actor")
   passwordResetTokens PasswordResetToken[]
+  apiTokens           ApiToken[]
+}
+
+// Personal API Token (PAT) for scripting / CI access to the REST API.
+// Only the SHA-256 hex hash of the raw token is stored — the raw value
+// is shown once at creation and never retrievable again.
+// Token format on creation: "nlp_" + 32 random bytes base64url.
+model ApiToken {
+  id          String    @id @default(cuid())
+  userId      String
+  name        String
+  tokenHash   String    @unique // SHA-256 hex of the raw "nlp_..." token
+  lastUsedAt  DateTime?
+  expiresAt   DateTime?
+  createdAt   DateTime  @default(now())
+  revokedAt   DateTime? // null = active; non-null = revoked
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 // Single-use time-limited token for password reset.
