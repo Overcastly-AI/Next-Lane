@@ -1,4 +1,4 @@
-import { useRef, type ReactNode } from 'react';
+import { useId, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { cn } from '@/lib/cn';
 import { useOverlay } from '@/lib/useOverlay';
@@ -25,6 +25,7 @@ export function Modal({
   role = 'dialog',
 }: ModalProps) {
   const panelRef = useRef<HTMLDivElement>(null);
+  const titleId = useId();
 
   useOverlay({ open, onClose, containerRef: panelRef });
 
@@ -35,6 +36,10 @@ export function Modal({
       className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 sm:p-8"
       role={role}
       aria-modal="true"
+      // Link the dialog to its title so it has an accessible name (required for
+      // screen readers and for role-by-name queries). Only set when a title is
+      // present.
+      aria-labelledby={title !== undefined ? titleId : undefined}
     >
       {/* Backdrop */}
       <div
@@ -54,7 +59,7 @@ export function Modal({
       >
         {title !== undefined && (
           <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3.5">
-            <h2 className="text-sm font-semibold text-slate-900">{title}</h2>
+            <h2 id={titleId} className="text-sm font-semibold text-slate-900">{title}</h2>
             <button
               onClick={onClose}
               aria-label="Close"
