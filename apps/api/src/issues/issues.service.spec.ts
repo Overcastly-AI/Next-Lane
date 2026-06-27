@@ -285,7 +285,7 @@ const USER = 'user-1';
 const STATUS = 'status-todo';
 const MOVED = 'issue-moved';
 
-function makeMovedIssueRow(rank: string) {
+function makeMovedIssueRow(rank: string, dueDate: Date | null = null) {
   return {
     id: MOVED,
     number: 1,
@@ -300,6 +300,7 @@ function makeMovedIssueRow(rank: string) {
     storyPoints: null,
     parentId: null,
     sprintId: null,
+    dueDate,
     rank,
     createdAt: new Date('2026-01-01T00:00:00.000Z'),
     updatedAt: new Date('2026-01-01T00:00:00.000Z'),
@@ -457,7 +458,7 @@ describe('IssuesService.findAll pagination', () => {
   const PROJECT = 'proj-1';
   const USER = 'user-1';
 
-  function makeIssueRow(id: string, createdAt: string) {
+  function makeIssueRow(id: string, createdAt: string, dueDate: Date | null = null) {
     return {
       id,
       number: 1,
@@ -472,6 +473,7 @@ describe('IssuesService.findAll pagination', () => {
       storyPoints: null,
       parentId: null,
       sprintId: null,
+      dueDate,
       rank: 'a0',
       createdAt: new Date(createdAt),
       updatedAt: new Date(createdAt),
@@ -592,5 +594,165 @@ describe('IssuesService.findAll pagination', () => {
     expect(call.where.OR).toBeUndefined();
     // Default page size applies when no limit is given.
     expect(call.take).toBe(DEFAULT_ISSUES_PAGE_SIZE + 1);
+  });
+
+  it('includes dueDate in the response DTO (set)', async () => {
+    const dueDate = new Date('2026-12-31T00:00:00.000Z');
+    const rows = [makeIssueRow('i1', '2026-01-01T00:00:00.000Z', dueDate)];
+    prisma.issue.findMany.mockResolvedValue(rows);
+
+    const result = await service.findAll(USER, { projectId: PROJECT, limit: 5 });
+
+    expect(result.items[0].dueDate).toBe('2026-12-31T00:00:00.000Z');
+  });
+
+  it('returns dueDate=null in the response DTO when not set', async () => {
+    const rows = [makeIssueRow('i1', '2026-01-01T00:00:00.000Z', null)];
+    prisma.issue.findMany.mockResolvedValue(rows);
+
+    const result = await service.findAll(USER, { projectId: PROJECT, limit: 5 });
+
+    expect(result.items[0].dueDate).toBeNull();
+  });
+});
+
+/**
+ * Unit tests for due date set/clear on IssuesService.update.
+ * Verifies that dueDate is correctly stored, cleared, and included in the
+ * response DTO; and that an activity log entry is created for changes.
+ */
+describe('IssuesService.update dueDate', () => {
+  const ISSUE_ID = 'issue-due-1';
+  const DUE_PROJECT = 'proj-due';
+  const DUE_WORKSPACE = 'ws-due';
+  const DUE_USER = 'user-due';
+  const DUE_STATUS = 'status-due';
+  const DUE_DATE = new Date('2026-12-31T00:00:00.000Z');
+
+  function makeUpdatePrisma() {
+    const txClient = {
+      $queryRaw: jest.fn().mockResolvedValue([{ cycle_detected: false }]),
+      issue: { findUnique: jest.fn(), update: jest.fn() },
+      activityLog: { createMany: jest.fn() },
+    };
+    const prisma = {
+      issue: { findUnique: jest.fn() },
+      project: { findUnique: jest.fn() },
+      membership: { findUnique: jest.fn() },
+      status: { findUnique: jest.fn() },
+      sprint: { findUnique: jest.fn() },
+      $transaction: jest.fn((cb: (tx: typeof txClient) => unknown) => cb(txClient)),
+      _tx: txClient,
+    };
+    return { prisma, tx: txClient };
+  }
+
+  function makeExistingIssue(dueDate: Date | null = null) {
+    return {
+      id: ISSUE_ID,
+      number: 1,
+      projectId: DUE_PROJECT,
+      type: 'TASK',
+      title: 'Test issue',
+      description: null,
+      statusId: DUE_STATUS,
+      assigneeId: null,
+      reporterId: null,
+      priority: 'MEDIUM',
+      storyPoints: null,
+      parentId: null,
+      sprintId: null,
+      dueDate,
+      rank: 'a0',
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+    };
+  }
+
+  function makeUpdatedIssueRow(dueDate: Date | null) {
+    return {
+      ...makeExistingIssue(dueDate),
+      status: { id: DUE_STATUS, name: 'To Do', category: 'TODO', order: 0, projectId: DUE_PROJECT },
+      assignee: null,
+      reporter: null,
+      labels: [],
+      project: { key: 'DP' },
+      _count: { comments: 0 },
+    };
+  }
+
+  let mocks: ReturnType<typeof makeUpdatePrisma>;
+  let service: IssuesService;
+
+  beforeEach(() => {
+    mocks = makeUpdatePrisma();
+    mocks.prisma.project.findUnique.mockResolvedValue({
+      id: DUE_PROJECT,
+      workspaceId: DUE_WORKSPACE,
+    });
+    mocks.prisma.membership.findUnique.mockResolvedValue({ role: Role.ADMIN });
+    service = new IssuesService(
+      mocks.prisma as unknown as PrismaService,
+      { emitToProject: jest.fn() } as unknown as RealtimeService,
+      {} as NotificationsService,
+      webhooksMock,
+    );
+  });
+
+  it('sets dueDate on an issue and returns it in the DTO', async () => {
+    mocks.prisma.issue.findUnique.mockResolvedValue(makeExistingIssue(null));
+    mocks.tx.issue.update.mockResolvedValue(makeUpdatedIssueRow(DUE_DATE));
+
+    const result = await service.update(DUE_USER, ISSUE_ID, {
+      dueDate: '2026-12-31T00:00:00.000Z',
+    });
+
+    expect(mocks.tx.issue.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          dueDate: DUE_DATE,
+        }),
+      }),
+    );
+    expect(result.dueDate).toBe('2026-12-31T00:00:00.000Z');
+  });
+
+  it('clears dueDate when null is passed and logs an activity', async () => {
+    mocks.prisma.issue.findUnique.mockResolvedValue(makeExistingIssue(DUE_DATE));
+    mocks.tx.issue.update.mockResolvedValue(makeUpdatedIssueRow(null));
+
+    const result = await service.update(DUE_USER, ISSUE_ID, { dueDate: null });
+
+    expect(mocks.tx.issue.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ dueDate: null }),
+      }),
+    );
+    expect(result.dueDate).toBeNull();
+    // Activity log entry created for the change.
+    expect(mocks.tx.activityLog.createMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.arrayContaining([
+          expect.objectContaining({ field: 'dueDate', to: null }),
+        ]),
+      }),
+    );
+  });
+
+  it('does not touch dueDate when the field is absent from the patch (undefined)', async () => {
+    mocks.prisma.issue.findUnique.mockResolvedValue(makeExistingIssue(DUE_DATE));
+    mocks.tx.issue.update.mockResolvedValue(makeUpdatedIssueRow(DUE_DATE));
+
+    await service.update(DUE_USER, ISSUE_ID, { title: 'New title' });
+
+    const updateCall = mocks.tx.issue.update.mock.calls[0][0];
+    // dueDate must be undefined (Prisma no-op), not null.
+    expect(updateCall.data.dueDate).toBeUndefined();
+    // No activity log for dueDate.
+    const createManyCall = mocks.tx.activityLog.createMany.mock.calls[0];
+    if (createManyCall) {
+      const logged = (createManyCall[0] as { data: { field: string }[] }).data;
+      expect(logged.every((a) => a.field !== 'dueDate')).toBe(true);
+    }
   });
 });

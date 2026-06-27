@@ -1,4 +1,5 @@
 import {
+  IsDateString,
   IsEnum,
   IsInt,
   IsOptional,
@@ -53,4 +54,8 @@ export class CreateIssueDto {
   @Min(0)
   @Max(999)
   storyPoints?: number;
+
+  @IsOptional()
+  @IsDateString()
+  dueDate?: string;
 }

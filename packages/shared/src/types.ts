@@ -92,6 +92,8 @@ export interface IssueDto {
   parent?: IssueRefDto | null;
   children?: IssueRefDto[];
   sprintId: string | null;
+  /** ISO 8601 date string (YYYY-MM-DD or full datetime), or null when no due date is set. */
+  dueDate: string | null;
   rank: string;
   labels?: LabelDto[];
   commentCount?: number;
@@ -312,6 +314,8 @@ export interface MyWorkIssueDto {
   sprintName: string | null;
   /** State of the issue's sprint, if any (so the UI can flag active sprints). */
   sprintState: SprintState | null;
+  /** ISO 8601 datetime string, or null when no due date is set. */
+  dueDate: string | null;
   updatedAt: string;
 }
 

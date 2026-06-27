@@ -215,6 +215,7 @@ model Issue {
   storyPoints Int?
   parentId    String? // self-relation for epic -> story -> subtask
   sprintId    String?
+  dueDate     DateTime? // optional due date; null = no due date
   rank        String // fractional index for board/backlog ordering
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -241,6 +242,8 @@ model Issue {
   @@index([parentId])
   // Covers keyset cursor pagination: WHERE projectId=X ORDER BY createdAt, id
   @@index([projectId, createdAt, id])
+  // Covers overdue queries: WHERE dueDate < now() ORDER BY dueDate
+  @@index([dueDate])
 }
 
 model IssueLabel {
