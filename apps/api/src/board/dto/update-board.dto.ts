@@ -14,9 +14,11 @@ import { BoardType } from '@next-lane/shared';
 
 export class BoardColorRuleDto {
   @IsString()
+  @MaxLength(200)
   id!: string;
 
   @IsString()
+  @MaxLength(500)
   query!: string;
 
   @IsHexColor()

@@ -113,10 +113,35 @@ function buildIssueWhere(
 export class BoardService {
   constructor(private readonly prisma: PrismaService) {}
 
+  /**
+   * Guarantee the project has at least one board. Projects created through the
+   * API don't get a board automatically (only the migration backfilled existing
+   * ones), so any read path must be able to materialise the default board on
+   * demand. Idempotent: if a default board already exists it is returned as-is.
+   */
+  private async ensureDefaultBoard(projectId: string): Promise<void> {
+    const count = await this.prisma.board.count({ where: { projectId } });
+    if (count > 0) return;
+    try {
+      await this.prisma.board.create({
+        data: {
+          projectId,
+          name: 'Main Board',
+          type: BoardType.KANBAN,
+          order: 0,
+          isDefault: true,
+        },
+      });
+    } catch {
+      // A concurrent request may have created it first — that's fine.
+    }
+  }
+
   // ── List boards ─────────────────────────────────────────────────────────────
 
   async listBoards(userId: string, projectId: string): Promise<BoardSummaryDto[]> {
     await assertProjectMember(this.prisma, userId, projectId);
+    await this.ensureDefaultBoard(projectId);
     const boards = await this.prisma.board.findMany({
       where: { projectId },
       orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],

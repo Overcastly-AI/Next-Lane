@@ -11,7 +11,7 @@ import {
 } from '../common/membership.util';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
-import { StatusCategory, Role } from '@next-lane/shared';
+import { StatusCategory, Role, BoardType } from '@next-lane/shared';
 import type { ProjectDto } from '@next-lane/shared';
 import { AuditService } from '../audit/audit.service';
 
@@ -90,6 +90,14 @@ export class ProjectsService {
               order: 1,
             },
             { name: 'Done', category: StatusCategory.DONE, order: 2 },
+          ],
+        },
+        // Every project starts with a default Kanban board so the board view
+        // works immediately. (The board read paths also lazily materialise one
+        // as a defensive fallback for projects created before this.)
+        boards: {
+          create: [
+            { name: 'Main Board', type: BoardType.KANBAN, order: 0, isDefault: true },
           ],
         },
       },
