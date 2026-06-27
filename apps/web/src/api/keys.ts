@@ -20,4 +20,5 @@ export const qk = {
   statuses: (projectId: string) => ['statuses', projectId] as const,
   sprints: (projectId: string) => ['sprints', projectId] as const,
   labels: (projectId: string) => ['labels', projectId] as const,
+  attachments: (issueId: string) => ['attachments', issueId] as const,
 };

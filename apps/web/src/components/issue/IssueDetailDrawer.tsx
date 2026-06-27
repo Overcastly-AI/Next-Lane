@@ -24,6 +24,7 @@ import { LabelPicker } from './LabelPicker';
 import { ParentSubtasks } from './ParentSubtasks';
 import { CommentsPanel } from './CommentsPanel';
 import { ActivityPanel } from './ActivityPanel';
+import { AttachmentsPanel } from './AttachmentsPanel';
 
 /** Common agile estimate values offered in the Story Points select. */
 const STORY_POINT_VALUES = [1, 2, 3, 5, 8, 13] as const;
@@ -243,6 +244,8 @@ function DrawerBody({
                 }}
               />
             </div>
+
+            <AttachmentsPanel issueId={issue.id} editable={editable} />
 
             <CommentsPanel issueId={issue.id} users={users} editable={editable} />
           </div>
