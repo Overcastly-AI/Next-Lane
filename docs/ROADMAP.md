@@ -36,13 +36,13 @@ Status legend: ✅ done · 🚧 in progress · ⬜ planned
 - ✅ Realtime updates (Socket.io) + in-app notifications & @mentions
 - ✅ @mention autocomplete in comment composer (MentionComposer + 16 e2e tests desktop+mobile; inserts `@email` matching backend mention parser)
 - ✅ Reports: burndown + velocity
-- ✅ cumulative-flow report (CFD stacked-area chart, 30/90-day window selector, historical reconstruction from ActivityLog)
+- ✅ Cumulative-flow report (CFD stacked-area chart, 14/30/90-day window selector, historical reconstruction from ActivityLog; shipped 2026-06-27)
 - ✅ Attachments (file uploads) — `Attachment` model + migration `20260627145511_add_attachment_model`; local disk storage under `UPLOADS_DIR` (K8s-ready PVC mount path); `POST /issues/:id/attachments` (multipart, 10 MB cap, MIME allowlist: images/PDF/text/office/zip), `GET /issues/:id/attachments`, `GET /attachments/:id` (stream with auth + Content-Disposition), `DELETE /attachments/:id` (uploader or project ADMIN); VIEWER-gated upload/delete; drag-drop + file-input AttachmentsPanel in IssueDetailDrawer; 16 unit tests + 5 e2e tests (desktop + mobile) — all green; 208 unit tests total. (2026-06-27)
 - ⬜ Remaining: custom workflow *transitions*
 
 ## Phase 3 — Power features 🚧 (in progress)
 - ✅ Roadmap / timeline (epics + sprints as bars, progress, today marker)
-- ✅ Webhooks (HMAC-signed outbound on issue/sprint events + delivery log) — *Settings UI wiring in flight*
+- ✅ Webhooks (HMAC-signed outbound on issue/sprint events + delivery log + Settings UI + SSRF guard + BullMQ queue)
 - ✅ Command palette (Cmd-K) + cross-project search
 - ✅ "My Work" personal dashboard
 - ✅ CI pipeline (GitHub Actions) + API unit-test suite
@@ -52,6 +52,12 @@ Status legend: ✅ done · 🚧 in progress · ⬜ planned
 - ✅ Password reset (POST /auth/forgot-password + time-limited token + dev-log delivery + frontend forgot/reset pages)
 - ✅ Keyboard triage mode (`/projects/:id/triage`): j/k navigate, s/p/a/l inline pickers, Enter drawer, f filter, ? help overlay, VIEWER read-only, mobile open button, command palette entry
 - ✅ Label rename / edit — `PATCH /labels/:id` (name + color, MEMBER+; VIEWER rejected; cross-project rejected); `useUpdateLabel` hook; inline edit affordance in Settings Labels section and LabelPicker popover; cache invalidation propagates to board cards + drawer chips; 6 unit tests + 12 e2e tests (desktop + mobile)
+- ✅ File attachments — `Attachment` model; `POST /issues/:id/attachments` (multer diskStorage, 10 MB cap, MIME allowlist); auth-gated streaming download; VIEWER-gated upload/delete; drag-drop AttachmentsPanel in IssueDetailDrawer (2026-06-27)
+- ✅ Cumulative-flow diagram (CFD) — stacked-area chart; 14/30/90-day window; historical ActivityLog replay; `GET /projects/:id/reports/cfd`; 5 unit tests + 6 e2e tests (desktop + mobile) (2026-06-27)
+- 🚧 Security hardening sprint (Pass 5): fixing plaintext token log, SVG-XSS in ALLOWED_MIME_TYPES, unbounded CFD/burndown queries (generate_series rewrite), null-file 500→400, webhook secret in Redis, PAT expiresAt validation, nginx CSP header, Helm Postgres fail-fast guard
+- ⬜ SMTP email delivery for password reset (nodemailer into existing stub seam)
+- ⬜ WATCHED_UPDATED notification emission (fan-out to watchers on issue field change)
+- ⬜ Due date on issues (schema field + drawer picker + card chip + My Work overdue warning)
 - ⬜ Query DSL / saved views (filter builder → text query)
 - ⬜ Custom fields (typed, JSONB-backed)
 - ⬜ Workflow automation rules (trigger → action)
@@ -94,21 +100,22 @@ Compose path for small installs.
 ---
 
 ### Current focus
-**Phase 3 power features + security/scale hardening.** Phases 0–2 are done; the product is a working agile
-tracker (board, backlog, sprints, reports, roadmap, labels, story points, epics,
-comments, search, command palette, My Work, roles, notifications, webhooks, realtime).
-Security hardening pass is complete (SSRF guard, pagination index, helmet, rate limiting).
-Board type/priority filters, @mention autocomplete (MentionComposer picker matching the backend fan-out parser), and password reset (token model + forgot/reset endpoints + frontend pages, dev-log delivery seam) all shipped.
-`assertNoParentCycle` replaced with a single atomic `WITH RECURSIVE` CTE inside the update transaction (TOCTOU closed, O(1) DB round-trips).
-UX/a11y polish pass (2026-06-27): MentionComposer no-results state; password min-length aligned to 8 (ResetPasswordPage + ResetPasswordDto); auto-redirect removed from reset success; board toolbar mobile overflow-x-auto strip; aria-haspopup corrected; picker shadow + position improved; MyWorkPage EmptyState unified; autoFocus on all auth forms.
-Perf + polish pass #2 (2026-06-27): useProjectIssues passes `limit=200` (API cap) — reduces planning-view round-trips 5x; BoardColumn empty-button contrast raised to `text-sm text-gray-500` (WCAG-AA); OnboardingPanel emoji icons replaced with consistent inline SVGs; MyWork per-section EmptyState now has "Go to board" action. 16 e2e green (onboarding + my-work, desktop + mobile).
-Socket.io Redis adapter + BullMQ webhook queue (2026-06-27): `REDIS_URL`-gated — when set, Socket.io uses `@socket.io/redis-adapter` for multi-replica fan-out and webhook delivery is queued via BullMQ (3 attempts, exponential backoff, concurrency 10); when unset, existing in-memory adapter and in-process p-limit fan-out are unchanged. Phase 4 multi-replica HA prerequisites now met.
-Keyboard triage mode shipped 2026-06-27: `/projects/:id/triage` with full j/k/s/p/a/l/Enter/f/? keyboard model, ARIA listbox, VIEWER read-only, mobile open button, command palette entry, 12 e2e tests green.
-Kubernetes packaging shipped 2026-06-27 (Phase 4 → 🚧): production-grade **Helm chart** (`deploy/helm/next-lane`) + **Kustomize** base + dev/prod overlays (`deploy/kustomize`) + **`docs/DEPLOY-KUBERNETES.md`**. Helm covers api/web Deployments, Services, toggleable cert-manager Ingress, ConfigMap + (fail-fast, no-default) Secret, HPA + PDB, securityContext (runAsNonRoot + readOnlyRootFilesystem), `prisma migrate deploy` pre-upgrade hook Job, bundled-Bitnami-OR-external datastore toggles, and a same-origin nginx reverse-proxy. Web runtime config also shipped for the standalone image (`getApiUrl()` → `/config.js` from `API_URL` via `docker-entrypoint.sh`; 6 e2e green). Validated: every template renders to valid YAML for default + external value sets (a render bug — `---` glued to the next doc by a `{{- comment` trim — was caught and fixed this way); `helm`/`kubectl` binaries unavailable in the sandbox (egress restricted), so not yet `helm lint`'d/applied live. Remaining Phase 4: GHCR image CI publish + observability hooks.
-Team Pulse dashboard shipped 2026-06-27: `PulseDashboardPage` replaces the bare project-list dashboard at `/`; four sections assembled client-side from existing hooks (sprint snapshot with progress bars + end-date countdowns, assigned-issues quick list, recent activity feed, projects grid); first-run OnboardingPanel preserved; 20 e2e tests green (desktop + mobile).
-Personal API tokens shipped 2026-06-27: `nlp_`-prefixed PATs (SHA-256 hashed) with create/list/revoke + JWT-guard extension + profile-settings UI (22 unit + 14 e2e tests).
-Workspace audit log shipped 2026-06-27: `AuditEvent` Prisma model + migration; `AuditService.record()` best-effort (never breaks main op); events recorded on membership add/remove/role-change, project create/archive, webhook create/update/delete, API-token create/revoke; `GET /workspaces/:id/audit-log` (ADMIN-only, cursor-paginated); `WorkspaceAuditLogPage` (paginated table: time/actor/action/target/details/IP, load-more, ADMIN-gated, empty/loading/error states); `AuditEventDto`+`PaginatedAuditEventsDto` in shared types; 11 unit tests + 225 total tests green.
-**v1 is feature-complete and green** (all release criteria met except the real `docker compose up` first-run check, which requires a host with registry access — see below). Remaining work is **post-v1**: query DSL/saved views, custom fields, automation rules, time tracking, email, bulk edit, importers, SSO — plus hardening (wire e2e into CI, JWT→httpOnly cookie) and the rest of Phase 4 packaging (GHCR images, observability hooks).
+**Phase 3 security hardening sprint (Pass 5) + remaining product P1s.** Phases 0–2 are fully done (CFD shipped 2026-06-27, closing the last Phase 2 item). Phase 4 Kubernetes packaging is substantially complete (Helm, Kustomize, GHCR CI, Redis adapter, BullMQ queue — all shipped 2026-06-27; observability hooks remain).
+
+Engineering-auditor Pass 5 (2026-06-27) identified a fresh security hardening cluster now being fixed: password reset token logged in plaintext to production logs (P1, S); SVG attachment served as `image/svg+xml` allowing direct-navigate XSS (P1, S); CFD/burndown unbounded queries that will OOM for any active project (P1, M — rewriting as Postgres `generate_series` aggregation); null-file upload returning 500 instead of 400 (P2, S); webhook HMAC secret stored in plaintext BullMQ job body (P2, S); PAT `expiresAt` accepting past dates (P2, S); nginx container missing Content-Security-Policy header (P2, S); Helm bundled-Postgres default password lacking a fail-fast guard (P2, S). All being addressed in the current build batch.
+
+Product-auditor Pass 5 (2026-06-27) confirms the product has crossed the "credible daily-driver" threshold. Three product P1s remain: SMTP email delivery for password reset (current fallback is dev-log only — unacceptable for production self-hosters), `WATCHED_UPDATED` notification emission (watcher model inert for notifications despite enum being defined), and due date on issues (not yet in schema, most-requested primitive for "My Work" overdue surfacing).
+
+After the security batch clears, the build order is: SMTP wiring (S) → WATCHED_UPDATED emission (S) → due date (M) → full-text search (M, P1) → public share link (M, P2) → presence indicators + remaining P2s.
+
+PATs shipped 2026-06-27: `nlp_`-prefixed (SHA-256 hashed) with create/list/revoke + JWT-guard extension + profile-settings UI.
+Workspace audit log shipped 2026-06-27: ADMIN-only cursor-paginated event table (membership/project/webhook/token events).
+Attachments shipped 2026-06-27: multer disk storage, MIME allowlist, auth-gated streaming download, drag-drop panel.
+Label rename shipped 2026-06-27: PATCH /labels/:id + inline edit in Settings + LabelPicker.
+Team Pulse dashboard shipped 2026-06-27: sprint snapshot, assigned-issues, recent activity, projects grid.
+Keyboard triage mode shipped 2026-06-27: j/k/s/p/a/l/Enter/f/? keyboard model, ARIA listbox, command palette entry.
+
+**v1 is feature-complete and green.** The single remaining gate is the real `docker compose up -d --build` first-run validation on a host with container-registry access. Remaining work is post-v1: query DSL/saved views, custom fields, automation rules, time tracking, email notifications (beyond password reset), bulk edit, importers, SSO.
 
 ## v1.0 release criteria — definition of "a good product"
 
