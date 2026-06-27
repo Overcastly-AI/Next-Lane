@@ -360,6 +360,16 @@ export interface UnreadCountDto {
   count: number;
 }
 
+/**
+ * A single viewer currently looking at a project board.
+ * Emitted as part of `presence.update` events.
+ */
+export interface PresenceViewer {
+  userId: string;
+  name: string;
+  avatarColor: string;
+}
+
 /** Realtime event names emitted over Socket.io. */
 export const SocketEvents = {
   IssueCreated: 'issue.created',
@@ -369,6 +379,7 @@ export const SocketEvents = {
   CommentCreated: 'comment.created',
   SprintUpdated: 'sprint.updated',
   NotificationCreated: 'notification.created',
+  PresenceUpdate: 'presence.update',
 } as const;
 
 export type SocketEvent = (typeof SocketEvents)[keyof typeof SocketEvents];
