@@ -43,7 +43,7 @@ Status legend: ✅ done · 🚧 in progress · ⬜ planned
 ## Phase 3 — Power features 🚧 (in progress)
 - ✅ Roadmap / timeline (epics + sprints as bars, progress, today marker)
 - ✅ Webhooks (HMAC-signed outbound on issue/sprint events + delivery log + Settings UI + SSRF guard + BullMQ queue)
-- ✅ Command palette (Cmd-K) + cross-project search
+- ✅ Command palette (Cmd-K) + cross-project search; full-text search (GIN/tsvector on title + description, `websearch_to_tsquery`, description matches, tenant-scoped, paginated — shipped 2026-06-27)
 - ✅ "My Work" personal dashboard
 - ✅ CI pipeline (GitHub Actions) + API unit-test suite
 - ✅ Cursor pagination for large lists (keyset on `createdAt,id`; `GET /issues` → `{ items, nextCursor }`)
@@ -112,7 +112,7 @@ SMTP email delivery for password reset shipped 2026-06-27: `MailModule`/`MailSer
 Due dates shipped 2026-06-27: `dueDate DateTime?` on Issue model (migration `20260627220000_add_issue_due_date`); create/update DTOs; `IssueDto.dueDate` + `MyWorkIssueDto.dueDate`; drawer date picker with clear button + overdue amber styling; card chip; My Work overdue badge + sort; 5 unit tests + 8 e2e (desktop + mobile).
 PAT auth at the WebSocket handshake shipped 2026-06-27: `nlp_` tokens authenticate the socket via `ApiTokensService.validateRawToken()`; JWT path unchanged; 11 gateway unit tests.
 
-Next build order: WATCHED_UPDATED emission (S) → full-text search (M, P1) → public share link (M, P2) → presence indicators + remaining P2s.
+Next build order: WATCHED_UPDATED emission (S) → public share link (M, P2) → presence indicators + remaining P2s.
 
 PATs shipped 2026-06-27: `nlp_`-prefixed (SHA-256 hashed) with create/list/revoke + JWT-guard extension + profile-settings UI.
 PAT-at-WS-handshake shipped 2026-06-27: `RealtimeGateway.handleConnection` now detects `nlp_` prefix and validates via `ApiTokensService.validateRawToken()`; revoked/expired/unknown PATs disconnect the socket immediately; JWT path unchanged; 11 new unit tests.

@@ -217,6 +217,11 @@ model Issue {
   sprintId    String?
   dueDate     DateTime? // optional due date; null = no due date
   rank        String // fractional index for board/backlog ordering
+  // Generated tsvector for full-text search; managed entirely by Postgres
+  // (GENERATED ALWAYS AS ... STORED). Prisma cannot read/write this column
+  // directly — all FTS queries go through $queryRaw. The GIN index
+  // "Issue_searchVector_idx" is created in migration 20260627230000.
+  searchVector Unsupported("tsvector")?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 

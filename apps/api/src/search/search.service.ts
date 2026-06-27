@@ -13,6 +13,27 @@ import type {
 /** Max hits returned per group (issues / projects). */
 const RESULT_CAP = 20;
 
+/**
+ * Minimum query length required before switching from a simple ILIKE to
+ * full-text search. A 1-character query produces extremely broad tsvector
+ * results and `websearch_to_tsquery` may silently drop it (e.g. stop words),
+ * so we skip FTS and fall back to ILIKE for very short inputs.
+ */
+const FTS_MIN_LENGTH = 2;
+
+/** Raw row returned by the FTS $queryRaw for issues. */
+interface FtsIssueRow {
+  id: string;
+  number: bigint;
+  title: string;
+  type: string;
+  projectId: string;
+  statusId: string;
+  projectKey: string;
+  statusName: string;
+  statusCategory: string;
+}
+
 @Injectable()
 export class SearchService {
   constructor(private readonly prisma: PrismaService) {}
@@ -24,6 +45,14 @@ export class SearchService {
    * memberships and constraining every query to projects in those workspaces —
    * so a hit can never come from another tenant's data. When `projectId` is
    * provided, we additionally assert membership on that project and narrow to it.
+   *
+   * Issue search uses Postgres full-text search (GIN-indexed `searchVector`
+   * generated column covering title + description) via `websearch_to_tsquery`,
+   * which is user-input-safe (handles quotes, special chars, stop words). Results
+   * are ordered by `ts_rank` descending so the most relevant issue appears first.
+   * For very short queries (< {@link FTS_MIN_LENGTH} chars) and key-style
+   * queries like "NL-12" the service falls back to Prisma ILIKE, which is correct
+   * for single-token or exact-key lookups.
    */
   async search(userId: string, q?: string, projectId?: string): Promise<SearchResultsDto> {
     const query = (q ?? '').trim();
@@ -51,8 +80,16 @@ export class SearchService {
       allowedProjectId = projectId;
     }
 
+    // Determine whether to use full-text search or fall back to ILIKE.
+    // Key-style queries like "NL-12" always use the ILIKE path because they
+    // are single-token exact identifiers, not natural-language text.
+    const keyMatch = parseIssueKey(query);
+    const useFts = !keyMatch && query.length >= FTS_MIN_LENGTH;
+
     const [issues, projects] = await Promise.all([
-      this.searchIssues(query, workspaceIds, allowedProjectId),
+      useFts
+        ? this.searchIssuesFts(query, workspaceIds, allowedProjectId)
+        : this.searchIssuesIlike(query, workspaceIds, allowedProjectId, keyMatch),
       // Project search is global within the caller's workspaces, regardless of
       // the projectId filter (which only scopes issues).
       this.searchProjects(query, workspaceIds),
@@ -61,18 +98,100 @@ export class SearchService {
     return { query, issues, projects };
   }
 
-  private async searchIssues(
+  /**
+   * Full-text search using the GIN-indexed `searchVector` generated column.
+   * Uses `websearch_to_tsquery('english', $query)` which is user-input-safe:
+   * it handles quoted phrases, `OR`, `-negation`, and ignores characters that
+   * would error with `to_tsquery`. Results are ranked by `ts_rank` descending.
+   *
+   * Tenant scoping is enforced via a JOIN on `Project` and the caller's
+   * `workspaceIds` array (passed as a parameterized array literal). An optional
+   * `projectId` narrows the search to a single project.
+   */
+  private async searchIssuesFts(
     query: string,
     workspaceIds: string[],
     projectId?: string,
+  ): Promise<SearchIssueDto[]> {
+    // Build the optional project-scoping predicate. We include it inline only
+    // when projectId is defined, otherwise we omit the clause entirely.
+    // Both branches use parameterized values — no string interpolation of
+    // user-supplied data.
+    let rows: FtsIssueRow[];
+
+    if (projectId) {
+      rows = await this.prisma.$queryRaw<FtsIssueRow[]>`
+        SELECT
+          i.id,
+          i.number,
+          i.title,
+          i.type,
+          i."projectId",
+          i."statusId",
+          p.key            AS "projectKey",
+          s.name           AS "statusName",
+          s.category       AS "statusCategory"
+        FROM "Issue" i
+        JOIN "Project" p ON p.id = i."projectId"
+        JOIN "Status"  s ON s.id = i."statusId"
+        WHERE p."workspaceId" = ANY(${workspaceIds}::text[])
+          AND i."projectId"   = ${projectId}
+          AND i."searchVector" @@ websearch_to_tsquery('english', ${query})
+        ORDER BY ts_rank(i."searchVector", websearch_to_tsquery('english', ${query})) DESC
+        LIMIT ${RESULT_CAP}
+      `;
+    } else {
+      rows = await this.prisma.$queryRaw<FtsIssueRow[]>`
+        SELECT
+          i.id,
+          i.number,
+          i.title,
+          i.type,
+          i."projectId",
+          i."statusId",
+          p.key            AS "projectKey",
+          s.name           AS "statusName",
+          s.category       AS "statusCategory"
+        FROM "Issue" i
+        JOIN "Project" p ON p.id = i."projectId"
+        JOIN "Status"  s ON s.id = i."statusId"
+        WHERE p."workspaceId" = ANY(${workspaceIds}::text[])
+          AND i."searchVector" @@ websearch_to_tsquery('english', ${query})
+        ORDER BY ts_rank(i."searchVector", websearch_to_tsquery('english', ${query})) DESC
+        LIMIT ${RESULT_CAP}
+      `;
+    }
+
+    return rows.map((r) => ({
+      id: r.id,
+      key: `${r.projectKey}-${Number(r.number)}`,
+      number: Number(r.number),
+      title: r.title,
+      projectId: r.projectId,
+      projectKey: r.projectKey,
+      statusId: r.statusId,
+      statusName: r.statusName,
+      statusCategory: r.statusCategory as StatusCategory,
+      type: r.type as IssueType,
+    }));
+  }
+
+  /**
+   * Fallback ILIKE search for very short queries and issue-key lookups.
+   * Matches title + description via Prisma's `contains`/`mode: insensitive`,
+   * and adds a key-style predicate when `keyMatch` is provided.
+   */
+  private async searchIssuesIlike(
+    query: string,
+    workspaceIds: string[],
+    projectId?: string,
+    keyMatch?: { key: string; number: number } | null,
   ): Promise<SearchIssueDto[]> {
     const textMatch: Prisma.IssueWhereInput[] = [
       { title: { contains: query, mode: 'insensitive' } },
       { description: { contains: query, mode: 'insensitive' } },
     ];
 
-    // Support key-style queries like "NL-12" -> project key "NL", number 12.
-    const keyMatch = parseIssueKey(query);
     if (keyMatch) {
       textMatch.push({
         number: keyMatch.number,

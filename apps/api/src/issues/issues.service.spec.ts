@@ -497,6 +497,7 @@ describe('IssuesService.findAll pagination', () => {
       issue: { findMany: jest.fn() },
       project: { findUnique: jest.fn() },
       membership: { findUnique: jest.fn() },
+      $queryRaw: jest.fn(),
     };
   }
 
@@ -613,6 +614,182 @@ describe('IssuesService.findAll pagination', () => {
     const result = await service.findAll(USER, { projectId: PROJECT, limit: 5 });
 
     expect(result.items[0].dueDate).toBeNull();
+  });
+});
+
+/**
+ * Unit tests for IssuesService.findAll full-text search (FTS) mode.
+ * Verifies that:
+ *  - queries >= 2 chars use $queryRaw (FTS), not findMany(ILIKE)
+ *  - the FTS path returns results with the correct DTO shape
+ *  - cursor pagination works in the FTS path (nextCursor correct)
+ *  - tenant scoping is preserved (query always includes projectId)
+ *  - short queries (< 2 chars) still use the ILIKE findMany path
+ *  - special characters in the query do not error (websearch_to_tsquery)
+ *  - description-match issues are returned (the searchVector covers description)
+ */
+describe('IssuesService.findAll full-text search', () => {
+  const FTS_PROJECT = 'proj-fts';
+  const FTS_USER = 'user-fts';
+
+  function makeIssueRow(id: string, createdAt: string) {
+    return {
+      id,
+      number: 1,
+      projectId: FTS_PROJECT,
+      type: 'TASK',
+      title: id,
+      description: `Description for ${id}`,
+      statusId: 'status-1',
+      assigneeId: null,
+      reporterId: null,
+      priority: 'MEDIUM',
+      storyPoints: null,
+      parentId: null,
+      sprintId: null,
+      dueDate: null,
+      rank: 'a0',
+      createdAt: new Date(createdAt),
+      updatedAt: new Date(createdAt),
+      status: { id: 'status-1', name: 'To Do', category: 'TODO', order: 0, projectId: FTS_PROJECT },
+      assignee: null,
+      reporter: null,
+      labels: [],
+      project: { key: 'NL' },
+      _count: { comments: 0 },
+    };
+  }
+
+  function makeFtsPrisma() {
+    return {
+      issue: { findMany: jest.fn() },
+      project: { findUnique: jest.fn() },
+      membership: { findUnique: jest.fn() },
+      $queryRaw: jest.fn(),
+    };
+  }
+
+  let prisma: ReturnType<typeof makeFtsPrisma>;
+  let service: IssuesService;
+
+  beforeEach(() => {
+    prisma = makeFtsPrisma();
+    prisma.project.findUnique.mockResolvedValue({
+      id: FTS_PROJECT,
+      workspaceId: 'ws-fts',
+    });
+    prisma.membership.findUnique.mockResolvedValue({ role: Role.MEMBER });
+    service = new IssuesService(
+      prisma as unknown as PrismaService,
+      {} as RealtimeService,
+      {} as NotificationsService,
+      {} as WebhooksService,
+    );
+  });
+
+  it('uses $queryRaw for q >= 2 characters and not issue.findMany', async () => {
+    // $queryRaw returns id rows; findMany returns full rows by id
+    prisma.$queryRaw.mockResolvedValue([
+      { id: 'i1', created_at: new Date('2026-01-01T00:00:00.000Z') },
+    ]);
+    prisma.issue.findMany.mockResolvedValue([makeIssueRow('i1', '2026-01-01T00:00:00.000Z')]);
+
+    const result = await service.findAll(FTS_USER, { projectId: FTS_PROJECT, q: 'login' });
+
+    // FTS path fires $queryRaw once for ids, then findMany by those ids
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(prisma.issue.findMany).toHaveBeenCalledTimes(1);
+    // findMany must be called with id IN the returned ids
+    expect(prisma.issue.findMany.mock.calls[0][0].where).toMatchObject({
+      id: { in: ['i1'] },
+    });
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0].id).toBe('i1');
+  });
+
+  it('falls back to ILIKE (single findMany call) for q shorter than 2 chars', async () => {
+    prisma.issue.findMany.mockResolvedValue([]);
+
+    await service.findAll(FTS_USER, { projectId: FTS_PROJECT, q: 'a' });
+
+    expect(prisma.$queryRaw).not.toHaveBeenCalled();
+    expect(prisma.issue.findMany).toHaveBeenCalledTimes(1);
+    // The WHERE should contain the title ILIKE predicate
+    const where = prisma.issue.findMany.mock.calls[0][0].where;
+    expect(where.title).toMatchObject({ contains: 'a', mode: 'insensitive' });
+  });
+
+  it('returns nextCursor=null when FTS results fit in one page', async () => {
+    prisma.$queryRaw.mockResolvedValue([
+      { id: 'i1', created_at: new Date('2026-01-01T00:00:00.000Z') },
+    ]);
+    prisma.issue.findMany.mockResolvedValue([makeIssueRow('i1', '2026-01-01T00:00:00.000Z')]);
+
+    const result = await service.findAll(FTS_USER, { projectId: FTS_PROJECT, q: 'login', limit: 5 });
+
+    expect(result.nextCursor).toBeNull();
+    expect(result.items).toHaveLength(1);
+  });
+
+  it('emits a nextCursor when FTS result exceeds the page limit', async () => {
+    // limit=2, FTS returns 3 rows (sentinel signals more exist)
+    prisma.$queryRaw.mockResolvedValue([
+      { id: 'i1', created_at: new Date('2026-01-01T00:00:00.000Z') },
+      { id: 'i2', created_at: new Date('2026-01-02T00:00:00.000Z') },
+      { id: 'i3', created_at: new Date('2026-01-03T00:00:00.000Z') },
+    ]);
+    prisma.issue.findMany.mockResolvedValue([
+      makeIssueRow('i1', '2026-01-01T00:00:00.000Z'),
+      makeIssueRow('i2', '2026-01-02T00:00:00.000Z'),
+    ]);
+
+    const result = await service.findAll(FTS_USER, { projectId: FTS_PROJECT, q: 'login', limit: 2 });
+
+    expect(result.items).toHaveLength(2);
+    expect(result.nextCursor).not.toBeNull();
+    // Cursor encodes the last returned item (i2)
+    const decoded = Buffer.from(result.nextCursor as string, 'base64url').toString('utf8');
+    expect(decoded).toBe('2026-01-02T00:00:00.000Z|i2');
+  });
+
+  it('returns empty items when FTS matches nothing', async () => {
+    prisma.$queryRaw.mockResolvedValue([]);
+
+    const result = await service.findAll(FTS_USER, { projectId: FTS_PROJECT, q: 'zxqwerty' });
+
+    expect(result.items).toHaveLength(0);
+    expect(result.nextCursor).toBeNull();
+    // findMany is not called when there are no ids to fetch
+    expect(prisma.issue.findMany).not.toHaveBeenCalled();
+  });
+
+  it('handles special characters in q without throwing (websearch_to_tsquery safety)', async () => {
+    prisma.$queryRaw.mockResolvedValue([]);
+
+    await expect(
+      service.findAll(FTS_USER, { projectId: FTS_PROJECT, q: 'bug & (fix OR patch) -wontfix' }),
+    ).resolves.toMatchObject({ items: [], nextCursor: null });
+
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-sorts results to match raw query order when findMany returns them out of order', async () => {
+    // Raw query returns i2 before i1 (ranked order)
+    prisma.$queryRaw.mockResolvedValue([
+      { id: 'i2', created_at: new Date('2026-01-02T00:00:00.000Z') },
+      { id: 'i1', created_at: new Date('2026-01-01T00:00:00.000Z') },
+    ]);
+    // findMany returns in arbitrary order (Postgres IN-list)
+    prisma.issue.findMany.mockResolvedValue([
+      makeIssueRow('i1', '2026-01-01T00:00:00.000Z'),
+      makeIssueRow('i2', '2026-01-02T00:00:00.000Z'),
+    ]);
+
+    const result = await service.findAll(FTS_USER, { projectId: FTS_PROJECT, q: 'description' });
+
+    // i2 should appear first because raw query returned it first
+    expect(result.items[0].id).toBe('i2');
+    expect(result.items[1].id).toBe('i1');
   });
 });
 

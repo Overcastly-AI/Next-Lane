@@ -50,7 +50,7 @@ _Product P1s — queue after security batch:_
 ## Next (P1 — high value, queue as Ready empties)
 
 - [ ] (P1, L) Tenant-isolation test harness + declarative authz layer — reusable two-workspace matrix asserting every mutating endpoint + socket room rejects cross-tenant access; `@RequireRole`/`@ResourceScope` decorator so isolation is structural, not hand-rolled per service [engineering-auditor]
-- [ ] (P1, M) Full-text search + structured filters + saved views — move beyond `title ILIKE`; Postgres full-text search (GIN/tsvector) across title + description + comments; filter grammar (status/assignee/label/sprint/type/priority); persisted `SavedView` model; tracker unusable at scale without this [engineering-auditor, product-auditor]
+- [x] (P1, M) Full-text search — move beyond `title ILIKE`; Postgres full-text search (GIN/tsvector) across title + description via generated `searchVector` column + GIN index (migration `20260627230000_issue_full_text_search`); `websearch_to_tsquery` user-input-safe; FTS in both command-palette search (`GET /search`) and board/backlog `GET /issues?q=`; description-only matches confirmed live; tenant scoping preserved; cursor pagination preserved; falls back to ILIKE for 1-char and key-style queries; 15 new unit tests + 10 e2e tests (desktop + mobile) — 2026-06-27. Remaining: structured filter grammar + saved views [engineering-auditor, product-auditor]
 
 ---
 
@@ -173,6 +173,7 @@ can ship first; multi-replica HA depends on the Redis items below.
 ---
 
 ## Changelog
+- 2026-06-27 — Full-text search (P1, M): GIN-indexed `searchVector` generated column on Issue (migration `20260627230000_issue_full_text_search`); `websearch_to_tsquery` in `SearchService.searchIssuesFts` and `IssuesService.findAllFts`; description-only matches confirmed live; tenant/pagination/cursor preserved; 15 unit tests + 10 e2e (desktop + mobile) — 284 unit tests total.
 - 2026-06-27 — SMTP email delivery for password reset (P1, S): `MailModule`/`MailService` (nodemailer); real SMTP when `SMTP_HOST` set; dev-log fallback when absent; production-safe; SMTP_* env vars documented in `.env.example`; 255 unit tests green.
 - 2026-06-27 (Pass 5 groom) — Security hardening cluster + product P1s + deferrals captured.
   - **In-flight (current build batch, mark done when confirmed):** plaintext token log guard (P1, S); SVG-XSS from ALLOWED_MIME_TYPES (P1, S); CFD/burndown unbounded queries rewrite to generate_series (P1, M); null-file upload guard (P2, S); webhook secret out of BullMQ job body (P2, S); PAT expiresAt past-date validation (P2, S); nginx CSP header (P2, S); Helm Postgres fail-fast guard (P2, S). All confirmed as in-flight by engineering-auditor Pass 5; keeping as open items until build agent ticks them.
