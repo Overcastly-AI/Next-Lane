@@ -80,26 +80,39 @@ test.describe('Drag-and-drop move persists', () => {
 
     const card = page.locator('.cursor-grab').first();
     const cardBox = await card.boundingBox();
-    const inProgHeader = page.getByText(/in progress/i).first();
-    const inProgBox = await inProgHeader.boundingBox();
-    if (!cardBox || !inProgBox) throw new Error('Cannot find card or column');
+    // Target the In Progress column's droppable body (the "+ Add issue" tile in
+    // an empty column) rather than the header, so the drop lands inside the
+    // droppable regardless of toolbar/layout height.
+    const inProgAddBtn = page.getByRole('button', { name: /add issue to in progress/i }).first();
+    const inProgBox = (await inProgAddBtn.boundingBox()) ?? null;
+    const inProgHeaderBox = await page.getByText(/in progress/i).first().boundingBox();
+    const target = inProgBox ?? inProgHeaderBox;
+    if (!cardBox || !target) throw new Error('Cannot find card or In Progress column');
 
-    await page.mouse.move(cardBox.x + cardBox.width / 2, cardBox.y + cardBox.height / 2);
-    await page.waitForTimeout(100);
+    const startX = cardBox.x + cardBox.width / 2;
+    const startY = cardBox.y + cardBox.height / 2;
+    const endX = target.x + target.width / 2;
+    const endY = target.y + target.height / 2;
+
+    await page.mouse.move(startX, startY);
+    await page.waitForTimeout(120);
     await page.mouse.down();
-    await page.waitForTimeout(100);
-    await page.mouse.move(cardBox.x + cardBox.width / 2 + 8, cardBox.y + cardBox.height / 2);
-    await page.waitForTimeout(80);
-    const endX = inProgBox.x + inProgBox.width / 2;
-    const endY = inProgBox.y + 100;
-    for (let i = 0; i <= 20; i++) {
+    await page.waitForTimeout(120);
+    // Exceed the 5px PointerSensor activation distance with a clear first move.
+    await page.mouse.move(startX + 12, startY + 12);
+    await page.waitForTimeout(120);
+    // Glide to the target column in many small steps, hovering over the droppable.
+    const STEPS = 30;
+    for (let i = 1; i <= STEPS; i++) {
       await page.mouse.move(
-        cardBox.x + cardBox.width / 2 + 8 + (endX - cardBox.x - cardBox.width / 2 - 8) * (i / 20),
-        cardBox.y + cardBox.height / 2 + (endY - cardBox.y - cardBox.height / 2) * (i / 20),
+        startX + 12 + (endX - startX - 12) * (i / STEPS),
+        startY + 12 + (endY - startY - 12) * (i / STEPS),
       );
-      await page.waitForTimeout(25);
+      await page.waitForTimeout(20);
     }
-    await page.waitForTimeout(300);
+    // Settle over the droppable before releasing so dnd-kit registers the over.
+    await page.mouse.move(endX, endY);
+    await page.waitForTimeout(400);
     await page.mouse.up();
     await page.waitForTimeout(1500);
 
