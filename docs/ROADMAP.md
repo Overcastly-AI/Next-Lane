@@ -55,7 +55,7 @@ Status legend: ✅ done · 🚧 in progress · ⬜ planned
 - ⬜ Workflow automation rules (trigger → action)
 - ⬜ Time tracking / worklogs
 - ⬜ Email (SMTP) notifications + email-to-issue
-- ⬜ Configurable dashboards
+- ✅ "Team pulse" home dashboard (sprint snapshot, assigned issues, recent activity, projects grid — first-run onboarding preserved; 20 e2e tests desktop+mobile)
 - ✅ REST API tokens (PATs: `nlp_` prefix, SHA-256 hash stored, create/list/revoke endpoints, JWT guard extension, profile settings UI, 14 e2e + 22 unit tests)
 - ⬜ Audit log
 - ⬜ Bulk edit, CSV import (and importers for other trackers), SSO/OIDC
@@ -102,7 +102,9 @@ Perf + polish pass #2 (2026-06-27): useProjectIssues passes `limit=200` (API cap
 Socket.io Redis adapter + BullMQ webhook queue (2026-06-27): `REDIS_URL`-gated — when set, Socket.io uses `@socket.io/redis-adapter` for multi-replica fan-out and webhook delivery is queued via BullMQ (3 attempts, exponential backoff, concurrency 10); when unset, existing in-memory adapter and in-process p-limit fan-out are unchanged. Phase 4 multi-replica HA prerequisites now met.
 Keyboard triage mode shipped 2026-06-27: `/projects/:id/triage` with full j/k/s/p/a/l/Enter/f/? keyboard model, ARIA listbox, VIEWER read-only, mobile open button, command palette entry, 12 e2e tests green.
 Kubernetes packaging shipped 2026-06-27 (Phase 4 → 🚧): production-grade **Helm chart** (`deploy/helm/next-lane`) + **Kustomize** base + dev/prod overlays (`deploy/kustomize`) + **`docs/DEPLOY-KUBERNETES.md`**. Helm covers api/web Deployments, Services, toggleable cert-manager Ingress, ConfigMap + (fail-fast, no-default) Secret, HPA + PDB, securityContext (runAsNonRoot + readOnlyRootFilesystem), `prisma migrate deploy` pre-upgrade hook Job, bundled-Bitnami-OR-external datastore toggles, and a same-origin nginx reverse-proxy. Web runtime config also shipped for the standalone image (`getApiUrl()` → `/config.js` from `API_URL` via `docker-entrypoint.sh`; 6 e2e green). Validated: every template renders to valid YAML for default + external value sets (a render bug — `---` glued to the next doc by a `{{- comment` trim — was caught and fixed this way); `helm`/`kubectl` binaries unavailable in the sandbox (egress restricted), so not yet `helm lint`'d/applied live. Remaining Phase 4: GHCR image CI publish + observability hooks.
-**v1 is feature-complete and green** (all release criteria met except the real `docker compose up` first-run check, which requires a host with registry access — see below). Remaining work is **post-v1**: query DSL/saved views, custom fields, automation rules, time tracking, email, bulk edit, importers, SSO — plus hardening (wire e2e into CI, JWT→httpOnly cookie) and the rest of Phase 4 packaging (GHCR images, observability hooks).
+Team Pulse dashboard shipped 2026-06-27: `PulseDashboardPage` replaces the bare project-list dashboard at `/`; four sections assembled client-side from existing hooks (sprint snapshot with progress bars + end-date countdowns, assigned-issues quick list, recent activity feed, projects grid); first-run OnboardingPanel preserved; 20 e2e tests green (desktop + mobile).
+Personal API tokens shipped 2026-06-27: `nlp_`-prefixed PATs (SHA-256 hashed) with create/list/revoke + JWT-guard extension + profile-settings UI (22 unit + 14 e2e tests).
+**v1 is feature-complete and green** (all release criteria met except the real `docker compose up` first-run check, which requires a host with registry access — see below). Remaining work is **post-v1**: query DSL/saved views, custom fields, automation rules, time tracking, email, audit log, bulk edit, importers, SSO — plus hardening (wire e2e into CI, JWT→httpOnly cookie) and the rest of Phase 4 packaging (GHCR images, observability hooks).
 
 ## v1.0 release criteria — definition of "a good product"
 

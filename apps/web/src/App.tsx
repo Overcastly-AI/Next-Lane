@@ -14,7 +14,7 @@ import { LoginPage } from '@/pages/LoginPage';
 import { RegisterPage } from '@/pages/RegisterPage';
 import { ForgotPasswordPage } from '@/pages/ForgotPasswordPage';
 import { ResetPasswordPage } from '@/pages/ResetPasswordPage';
-import { DashboardPage } from '@/pages/DashboardPage';
+import { PulseDashboardPage } from '@/pages/PulseDashboardPage';
 import { MyWorkPage } from '@/pages/MyWorkPage';
 import { BoardPage } from '@/pages/BoardPage';
 import { BacklogPage } from '@/pages/BacklogPage';
@@ -56,7 +56,7 @@ export default function App() {
               path="/"
               element={
                 <RequireAuth>
-                  <DashboardPage />
+                  <PulseDashboardPage />
                 </RequireAuth>
               }
             />
