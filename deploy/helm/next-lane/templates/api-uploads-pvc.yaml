@@ -1,0 +1,23 @@
+{{- if .Values.api.uploads.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "next-lane.componentName" (dict "ctx" . "component" "uploads") }}
+  labels:
+    {{- include "next-lane.componentLabels" (dict "ctx" . "component" "api") | nindent 4 }}
+  annotations:
+    # Keep attachments across `helm uninstall` unless explicitly removed.
+    helm.sh/resource-policy: keep
+    {{- with .Values.commonAnnotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  accessModes:
+    {{- toYaml .Values.api.uploads.persistence.accessModes | nindent 4 }}
+  resources:
+    requests:
+      storage: {{ .Values.api.uploads.persistence.size }}
+  {{- if .Values.api.uploads.persistence.storageClass }}
+  storageClassName: {{ .Values.api.uploads.persistence.storageClass | quote }}
+  {{- end }}
+{{- end }}

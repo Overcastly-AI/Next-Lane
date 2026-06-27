@@ -1,0 +1,8 @@
+# Point the ingress at the production hostname (base already wires
+# cert-manager.io/cluster-issuer: letsencrypt-prod and TLS).
+- op: replace
+  path: /spec/rules/0/host
+  value: tracker.example.com
+- op: replace
+  path: /spec/tls/0/hosts/0
+  value: tracker.example.com

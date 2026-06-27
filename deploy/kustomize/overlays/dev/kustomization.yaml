@@ -1,0 +1,36 @@
+# DEV overlay — single replica, no TLS, local hostname, demo seed ON.
+# Apply:  kubectl apply -k deploy/kustomize/overlays/dev
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: next-lane-dev
+
+resources:
+  - namespace.yaml
+  - ../../base
+
+# Mutable dev image tag.
+images:
+  - name: next-lane-api
+    newName: ghcr.io/next-lane/next-lane-api
+    newTag: latest
+  - name: next-lane-web
+    newName: ghcr.io/next-lane/next-lane-web
+    newTag: latest
+
+patches:
+  # Dev hostname + CORS + demo seed on.
+  - path: configmap-dev.yaml
+    target:
+      kind: ConfigMap
+      name: next-lane-api-config
+  # Single web replica in dev.
+  - path: replicas-dev.yaml
+    target:
+      kind: Deployment
+      name: next-lane-web
+  # Plain-HTTP ingress (no cert-manager / TLS) for a local cluster.
+  - path: ingress-dev.yaml
+    target:
+      kind: Ingress
+      name: next-lane

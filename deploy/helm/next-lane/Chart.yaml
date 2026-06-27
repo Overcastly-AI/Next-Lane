@@ -1,0 +1,45 @@
+apiVersion: v2
+name: next-lane
+description: |
+  Next Lane — open-source, self-hosted issue & project tracker.
+  NestJS API + React/Vite static web, with optional bundled PostgreSQL and
+  Redis (Bitnami subcharts) or external/managed datastores.
+type: application
+
+# Chart version — bump on every chart change (SemVer).
+version: 0.1.0
+
+# Version of the Next Lane application this chart deploys by default.
+# Override per-component with image.api.tag / image.web.tag.
+appVersion: "1.0.0"
+
+home: https://github.com/next-lane/next-lane
+sources:
+  - https://github.com/next-lane/next-lane
+keywords:
+  - issue-tracker
+  - project-management
+  - kanban
+  - agile
+  - self-hosted
+maintainers:
+  - name: Next Lane contributors
+
+# Optional datastore subcharts. Both are gated by *.enabled in values.yaml.
+# When disabled (recommended for production), point the app at an external /
+# managed PostgreSQL + Redis via values.externalDatabase / values.externalRedis.
+#
+# NOTE ON FETCHING DEPENDENCIES: `helm dependency update` requires network
+# access to the Bitnami chart repository. In air-gapped or egress-restricted
+# environments either (a) vendor the .tgz into charts/, or (b) leave
+# postgresql.enabled=false / redis.enabled=false and use external datastores —
+# in that mode the chart renders and installs with NO dependency fetch required.
+dependencies:
+  - name: postgresql
+    version: "16.x.x"
+    repository: https://charts.bitnami.com/bitnami
+    condition: postgresql.enabled
+  - name: redis
+    version: "20.x.x"
+    repository: https://charts.bitnami.com/bitnami
+    condition: redis.enabled

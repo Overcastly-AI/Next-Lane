@@ -1,0 +1,35 @@
+{{- if .Values.api.pdb.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "next-lane.componentName" (dict "ctx" . "component" "api") }}
+  labels:
+    {{- include "next-lane.componentLabels" (dict "ctx" . "component" "api") | nindent 4 }}
+spec:
+  {{- if .Values.api.pdb.maxUnavailable }}
+  maxUnavailable: {{ .Values.api.pdb.maxUnavailable }}
+  {{- else }}
+  minAvailable: {{ .Values.api.pdb.minAvailable }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "next-lane.componentSelectorLabels" (dict "ctx" . "component" "api") | nindent 6 }}
+{{- end }}
+{{- if .Values.web.pdb.enabled }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "next-lane.componentName" (dict "ctx" . "component" "web") }}
+  labels:
+    {{- include "next-lane.componentLabels" (dict "ctx" . "component" "web") | nindent 4 }}
+spec:
+  {{- if .Values.web.pdb.maxUnavailable }}
+  maxUnavailable: {{ .Values.web.pdb.maxUnavailable }}
+  {{- else }}
+  minAvailable: {{ .Values.web.pdb.minAvailable }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "next-lane.componentSelectorLabels" (dict "ctx" . "component" "web") | nindent 6 }}
+{{- end }}

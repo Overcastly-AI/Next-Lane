@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: next-lane-api-config
+data:
+  LOG_LEVEL: "warn"
+  CORS_ORIGINS: "https://tracker.example.com"
+  RESET_BASE_URL: "https://tracker.example.com"
+  AUTO_SEED: "false"

@@ -1,0 +1,100 @@
+{{- /* Non-secret API environment. Secrets are injected separately from a Secret. */ -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "next-lane.componentName" (dict "ctx" . "component" "api-config") }}
+  labels:
+    {{- include "next-lane.componentLabels" (dict "ctx" . "component" "api") | nindent 4 }}
+  {{- with .Values.commonAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+data:
+  NODE_ENV: {{ .Values.api.env.NODE_ENV | quote }}
+  API_PORT: {{ .Values.api.port | quote }}
+  LOG_LEVEL: {{ .Values.api.env.LOG_LEVEL | quote }}
+  JWT_EXPIRES_IN: {{ .Values.api.env.JWT_EXPIRES_IN | quote }}
+  {{- $cors := include "next-lane.corsOrigins" . }}
+  {{- if $cors }}
+  CORS_ORIGINS: {{ $cors | quote }}
+  {{- end }}
+  {{- if .Values.api.env.resetBaseUrl }}
+  RESET_BASE_URL: {{ .Values.api.env.resetBaseUrl | quote }}
+  {{- else if .Values.ingress.enabled }}
+  RESET_BASE_URL: {{ printf "https://%s" .Values.ingress.host | quote }}
+  {{- end }}
+  {{- if .Values.api.env.throttleTtl }}
+  THROTTLE_TTL: {{ .Values.api.env.throttleTtl | quote }}
+  {{- end }}
+  {{- if .Values.api.env.throttleLimit }}
+  THROTTLE_LIMIT: {{ .Values.api.env.throttleLimit | quote }}
+  {{- end }}
+  {{- if .Values.api.env.throttleAuthLimit }}
+  THROTTLE_AUTH_LIMIT: {{ .Values.api.env.throttleAuthLimit | quote }}
+  {{- end }}
+  {{- if .Values.api.env.rateLimitDisabled }}
+  RATE_LIMIT_DISABLED: "true"
+  {{- end }}
+  {{- if .Values.api.env.webhookAllowPrivate }}
+  WEBHOOK_ALLOW_PRIVATE: "true"
+  {{- end }}
+  AUTO_SEED: {{ .Values.api.env.autoSeed | quote }}
+{{- if eq .Values.web.apiMode "same-origin" }}
+---
+{{/*
+  nginx config for the web pod in same-origin mode: serve the SPA and
+  reverse-proxy /api and /socket.io to the API Service so the browser only ever
+  talks to one origin (no CORS, one ingress host, no rebuild per environment).
+  This OVERRIDES the image's default /etc/nginx/conf.d/default.conf via a mount.
+*/}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "next-lane.componentName" (dict "ctx" . "component" "web-nginx") }}
+  labels:
+    {{- include "next-lane.componentLabels" (dict "ctx" . "component" "web") | nindent 4 }}
+data:
+  default.conf: |
+    server {
+      listen {{ .Values.web.port }};
+      server_name _;
+      root /usr/share/nginx/html;
+      index index.html;
+
+      # SPA fallback — all client routes resolve to index.html.
+      location / {
+        try_files $uri $uri/ /index.html;
+      }
+
+      # Cache hashed build assets aggressively.
+      location /assets/ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+      }
+
+      # Reverse-proxy the REST API (NestJS global prefix is /api; /health is
+      # also proxied for convenience).
+      location /api/ {
+        proxy_pass http://{{ include "next-lane.componentName" (dict "ctx" . "component" "api") }}:{{ .Values.api.service.port }}/api/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 120s;
+      }
+
+      # Socket.io realtime (WebSocket upgrade).
+      location /socket.io/ {
+        proxy_pass http://{{ include "next-lane.componentName" (dict "ctx" . "component" "api") }}:{{ .Values.api.service.port }}/socket.io/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 3600s;
+      }
+    }
+{{- end }}

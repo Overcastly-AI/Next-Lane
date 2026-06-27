@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: next-lane-api-config
+data:
+  LOG_LEVEL: "debug"
+  CORS_ORIGINS: "http://tracker.dev.local"
+  RESET_BASE_URL: "http://tracker.dev.local"
+  # Demo data on in dev for a populated UI out of the box.
+  AUTO_SEED: "true"

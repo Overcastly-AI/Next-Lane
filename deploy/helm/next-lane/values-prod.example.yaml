@@ -1,0 +1,100 @@
+# ──────────────────────────────────────────────────────────────────────────
+# Example PRODUCTION values for Next Lane.
+#
+#   helm upgrade --install next-lane deploy/helm/next-lane \
+#     -n next-lane --create-namespace \
+#     -f deploy/helm/next-lane/values-prod.example.yaml \
+#     --set secrets.jwtSecret="$(openssl rand -hex 32)"
+#
+# Highlights vs. defaults:
+#   • External managed Postgres + Redis (bundled subcharts OFF).
+#   • Multi-replica HA with HPA + PDB on both tiers.
+#   • cert-manager TLS, durable attachments, hardened security contexts kept on.
+# ──────────────────────────────────────────────────────────────────────────
+
+image:
+  api:
+    repository: ghcr.io/next-lane/next-lane-api
+    tag: "1.0.0"            # pin an exact tag in prod
+  web:
+    repository: ghcr.io/next-lane/next-lane-web
+    tag: "1.0.0"
+
+api:
+  replicaCount: 3
+  env:
+    LOG_LEVEL: warn
+    autoSeed: false
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 65
+  pdb:
+    enabled: true
+    minAvailable: 2
+  uploads:
+    persistence:
+      enabled: true
+      size: 20Gi
+      # Use a ReadWriteMany class so multiple API replicas share attachments.
+      storageClass: efs-sc
+      accessModes: ["ReadWriteMany"]
+  topologySpreadConstraints:
+    - maxSkew: 1
+      topologyKey: kubernetes.io/hostname
+      whenUnsatisfiable: ScheduleAnyway
+      labelSelector:
+        matchLabels:
+          app.kubernetes.io/component: api
+
+web:
+  replicaCount: 3
+  apiMode: same-origin       # web image built with empty VITE_API_URL
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 6
+  pdb:
+    enabled: true
+    minAvailable: 2
+
+ingress:
+  enabled: true
+  className: nginx
+  host: tracker.example.com
+  tls:
+    enabled: true
+    certManager:
+      enabled: true
+      issuerName: letsencrypt-prod
+      issuerKind: ClusterIssuer
+    secretName: next-lane-tls
+
+# Manage the Secret out of band (external-secrets / sealed-secrets). When set,
+# the chart creates NO Secret and reads JWT_SECRET / DATABASE_URL / REDIS_URL
+# from it. Provide jwtSecret via --set instead if you don't have one yet.
+secrets:
+  existingSecret: next-lane-secrets   # comment out to let the chart manage it
+  # databaseUrl / redisUrl only needed if NOT using existingSecret:
+  # databaseUrl: postgresql://nextlane:***@db.internal:5432/nextlane?schema=public&sslmode=require
+  # redisUrl: redis://:***@redis.internal:6379
+
+# Bundled datastores OFF — point at managed instances.
+postgresql:
+  enabled: false
+redis:
+  enabled: false
+
+externalDatabase:
+  host: db.internal.example.com
+  port: 5432
+  user: nextlane
+  database: nextlane
+  # password: provided via existingSecret in this example
+  params: "schema=public&sslmode=require"
+
+externalRedis:
+  host: redis.internal.example.com
+  port: 6379
+  # password: provided via existingSecret in this example
