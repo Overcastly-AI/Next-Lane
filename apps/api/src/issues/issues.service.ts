@@ -7,6 +7,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { WebhooksService } from '../webhooks/webhooks.service';
 import {
   assertProjectMember,
   assertProjectRole,
@@ -19,6 +20,7 @@ import { UpdateIssueDto } from './dto/update-issue.dto';
 import { MoveIssueDto, ListIssuesQueryDto } from './dto/move-issue.dto';
 import {
   SocketEvents,
+  WebhookEventTypes,
   StatusCategory,
   initialRanks,
   rankAfter,
@@ -42,6 +44,7 @@ export class IssuesService {
     private readonly prisma: PrismaService,
     private readonly realtime: RealtimeService,
     private readonly notifications: NotificationsService,
+    private readonly webhooks: WebhooksService,
   ) {}
 
   /**
@@ -134,6 +137,11 @@ export class IssuesService {
     this.realtime.emitToProject(
       issue.projectId,
       SocketEvents.IssueCreated,
+      dtoOut,
+    );
+    this.webhooks.dispatch(
+      issue.projectId,
+      WebhookEventTypes.IssueCreated,
       dtoOut,
     );
     if (dtoOut.assigneeId) {
@@ -451,6 +459,11 @@ export class IssuesService {
       SocketEvents.IssueUpdated,
       dtoOut,
     );
+    this.webhooks.dispatch(
+      issue.projectId,
+      WebhookEventTypes.IssueUpdated,
+      dtoOut,
+    );
     if (
       dto.assigneeId != null &&
       dto.assigneeId !== existing.assigneeId
@@ -589,11 +602,21 @@ export class IssuesService {
       return updated;
     });
 
-    this.realtime.emitToProject(issue.projectId, SocketEvents.IssueMoved, {
+    const movePayload = {
       issueId: issue.id,
       statusId: issue.statusId,
       rank: issue.rank,
-    });
+    };
+    this.realtime.emitToProject(
+      issue.projectId,
+      SocketEvents.IssueMoved,
+      movePayload,
+    );
+    this.webhooks.dispatch(
+      issue.projectId,
+      WebhookEventTypes.IssueMoved,
+      movePayload,
+    );
     return toIssueDto(issue);
   }
 
@@ -613,6 +636,9 @@ export class IssuesService {
       SocketEvents.IssueDeleted,
       { issueId: id },
     );
+    this.webhooks.dispatch(existing.projectId, WebhookEventTypes.IssueDeleted, {
+      issueId: id,
+    });
     return { id };
   }
 }

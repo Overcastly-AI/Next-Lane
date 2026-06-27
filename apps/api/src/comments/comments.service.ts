@@ -6,6 +6,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { WebhooksService } from '../webhooks/webhooks.service';
 import {
   assertProjectMember,
   assertProjectRole,
@@ -13,7 +14,7 @@ import {
 import { Role } from '@next-lane/shared';
 import { toUserDto } from '../auth/auth.service';
 import { CreateCommentDto, UpdateCommentDto } from './dto/comment.dto';
-import { SocketEvents } from '@next-lane/shared';
+import { SocketEvents, WebhookEventTypes } from '@next-lane/shared';
 import type { CommentDto } from '@next-lane/shared';
 
 type CommentRow = {
@@ -48,6 +49,7 @@ export class CommentsService {
     private readonly prisma: PrismaService,
     private readonly realtime: RealtimeService,
     private readonly notifications: NotificationsService,
+    private readonly webhooks: WebhooksService,
   ) {}
 
   async findAll(userId: string, issueId: string): Promise<CommentDto[]> {
@@ -76,6 +78,11 @@ export class CommentsService {
     this.realtime.emitToProject(
       issue.projectId,
       SocketEvents.CommentCreated,
+      dtoOut,
+    );
+    this.webhooks.dispatch(
+      issue.projectId,
+      WebhookEventTypes.CommentCreated,
       dtoOut,
     );
 

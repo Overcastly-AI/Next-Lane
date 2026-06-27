@@ -114,6 +114,7 @@ model Project {
   statuses  Status[]
   sprints   Sprint[]
   labels    Label[]
+  webhooks  WebhookSubscription[]
 
   @@unique([workspaceId, key])
   @@index([workspaceId])
@@ -271,4 +272,42 @@ model Notification {
   issue Issue? @relation(fields: [issueId], references: [id], onDelete: SetNull)
 
   @@index([userId, read, createdAt])
+}
+
+// An outbound webhook endpoint registered by a project admin. When matching
+// domain events occur (issue.*, comment.created, sprint.*), Next Lane POSTs the
+// event payload to `url` with an HMAC-SHA256 signature derived from `secret`.
+// `events` holds the subscribed event-type strings (e.g. "issue.created"); an
+// empty array means "all" events.
+model WebhookSubscription {
+  id        String   @id @default(cuid())
+  projectId String
+  url       String
+  secret    String // HMAC signing secret (shared with the receiver)
+  events    String[] // subscribed event types; empty = all events
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project    Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  deliveries WebhookDelivery[]
+
+  @@index([projectId])
+}
+
+// A log entry for a single attempted webhook delivery. Kept for the admin's
+// recent-deliveries view; old rows are pruned to a bounded count per
+// subscription. `status` is "success" or "failed".
+model WebhookDelivery {
+  id             String   @id @default(cuid())
+  subscriptionId String
+  event          String
+  status         String // "success" | "failed"
+  responseStatus Int? // HTTP status from the receiver, if any
+  error          String? // failure detail (timeout, non-2xx, network error)
+  createdAt      DateTime @default(now())
+
+  subscription WebhookSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@index([subscriptionId, createdAt])
 }

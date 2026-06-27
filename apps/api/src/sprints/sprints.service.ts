@@ -7,6 +7,7 @@ import {
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeService } from '../realtime/realtime.service';
+import { WebhooksService } from '../webhooks/webhooks.service';
 import {
   assertProjectMember,
   assertProjectRole,
@@ -17,6 +18,7 @@ import {
   StatusCategory,
   Role,
   SocketEvents,
+  WebhookEventTypes,
 } from '@next-lane/shared';
 import type { SprintDto } from '@next-lane/shared';
 
@@ -47,6 +49,7 @@ export class SprintsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly realtime: RealtimeService,
+    private readonly webhooks: WebhooksService,
   ) {}
 
   async findAll(userId: string, projectId: string): Promise<SprintDto[]> {
@@ -164,6 +167,13 @@ export class SprintsService {
       this.realtime.emitToProject(
         existing.projectId,
         SocketEvents.SprintUpdated,
+        dtoOut,
+      );
+      this.webhooks.dispatch(
+        existing.projectId,
+        startingSprint
+          ? WebhookEventTypes.SprintStarted
+          : WebhookEventTypes.SprintCompleted,
         dtoOut,
       );
     }

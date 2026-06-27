@@ -5,6 +5,9 @@ import * as membership from '../common/membership.util';
 import { SprintsService } from './sprints.service';
 import type { PrismaService } from '../prisma/prisma.service';
 import type { RealtimeService } from '../realtime/realtime.service';
+import type { WebhooksService } from '../webhooks/webhooks.service';
+
+const webhooksMock = { dispatch: jest.fn() } as unknown as WebhooksService;
 
 /**
  * DB-free unit tests for SprintsService lifecycle behavior, driving the real
@@ -54,7 +57,11 @@ describe('SprintsService lifecycle (update)', () => {
   beforeEach(() => {
     prisma = makePrisma();
     realtime = { emitToProject: jest.fn() };
-    service = new SprintsService(prisma, realtime as unknown as RealtimeService);
+    service = new SprintsService(
+      prisma,
+      realtime as unknown as RealtimeService,
+      webhooksMock,
+    );
     // Membership is enforced elsewhere; permit it here so we test lifecycle.
     jest
       .spyOn(membership, 'assertProjectRole')

@@ -323,3 +323,56 @@ export const SocketEvents = {
 } as const;
 
 export type SocketEvent = (typeof SocketEvents)[keyof typeof SocketEvents];
+
+/**
+ * Domain event types that outbound webhooks can subscribe to. These mirror the
+ * realtime event names so a single dispatch point feeds both channels.
+ */
+export const WebhookEventTypes = {
+  IssueCreated: 'issue.created',
+  IssueUpdated: 'issue.updated',
+  IssueMoved: 'issue.moved',
+  IssueDeleted: 'issue.deleted',
+  CommentCreated: 'comment.created',
+  SprintStarted: 'sprint.started',
+  SprintCompleted: 'sprint.completed',
+} as const;
+
+export type WebhookEventType =
+  (typeof WebhookEventTypes)[keyof typeof WebhookEventTypes];
+
+/** The full list of subscribable webhook event types, for UI checkboxes. */
+export const WEBHOOK_EVENT_TYPES: readonly WebhookEventType[] =
+  Object.values(WebhookEventTypes);
+
+/**
+ * A registered outbound webhook endpoint. `secret` is never returned by the API
+ * after creation (write-only); `events` empty means "all events".
+ */
+export interface WebhookSubscriptionDto {
+  id: string;
+  projectId: string;
+  url: string;
+  events: WebhookEventType[];
+  active: boolean;
+  createdAt: string;
+}
+
+/** A single delivery-log entry for a webhook subscription. */
+export interface WebhookDeliveryDto {
+  id: string;
+  subscriptionId: string;
+  event: string;
+  status: 'success' | 'failed';
+  responseStatus: number | null;
+  error: string | null;
+  createdAt: string;
+}
+
+/** The JSON body POSTed to a subscriber's URL for each event. */
+export interface WebhookEventPayload {
+  event: WebhookEventType;
+  projectId: string;
+  timestamp: string;
+  data: unknown;
+}

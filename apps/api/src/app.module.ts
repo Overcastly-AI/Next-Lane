@@ -16,6 +16,7 @@ import { SearchModule } from './search/search.module';
 import { MeModule } from './me/me.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { RealtimeModule } from './realtime/realtime.module';
+import { WebhooksModule } from './webhooks/webhooks.module';
 import { HealthController } from './health.controller';
 
 @Module({
@@ -37,6 +38,7 @@ import { HealthController } from './health.controller';
     SearchModule,
     MeModule,
     NotificationsModule,
+    WebhooksModule,
   ],
   controllers: [HealthController],
 })

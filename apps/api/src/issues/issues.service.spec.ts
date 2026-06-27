@@ -4,6 +4,9 @@ import { IssuesService } from './issues.service';
 import type { PrismaService } from '../prisma/prisma.service';
 import type { RealtimeService } from '../realtime/realtime.service';
 import type { NotificationsService } from '../notifications/notifications.service';
+import type { WebhooksService } from '../webhooks/webhooks.service';
+
+const webhooksMock = { dispatch: jest.fn() } as unknown as WebhooksService;
 import type { MoveIssueDto } from './dto/move-issue.dto';
 
 /**
@@ -62,7 +65,7 @@ describe('IssuesService.assertSameProject', () => {
   beforeEach(() => {
     prisma = makePrisma();
     const realtime = {} as RealtimeService;
-    service = new IssuesService(prisma, realtime, {} as NotificationsService);
+    service = new IssuesService(prisma, realtime, {} as NotificationsService, webhooksMock);
   });
 
   it('accepts when all refs belong to the same project', async () => {
@@ -164,7 +167,7 @@ describe('IssuesService.assertNoParentCycle', () => {
   beforeEach(() => {
     prisma = makePrisma();
     const realtime = {} as RealtimeService;
-    service = new IssuesService(prisma, realtime, {} as NotificationsService);
+    service = new IssuesService(prisma, realtime, {} as NotificationsService, webhooksMock);
   });
 
   it('rejects an issue being its own parent', async () => {
@@ -273,6 +276,7 @@ describe('IssuesService.move', () => {
       mocks.prisma as unknown as PrismaService,
       realtime as unknown as RealtimeService,
       {} as NotificationsService,
+      webhooksMock,
     );
 
     // The moved issue already lives in STATUS (no status change by default).
