@@ -72,6 +72,7 @@ model User {
   actedNotifications Notification[]      @relation("actor")
   passwordResetTokens PasswordResetToken[]
   apiTokens           ApiToken[]
+  attachments         Attachment[]
 }
 
 // Personal API Token (PAT) for scripting / CI access to the REST API.
@@ -223,11 +224,12 @@ model Issue {
   parent     Issue?        @relation("subtasks", fields: [parentId], references: [id], onDelete: SetNull)
   children   Issue[]       @relation("subtasks")
   sprint     Sprint?       @relation(fields: [sprintId], references: [id], onDelete: SetNull)
-  comments   Comment[]
-  activities ActivityLog[]
-  labels        IssueLabel[]
-  watchers      Watcher[]
+  comments    Comment[]
+  activities  ActivityLog[]
+  labels      IssueLabel[]
+  watchers    Watcher[]
   notifications Notification[]
+  attachments Attachment[]
 
   @@unique([projectId, number])
   @@index([projectId, statusId])
@@ -310,6 +312,27 @@ model Notification {
   issue Issue? @relation(fields: [issueId], references: [id], onDelete: SetNull)
 
   @@index([userId, read, createdAt])
+}
+
+// A file attached to an issue. The raw file is stored on the local filesystem
+// under UPLOADS_DIR (default ./uploads) by a UUID-based storageKey, so the
+// client-supplied filename is never used as a path component. In K8s this
+// directory maps to the `uploads` PVC provisioned by the Helm chart.
+model Attachment {
+  id         String   @id @default(cuid())
+  issueId    String
+  uploaderId String
+  filename   String // original client-supplied name (display only, never used as path)
+  mimeType   String
+  sizeBytes  Int
+  storageKey String   @unique // UUID-based filename on disk; never trust client filename
+  createdAt  DateTime @default(now())
+
+  issue    Issue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  uploader User  @relation(fields: [uploaderId], references: [id], onDelete: Cascade)
+
+  @@index([issueId])
+  @@index([uploaderId])
 }
 
 // An outbound webhook endpoint registered by a project admin. When matching

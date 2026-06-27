@@ -23,6 +23,7 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
 import { ApiTokensModule } from './api-tokens/api-tokens.module';
+import { AttachmentsModule } from './attachments/attachments.module';
 import { HealthController } from './health.controller';
 
 const isProd = process.env.NODE_ENV === 'production';
@@ -87,6 +88,7 @@ const isProd = process.env.NODE_ENV === 'production';
     NotificationsModule,
     WebhooksModule,
     ApiTokensModule,
+    AttachmentsModule,
   ],
   controllers: [HealthController],
   providers: [

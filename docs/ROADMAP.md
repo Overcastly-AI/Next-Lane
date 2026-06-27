@@ -37,7 +37,8 @@ Status legend: ✅ done · 🚧 in progress · ⬜ planned
 - ✅ @mention autocomplete in comment composer (MentionComposer + 16 e2e tests desktop+mobile; inserts `@email` matching backend mention parser)
 - ✅ Reports: burndown + velocity
 - ✅ cumulative-flow report (CFD stacked-area chart, 30/90-day window selector, historical reconstruction from ActivityLog)
-- ⬜ Remaining: custom workflow *transitions*, attachments (uploads)
+- ✅ Attachments (file uploads) — `Attachment` model + migration `20260627145511_add_attachment_model`; local disk storage under `UPLOADS_DIR` (K8s-ready PVC mount path); `POST /issues/:id/attachments` (multipart, 10 MB cap, MIME allowlist: images/PDF/text/office/zip), `GET /issues/:id/attachments`, `GET /attachments/:id` (stream with auth + Content-Disposition), `DELETE /attachments/:id` (uploader or project ADMIN); VIEWER-gated upload/delete; drag-drop + file-input AttachmentsPanel in IssueDetailDrawer; 16 unit tests + 5 e2e tests (desktop + mobile) — all green; 208 unit tests total. (2026-06-27)
+- ⬜ Remaining: custom workflow *transitions*
 
 ## Phase 3 — Power features 🚧 (in progress)
 - ✅ Roadmap / timeline (epics + sprints as bars, progress, today marker)

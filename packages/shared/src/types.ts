@@ -390,6 +390,23 @@ export type WebhookEventType =
 export const WEBHOOK_EVENT_TYPES: readonly WebhookEventType[] =
   Object.values(WebhookEventTypes);
 
+// ── Attachments ─────────────────────────────────────────────────────────────
+
+/**
+ * Metadata for a single file attachment on an issue.
+ * The storageKey is intentionally omitted — callers download via the REST URL.
+ */
+export interface AttachmentDto {
+  id: string;
+  issueId: string;
+  uploaderId: string;
+  uploader: UserDto;
+  filename: string;
+  mimeType: string;
+  sizeBytes: number;
+  createdAt: string;
+}
+
 /**
  * A registered outbound webhook endpoint. `secret` is never returned by the API
  * after creation (write-only); `events` empty means "all events".
