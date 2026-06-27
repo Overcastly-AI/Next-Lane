@@ -4,11 +4,7 @@ import type { WorkspaceDto } from '@next-lane/shared';
 import { AppHeader } from '@/components/AppHeader';
 import { Button } from '@/components/ui/Button';
 import { Select } from '@/components/ui/Select';
-import {
-  EmptyState,
-  ErrorState,
-  LoadingState,
-} from '@/components/ui/States';
+import { ErrorState, LoadingState } from '@/components/ui/States';
 import {
   useCreateWorkspace,
   useWorkspaces,
@@ -17,6 +13,7 @@ import { useProjects } from '@/api/projects';
 import { CreateProjectModal } from '@/components/project/CreateProjectModal';
 import { CreateWorkspaceModal } from '@/components/workspace/CreateWorkspaceModal';
 import { ProjectCard } from '@/components/project/ProjectCard';
+import { OnboardingPanel } from '@/components/project/OnboardingPanel';
 
 export function DashboardPage() {
   const navigate = useNavigate();
@@ -184,13 +181,7 @@ function ProjectsGrid({
   if (loading) return <LoadingState label="Loading projects…" />;
   if (error) return <ErrorState error={error} onRetry={onRetry} />;
   if (projects.length === 0) {
-    return (
-      <EmptyState
-        title="No projects yet"
-        description="Create your first project to start tracking work on a board."
-        action={<Button onClick={onCreate}>+ New Project</Button>}
-      />
-    );
+    return <OnboardingPanel onCreate={onCreate} />;
   }
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
