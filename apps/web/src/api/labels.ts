@@ -31,8 +31,10 @@ export function useCreateLabel(projectId: string) {
 /**
  * Update a label's name and/or color. Invalidates the project's label list and
  * patches any cached issue / board data so label chips update immediately.
+ *
+ * Pass `boardId` to also invalidate the board-view cache.
  */
-export function useUpdateLabel(projectId: string) {
+export function useUpdateLabel(projectId: string, boardId?: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ labelId, input }: { labelId: string; input: UpdateLabelInput }) =>
@@ -45,6 +47,9 @@ export function useUpdateLabel(projectId: string) {
       void qc.invalidateQueries({ queryKey: qk.labels(projectId) });
       // Patch any cached board so label chips on cards update immediately.
       void qc.invalidateQueries({ queryKey: qk.board(projectId) });
+      if (boardId) {
+        void qc.invalidateQueries({ queryKey: qk.boardView(boardId) });
+      }
       // Patch any open issue that carries this label.
       qc.setQueriesData<IssueDto>({ queryKey: ['issue'] }, (issue) => {
         if (!issue?.labels) return issue;
@@ -62,8 +67,10 @@ export function useUpdateLabel(projectId: string) {
 /**
  * Delete a project label. The server cascade-removes it from every issue, so we
  * also refresh the board and any open issue once the deletion lands.
+ *
+ * Pass `boardId` to also invalidate the board-view cache.
  */
-export function useDeleteLabel(projectId: string) {
+export function useDeleteLabel(projectId: string, boardId?: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (labelId: string) =>
@@ -71,6 +78,9 @@ export function useDeleteLabel(projectId: string) {
     onSuccess: (_data, labelId) => {
       void qc.invalidateQueries({ queryKey: qk.labels(projectId) });
       void qc.invalidateQueries({ queryKey: qk.board(projectId) });
+      if (boardId) {
+        void qc.invalidateQueries({ queryKey: qk.boardView(boardId) });
+      }
       // Drop the deleted label from any cached issue immediately.
       qc.setQueriesData<IssueDto>({ queryKey: ['issue'] }, (issue) =>
         issue && issue.labels
@@ -97,8 +107,11 @@ interface ToggleContext {
  * Attach / detach a label on an issue with an optimistic update applied to both
  * the open issue and the board cache, so the drawer chips and the card chips
  * update instantly. Rolls back both on error.
+ *
+ * Pass `boardId` to also optimistically patch the `boardView` cache (the
+ * board-id-keyed view used by the multi-board page).
  */
-export function useToggleIssueLabel(projectId: string) {
+export function useToggleIssueLabel(projectId: string, boardId?: string) {
   const qc = useQueryClient();
 
   return useMutation<void, Error, ToggleLabelInput, ToggleContext>({
@@ -114,27 +127,37 @@ export function useToggleIssueLabel(projectId: string) {
     onMutate: async ({ issueId, label, attached }) => {
       const issueKey = qk.issue(issueId);
       const boardKey = qk.board(projectId);
-      await Promise.all([
+      const boardViewKey = boardId ? qk.boardView(boardId) : null;
+
+      const cancelPromises = [
         qc.cancelQueries({ queryKey: issueKey }),
         qc.cancelQueries({ queryKey: boardKey }),
-      ]);
+      ];
+      if (boardViewKey) cancelPromises.push(qc.cancelQueries({ queryKey: boardViewKey }));
+      await Promise.all(cancelPromises);
 
       const previousIssue = qc.getQueryData<IssueDto>(issueKey);
       const previousBoard = qc.getQueryData<BoardDto>(boardKey);
+
+      // Patch helper that adds or removes the label from an issue list in a BoardDto.
+      const patchBoard = (board: BoardDto): BoardDto => ({
+        ...board,
+        issues: board.issues.map((i) =>
+          i.id === issueId ? withLabel(i, label, attached) : i,
+        ),
+      });
 
       qc.setQueryData<IssueDto>(issueKey, (issue) =>
         issue ? withLabel(issue, label, attached) : issue,
       );
       qc.setQueryData<BoardDto>(boardKey, (board) =>
-        board
-          ? {
-              ...board,
-              issues: board.issues.map((i) =>
-                i.id === issueId ? withLabel(i, label, attached) : i,
-              ),
-            }
-          : board,
+        board ? patchBoard(board) : board,
       );
+      if (boardViewKey) {
+        qc.setQueryData<BoardDto>(boardViewKey, (board) =>
+          board ? patchBoard(board) : board,
+        );
+      }
 
       return { previousIssue, previousBoard };
     },
@@ -143,10 +166,17 @@ export function useToggleIssueLabel(projectId: string) {
         qc.setQueryData(qk.issue(vars.issueId), ctx.previousIssue);
       if (ctx?.previousBoard)
         qc.setQueryData(qk.board(projectId), ctx.previousBoard);
+      // Roll back boardView — just invalidate (no snapshot taken for it).
+      if (boardId) {
+        void qc.invalidateQueries({ queryKey: qk.boardView(boardId) });
+      }
     },
     onSettled: (_data, _err, vars) => {
       void qc.invalidateQueries({ queryKey: qk.issue(vars.issueId) });
       void qc.invalidateQueries({ queryKey: qk.board(projectId) });
+      if (boardId) {
+        void qc.invalidateQueries({ queryKey: qk.boardView(boardId) });
+      }
     },
   });
 }

@@ -57,10 +57,14 @@ const ALL_EVENTS: SocketEvent[] = Object.values(SocketEvents);
  * Subscribe to a project's realtime room. On any board-affecting event we
  * invalidate the board query so the cache re-syncs, then forward the event to
  * an optional caller-supplied handler (e.g. to refresh an open issue/comments).
+ *
+ * Pass `boardId` to also invalidate the board-view cache (keyed by the specific
+ * board id) so the multi-board page stays in sync with realtime events.
  */
 export function useBoardRealtime(
   projectId: string | undefined,
   onEvent?: RealtimeHandler,
+  boardId?: string,
 ): void {
   const qc = useQueryClient();
   const handlerRef = useRef<RealtimeHandler | undefined>(onEvent);
@@ -77,6 +81,9 @@ export function useBoardRealtime(
     const listeners = ALL_EVENTS.map((event) => {
       const fn = (payload: unknown) => {
         void qc.invalidateQueries({ queryKey: qk.board(projectId) });
+        if (boardId) {
+          void qc.invalidateQueries({ queryKey: qk.boardView(boardId) });
+        }
         if (event === SocketEvents.CommentCreated) {
           const issueId = (payload as { issueId?: string } | null)?.issueId;
           if (issueId) {
@@ -109,7 +116,7 @@ export function useBoardRealtime(
       s.off('connect', emitSubscribe);
       listeners.forEach(({ event, fn }) => s.off(event, fn));
     };
-  }, [projectId, qc]);
+  }, [projectId, boardId, qc]);
 }
 
 /**

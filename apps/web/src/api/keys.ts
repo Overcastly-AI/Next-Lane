@@ -10,7 +10,21 @@ export const qk = {
   users: ['users'] as const,
   projects: (workspaceId: string) => ['projects', workspaceId] as const,
   project: (projectId: string) => ['project', projectId] as const,
+  /**
+   * Legacy project-board key — used by `useBoardDefault` (the project default
+   * board, fetched by projectId). New board-id-driven views use `qk.boardView`.
+   */
   board: (projectId: string) => ['board', projectId] as const,
+  /**
+   * Board view keyed by the specific board id. This is the canonical key for
+   * the board view cache once the user has selected (or been defaulted to) a
+   * specific board. All optimistic mutations write here.
+   */
+  boardView: (boardId: string) => ['boardView', boardId] as const,
+  /**
+   * List of all boards for a project (for the board switcher).
+   */
+  boards: (projectId: string) => ['boards', projectId] as const,
   projectIssues: (projectId: string) => ['projectIssues', projectId] as const,
   issueSearch: (projectId: string, q: string) =>
     ['issueSearch', projectId, q] as const,

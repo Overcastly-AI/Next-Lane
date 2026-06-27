@@ -10,6 +10,10 @@ import {
 import { request } from './client';
 import { qk } from './keys';
 
+/**
+ * @deprecated Use `useBoardDefault` from `@/api/boards` for new code.
+ * Kept here for backward compatibility with the legacy project-board endpoint.
+ */
 export function useBoard(projectId: string | undefined) {
   return useQuery({
     queryKey: qk.board(projectId ?? ''),
@@ -90,7 +94,7 @@ export interface CreateIssueInput {
   sprintId?: string | null;
 }
 
-export function useCreateIssue(projectId: string) {
+export function useCreateIssue(projectId: string, boardId?: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: CreateIssueInput) =>
@@ -106,6 +110,9 @@ export function useCreateIssue(projectId: string) {
       );
       void qc.invalidateQueries({ queryKey: qk.projectIssues(projectId) });
       void qc.invalidateQueries({ queryKey: qk.board(projectId) });
+      if (boardId) {
+        void qc.invalidateQueries({ queryKey: qk.boardView(boardId) });
+      }
     },
   });
 }
@@ -155,13 +162,16 @@ export function useUpdateIssue() {
   });
 }
 
-export function useDeleteIssue(projectId: string) {
+export function useDeleteIssue(projectId: string, boardId?: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) =>
       request<void>(`/issues/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: qk.board(projectId) });
+      if (boardId) {
+        void qc.invalidateQueries({ queryKey: qk.boardView(boardId) });
+      }
     },
   });
 }
@@ -244,10 +254,16 @@ interface MoveContext {
  *
  * `beforeId` = the issue that should sit directly ABOVE the dropped card.
  * `afterId`  = the issue that should sit directly BELOW the dropped card.
+ *
+ * Pass `boardId` (the specific board the user is looking at) to key optimistic
+ * updates against `qk.boardView(boardId)`. When `boardId` is omitted the hook
+ * falls back to the legacy `qk.board(projectId)` key for backward compat.
  */
-export function useMoveIssue(projectId: string) {
+export function useMoveIssue(projectId: string, boardId?: string) {
   const qc = useQueryClient();
-  const boardKey = qk.board(projectId);
+  // Use the boardView key when a specific boardId is provided; fall back to the
+  // legacy project-board key so callers that have not yet migrated continue to work.
+  const boardKey = boardId ? qk.boardView(boardId) : qk.board(projectId);
 
   return useMutation<IssueDto, Error, MoveIssueInput, MoveContext>({
     mutationFn: ({ id, statusId, beforeId, afterId }) =>

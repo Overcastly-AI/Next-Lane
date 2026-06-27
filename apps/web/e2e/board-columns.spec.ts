@@ -99,7 +99,7 @@ test.describe('Project settings — columns', () => {
     // --- Deleting the non-empty column is blocked with a toast --------------
     await gotoSettings(page, ctx.project.id);
     await page.getByRole('button', { name: `Delete ${renamed}` }).click();
-    let confirm = page.getByRole('dialog');
+    let confirm = page.getByRole('alertdialog');
     await expect(confirm).toBeVisible();
     await confirm.getByRole('button', { name: /Delete column/i }).click();
     await expect(page.getByText(/move or delete its issues first/i)).toBeVisible({
@@ -126,7 +126,7 @@ test.describe('Project settings — columns', () => {
     });
 
     await page.getByRole('button', { name: `Delete ${emptyCol}` }).click();
-    confirm = page.getByRole('dialog');
+    confirm = page.getByRole('alertdialog');
     await expect(confirm).toBeVisible();
     await confirm.getByRole('button', { name: /Delete column/i }).click();
     await expect(page.getByText(/deleted/i).first()).toBeVisible({

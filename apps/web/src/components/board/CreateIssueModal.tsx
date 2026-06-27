@@ -25,6 +25,7 @@ export function CreateIssueModal({
   statuses,
   users,
   defaultStatusId,
+  boardId,
 }: {
   open: boolean;
   onClose: () => void;
@@ -32,8 +33,11 @@ export function CreateIssueModal({
   statuses: StatusDto[];
   users: UserDto[];
   defaultStatusId?: string;
+  /** When provided, the create mutation also invalidates the board-view cache
+   * so the new issue appears on the multi-board page without a full refetch. */
+  boardId?: string;
 }) {
-  const create = useCreateIssue(projectId);
+  const create = useCreateIssue(projectId, boardId);
   const toast = useToast();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');

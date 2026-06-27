@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useSearchParams, Link } from 'react-router-dom';
 import {
   DndContext,
@@ -21,7 +21,8 @@ import {
   type SprintDto,
   type StatusDto,
 } from '@next-lane/shared';
-import { useBoard, useMoveIssue } from '@/api/issues';
+import { useBoards, useBoardDefault, useBoardView } from '@/api/boards';
+import { useMoveIssue } from '@/api/issues';
 import { useLabels, useSprints, useUsers } from '@/api/meta';
 import { useMyRole } from '@/api/workspaces';
 import { canEdit } from '@/lib/permissions';
@@ -41,41 +42,121 @@ import { IssueCard } from '@/components/board/IssueCard';
 import { CreateIssueModal } from '@/components/board/CreateIssueModal';
 import { IssueDetailDrawer } from '@/components/issue/IssueDetailDrawer';
 import { PresenceAvatars } from '@/components/board/PresenceAvatars';
+import { BoardSwitcher } from '@/components/board/BoardSwitcher';
 import { useToast } from '@/components/ui/Toast';
 import { errorMessage } from '@/lib/errorMessage';
 import { cn } from '@/lib/cn';
 
+// ---------------------------------------------------------------------------
+// localStorage key for persisting the selected board per project
+// ---------------------------------------------------------------------------
+
+function localBoardKey(projectId: string) {
+  return `nl_board_${projectId}`;
+}
+
+function loadPersistedBoardId(projectId: string): string | null {
+  try {
+    return localStorage.getItem(localBoardKey(projectId));
+  } catch {
+    return null;
+  }
+}
+
+function persistBoardId(projectId: string, boardId: string) {
+  try {
+    localStorage.setItem(localBoardKey(projectId), boardId);
+  } catch {
+    // Ignore storage errors (private browsing quota, etc.)
+  }
+}
+
+// ---------------------------------------------------------------------------
+// BoardPage
+// ---------------------------------------------------------------------------
+
 export function BoardPage() {
   const { projectId = '' } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
-  const boardQuery = useBoard(projectId);
-  const usersQuery = useUsers();
-  const labelsQuery = useLabels(projectId);
-  const sprintsQuery = useSprints(projectId);
-  const moveIssue = useMoveIssue(projectId);
   const toast = useToast();
   const { user: currentUser } = useAuth();
 
-  useBoardRealtime(projectId);
+  // ── Board selection ──────────────────────────────────────────────────────
+
+  // Load the board list for the switcher.
+  const boardsQuery = useBoards(projectId);
+  const boards = boardsQuery.data ?? [];
+
+  // Resolve the selected board id:
+  // 1. Persisted value from localStorage (user's last explicit choice).
+  // 2. The board with `isDefault: true` from the list.
+  // 3. First board in the list (fallback).
+  const [selectedBoardId, setSelectedBoardIdState] = useState<string | null>(
+    () => loadPersistedBoardId(projectId),
+  );
+
+  // Once we have a settled boards list, validate/resolve the selection.
+  // BUG 1 FIX: skip the reset while the query is fetching (including background
+  // refetches after a create). Without this guard, the stale list (pre-refetch)
+  // would see the newly-chosen id as invalid and override it back to the default,
+  // racing against the refetch that will add the new board to the list.
+  useEffect(() => {
+    if (!boards.length) return;
+    if (boardsQuery.isFetching) return; // list is mid-refetch; wait for stable data
+    const persisted = selectedBoardId;
+    const isValid = persisted && boards.some((b) => b.id === persisted);
+    if (!isValid) {
+      const defaultBoard = boards.find((b) => b.isDefault) ?? boards[0];
+      setSelectedBoardIdState(defaultBoard.id);
+      persistBoardId(projectId, defaultBoard.id);
+    }
+  }, [boards, boardsQuery.isFetching, projectId, selectedBoardId]);
+
+  const handleSelectBoard = useCallback(
+    (boardId: string) => {
+      setSelectedBoardIdState(boardId);
+      persistBoardId(projectId, boardId);
+    },
+    [projectId],
+  );
+
+  // When a board is deleted, fall back to the default board.
+  const handleBoardDeleted = useCallback(() => {
+    const defaultBoard = boards.find((b) => b.isDefault) ?? boards[0];
+    if (defaultBoard) {
+      setSelectedBoardIdState(defaultBoard.id);
+      persistBoardId(projectId, defaultBoard.id);
+    }
+  }, [boards, projectId]);
+
+  // ── Board view data ──────────────────────────────────────────────────────
+
+  // Fetch the full board view for the selected board.
+  const boardViewQuery = useBoardView(selectedBoardId ?? undefined);
+
+  // Also fetch the default board as the initial load (and so the legacy
+  // `qk.board(projectId)` entry exists for code that still reads it).
+  useBoardDefault(projectId);
+
+  // ── Supporting data ──────────────────────────────────────────────────────
+
+  const usersQuery = useUsers();
+  const labelsQuery = useLabels(projectId);
+  const sprintsQuery = useSprints(projectId);
+
+  // Realtime — pass boardId so socket events invalidate the right cache entry.
+  useBoardRealtime(projectId, undefined, selectedBoardId ?? undefined);
   const presenceViewers = usePresence(projectId, currentUser?.id);
 
-  const [search, setSearch] = useState('');
-  const [assigneeFilter, setAssigneeFilter] = useState('');
-  // Selected label IDs the board is filtered to (a card must carry ALL of them).
-  const [labelFilter, setLabelFilter] = useState<string[]>([]);
-  // Selected type values (card must match one of the selected types).
-  const [typeFilter, setTypeFilter] = useState<IssueType[]>([]);
-  // Selected priority values (card must match one of the selected priorities).
-  const [priorityFilter, setPriorityFilter] = useState<Priority[]>([]);
-  const [createForStatus, setCreateForStatus] = useState<string | null>(null);
-  const [activeIssue, setActiveIssue] = useState<IssueDto | null>(null);
+  // ── Derived data ─────────────────────────────────────────────────────────
 
-  const openIssueId = searchParams.get('issue');
-  const wantsNewIssue = searchParams.get('new') === '1';
-
-  const board = boardQuery.data;
+  const board = boardViewQuery.data;
   const myRole = useMyRole(board?.project.workspaceId);
   const editable = canEdit(myRole);
+
+  // Move-issue mutation keyed to the selected board's cache entry.
+  const moveIssue = useMoveIssue(projectId, selectedBoardId ?? undefined);
+
   const activeSprint = useMemo<SprintDto | null>(
     () =>
       (sprintsQuery.data ?? []).find(
@@ -83,10 +164,27 @@ export function BoardPage() {
       ) ?? null,
     [sprintsQuery.data],
   );
+
   const statuses = useMemo<StatusDto[]>(
     () => (board ? [...board.statuses].sort((a, b) => a.order - b.order) : []),
     [board],
   );
+
+  // ── Filters ──────────────────────────────────────────────────────────────
+
+  const [search, setSearch] = useState('');
+  const [assigneeFilter, setAssigneeFilter] = useState('');
+  const [labelFilter, setLabelFilter] = useState<string[]>([]);
+  const [typeFilter, setTypeFilter] = useState<IssueType[]>([]);
+  const [priorityFilter, setPriorityFilter] = useState<Priority[]>([]);
+
+  // ── Modals ────────────────────────────────────────────────────────────────
+
+  const [createForStatus, setCreateForStatus] = useState<string | null>(null);
+  const [activeIssue, setActiveIssue] = useState<IssueDto | null>(null);
+
+  const openIssueId = searchParams.get('issue');
+  const wantsNewIssue = searchParams.get('new') === '1';
 
   // Consume a `?new=1` deep-link (e.g. from the command palette "Create issue"
   // action): open the create modal on the first column, then drop the param.
@@ -103,7 +201,8 @@ export function BoardPage() {
     );
   }, [wantsNewIssue, statuses, editable, setSearchParams]);
 
-  // Group + filter + rank-sort issues per column.
+  // ── Grouped issues ────────────────────────────────────────────────────────
+
   const issuesByStatus = useMemo(() => {
     const map = new Map<string, IssueDto[]>();
     if (!board) return map;
@@ -132,14 +231,14 @@ export function BoardPage() {
     return map;
   }, [board, statuses, search, assigneeFilter, labelFilter, typeFilter, priorityFilter]);
 
+  // ── Drag and drop ─────────────────────────────────────────────────────────
+
   const dragSensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     }),
   );
-  // VIEWERs can't reorder/move cards: registering no sensors makes the board
-  // read-only for drag-and-drop while keeping cards clickable to open.
   const noSensors = useSensors();
   const sensors = editable ? dragSensors : noSensors;
 
@@ -157,7 +256,6 @@ export function BoardPage() {
     const dragged = board.issues.find((i) => i.id === activeId);
     if (!dragged) return;
 
-    // Resolve the destination column. `over` may be a card or a column droppable.
     const overData = over.data.current as
       | { type?: string; statusId?: string }
       | undefined;
@@ -166,24 +264,21 @@ export function BoardPage() {
       ? String(over.id)
       : (overData?.statusId ?? dragged.statusId);
 
-    // Current ordered list in the target column (post-filter view used for UI,
-    // but neighbor resolution uses the same visible ordering the user sees).
     const column = (issuesByStatus.get(targetStatusId) ?? []).filter(
       (i) => i.id !== activeId,
     );
 
     let insertIndex: number;
     if (overIsColumn) {
-      insertIndex = column.length; // dropped on empty space => append
+      insertIndex = column.length;
     } else {
       const overIndex = column.findIndex((i) => i.id === String(over.id));
       insertIndex = overIndex === -1 ? column.length : overIndex;
     }
 
-    const beforeIssue = column[insertIndex - 1] ?? null; // sits above
-    const afterIssue = column[insertIndex] ?? null; // sits below
+    const beforeIssue = column[insertIndex - 1] ?? null;
+    const afterIssue = column[insertIndex] ?? null;
 
-    // No-op: dropped back into its original neighbors within the same column.
     if (
       targetStatusId === dragged.statusId &&
       neighborsUnchanged(
@@ -210,17 +305,11 @@ export function BoardPage() {
     );
   }
 
-  /**
-   * Inline status change from a card's status picker.
-   * Appends the card to the end of the target column (beforeId = last card in
-   * column, afterId = null) — same semantics as dropping it at the bottom via DnD.
-   */
   function handleCardStatusChange(issueId: string, statusId: string) {
     if (!editable || !board) return;
     const issue = board.issues.find((i) => i.id === issueId);
-    if (!issue || issue.statusId === statusId) return; // no-op if already in that status
+    if (!issue || issue.statusId === statusId) return;
 
-    // Find the last card in the target column to compute neighbors.
     const targetColumn = (issuesByStatus.get(statusId) ?? []).filter(
       (i) => i.id !== issueId,
     );
@@ -262,20 +351,60 @@ export function BoardPage() {
     );
   }
 
-  if (boardQuery.isLoading) {
+  // ── Loading / error ───────────────────────────────────────────────────────
+
+  // While the boards list and the selected board view are loading we show a
+  // single spinner. Once we have the boards list but are still fetching the
+  // selected view we also show the spinner.
+  const isLoading =
+    boardsQuery.isLoading ||
+    (!!selectedBoardId && boardViewQuery.isLoading);
+
+  if (isLoading) {
     return (
       <Shell projectId={projectId}>
         <LoadingState label="Loading board…" />
       </Shell>
     );
   }
-  if (boardQuery.isError || !board) {
+  if (boardViewQuery.isError || (selectedBoardId && !board)) {
     return (
       <Shell projectId={projectId}>
         <ErrorState
-          error={boardQuery.error ?? new Error('Board not found')}
-          onRetry={() => boardQuery.refetch()}
+          error={boardViewQuery.error ?? new Error('Board not found')}
+          onRetry={() => boardViewQuery.refetch()}
         />
+      </Shell>
+    );
+  }
+  // No boards at all — surface the boards list error or a generic empty state.
+  if (!boards.length) {
+    if (boardsQuery.isError) {
+      return (
+        <Shell projectId={projectId}>
+          <ErrorState
+            error={boardsQuery.error ?? new Error('Could not load boards')}
+            onRetry={() => boardsQuery.refetch()}
+          />
+        </Shell>
+      );
+    }
+    return (
+      <Shell projectId={projectId}>
+        <EmptyState
+          title="No boards yet"
+          description="This project has no boards. Contact an admin to create one."
+        />
+      </Shell>
+    );
+  }
+
+  // At this point we have `board` from the boardViewQuery. If boardViewQuery has
+  // not started yet (selectedBoardId still null), fall back gracefully.
+  if (!board) {
+    return (
+      <Shell projectId={projectId}>
+        <LoadingState label="Loading board…" />
       </Shell>
     );
   }
@@ -305,11 +434,19 @@ export function BoardPage() {
         </div>
       }
     >
-      {/* Toolbar: on mobile the filter pills go into a horizontally scrollable
-          strip so they never wrap onto multiple rows. Desktop keeps flex-wrap. */}
+      {/* Toolbar */}
       <div className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
-        {/* Row 1 on mobile: search + assignee */}
+        {/* Row 1: board switcher + search + assignee */}
         <div className="flex items-center gap-3">
+          {/* Board switcher */}
+          <BoardSwitcher
+            projectId={projectId}
+            selectedBoardId={selectedBoardId}
+            onSelectBoard={handleSelectBoard}
+            onBoardDeleted={handleBoardDeleted}
+          />
+
+          {/* Search */}
           <div className="relative">
             <svg
               className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400"
@@ -351,7 +488,7 @@ export function BoardPage() {
           )}
         </div>
 
-        {/* Row 2 on mobile: filter pills in a horizontally scrollable strip */}
+        {/* Row 2: filter pills */}
         <div className="flex items-center gap-3 overflow-x-auto pb-0.5 sm:overflow-x-visible sm:pb-0">
           <LabelFilter
             labels={labelsQuery.data ?? []}
@@ -363,7 +500,6 @@ export function BoardPage() {
         </div>
 
         <div className="ml-auto flex items-center gap-3 sm:ml-auto">
-          {/* Live board presence — other people currently viewing this board */}
           <PresenceAvatars viewers={presenceViewers} />
 
           {board?.issuesTruncated && (
@@ -451,6 +587,7 @@ export function BoardPage() {
           statuses={statuses}
           users={users}
           defaultStatusId={createForStatus || undefined}
+          boardId={selectedBoardId ?? undefined}
         />
       )}
 
@@ -470,10 +607,10 @@ export function BoardPage() {
   );
 }
 
-/**
- * True when dropping `activeId` between `beforeId`/`afterId` leaves it in the
- * same slot it already occupies — so we can skip a pointless move request.
- */
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
 function neighborsUnchanged(
   ordered: IssueDto[],
   activeId: string,
@@ -487,11 +624,10 @@ function neighborsUnchanged(
   return currentBefore === beforeId && currentAfter === afterId;
 }
 
-/**
- * Top-bar control to filter the board by one or more labels. A card is shown
- * only when it carries every selected label. Lives next to the search and
- * assignee filters; filtering itself is client-side over the loaded board.
- */
+// ---------------------------------------------------------------------------
+// LabelFilter
+// ---------------------------------------------------------------------------
+
 function LabelFilter({
   labels,
   selected,
@@ -520,7 +656,6 @@ function LabelFilter({
     };
   }, [open]);
 
-  // Drop any selected IDs that no longer exist (e.g. a label was deleted).
   useEffect(() => {
     if (selected.length === 0) return;
     const ids = new Set(labels.map((l) => l.id));
@@ -621,7 +756,7 @@ function LabelFilter({
 }
 
 // ---------------------------------------------------------------------------
-// Shared multi-select dropdown primitive used by TypeFilter and PriorityFilter.
+// Generic multi-select filter
 // ---------------------------------------------------------------------------
 
 interface MultiSelectOption {
@@ -629,11 +764,6 @@ interface MultiSelectOption {
   label: string;
 }
 
-/**
- * Generic multi-select filter button + dropdown. Mirrors the LabelFilter
- * pattern exactly: a toggle button that turns brand-colored when active, a
- * popover list of checkboxes, and a "Clear" footer when any items are chosen.
- */
 function MultiSelectFilter<T extends string>({
   label,
   icon,
@@ -767,7 +897,6 @@ function MultiSelectFilter<T extends string>({
   );
 }
 
-/** Human-readable labels for IssueType values shown in the filter. */
 const TYPE_OPTIONS: MultiSelectOption[] = [
   { value: IssueType.TASK, label: 'Task' },
   { value: IssueType.BUG, label: 'Bug' },
@@ -776,7 +905,6 @@ const TYPE_OPTIONS: MultiSelectOption[] = [
   { value: IssueType.SUBTASK, label: 'Subtask' },
 ];
 
-/** Human-readable labels for Priority values shown in the filter. */
 const PRIORITY_OPTIONS: MultiSelectOption[] = [
   { value: Priority.HIGHEST, label: 'Highest' },
   { value: Priority.HIGH, label: 'High' },
@@ -785,10 +913,6 @@ const PRIORITY_OPTIONS: MultiSelectOption[] = [
   { value: Priority.LOWEST, label: 'Lowest' },
 ];
 
-/**
- * Board toolbar control to filter by one or more issue types.
- * A card is shown only when its type is in the selected set.
- */
 function TypeFilter({
   selected,
   onChange,
@@ -824,10 +948,6 @@ function TypeFilter({
   );
 }
 
-/**
- * Board toolbar control to filter by one or more priority levels.
- * A card is shown only when its priority is in the selected set.
- */
 function PriorityFilter({
   selected,
   onChange,
@@ -860,12 +980,10 @@ function PriorityFilter({
   );
 }
 
-/**
- * Compact badge in the board header surfacing the active sprint's name and,
- * when it has an end date, a relative countdown that turns amber as the
- * deadline nears and red once overdue. Renders nothing when no sprint is
- * active. Tells viewers why some backlog issues aren't on the board.
- */
+// ---------------------------------------------------------------------------
+// ActiveSprintBadge
+// ---------------------------------------------------------------------------
+
 function ActiveSprintBadge({ sprint }: { sprint: SprintDto | null }) {
   if (!sprint) return null;
   const end = endDateStatus(sprint.endDate);
@@ -898,6 +1016,10 @@ function ActiveSprintBadge({ sprint }: { sprint: SprintDto | null }) {
     </span>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Shell
+// ---------------------------------------------------------------------------
 
 function Shell({
   children,
