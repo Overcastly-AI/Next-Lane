@@ -1,8 +1,9 @@
 import { forwardRef, type HTMLAttributes } from 'react';
-import { StatusCategory, type IssueDto } from '@next-lane/shared';
+import { StatusCategory, type IssueDto, type StatusDto } from '@next-lane/shared';
 import { Avatar } from '@/components/ui/Avatar';
 import { Badge } from '@/components/ui/Badge';
 import { IssueTypeIcon, PriorityIcon } from '@/components/issue/issueMeta';
+import { CardStatusPicker } from './CardStatusPicker';
 import { cn } from '@/lib/cn';
 
 /**
@@ -28,11 +29,35 @@ export interface IssueCardProps extends HTMLAttributes<HTMLDivElement> {
   issue: IssueDto;
   dragging?: boolean;
   overlay?: boolean;
+  /** Project statuses — required for the inline status picker. */
+  statuses?: StatusDto[];
+  /** Called when the user selects a new status from the inline picker. */
+  onStatusChange?: (statusId: string) => void;
+  /**
+   * Whether the current user may edit issues. When false the status picker is
+   * hidden (VIEWER). Defaults to true so the DragOverlay (no props) still
+   * renders the card without the picker rather than crashing.
+   */
+  editable?: boolean;
 }
 
 /** Presentational card. Drag wiring lives in SortableIssueCard. */
 export const IssueCard = forwardRef<HTMLDivElement, IssueCardProps>(
-  ({ issue, dragging, overlay, className, ...rest }, ref) => {
+  (
+    {
+      issue,
+      dragging,
+      overlay,
+      statuses,
+      onStatusChange,
+      editable = true,
+      className,
+      ...rest
+    },
+    ref,
+  ) => {
+    const currentStatus = statuses?.find((s) => s.id === issue.statusId);
+
     return (
       <div
         ref={ref}
@@ -93,6 +118,16 @@ export const IssueCard = forwardRef<HTMLDivElement, IssueCardProps>(
 
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1.5">
+            {/* Inline status picker: a coloured dot that opens a status menu.
+                Hidden during drag overlay (no statuses prop) and for VIEWERs. */}
+            {statuses && statuses.length > 0 && onStatusChange && (
+              <CardStatusPicker
+                currentStatus={currentStatus}
+                statuses={statuses}
+                onSelect={onStatusChange}
+                editable={editable}
+              />
+            )}
             <IssueTypeIcon type={issue.type} className="h-4 w-4" />
             <span className="text-xs font-medium text-gray-400">
               {issue.key}

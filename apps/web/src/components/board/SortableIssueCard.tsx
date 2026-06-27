@@ -1,14 +1,23 @@
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import type { IssueDto } from '@next-lane/shared';
+import type { IssueDto, StatusDto } from '@next-lane/shared';
 import { IssueCard } from './IssueCard';
 
 export function SortableIssueCard({
   issue,
+  statuses,
   onOpen,
+  onStatusChange,
+  editable = true,
 }: {
   issue: IssueDto;
+  /** Project statuses forwarded to the inline status picker. */
+  statuses: StatusDto[];
   onOpen: (id: string) => void;
+  /** Called when the user selects a new status from the inline picker. */
+  onStatusChange: (issueId: string, statusId: string) => void;
+  /** Whether the current user may edit issues (hides the picker for VIEWERs). */
+  editable?: boolean;
 }) {
   const {
     attributes,
@@ -49,7 +58,13 @@ export function SortableIssueCard({
         }
       }}
     >
-      <IssueCard issue={issue} dragging={isDragging} />
+      <IssueCard
+        issue={issue}
+        dragging={isDragging}
+        statuses={statuses}
+        onStatusChange={(statusId) => onStatusChange(issue.id, statusId)}
+        editable={editable}
+      />
     </div>
   );
 }

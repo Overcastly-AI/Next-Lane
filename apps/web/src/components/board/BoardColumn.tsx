@@ -16,17 +16,23 @@ const CATEGORY_DOT: Record<string, string> = {
 export function BoardColumn({
   status,
   issues,
+  statuses,
   editable = true,
   onAdd,
   onOpenIssue,
+  onStatusChange,
 }: {
   status: StatusDto;
   issues: IssueDto[];
+  /** All project statuses — forwarded to each card's inline status picker. */
+  statuses: StatusDto[];
   /** When false (VIEWER), hides the add-issue affordance. Column CRUD now lives
    * in project Settings, so the board only adds issues, never edits columns. */
   editable?: boolean;
   onAdd: (statusId: string) => void;
   onOpenIssue: (id: string) => void;
+  /** Called when the user selects a new status from a card's inline picker. */
+  onStatusChange: (issueId: string, statusId: string) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({
     id: status.id,
@@ -78,7 +84,10 @@ export function BoardColumn({
             <SortableIssueCard
               key={issue.id}
               issue={issue}
+              statuses={statuses}
               onOpen={onOpenIssue}
+              onStatusChange={onStatusChange}
+              editable={editable}
             />
           ))}
         </SortableContext>
