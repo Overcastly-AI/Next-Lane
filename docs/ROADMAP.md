@@ -67,9 +67,9 @@ HA, autoscaling, and managed datastores — without abandoning the one-command
 Compose path for small installs.
 
 **Foundation (prerequisites — already mostly true):**
-- ✅ 12-factor config: everything is env-driven (`DATABASE_URL`, `JWT_SECRET`, `CORS_ORIGINS`, `THROTTLE_*`, `WEBHOOK_ALLOW_PRIVATE`, `LOG_LEVEL`) — no config baked into images except `VITE_API_URL` (build-time; needs a runtime-config story for the web image).
+- ✅ 12-factor config: everything is env-driven (`DATABASE_URL`, `JWT_SECRET`, `CORS_ORIGINS`, `THROTTLE_*`, `WEBHOOK_ALLOW_PRIVATE`, `LOG_LEVEL`) — web image now also runtime-configurable via `API_URL` / `window.__NL_CONFIG__` (shipped 2026-06-27; no longer baked at build time).
 - ✅ Liveness/readiness signal: API exposes `/health`.
-- 🚧 Structured JSON logs (pino) — in flight; required for log shipping.
+- ✅ Structured JSON logs (pino) — shipped 2026-06-27.
 
 **Deliverables:**
 - ⬜ **Publish container images** for `api` and `web` to a registry (GHCR) via CI, semver + `latest` tags, multi-arch (amd64/arm64), SBOM + image scan.
@@ -77,11 +77,11 @@ Compose path for small installs.
 - ⬜ **Datastore strategy in values:** bundle Postgres + Redis as optional subcharts (Bitnami) for quick-start, OR point at external/managed instances (recommended for prod) via connection envs/secrets.
 - ⬜ **Schema migrations as a Job/initContainer** (`prisma migrate deploy`) gated before api rollout (Helm hook / init job), so upgrades migrate safely.
 - ⬜ **Secrets**: K8s `Secret` for `JWT_SECRET` + DB/Redis creds; support `external-secrets`/sealed-secrets; never ship a default secret.
-- ⬜ **Web runtime config**: serve `VITE_API_URL` (and other public config) at runtime (env-substituted `config.js` or nginx templating) so one image works across environments without rebuilds.
+- ✅ **Web runtime config**: `docker-entrypoint.sh` writes `/config.js` from `API_URL` env var at container start; `index.html` loads it before the bundle; `getApiUrl()` reads `window.__NL_CONFIG__.apiUrl` → `VITE_API_URL` → default. One image works across all environments without rebuilds. Verified: 6 Playwright e2e tests green (desktop + mobile). See `docs/DEPLOY-KUBERNETES.md`.
 - ✅ **Horizontal scale enablers:** Socket.io **Redis adapter** (`@socket.io/redis-adapter`) for multi-replica realtime (attaches in `afterInit`; falls back to in-memory when `REDIS_URL` unset) + **Redis-backed webhook delivery queue (BullMQ)** with retries + exponential backoff + concurrency cap (falls back to in-process p-limit fan-out when `REDIS_URL` unset). Both are backward-compatible — zero-config Compose/dev path unchanged. Prerequisites for `replicas > 1` are now met.
 - ⬜ **Observability hooks:** optional `ServiceMonitor`/metrics endpoint, OTLP traces, and structured logs ready for a collector.
 - ⬜ **Kustomize base + overlays** as a Helm alternative; example overlays for a managed cluster (EKS/GKE/AKS).
-- ⬜ **Docs:** `docs/DEPLOY-KUBERNETES.md` quickstart (`helm install`), values reference, upgrade/migration runbook, and an HA topology diagram.
+- 🚧 **Docs:** `docs/DEPLOY-KUBERNETES.md` initial content shipped (web runtime-config section, env var reference, Docker Compose + K8s patterns, sandbox caveats). Full quickstart (helm install), values reference, upgrade runbook, and HA topology diagram pending the Helm chart.
 
 > Sequencing: the **Socket.io Redis adapter** + **BullMQ webhook queue** (already
 > P2 on the backlog) are the gating prerequisites for true multi-replica HA, so
@@ -100,7 +100,8 @@ UX/a11y polish pass (2026-06-27): MentionComposer no-results state; password min
 Perf + polish pass #2 (2026-06-27): useProjectIssues passes `limit=200` (API cap) — reduces planning-view round-trips 5x; BoardColumn empty-button contrast raised to `text-sm text-gray-500` (WCAG-AA); OnboardingPanel emoji icons replaced with consistent inline SVGs; MyWork per-section EmptyState now has "Go to board" action. 16 e2e green (onboarding + my-work, desktop + mobile).
 Socket.io Redis adapter + BullMQ webhook queue (2026-06-27): `REDIS_URL`-gated — when set, Socket.io uses `@socket.io/redis-adapter` for multi-replica fan-out and webhook delivery is queued via BullMQ (3 attempts, exponential backoff, concurrency 10); when unset, existing in-memory adapter and in-process p-limit fan-out are unchanged. Phase 4 multi-replica HA prerequisites now met.
 Keyboard triage mode shipped 2026-06-27: `/projects/:id/triage` with full j/k/s/p/a/l/Enter/f/? keyboard model, ARIA listbox, VIEWER read-only, mobile open button, command palette entry, 12 e2e tests green.
-**v1 is feature-complete and green** (all release criteria met except the real `docker compose up` first-run check, which requires a host with registry access — see below). Remaining work is **post-v1**: query DSL/saved views, custom fields, automation rules, time tracking, email, dashboards, API tokens, audit log, bulk edit, importers, SSO — plus hardening (wire e2e into CI, JWT→httpOnly cookie) and the rest of Phase 4 packaging (GHCR images, Helm chart, web runtime-config).
+**v1 is feature-complete and green** (all release criteria met except the real `docker compose up` first-run check, which requires a host with registry access — see below). Remaining work is **post-v1**: query DSL/saved views, custom fields, automation rules, time tracking, email, dashboards, API tokens, audit log, bulk edit, importers, SSO — plus hardening (wire e2e into CI, JWT→httpOnly cookie) and the rest of Phase 4 packaging (GHCR images, Helm chart).
+Web runtime config (Phase 4 prereq) shipped 2026-06-27: `getApiUrl()` helper in `src/api/config.ts` reads `window.__NL_CONFIG__.apiUrl` → `VITE_API_URL` → default; `docker-entrypoint.sh` writes `/config.js` from `API_URL` env var at container start; `index.html` loads it before the bundle; nginx serves it no-cache. One web image, any environment, no rebuild. 6 Playwright e2e tests green (desktop + mobile). See `docs/DEPLOY-KUBERNETES.md`.
 
 ## v1.0 release criteria — definition of "a good product"
 

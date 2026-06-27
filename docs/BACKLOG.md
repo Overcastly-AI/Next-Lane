@@ -123,7 +123,7 @@ Format: `- [ ] (P1, M) title — description [src]` · P0 critical / P1 now / P2
 ## Later (P3)
 
 - [ ] (P3, S) Label rename / edit — users can't correct a label name typo without delete-and-recreate; obvious gap in label management [product-auditor]
-- [ ] (P3, S) VITE_API_URL is baked at build-time — note in README that the web image must be rebuilt (or a runtime injection approach used) when the API URL changes; easy to miss for self-hosters doing multi-env deploys [qa-review Pass 4]
+- [x] (P3, S) VITE_API_URL is baked at build-time — shipped 2026-06-27: `getApiUrl()` helper reads `window.__NL_CONFIG__.apiUrl` → `VITE_API_URL` → default; `docker-entrypoint.sh` writes `/config.js` from `API_URL` env at container start; `index.html` loads it before the bundle; nginx no-cache for config.js. One web image, any environment, no rebuild. 6 Playwright e2e tests (desktop + mobile) green. [qa-review Pass 4, roadmap]
 - [ ] (P3, M) "Team pulse" home dashboard — replace current workspace-selector + project-grid with a richer home page: recent activity across all projects (last 10 events from ActivityLog), active-sprint countdown banner, "Issues awaiting you" count (assigned + unread notifications); data all available; only a new read endpoint and redesigned DashboardPage needed [product-auditor Pass 4]
 - [x] (P3, L) Keyboard triage mode — full-screen dedicated triage view from the command palette: issues listed one-per-row, press `a` to assign, `p` to set priority, `l` to add label, `s` to change status, `Enter` to open drawer, `j`/`k` to navigate, `f` to filter; no schema changes needed; power-user differentiator [product-auditor Pass 4] — shipped 2026-06-27: `/projects/:id/triage` route + `TriagePage` (reuses `useProjectIssues`, `useBoard`, `useUsers`, `useLabels`, `useMyRole`, `useUpdateIssue`, `useToggleIssueLabel`); full keyboard model with global `keydown` handler; inline pickers for status/priority/assign/labels; `ShortcutHelp` overlay; ARIA listbox + `aria-activedescendant`; VIEWER read-only (readonly-hint, no pickers); mobile tap-to-open rows + open button; "Triage issues" command in command palette (Cmd-K); "Triage" tab in ProjectNav; 12 Playwright e2e tests green (desktop + mobile); tsc + build clean.
 - [ ] (P3, M) Per-project "Definition of Done" checklist — ADMIN configures a per-project checklist (JSON array on Project model) surfaced as a blocking prompt when an issue is moved to a DONE-category status; minimal schema additions; workflow guardrail self-hosted teams will configure to their process [product-auditor Pass 4]
@@ -144,7 +144,7 @@ single-host Compose path for small installs. Sequenced so single-replica Helm
 can ship first; multi-replica HA depends on the Redis items below.
 
 - [ ] (P3, M) Publish `api` + `web` container images to GHCR via CI — semver + `latest`, multi-arch (amd64/arm64), image scan + SBOM; precondition for any K8s/Helm install [roadmap]
-- [ ] (P3, S) Web runtime config for `VITE_API_URL` (+ public config) — currently baked at build time; serve env-substituted `config.js`/nginx template so one image works across environments without rebuilds (also closes the QA P3 "VITE_API_URL build-time" note) [roadmap, qa]
+- [x] (P3, S) Web runtime config for `VITE_API_URL` (+ public config) — shipped 2026-06-27: `docker-entrypoint.sh` writes `config.js` from `API_URL`; `getApiUrl()` in `src/api/config.ts` reads `window.__NL_CONFIG__.apiUrl`; 6 e2e tests green. Closes QA P3 note + ROADMAP Phase 4 prereq. [roadmap, qa]
 - [x] (P3, M) Socket.io Redis adapter — shipped 2026-06-27 (see P2 item above). [engineering-auditor]
 - [x] (P3, M) Redis-backed webhook delivery queue (BullMQ) — shipped 2026-06-27 (see P2 item above). [engineering-auditor Pass 4]
 - [ ] (P3, M) Schema migrations as a Helm pre-upgrade Job/initContainer (`prisma migrate deploy`) gated before api rollout — safe cluster upgrades [roadmap]
@@ -157,6 +157,17 @@ can ship first; multi-replica HA depends on the Redis items below.
 ---
 
 ## Changelog
+- 2026-06-27 — Web runtime config (P3, S): `VITE_API_URL` no longer baked into the web bundle at build time. ONE built web image works in every deployment environment.
+  - **`apps/web/src/api/config.ts`** (`getApiUrl()`): reads `window.__NL_CONFIG__?.apiUrl` → `import.meta.env.VITE_API_URL` → `'http://localhost:4000'`. Exported for socket.ts; `API_URL` in client.ts now calls this helper at module-init time.
+  - **`apps/web/index.html`**: loads `/config.js` as the first script tag (before the bundle) using a plain `<script src>` with `onerror` handler so dev/preview works even when the file is absent.
+  - **`apps/web/docker-entrypoint.sh`**: writes `/usr/share/nginx/html/config.js` from `API_URL` env var (falls back to `VITE_API_URL`, then `http://localhost:4000`) on every container start; `exec nginx -g "daemon off;"` replaces the shell process so signals propagate.
+  - **`apps/web/nginx.conf`**: added `location = /config.js { expires off; Cache-Control: no-store; }` so a container restart always delivers the updated config.
+  - **`apps/web/Dockerfile`**: `ENTRYPOINT ["/docker-entrypoint.sh"]` replaces `CMD ["nginx", …]`; `ARG/ENV VITE_API_URL=` kept (empty) for backward-compat with pipelines that still pass `--build-arg`.
+  - **`apps/web/e2e/runtime-config.spec.ts`**: 3 new tests — (1) dev fallback boots and reaches dashboard; (2) `__NL_CONFIG__` readable after `addInitScript` injection; (3) all API fetches on authenticated route go to runtime-configured origin (intercepted via `page.route()`). 6 tests green (desktop + mobile).
+  - **`docs/DEPLOY-KUBERNETES.md`**: initial content — how the runtime config works, env var reference, Docker Compose + Kubernetes patterns, sandbox caveats (no docker build in sandbox).
+  - **Dev path unchanged**: `pnpm dev` / `vite preview` — no config.js, fallback to `VITE_API_URL`.
+  - **Backward-compat**: passing `VITE_API_URL` still works (checked as second fallback); existing Compose deploys using `VITE_API_URL` continue without changes.
+
 - 2026-06-27 — Redis fan-out + BullMQ webhook queue (P2, M+S): wired `REDIS_URL`-gated Redis infrastructure as Phase 4 prerequisites for multi-replica HA.
   - **RedisModule** (`apps/api/src/redis/redis.module.ts`): global @Module providing three optional ioredis client tokens (`REDIS_PUB_CLIENT`, `REDIS_SUB_CLIENT`, `REDIS_CLIENT`); all `null` when `REDIS_URL` is unset.
   - **Socket.io Redis adapter**: `RealtimeGateway` now implements `OnGatewayInit`; `afterInit()` attaches `@socket.io/redis-adapter` with pub/sub clients when Redis is available, logs "multi-replica mode"; falls back to in-memory adapter with "single-node mode" log when unset. Handshake-auth and membership-check logic unchanged.
