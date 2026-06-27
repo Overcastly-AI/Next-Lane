@@ -1,4 +1,6 @@
 import { createHmac, randomBytes } from 'node:crypto';
+import * as dns from 'node:dns';
+import * as net from 'node:net';
 import {
   Injectable,
   Logger,
@@ -12,12 +14,111 @@ import {
   type WebhookEventType,
   type WebhookSubscriptionDto,
 } from '@next-lane/shared';
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const pLimit = require('p-limit') as (concurrency: number) => (<T>(fn: () => Promise<T>) => Promise<T>);
 import { PrismaService } from '../prisma/prisma.service';
 import {
   assertProjectMember,
   assertProjectRole,
 } from '../common/membership.util';
 import { CreateWebhookDto, UpdateWebhookDto } from './dto/webhook.dto';
+
+// ---- SSRF protection -------------------------------------------------------
+
+/**
+ * Returns true if the given IP address (v4 or v6) is in a blocked range.
+ *
+ * Blocked ranges:
+ *   IPv4: loopback 127.0.0.0/8, link-local 169.254.0.0/16,
+ *         private 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16,
+ *         this-network 0.0.0.0/8
+ *   IPv6: loopback ::1, link-local fe80::/10, unique-local fc00::/7
+ *
+ * Gate: when process.env.WEBHOOK_ALLOW_PRIVATE === 'true' the caller should
+ * skip this check entirely (see isBlockedUrl).
+ */
+export function isBlockedIp(ip: string): boolean {
+  if (net.isIPv4(ip)) {
+    const parts = ip.split('.').map(Number);
+    const [a, b] = parts;
+    // 0.0.0.0/8 — this-network (also covers 0.0.0.0 as a default-route sentinel)
+    if (a === 0) return true;
+    // 127.0.0.0/8 — loopback
+    if (a === 127) return true;
+    // 10.0.0.0/8 — private class A
+    if (a === 10) return true;
+    // 172.16.0.0/12 — private class B (172.16–172.31)
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    // 192.168.0.0/16 — private class C
+    if (a === 192 && b === 168) return true;
+    // 169.254.0.0/16 — link-local / AWS metadata
+    if (a === 169 && b === 254) return true;
+    return false;
+  }
+
+  if (net.isIPv6(ip)) {
+    // Normalise to lower-case for comparison.
+    const lower = ip.toLowerCase();
+    // ::1 — loopback
+    if (lower === '::1') return true;
+    // fe80::/10 — link-local (fe80 – febf)
+    if (/^fe[89ab][0-9a-f]:/i.test(lower)) return true;
+    // fc00::/7 — unique-local (fc00 – fdff)
+    if (/^f[cd][0-9a-f]{2}:/i.test(lower)) return true;
+    return false;
+  }
+
+  // Unknown address family — block by default (fail-closed).
+  return true;
+}
+
+/**
+ * Resolves the hostname in `urlString` to all its IP addresses and returns
+ * `true` if any resolved address falls in a blocked range.
+ *
+ * When `WEBHOOK_ALLOW_PRIVATE=true` the blocklist is entirely skipped so
+ * self-hosters can target internal infrastructure they control.
+ */
+async function resolveAndCheckBlocked(urlString: string): Promise<{ blocked: boolean; reason?: string }> {
+  if (process.env.WEBHOOK_ALLOW_PRIVATE === 'true') {
+    return { blocked: false };
+  }
+
+  let hostname: string;
+  try {
+    hostname = new URL(urlString).hostname;
+  } catch {
+    return { blocked: true, reason: 'invalid URL' };
+  }
+
+  // If the hostname is already a raw IP literal, check it directly.
+  if (net.isIP(hostname)) {
+    if (isBlockedIp(hostname)) {
+      return { blocked: true, reason: `IP ${hostname} is in a blocked range` };
+    }
+    return { blocked: false };
+  }
+
+  // Resolve DNS to all addresses and check each one.
+  let addresses: dns.LookupAddress[];
+  try {
+    addresses = await dns.promises.lookup(hostname, { all: true });
+  } catch (err) {
+    // DNS resolution failure — block (fail-closed; the host doesn't exist or
+    // is unreachable; do not attempt to deliver).
+    return { blocked: true, reason: `DNS lookup failed for ${hostname}: ${String(err)}` };
+  }
+
+  for (const { address } of addresses) {
+    if (isBlockedIp(address)) {
+      return {
+        blocked: true,
+        reason: `Hostname ${hostname} resolved to blocked IP ${address}`,
+      };
+    }
+  }
+  return { blocked: false };
+}
 
 // How many recent delivery rows to keep per subscription; older rows are pruned
 // after each delivery to keep the log bounded.
@@ -214,10 +315,16 @@ export class WebhooksService {
       timestamp: new Date().toISOString(),
       data,
     };
+
+    // Cap concurrency at 10 so a project with many webhooks cannot create an
+    // unbounded number of simultaneous outbound TCP connections.
+    const limit = pLimit(10);
     await Promise.all(
       matching.map((s) =>
-        this.deliver(toSubscriptionDto(s), s.secret, payload).catch((err) =>
-          this.logger.error(`webhook delivery error: ${String(err)}`),
+        limit(() =>
+          this.deliver(toSubscriptionDto(s), s.secret, payload).catch((err) =>
+            this.logger.error(`webhook delivery error: ${String(err)}`),
+          ),
         ),
       ),
     );
@@ -227,6 +334,17 @@ export class WebhooksService {
    * Attempt to POST the payload to a subscription's URL with an HMAC signature,
    * retrying on failure up to MAX_DELIVERY_ATTEMPTS, then record a delivery row.
    * Always resolves; never throws.
+   *
+   * SSRF protection: before sending, the target hostname is resolved to its IP
+   * addresses and any address in a private/loopback/link-local range causes
+   * delivery to be rejected. Gate this via WEBHOOK_ALLOW_PRIVATE=true if you
+   * are a self-hoster legitimately targeting internal infrastructure.
+   *
+   * Redirect safety: fetch is called with redirect:'manual' so a 3xx response
+   * cannot redirect to an internal host after the pre-flight check.
+   *
+   * Socket leak fix: the response body is always drained so the undici connection
+   * is released back to the pool even when we don't read the body content.
    */
   private async deliver(
     sub: WebhookSubscriptionDto,
@@ -239,6 +357,21 @@ export class WebhooksService {
     let error: string | null = null;
     let success = false;
 
+    // SSRF pre-flight: resolve hostname and check against blocked IP ranges.
+    const ssrf = await resolveAndCheckBlocked(sub.url);
+    if (ssrf.blocked) {
+      const reason = ssrf.reason ?? 'blocked by SSRF policy';
+      this.logger.warn(
+        `webhook delivery to ${sub.url} blocked: ${reason} (subscriptionId=${sub.id})`,
+      );
+      await this.recordDelivery(sub.id, payload.event, {
+        success: false,
+        responseStatus: null,
+        error: `SSRF blocked: ${reason}`,
+      });
+      return;
+    }
+
     for (let attempt = 1; attempt <= MAX_DELIVERY_ATTEMPTS; attempt++) {
       try {
         const res = await fetch(sub.url, {
@@ -250,8 +383,15 @@ export class WebhooksService {
           },
           body: rawBody,
           signal: AbortSignal.timeout(DELIVERY_TIMEOUT_MS),
+          // Prevent a 30x from bouncing to an internal host after the SSRF check.
+          redirect: 'manual',
         });
         responseStatus = res.status;
+
+        // Always drain the body to release the underlying TCP socket back to the
+        // connection pool; ignoring the body content is intentional.
+        await res.text().catch(() => undefined);
+
         if (res.ok) {
           success = true;
           error = null;

@@ -199,6 +199,8 @@ model Issue {
   @@index([sprintId])
   @@index([assigneeId])
   @@index([parentId])
+  // Covers keyset cursor pagination: WHERE projectId=X ORDER BY createdAt, id
+  @@index([projectId, createdAt, id])
 }
 
 model IssueLabel {
