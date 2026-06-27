@@ -320,11 +320,21 @@ Suggested fix: pass `action={<Link to="/"><Button size="sm" variant="secondary">
 ### Top 5 for the dev team (this cycle)
 
 1. **P1 — Fix the @mention "no results" state** (`MentionComposer.tsx` line 245): when the user types `@text` with no matching members the picker vanishes silently. Show a "No members match" placeholder row. This is a one-line change to the `isOpen` condition plus a short placeholder branch in the JSX.
+   - **RESOLVED 2026-06-27:** `isOpen` now triggers on `mentionQuery !== null`. Empty-list branch renders `data-testid="mention-no-results"` placeholder. Picker also switched to `top-full mt-1` (opens downward) and `shadow-cardHover`. 18 e2e tests green.
 
 2. **P1 — Resolve the password minimum-length inconsistency** (`ResetPasswordPage.tsx:69` vs. `RegisterPage.tsx:80`): ResetPassword requires 6 characters, Register requires 8. Align to 8 (or whatever the backend enforces) and update both the JS guard, `minLength` attr, and field hint text.
+   - **RESOLVED 2026-06-27:** ResetPasswordPage JS guard, `minLength`, and hint aligned to 8. `ResetPasswordDto.newPassword` `@MinLength` updated to 8 in `apps/api/src/auth/dto/auth.dto.ts`. 14 e2e tests green.
 
 3. **P1 — Fix board toolbar mobile overflow** (`BoardPage.tsx:274`): the `flex-wrap` toolbar can grow to 2–3 rows on 390 px screens, consuming most of the viewport before any board columns appear. Change filter pills to a scrollable `overflow-x-auto` strip or collapse them behind a single "Filters" button on mobile.
+   - **RESOLVED 2026-06-27:** Toolbar restructured to two rows on mobile (search+assignee row / filter-pills `overflow-x-auto` strip); desktop retains `sm:flex-wrap`. New e2e test confirms buttons stay within 180px at 375x812. 20 e2e tests green.
 
 4. **P2 — Correct `aria-haspopup` on filter triggers** (`BoardPage.tsx:489, 631`): both `LabelFilter` and `MultiSelectFilter` triggers declare `aria-haspopup="dialog"` but open a menu of checkboxes, not a dialog. Change to `aria-haspopup="menu"` to give screen readers accurate information.
+   - **RESOLVED 2026-06-27:** Both trigger buttons changed to `aria-haspopup="menu"`.
 
 5. **P2 — Replace emoji icons in OnboardingPanel with SVGs** (`OnboardingPanel.tsx:79-91`): the `⬛`, `🗓`, `📊` emoji render inconsistently across platforms. Replace with inline SVGs using `stroke="currentColor"` from the existing icon vocabulary.
+
+### Additional items resolved in the 2026-06-27 polish pass
+
+- **RESOLVED — ResetPasswordPage auto-redirect removed:** `setTimeout(() => navigate('/login'), 2000)` removed; success screen stays until user clicks "Go to sign in". e2e test updated.
+- **RESOLVED — MyWorkPage full-empty state unified:** bespoke `<div>` replaced with `<EmptyState>` from `States.tsx` (consistent `border-gray-300 bg-white/50 py-14` tokens).
+- **RESOLVED — autoFocus on first auth form input:** Added to Login (email), Register (name), ForgotPassword (email), and ResetPassword (new-password).

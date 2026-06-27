@@ -271,54 +271,64 @@ export function BoardPage() {
         </div>
       }
     >
-      <div className="flex flex-wrap items-center gap-3 px-4 py-3">
-        <div className="relative">
-          <svg
-            className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400"
-            width="15"
-            height="15"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
+      {/* Toolbar: on mobile the filter pills go into a horizontally scrollable
+          strip so they never wrap onto multiple rows. Desktop keeps flex-wrap. */}
+      <div className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
+        {/* Row 1 on mobile: search + assignee */}
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <svg
+              className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400"
+              width="15"
+              height="15"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <circle cx="11" cy="11" r="7" />
+              <path strokeLinecap="round" d="M21 21l-4-4" />
+            </svg>
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search cards…"
+              className="w-44 pl-8 sm:w-56"
+            />
+          </div>
+          <Select
+            value={assigneeFilter}
+            onChange={(e) => setAssigneeFilter(e.target.value)}
+            className="w-36 sm:w-44"
           >
-            <circle cx="11" cy="11" r="7" />
-            <path strokeLinecap="round" d="M21 21l-4-4" />
-          </svg>
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search cards…"
-            className="w-56 pl-8"
-          />
+            <option value="">All assignees</option>
+            <option value="unassigned">Unassigned</option>
+            {users.map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.name}
+              </option>
+            ))}
+          </Select>
+          {assigneeFilter && assigneeFilter !== 'unassigned' && (
+            <Avatar
+              user={users.find((u) => u.id === assigneeFilter)}
+              size="sm"
+            />
+          )}
         </div>
-        <Select
-          value={assigneeFilter}
-          onChange={(e) => setAssigneeFilter(e.target.value)}
-          className="w-44"
-        >
-          <option value="">All assignees</option>
-          <option value="unassigned">Unassigned</option>
-          {users.map((u) => (
-            <option key={u.id} value={u.id}>
-              {u.name}
-            </option>
-          ))}
-        </Select>
-        {assigneeFilter && assigneeFilter !== 'unassigned' && (
-          <Avatar
-            user={users.find((u) => u.id === assigneeFilter)}
-            size="sm"
+
+        {/* Row 2 on mobile: filter pills in a horizontally scrollable strip */}
+        <div className="flex items-center gap-3 overflow-x-auto pb-0.5 sm:overflow-x-visible sm:pb-0">
+          <LabelFilter
+            labels={labelsQuery.data ?? []}
+            selected={labelFilter}
+            onChange={setLabelFilter}
           />
-        )}
-        <LabelFilter
-          labels={labelsQuery.data ?? []}
-          selected={labelFilter}
-          onChange={setLabelFilter}
-        />
-        <TypeFilter selected={typeFilter} onChange={setTypeFilter} />
-        <PriorityFilter selected={priorityFilter} onChange={setPriorityFilter} />
-        <div className="ml-auto flex items-center gap-2">
+          <TypeFilter selected={typeFilter} onChange={setTypeFilter} />
+          <PriorityFilter selected={priorityFilter} onChange={setPriorityFilter} />
+        </div>
+
+        <div className="ml-auto flex items-center gap-2 sm:ml-auto">
           {board?.issuesTruncated && (
             <span
               data-testid="board-truncated-hint"
@@ -495,7 +505,7 @@ function LabelFilter({
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        aria-haspopup="dialog"
+        aria-haspopup="menu"
         className={cn(
           'inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-sm transition-colors',
           'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200',
@@ -637,7 +647,7 @@ function MultiSelectFilter<T extends string>({
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        aria-haspopup="dialog"
+        aria-haspopup="menu"
         className={cn(
           'inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-sm transition-colors',
           'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200',

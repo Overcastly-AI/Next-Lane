@@ -33,28 +33,24 @@ export function MyWorkPage() {
         <div className="space-y-8">
           {query.data.assigned.length === 0 &&
             query.data.reported.length === 0 && (
-              <div
-                data-testid="my-work-empty"
-                className="rounded-xl border border-dashed border-gray-200 bg-white py-10 text-center"
-              >
-                <svg
-                  className="mx-auto mb-3 h-10 w-10 text-gray-200"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  aria-hidden="true"
-                >
-                  <rect x="3" y="4" width="18" height="16" rx="2" />
-                  <path strokeLinecap="round" d="M7 9h10M7 13h6" />
-                </svg>
-                <p className="text-sm font-medium text-gray-600">
-                  No work items yet
-                </p>
-                <p className="mt-1 text-xs text-gray-400">
-                  Issues assigned to you or reported by you across all projects
-                  will appear here.
-                </p>
+              <div data-testid="my-work-empty">
+                <EmptyState
+                  title="No work items yet"
+                  description="Issues assigned to you or reported by you across all projects will appear here."
+                  icon={
+                    <svg
+                      className="h-10 w-10"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      aria-hidden="true"
+                    >
+                      <rect x="3" y="4" width="18" height="16" rx="2" />
+                      <path strokeLinecap="round" d="M7 9h10M7 13h6" />
+                    </svg>
+                  }
+                />
               </div>
             )}
           <Section

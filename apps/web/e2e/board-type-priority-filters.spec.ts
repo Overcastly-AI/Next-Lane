@@ -277,6 +277,30 @@ test.describe('Board type + priority filters – mobile', () => {
     await expect(page.getByRole('button', { name: /^Priority/ })).toBeVisible();
   });
 
+  test('filter pills do not wrap to multiple rows — toolbar height stays reasonable on mobile', async ({
+    page,
+    request,
+  }) => {
+    await setupIsolatedProject(page, request, { label: 'filter-nowrap' });
+
+    // Wait for the board toolbar to be rendered
+    const typeBtn = page.getByRole('button', { name: /^Type/ });
+    const priorityBtn = page.getByRole('button', { name: /^Priority/ });
+    await expect(typeBtn).toBeVisible({ timeout: 10_000 });
+    await expect(priorityBtn).toBeVisible({ timeout: 10_000 });
+
+    // Both filter buttons must be in the viewport (not hidden below a fold
+    // caused by the toolbar growing taller than the viewport).
+    const typeBtnBox = await typeBtn.boundingBox();
+    const priorityBtnBox = await priorityBtn.boundingBox();
+    expect(typeBtnBox, 'Type button should be in viewport').not.toBeNull();
+    expect(priorityBtnBox, 'Priority button should be in viewport').not.toBeNull();
+    // On a 375x812 viewport the toolbar should not push below 180px total —
+    // two compact rows (search+assignee / filter pills) at most.
+    expect(typeBtnBox!.y).toBeLessThan(180);
+    expect(priorityBtnBox!.y).toBeLessThan(180);
+  });
+
   test('Type filter works on mobile viewport', async ({ page, request }) => {
     const ctx = await setupIsolatedProject(page, request, {
       label: 'type-mobile',

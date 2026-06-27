@@ -131,7 +131,33 @@ test.describe('Password reset', () => {
     ).toBeVisible({ timeout: 10_000 });
   });
 
-  test('full flow: forgot → reset → login with new password', async ({
+  test('form rejects a password shorter than 8 characters', async ({ page, request }) => {
+    const user = await registerNewUser(request, 'pw-short');
+    const token = await requestResetToken(request, user);
+
+    await page.goto(`/reset-password?token=${token}`);
+    await expect(
+      page.getByRole('heading', { name: /choose a new password/i }),
+    ).toBeVisible();
+
+    // Try a 7-character password — should be rejected client-side.
+    const newPwInput = page.getByLabel(/new password/i);
+    await newPwInput.pressSequentially('Abc1234', { delay: 25 });
+    const confirmInput = page.getByLabel(/confirm password/i);
+    await confirmInput.pressSequentially('Abc1234', { delay: 25 });
+    await page.getByRole('button', { name: /set new password/i }).click();
+
+    // The client-side guard blocks submission and shows a helpful error.
+    await expect(page.getByText(/at least 8 characters/i)).toBeVisible({
+      timeout: 5_000,
+    });
+    // Must still be on the reset page (not redirected to success).
+    await expect(
+      page.getByRole('heading', { name: /choose a new password/i }),
+    ).toBeVisible();
+  });
+
+  test('full flow: forgot → reset → "Go to sign in" link → login with new password', async ({
     page,
     request,
   }) => {
@@ -166,11 +192,20 @@ test.describe('Password reset', () => {
     await confirmInput.pressSequentially(newPassword, { delay: 25 });
     await page.getByRole('button', { name: /set new password/i }).click();
 
-    // 6. Success state renders and then we redirect to /login.
+    // 6. Success state renders — no auto-redirect; user sees "Go to sign in" link.
     await expect(
       page.getByRole('heading', { name: /password updated/i }),
     ).toBeVisible({ timeout: 10_000 });
-    await expect(page).toHaveURL(/\/login/, { timeout: 10_000 });
+    // Page should NOT auto-redirect within 3 seconds (setTimeout removed).
+    await page.waitForTimeout(3_100);
+    await expect(
+      page.getByRole('heading', { name: /password updated/i }),
+    ).toBeVisible();
+    // The "Go to sign in" link is present.
+    const goToSignIn = page.getByRole('link', { name: /go to sign in/i });
+    await expect(goToSignIn).toBeVisible();
+    await goToSignIn.click();
+    await expect(page).toHaveURL(/\/login/, { timeout: 5_000 });
 
     // 7. Log in with the new password.
     const emailLogin = page.getByLabel(/email/i);

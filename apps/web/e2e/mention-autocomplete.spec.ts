@@ -305,4 +305,33 @@ test.describe('@mention autocomplete in comment composer', () => {
       await expect(composer).toBeFocused();
     }
   });
+
+  test('picker stays open with a "no members match" placeholder when query has no results', async ({
+    page,
+    request,
+  }) => {
+    const { userA, project, issue } = await setup(request, 'noresults');
+
+    await login(page, { email: userA.email, password: userA.password });
+    await openIssueDrawer(page, project.id, issue.id);
+
+    const composer = page.getByTestId('comment-composer');
+    await composer.click();
+
+    // Type @xyznosuchmatch — no member has this in their name or email
+    await composer.pressSequentially('@xyznosuchmatch', { delay: 25 });
+
+    // Picker should remain visible (not silently disappear)
+    const picker = page.getByTestId('mention-picker');
+    await expect(picker).toBeVisible({ timeout: 5_000 });
+
+    // The no-results placeholder row should appear
+    const noResults = page.getByTestId('mention-no-results');
+    await expect(noResults).toBeVisible({ timeout: 5_000 });
+    await expect(noResults).toContainText('No members match');
+
+    // Picker should disappear after pressing Escape
+    await composer.press('Escape');
+    await expect(picker).not.toBeVisible();
+  });
 });

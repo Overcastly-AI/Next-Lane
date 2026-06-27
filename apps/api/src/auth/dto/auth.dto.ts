@@ -38,7 +38,7 @@ export class ResetPasswordDto {
 
   /** New password — same constraints as registration. */
   @IsString()
-  @MinLength(6)
+  @MinLength(8)
   @MaxLength(200)
   newPassword!: string;
 }
