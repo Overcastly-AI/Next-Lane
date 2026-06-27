@@ -36,7 +36,7 @@ import { errorMessage } from '@/lib/errorMessage';
 const ROLE_CLASSES: Record<Role, string> = {
   [Role.ADMIN]: 'bg-purple-100 text-purple-700',
   [Role.MEMBER]: 'bg-blue-100 text-blue-700',
-  [Role.VIEWER]: 'bg-gray-100 text-gray-600',
+  [Role.VIEWER]: 'bg-slate-100 text-slate-600',
 };
 
 // ── Member row ────────────────────────────────────────────────────────────────
@@ -52,7 +52,7 @@ function MemberRow({
   isAdmin: boolean;
   onRemove: (m: MembershipDto) => void;
 }) {
-  const roleClass = ROLE_CLASSES[membership.role] ?? 'bg-gray-100 text-gray-600';
+  const roleClass = ROLE_CLASSES[membership.role] ?? 'bg-slate-100 text-slate-600';
 
   return (
     <li
@@ -61,15 +61,15 @@ function MemberRow({
     >
       <Avatar user={membership.user} size="md" className="shrink-0" />
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-gray-900">
+        <p className="truncate text-sm font-medium text-slate-900">
           {membership.user.name}
           {isMe && (
-            <span className="ml-1.5 text-xs font-normal text-gray-400">
+            <span className="ml-1.5 text-xs font-normal text-slate-400">
               (you)
             </span>
           )}
         </p>
-        <p className="truncate text-xs text-gray-500">{membership.user.email}</p>
+        <p className="truncate text-xs text-slate-500">{membership.user.email}</p>
       </div>
       <span
         className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${roleClass}`}
@@ -154,8 +154,8 @@ export function WorkspaceMembersPage() {
         data-testid="workspace-members-page"
       >
         <div className="mb-5">
-          <h1 className="text-lg font-semibold text-gray-900">Members</h1>
-          <p className="mt-0.5 text-sm text-gray-500">
+          <h1 className="text-lg font-semibold text-slate-900">Members</h1>
+          <p className="mt-0.5 text-sm text-slate-500">
             Everyone with access to this workspace.
           </p>
         </div>
@@ -168,22 +168,22 @@ export function WorkspaceMembersPage() {
             onRetry={() => void membersQuery.refetch()}
           />
         ) : (
-          <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-card sm:p-5">
+          <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:p-5">
             <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-gray-900">
+              <h2 className="text-sm font-semibold text-slate-900">
                 {members.length}{' '}
                 {members.length === 1 ? 'member' : 'members'}
               </h2>
               {!isAdmin && myRole !== null && (
-                <span className="text-xs text-gray-400">
+                <span className="text-xs text-slate-400">
                   Removal is restricted to workspace administrators.
                 </span>
               )}
             </div>
             {members.length === 0 ? (
-              <p className="py-4 text-sm text-gray-400">No members yet.</p>
+              <p className="py-4 text-sm text-slate-400">No members yet.</p>
             ) : (
-              <ul className="divide-y divide-gray-100">
+              <ul className="divide-y divide-slate-100">
                 {members.map((m) => (
                   <MemberRow
                     key={m.id}
@@ -199,7 +199,7 @@ export function WorkspaceMembersPage() {
         )}
 
         {/* Badge legend */}
-        <div className="mt-4 flex flex-wrap gap-3 text-xs text-gray-500">
+        <div className="mt-4 flex flex-wrap gap-3 text-xs text-slate-500">
           <span className="flex items-center gap-1.5">
             <span className="inline-flex items-center rounded-full bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-700">
               ADMIN
@@ -211,7 +211,7 @@ export function WorkspaceMembersPage() {
             Can create and edit issues.
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">
+            <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
               VIEWER
             </span>
             Read-only access.
@@ -225,7 +225,7 @@ export function WorkspaceMembersPage() {
         message={
           <>
             Remove{' '}
-            <span className="font-medium text-gray-900">
+            <span className="font-medium text-slate-900">
               {pendingRemove?.user.name}
             </span>{' '}
             ({pendingRemove?.user.email}) from this workspace? They will lose all
@@ -259,24 +259,24 @@ function Shell({
         <div className="flex min-w-0 items-center gap-2 overflow-hidden">
           <Link
             to="/"
-            className="shrink-0 text-sm text-gray-400 hover:text-gray-600"
+            className="shrink-0 text-sm text-slate-400 hover:text-slate-600"
             aria-label="Back to dashboard"
           >
             Dashboard
           </Link>
-          <span className="shrink-0 text-gray-300">/</span>
-          <span className="min-w-0 truncate text-sm text-gray-500">
+          <span className="shrink-0 text-slate-300">/</span>
+          <span className="min-w-0 truncate text-sm text-slate-500">
             {workspaceName ?? 'Workspace'}
           </span>
-          <span className="shrink-0 text-gray-300">/</span>
-          <span className="shrink-0 text-sm font-semibold text-gray-900">
+          <span className="shrink-0 text-slate-300">/</span>
+          <span className="shrink-0 text-sm font-semibold text-slate-900">
             Members
           </span>
         </div>
       </AppHeader>
       {/* Workspace sub-nav */}
       <nav
-        className="flex items-center gap-1 border-b border-gray-100 bg-white px-4 py-1"
+        className="flex items-center gap-1 border-b border-slate-100 bg-white px-4 py-1"
         aria-label="Workspace navigation"
       >
         <Link
@@ -288,7 +288,7 @@ function Shell({
         </Link>
         <Link
           to={`/workspaces/${workspaceId}/audit-log`}
-          className="rounded-md px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+          className="rounded-md px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900"
         >
           Audit log
         </Link>

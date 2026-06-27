@@ -47,7 +47,7 @@ export function CommentsPanel({
 
   return (
     <div className="space-y-3">
-      <p className="text-xs font-medium text-gray-600">Comments</p>
+      <p className="text-xs font-medium text-slate-600">Comments</p>
 
       {editable && (
       <form onSubmit={onSubmit} className="flex gap-2">
@@ -67,7 +67,7 @@ export function CommentsPanel({
             }}
           />
           <div className="flex items-center justify-between">
-            <span className="text-xs text-gray-400">⌘/Ctrl + Enter to send</span>
+            <span className="text-xs text-slate-400">⌘/Ctrl + Enter to send</span>
             <Button
               type="submit"
               size="sm"
@@ -108,7 +108,7 @@ export function CommentsPanel({
           ))}
         </ul>
       ) : (
-        <p className="py-2 text-sm text-gray-400">No comments yet.</p>
+        <p className="py-2 text-sm text-slate-400">No comments yet.</p>
       )}
     </div>
   );
@@ -168,10 +168,10 @@ function CommentItem({
       <Avatar user={comment.author} size="md" className="mt-0.5" />
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2">
-          <span className="text-sm font-medium text-gray-800">
+          <span className="text-sm font-medium text-slate-800">
             {comment.author.name}
           </span>
-          <span className="text-xs text-gray-400">
+          <span className="text-xs text-slate-400">
             {new Date(comment.createdAt).toLocaleString()}
           </span>
           {isOwn && !editing && (
@@ -179,14 +179,14 @@ function CommentItem({
               <button
                 type="button"
                 onClick={startEdit}
-                className="text-xs font-medium text-gray-500 hover:text-brand-600"
+                className="text-xs font-medium text-slate-500 hover:text-brand-600"
               >
                 Edit
               </button>
               <button
                 type="button"
                 onClick={() => setConfirmDelete(true)}
-                className="text-xs font-medium text-gray-500 hover:text-red-600"
+                className="text-xs font-medium text-slate-500 hover:text-red-600"
               >
                 Delete
               </button>

@@ -63,7 +63,7 @@ function deriveWindow(data: RoadmapDto): Window | null {
 }
 
 const SPRINT_COLORS: Record<SprintState, { bar: string; dot: string; label: string }> = {
-  [SprintState.PLANNED]: { bar: 'bg-gray-200 text-gray-700', dot: 'bg-gray-400', label: 'Planned' },
+  [SprintState.PLANNED]: { bar: 'bg-slate-200 text-slate-700', dot: 'bg-gray-400', label: 'Planned' },
   [SprintState.ACTIVE]: { bar: 'bg-brand-500 text-white', dot: 'bg-brand-500', label: 'Active' },
   [SprintState.COMPLETED]: { bar: 'bg-emerald-500 text-white', dot: 'bg-emerald-500', label: 'Completed' },
 };
@@ -98,12 +98,12 @@ export function RoadmapTimeline({
         {(Object.keys(SPRINT_COLORS) as SprintState[]).map((st) => (
           <span key={st} className="flex items-center gap-1.5">
             <span className={cn('inline-block h-2.5 w-2.5 rounded-sm', SPRINT_COLORS[st].dot)} />
-            <span className="text-xs text-gray-500">{SPRINT_COLORS[st].label} sprint</span>
+            <span className="text-xs text-slate-500">{SPRINT_COLORS[st].label} sprint</span>
           </span>
         ))}
         <span className="flex items-center gap-1.5">
           <span className="inline-block h-3 w-0.5 bg-rose-500" />
-          <span className="text-xs text-gray-500">Today</span>
+          <span className="text-xs text-slate-500">Today</span>
         </span>
       </div>
 
@@ -111,11 +111,11 @@ export function RoadmapTimeline({
         <div className="overflow-x-auto">
           <div className="min-w-[640px]">
             {/* Month axis */}
-            <div className="relative mb-2 h-6 border-b border-gray-200">
+            <div className="relative mb-2 h-6 border-b border-slate-200">
               {win.months.map((m) => (
                 <div
                   key={m.ts}
-                  className="absolute top-0 flex h-full items-center border-l border-gray-100 pl-1 text-[11px] font-medium text-gray-400"
+                  className="absolute top-0 flex h-full items-center border-l border-slate-100 pl-1 text-[11px] font-medium text-slate-400"
                   style={{ left: `${pct(m.ts)}%` }}
                 >
                   {m.label}
@@ -183,8 +183,8 @@ export function RoadmapTimeline({
 
       {/* No-dates lane (rendered outside the time grid) */}
       {noDateEpics.length > 0 && (
-        <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-3">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+        <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-3">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
             No dates
           </p>
           <div className="flex flex-col gap-1.5">
@@ -194,11 +194,11 @@ export function RoadmapTimeline({
                 type="button"
                 onClick={() => onOpenEpic(e.id)}
                 data-testid="roadmap-epic-nodate"
-                className="flex items-center justify-between rounded-md border border-gray-200 bg-white px-3 py-2 text-left text-sm hover:border-brand-300 hover:bg-brand-50"
+                className="flex items-center justify-between rounded-md border border-slate-200 bg-white px-3 py-2 text-left text-sm hover:border-brand-300 hover:bg-brand-50"
               >
                 <span className="flex items-center gap-2">
-                  <span className="font-mono text-xs text-gray-400">{e.key}</span>
-                  <span className="truncate font-medium text-gray-800">{e.title}</span>
+                  <span className="font-mono text-xs text-slate-400">{e.key}</span>
+                  <span className="truncate font-medium text-slate-800">{e.title}</span>
                 </span>
                 <ProgressBadge epic={e} />
               </button>
@@ -212,8 +212,8 @@ export function RoadmapTimeline({
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="border-t border-gray-100 py-2 first:border-t-0">
-      <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+    <div className="border-t border-slate-100 py-2 first:border-t-0">
+      <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
         {title}
       </p>
       <div className="flex flex-col">{children}</div>

@@ -52,7 +52,7 @@ export function PresenceAvatars({ viewers, className }: PresenceAvatarsProps) {
             aria-label={`and ${overflow} more`}
             className={cn(
               'inline-flex h-6 w-6 items-center justify-center rounded-full',
-              'bg-gray-200 text-[10px] font-semibold text-gray-600',
+              'bg-slate-200 text-[10px] font-semibold text-slate-600',
               'ring-2 ring-white',
             )}
           >

@@ -31,10 +31,10 @@ export function OnboardingPanel({
         </span>
       </div>
 
-      <h1 className="text-2xl font-bold tracking-tight text-gray-900">
+      <h1 className="text-2xl font-bold tracking-tight text-slate-900">
         Welcome to Next Lane
       </h1>
-      <p className="mt-3 text-sm leading-relaxed text-gray-500">
+      <p className="mt-3 text-sm leading-relaxed text-slate-500">
         Next Lane is a self-hosted issue and project tracker for agile teams.
         Plan sprints, track bugs and tasks on a Kanban board, measure velocity,
         and keep your whole team in sync — all running on your own
@@ -59,15 +59,15 @@ export function OnboardingPanel({
         {HIGHLIGHTS.map((h) => (
           <li
             key={h.label}
-            className="flex flex-col gap-1 rounded-xl bg-gray-50 px-4 py-3"
+            className="flex flex-col gap-1 rounded-xl bg-slate-50 px-4 py-3"
           >
-            <span className="h-5 w-5 text-gray-400" aria-hidden="true">
+            <span className="h-5 w-5 text-slate-400" aria-hidden="true">
               {h.icon}
             </span>
-            <span className="text-xs font-semibold text-gray-800">
+            <span className="text-xs font-semibold text-slate-800">
               {h.label}
             </span>
-            <span className="text-xs text-gray-500">{h.description}</span>
+            <span className="text-xs text-slate-500">{h.description}</span>
           </li>
         ))}
       </ul>

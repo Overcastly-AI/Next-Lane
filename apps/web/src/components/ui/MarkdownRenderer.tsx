@@ -92,7 +92,7 @@ export function MarkdownRenderer({
       dangerouslySetInnerHTML={{ __html: html }}
       className={[
         // Prose-style typography for rendered markdown.
-        'markdown-body text-sm text-gray-700',
+        'markdown-body text-sm text-slate-700',
         className,
       ]
         .filter(Boolean)

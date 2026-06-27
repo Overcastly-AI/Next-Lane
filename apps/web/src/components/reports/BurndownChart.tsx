@@ -126,14 +126,14 @@ export function BurndownChart({
       <div className="mt-2 flex items-center justify-center gap-4">
         <div className="flex items-center gap-1.5">
           <span className="inline-block h-0.5 w-4 bg-brand-600" />
-          <span className="text-xs text-gray-500">Remaining</span>
+          <span className="text-xs text-slate-500">Remaining</span>
         </div>
         <div className="flex items-center gap-1.5">
           <span
-            className="inline-block h-0 w-4 border-t-2 border-dashed border-gray-300"
+            className="inline-block h-0 w-4 border-t-2 border-dashed border-slate-300"
             aria-hidden
           />
-          <span className="text-xs text-gray-500">Ideal</span>
+          <span className="text-xs text-slate-500">Ideal</span>
         </div>
       </div>
     </div>

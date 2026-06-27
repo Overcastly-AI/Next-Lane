@@ -23,14 +23,14 @@ export function ResetPasswordPage() {
       <AuthShell
         title="Invalid reset link"
         footer={
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-slate-500">
             <Link to="/forgot-password" className="font-medium text-brand-600 hover:text-brand-700">
               Request a new link
             </Link>
           </p>
         }
       >
-        <p className="text-sm text-gray-600 text-center">
+        <p className="text-sm text-slate-600 text-center">
           This reset link is missing its token. Please request a new one.
         </p>
       </AuthShell>
@@ -43,14 +43,14 @@ export function ResetPasswordPage() {
         title="Password updated"
         subtitle="You can now sign in with your new password."
         footer={
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-slate-500">
             <Link to="/login" className="font-medium text-brand-600 hover:text-brand-700">
               Go to sign in
             </Link>
           </p>
         }
       >
-        <p className="text-sm text-gray-600 text-center">
+        <p className="text-sm text-slate-600 text-center">
           Your password has been updated successfully.
         </p>
       </AuthShell>
@@ -88,7 +88,7 @@ export function ResetPasswordPage() {
       title="Choose a new password"
       subtitle="Enter and confirm your new password below."
       footer={
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-slate-500">
           <Link to="/login" className="font-medium text-brand-600 hover:text-brand-700">
             Back to sign in
           </Link>

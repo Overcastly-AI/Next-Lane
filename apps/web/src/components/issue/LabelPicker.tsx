@@ -85,7 +85,7 @@ export function LabelPicker({
   return (
     <div ref={containerRef} className="relative">
       <div className="mb-1 flex items-center justify-between">
-        <p className="text-xs font-medium text-gray-600">Labels</p>
+        <p className="text-xs font-medium text-slate-600">Labels</p>
         {editable && (
           <button
             type="button"
@@ -108,14 +108,14 @@ export function LabelPicker({
           ))}
         </div>
       ) : (
-        <p className="text-xs text-gray-400">No labels</p>
+        <p className="text-xs text-slate-400">No labels</p>
       )}
 
       {open && (
         <div
           role="dialog"
           aria-label="Edit labels"
-          className="absolute right-0 z-20 mt-2 w-72 rounded-lg border border-gray-200 bg-white p-2 shadow-cardHover"
+          className="absolute right-0 z-20 mt-2 w-72 rounded-lg border border-slate-200 bg-white p-2 shadow-cardHover"
         >
           <LabelList
             labels={allLabels}
@@ -156,9 +156,9 @@ function LabelList({
   return (
     <>
       {loading ? (
-        <p className="px-1 py-2 text-xs text-gray-400">Loading…</p>
+        <p className="px-1 py-2 text-xs text-slate-400">Loading…</p>
       ) : labels.length === 0 ? (
-        <p className="px-1 py-2 text-xs text-gray-400">No labels yet.</p>
+        <p className="px-1 py-2 text-xs text-slate-400">No labels yet.</p>
       ) : (
         <ul className="max-h-56 space-y-0.5 overflow-y-auto">
           {labels.map((label) => {
@@ -183,14 +183,14 @@ function LabelList({
                   role="menuitemcheckbox"
                   aria-checked={checked}
                   onClick={() => onToggle(label, !checked)}
-                  className="flex flex-1 items-center gap-2 rounded px-1.5 py-1 text-left hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+                  className="flex flex-1 items-center gap-2 rounded px-1.5 py-1 text-left hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                 >
                   <span
                     className={cn(
                       'flex h-4 w-4 flex-shrink-0 items-center justify-center rounded border',
                       checked
                         ? 'border-brand-600 bg-brand-600 text-white'
-                        : 'border-gray-300',
+                        : 'border-slate-300',
                     )}
                   >
                     {checked && (
@@ -214,7 +214,7 @@ function LabelList({
                     type="button"
                     aria-label={`Rename label ${label.name}`}
                     onClick={() => setEditingLabel(label)}
-                    className="rounded p-1 text-gray-300 opacity-0 transition-opacity hover:bg-gray-100 hover:text-gray-600 focus:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 group-hover:opacity-100"
+                    className="rounded p-1 text-slate-300 opacity-0 transition-opacity hover:bg-slate-100 hover:text-slate-600 focus:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 group-hover:opacity-100"
                   >
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z" />
@@ -226,7 +226,7 @@ function LabelList({
                     type="button"
                     aria-label={`Delete label ${label.name}`}
                     onClick={() => setPendingDelete(label)}
-                    className="rounded p-1 text-gray-300 opacity-0 transition-opacity hover:bg-red-50 hover:text-red-600 focus:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-300 group-hover:opacity-100"
+                    className="rounded p-1 text-slate-300 opacity-0 transition-opacity hover:bg-red-50 hover:text-red-600 focus:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-300 group-hover:opacity-100"
                   >
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
                       <path strokeLinecap="round" d="M6 6l12 12M6 18L18 6" />
@@ -240,7 +240,7 @@ function LabelList({
       )}
 
       {editable && (
-        <div className="mt-1 border-t border-gray-100 pt-1">
+        <div className="mt-1 border-t border-slate-100 pt-1">
           {creating ? (
             <CreateLabelForm
               projectId={projectId}
@@ -358,7 +358,7 @@ function InlineEditLabelRow({
             style={{ backgroundColor: s }}
             className={cn(
               'h-4 w-4 rounded-full transition-transform focus:outline-none',
-              s === color ? 'ring-2 ring-gray-900 ring-offset-1' : 'hover:scale-110',
+              s === color ? 'ring-2 ring-slate-900 ring-offset-1' : 'hover:scale-110',
             )}
           />
         ))}
@@ -436,7 +436,7 @@ function CreateLabelForm({
             className={cn(
               'h-5 w-5 rounded-full transition-transform focus:outline-none',
               s === color
-                ? 'ring-2 ring-gray-900 ring-offset-1'
+                ? 'ring-2 ring-slate-900 ring-offset-1'
                 : 'hover:scale-110',
             )}
           />

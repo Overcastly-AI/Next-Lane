@@ -36,28 +36,31 @@ export function Modal({
       role={role}
       aria-modal="true"
     >
+      {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-gray-900/40 backdrop-blur-[1px]"
+        className="fixed inset-0 bg-slate-900/40 backdrop-blur-[2px] animate-nl-fade-in"
         onClick={onClose}
         aria-hidden="true"
       />
+      {/* Panel */}
       <div
         ref={panelRef}
         tabIndex={-1}
         className={cn(
-          'relative z-10 mt-8 w-full rounded-xl bg-white shadow-xl outline-none',
+          'nl-modal-animate relative z-10 mt-8 w-full rounded-xl bg-white shadow-modal outline-none',
+          'border border-slate-100',
           size,
         )}
       >
         {title !== undefined && (
-          <div className="flex items-center justify-between border-b border-gray-100 px-5 py-3.5">
-            <h2 className="text-base font-semibold text-gray-900">{title}</h2>
+          <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3.5">
+            <h2 className="text-sm font-semibold text-slate-900">{title}</h2>
             <button
               onClick={onClose}
               aria-label="Close"
-              className="-mr-1 rounded-md p-1 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600"
+              className="-mr-1 rounded-md p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
             >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
                 <path strokeLinecap="round" d="M6 6l12 12M6 18L18 6" />
               </svg>
             </button>
@@ -65,7 +68,7 @@ export function Modal({
         )}
         <div className="px-5 py-4">{children}</div>
         {footer && (
-          <div className="flex justify-end gap-2 border-t border-gray-100 px-5 py-3.5">
+          <div className="flex justify-end gap-2 border-t border-slate-100 px-5 py-3.5">
             {footer}
           </div>
         )}

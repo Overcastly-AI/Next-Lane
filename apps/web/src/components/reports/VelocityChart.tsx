@@ -129,7 +129,7 @@ function Legend({
       {items.map((it) => (
         <div key={it.label} className="flex items-center gap-1.5">
           <span className={`inline-block h-2.5 w-2.5 rounded-sm ${it.color}`} />
-          <span className="text-xs text-gray-500">{it.label}</span>
+          <span className="text-xs text-slate-500">{it.label}</span>
         </div>
       ))}
     </div>

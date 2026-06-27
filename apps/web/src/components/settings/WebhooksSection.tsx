@@ -27,12 +27,12 @@ function SectionCard({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-card sm:p-5">
+    <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:p-5">
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold text-gray-900">{title}</h2>
+          <h2 className="text-sm font-semibold text-slate-900">{title}</h2>
           {description && (
-            <p className="mt-0.5 text-xs text-gray-500">{description}</p>
+            <p className="mt-0.5 text-xs text-slate-500">{description}</p>
           )}
         </div>
         {action}
@@ -92,13 +92,13 @@ export function WebhooksSection({
       }
     >
       {webhooksQuery.isLoading ? (
-        <p className="py-4 text-sm text-gray-400">Loading webhooks…</p>
+        <p className="py-4 text-sm text-slate-400">Loading webhooks…</p>
       ) : webhooks.length === 0 ? (
-        <p className="py-2 text-sm text-gray-400">
+        <p className="py-2 text-sm text-slate-400">
           No webhooks yet. Add one to receive event notifications.
         </p>
       ) : (
-        <ul className="divide-y divide-gray-100">
+        <ul className="divide-y divide-slate-100">
           {webhooks.map((webhook) => (
             <WebhookRow
               key={webhook.id}
@@ -126,7 +126,7 @@ export function WebhooksSection({
         message={
           <>
             Delete the webhook for{' '}
-            <span className="font-medium text-gray-900">
+            <span className="font-medium text-slate-900">
               {pendingDelete?.url}
             </span>
             ? It will stop receiving events immediately.
@@ -190,15 +190,15 @@ function WebhookRow({
         <span
           className={cn(
             'h-2 w-2 shrink-0 rounded-full',
-            webhook.active ? 'bg-green-500' : 'bg-gray-300',
+            webhook.active ? 'bg-green-500' : 'bg-slate-300',
           )}
           aria-hidden="true"
         />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium text-gray-800">
+          <p className="truncate text-sm font-medium text-slate-800">
             {webhook.url}
           </p>
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-slate-500">
             {eventSummary}
             {!webhook.active && ' · inactive'}
           </p>
@@ -208,7 +208,7 @@ function WebhookRow({
           <button
             type="button"
             onClick={() => setShowDeliveries((v) => !v)}
-            className="rounded px-2 py-1 text-xs font-medium text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+            className="rounded px-2 py-1 text-xs font-medium text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
             aria-expanded={showDeliveries}
           >
             {showDeliveries ? 'Hide log' : 'Deliveries'}
@@ -232,7 +232,7 @@ function WebhookRow({
             disabled={update.isPending}
             className={cn(
               'relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 disabled:opacity-50',
-              webhook.active ? 'bg-green-500' : 'bg-gray-300',
+              webhook.active ? 'bg-green-500' : 'bg-slate-300',
             )}
           >
             <span
@@ -277,14 +277,14 @@ function DeliveryLog({
   const deliveries = deliveriesQuery.data ?? [];
 
   return (
-    <div className="mt-3 rounded-lg border border-gray-100 bg-gray-50 p-3">
-      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+    <div className="mt-3 rounded-lg border border-slate-100 bg-slate-50 p-3">
+      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
         Recent deliveries
       </h3>
       {deliveriesQuery.isLoading ? (
-        <p className="text-xs text-gray-400">Loading…</p>
+        <p className="text-xs text-slate-400">Loading…</p>
       ) : deliveries.length === 0 ? (
-        <p className="text-xs text-gray-400">No deliveries yet.</p>
+        <p className="text-xs text-slate-400">No deliveries yet.</p>
       ) : (
         <ul className="space-y-1.5" data-testid="webhook-delivery-list">
           {deliveries.map((d) => (
@@ -305,10 +305,10 @@ function DeliveryLog({
                   ? d.responseStatus ?? 'OK'
                   : 'Failed'}
               </span>
-              <span className="min-w-0 flex-1 truncate font-medium text-gray-700">
+              <span className="min-w-0 flex-1 truncate font-medium text-slate-700">
                 {d.event}
               </span>
-              <span className="shrink-0 text-gray-400">
+              <span className="shrink-0 text-slate-400">
                 {formatTime(d.createdAt)}
               </span>
             </li>
@@ -348,8 +348,8 @@ function IconButton({
       className={cn(
         'rounded p-1.5 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300',
         danger
-          ? 'text-gray-400 hover:bg-red-50 hover:text-red-600'
-          : 'text-gray-400 hover:bg-gray-100 hover:text-gray-700',
+          ? 'text-slate-400 hover:bg-red-50 hover:text-red-600'
+          : 'text-slate-400 hover:bg-slate-100 hover:text-slate-700',
       )}
     >
       {children}

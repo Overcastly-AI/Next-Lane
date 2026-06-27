@@ -24,7 +24,7 @@ function ReadOnlyColumn({
   issues: IssueDto[];
 }) {
   return (
-    <div className="flex w-72 shrink-0 flex-col rounded-xl bg-gray-100/70">
+    <div className="flex w-72 shrink-0 flex-col rounded-xl bg-slate-100/70">
       <div className="flex items-center gap-2 px-3 py-2.5">
         <span
           className={cn(
@@ -32,17 +32,17 @@ function ReadOnlyColumn({
             CATEGORY_DOT[status.category] ?? 'bg-gray-400',
           )}
         />
-        <span className="truncate text-xs font-semibold uppercase tracking-wide text-gray-600">
+        <span className="truncate text-xs font-semibold uppercase tracking-wide text-slate-600">
           {status.name}
         </span>
-        <span className="ml-auto rounded-full bg-gray-200 px-1.5 text-xs font-medium text-gray-500">
+        <span className="ml-auto rounded-full bg-slate-200 px-1.5 text-xs font-medium text-slate-500">
           {issues.length}
         </span>
       </div>
 
       <div className="flex flex-1 flex-col gap-2 overflow-y-auto p-2">
         {issues.length === 0 ? (
-          <p className="py-6 text-center text-xs text-gray-400">No issues</p>
+          <p className="py-6 text-center text-xs text-slate-400">No issues</p>
         ) : (
           issues.map((issue) => (
             <IssueCard
@@ -65,8 +65,8 @@ function ShareErrorView({ message }: { message: string }) {
     message.toLowerCase().includes('revoked') ||
     message.toLowerCase().includes('not found');
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50 p-6">
-      <div className="w-full max-w-md rounded-xl border border-gray-200 bg-white p-8 shadow-card text-center">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-slate-50 p-6">
+      <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-8 shadow-card text-center">
         <div className="mb-4 flex justify-center">
           <span className="flex h-12 w-12 items-center justify-center rounded-full bg-red-100">
             <svg
@@ -84,10 +84,10 @@ function ShareErrorView({ message }: { message: string }) {
             </svg>
           </span>
         </div>
-        <h1 className="mb-2 text-lg font-semibold text-gray-900">
+        <h1 className="mb-2 text-lg font-semibold text-slate-900">
           {isRevoked ? 'Link revoked or invalid' : 'Board unavailable'}
         </h1>
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-slate-500">
           {isRevoked
             ? 'This share link has been revoked or is no longer valid. Please ask the project owner for a new link.'
             : message}
@@ -139,7 +139,7 @@ export function SharedBoardPage() {
 
   if (boardQuery.isLoading) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50">
+      <div className="flex min-h-screen flex-col items-center justify-center bg-slate-50">
         <LoadingState label="Loading shared board…" />
       </div>
     );
@@ -156,22 +156,22 @@ export function SharedBoardPage() {
   // ── Board ──────────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex h-screen flex-col overflow-x-clip bg-gray-50">
+    <div className="flex h-screen flex-col overflow-x-clip bg-slate-50">
       {/* Read-only banner */}
       <header
         data-testid="shared-board-header"
-        className="flex shrink-0 items-center justify-between gap-4 border-b border-gray-200 bg-white px-4 py-3 shadow-sm"
+        className="flex shrink-0 items-center justify-between gap-4 border-b border-slate-200 bg-white px-4 py-3 shadow-sm"
       >
         <div className="flex min-w-0 items-center gap-3">
           {/* Minimal brand mark */}
           <span className="text-lg font-bold tracking-tight text-brand-600">
             Next Lane
           </span>
-          <span className="text-gray-300">|</span>
-          <span className="min-w-0 truncate text-sm font-semibold text-gray-900">
+          <span className="text-slate-300">|</span>
+          <span className="min-w-0 truncate text-sm font-semibold text-slate-900">
             {board.project.name}
           </span>
-          <span className="shrink-0 rounded bg-gray-100 px-1.5 py-0.5 text-xs font-medium text-gray-500">
+          <span className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-500">
             {board.project.key}
           </span>
         </div>
@@ -179,7 +179,7 @@ export function SharedBoardPage() {
         {/* Read-only badge */}
         <span
           data-testid="readonly-badge"
-          className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs font-medium text-gray-500"
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-500"
           aria-label="Read-only shared view"
         >
           <svg
@@ -202,7 +202,7 @@ export function SharedBoardPage() {
       <main className="flex flex-1 gap-4 overflow-x-auto p-4">
         {statuses.length === 0 ? (
           <div className="flex w-full items-center justify-center">
-            <p className="text-sm text-gray-400">This board has no columns yet.</p>
+            <p className="text-sm text-slate-400">This board has no columns yet.</p>
           </div>
         ) : (
           statuses.map((status) => (

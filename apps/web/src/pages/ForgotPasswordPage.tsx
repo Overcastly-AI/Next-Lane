@@ -35,18 +35,18 @@ export function ForgotPasswordPage() {
         title="Check your email"
         subtitle="A reset link has been sent if that address is registered."
         footer={
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-slate-500">
             <Link to="/login" className="font-medium text-brand-600 hover:text-brand-700">
               Back to sign in
             </Link>
           </p>
         }
       >
-        <p className="text-sm text-gray-600 text-center">
+        <p className="text-sm text-slate-600 text-center">
           If <span className="font-medium">{email}</span> is registered, you will receive
           a password reset link shortly. Check your spam folder if it does not arrive.
         </p>
-        <p className="mt-3 text-sm text-gray-500 text-center">
+        <p className="mt-3 text-sm text-slate-500 text-center">
           In development mode the link is printed to the API logs.
         </p>
       </AuthShell>
@@ -58,7 +58,7 @@ export function ForgotPasswordPage() {
       title="Reset your password"
       subtitle="Enter your email and we will send you a reset link."
       footer={
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-slate-500">
           Remembered it?{' '}
           <Link to="/login" className="font-medium text-brand-600 hover:text-brand-700">
             Back to sign in

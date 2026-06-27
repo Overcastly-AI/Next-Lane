@@ -36,8 +36,8 @@ export function RoadmapPage() {
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 p-4 sm:p-6">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h1 className="text-lg font-semibold text-gray-900">Roadmap</h1>
-            <p className="text-sm text-gray-500">
+            <h1 className="text-lg font-semibold text-slate-900">Roadmap</h1>
+            <p className="text-sm text-slate-500">
               Epics and sprints across time. Click an epic to open it.
             </p>
           </div>
@@ -56,7 +56,7 @@ export function RoadmapPage() {
         </div>
 
         <section
-          className="rounded-xl border border-gray-200 bg-white p-4 shadow-card sm:p-5"
+          className="rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:p-5"
           aria-label="Roadmap timeline"
         >
           {roadmapQuery.isLoading ? (
@@ -95,19 +95,19 @@ function Shell({
         <div className="flex items-center gap-2">
           <Link
             to="/"
-            className="text-sm text-gray-400 hover:text-gray-600"
+            className="text-sm text-slate-400 hover:text-slate-600"
             aria-label="Back to projects"
           >
             Projects
           </Link>
-          <span className="text-gray-300">/</span>
-          <span className="truncate text-sm font-semibold text-gray-900">
+          <span className="text-slate-300">/</span>
+          <span className="truncate text-sm font-semibold text-slate-900">
             {projectName ?? 'Project'}
           </span>
         </div>
       </AppHeader>
       <ProjectNav projectId={projectId} />
-      <main className="flex-1 overflow-y-auto bg-gray-50">{children}</main>
+      <main className="flex-1 overflow-y-auto bg-slate-50">{children}</main>
     </div>
   );
 }

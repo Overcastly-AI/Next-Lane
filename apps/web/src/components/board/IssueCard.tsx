@@ -62,18 +62,21 @@ export const IssueCard = forwardRef<HTMLDivElement, IssueCardProps>(
       <div
         ref={ref}
         className={cn(
-          'group rounded-lg border border-gray-200 bg-white p-3 shadow-card transition-shadow',
-          'hover:border-brand-200 hover:shadow-cardHover',
+          'group rounded-md border border-slate-200 bg-white p-3 shadow-card',
+          'transition-all duration-150',
+          'hover:border-slate-300 hover:shadow-cardHover hover:-translate-y-px',
           dragging && 'opacity-40',
-          overlay && 'rotate-2 cursor-grabbing shadow-cardHover',
+          overlay && 'rotate-1 cursor-grabbing shadow-cardHover scale-105',
           className,
         )}
         {...rest}
       >
-        <p className="mb-2 line-clamp-3 text-sm font-medium text-gray-800">
+        {/* Title */}
+        <p className="mb-2 line-clamp-3 text-sm font-medium leading-snug text-slate-800">
           {issue.title}
         </p>
 
+        {/* Labels */}
         {issue.labels && issue.labels.length > 0 && (
           <div className="mb-2 flex flex-wrap gap-1">
             {issue.labels.map((l) => (
@@ -84,21 +87,21 @@ export const IssueCard = forwardRef<HTMLDivElement, IssueCardProps>(
           </div>
         )}
 
+        {/* Due date chip */}
         {issue.dueDate && (
           <div className="mb-2">
             <span
               aria-label={`Due ${formatDueDate(issue.dueDate)}${isOverdue(issue) ? ' (overdue)' : ''}`}
               className={cn(
-                'inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium',
+                'inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-[10px] font-semibold',
                 isOverdue(issue)
                   ? 'bg-amber-100 text-amber-800'
-                  : 'bg-gray-100 text-gray-600',
+                  : 'bg-slate-100 text-slate-500',
               )}
             >
-              {/* Calendar icon */}
               <svg
-                width="11"
-                height="11"
+                width="10"
+                height="10"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
@@ -116,10 +119,10 @@ export const IssueCard = forwardRef<HTMLDivElement, IssueCardProps>(
           </div>
         )}
 
+        {/* Footer row */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1.5">
-            {/* Inline status picker: a coloured dot that opens a status menu.
-                Hidden during drag overlay (no statuses prop) and for VIEWERs. */}
+            {/* Inline status picker */}
             {statuses && statuses.length > 0 && onStatusChange && (
               <CardStatusPicker
                 currentStatus={currentStatus}
@@ -128,31 +131,33 @@ export const IssueCard = forwardRef<HTMLDivElement, IssueCardProps>(
                 editable={editable}
               />
             )}
-            <IssueTypeIcon type={issue.type} className="h-4 w-4" />
-            <span className="text-xs font-medium text-gray-400">
+            <IssueTypeIcon type={issue.type} className="h-3.5 w-3.5 text-slate-400" />
+            {/* Issue key — signature mono chip */}
+            <span className="nl-issue-key">
               {issue.key}
             </span>
-            <PriorityIcon priority={issue.priority} className="h-3.5 w-4" />
+            <PriorityIcon priority={issue.priority} className="h-3.5 w-3.5" />
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             {issue.storyPoints != null && (
               <span
                 title={`${issue.storyPoints} story points`}
-                className="inline-flex min-w-[18px] items-center justify-center rounded-full bg-gray-100 px-1.5 py-0.5 text-[11px] font-semibold text-gray-600"
+                className="nl-data-chip inline-flex min-w-[18px] items-center justify-center rounded-sm bg-slate-100 px-1.5 py-0.5 text-slate-600"
               >
                 {issue.storyPoints}
               </span>
             )}
             {typeof issue.commentCount === 'number' &&
               issue.commentCount > 0 && (
-                <span className="flex items-center gap-0.5 text-xs text-gray-400">
+                <span className="flex items-center gap-0.5 text-[11px] text-slate-400">
                   <svg
-                    width="13"
-                    height="13"
+                    width="11"
+                    height="11"
                     viewBox="0 0 24 24"
                     fill="none"
                     stroke="currentColor"
                     strokeWidth="2"
+                    aria-hidden="true"
                   >
                     <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
                   </svg>

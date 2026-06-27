@@ -141,7 +141,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
       group: 'Issues',
       label: (
         <span className="flex min-w-0 items-center gap-2">
-          <span className="shrink-0 font-mono text-xs text-gray-400">
+          <span className="shrink-0 font-mono text-xs text-slate-400">
             {issue.key}
           </span>
           <span className="truncate">{issue.title}</span>
@@ -162,7 +162,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
       group: 'Projects',
       label: (
         <span className="flex min-w-0 items-center gap-2">
-          <span className="shrink-0 font-mono text-xs text-gray-400">
+          <span className="shrink-0 font-mono text-xs text-slate-400">
             {project.key}
           </span>
           <span className="truncate">{project.name}</span>
@@ -246,7 +246,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
       aria-label="Command palette"
     >
       <div
-        className="fixed inset-0 bg-gray-900/40 backdrop-blur-[1px]"
+        className="fixed inset-0 bg-slate-900/40 backdrop-blur-[1px]"
         onClick={onClose}
         aria-hidden="true"
       />
@@ -255,9 +255,9 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
         className="relative z-10 w-full max-w-xl overflow-hidden rounded-xl bg-white shadow-2xl ring-1 ring-black/5"
         onKeyDown={onKeyDown}
       >
-        <div className="flex items-center gap-2 border-b border-gray-100 px-4">
+        <div className="flex items-center gap-2 border-b border-slate-100 px-4">
           <svg
-            className="h-4 w-4 shrink-0 text-gray-400"
+            className="h-4 w-4 shrink-0 text-slate-400"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
@@ -275,7 +275,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
               setActiveIndex(0);
             }}
             placeholder="Search issues and projects…"
-            className="w-full bg-transparent py-3.5 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none"
+            className="w-full bg-transparent py-3.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none"
             role="combobox"
             aria-expanded="true"
             aria-controls="command-palette-list"
@@ -296,7 +296,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
         >
           {groups.map((group) => (
             <li key={group.name} role="presentation">
-              <div className="px-4 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+              <div className="px-4 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
                 {group.name}
               </div>
               <ul role="presentation">
@@ -310,16 +310,16 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
                     onMouseMove={() => setActiveIndex(index)}
                     onClick={() => item.onSelect()}
                     className={cn(
-                      'mx-2 flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2 text-sm text-gray-700',
+                      'mx-2 flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2 text-sm text-slate-700',
                       index === activeIndex && 'bg-brand-50 text-brand-700',
                     )}
                   >
-                    <span className="flex h-5 w-5 shrink-0 items-center justify-center text-gray-400">
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center text-slate-400">
                       {item.icon}
                     </span>
                     <span className="min-w-0 flex-1 truncate">{item.label}</span>
                     {item.hint && (
-                      <span className="shrink-0 text-xs text-gray-400">
+                      <span className="shrink-0 text-xs text-slate-400">
                         {item.hint}
                       </span>
                     )}
@@ -332,7 +332,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
           {!hasQuery && quickActions.length === 0 && (
             <li
               role="presentation"
-              className="px-4 py-10 text-center text-sm text-gray-400"
+              className="px-4 py-10 text-center text-sm text-slate-400"
             >
               Type to search issues and projects across your workspaces.
             </li>
@@ -341,7 +341,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
           {hasQuery && searchQuery.isFetching && items.length === 0 && (
             <li
               role="presentation"
-              className="flex items-center justify-center gap-2 px-4 py-10 text-sm text-gray-400"
+              className="flex items-center justify-center gap-2 px-4 py-10 text-sm text-slate-400"
             >
               <Spinner className="h-4 w-4" /> Searching…
             </li>
@@ -350,14 +350,14 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
           {showEmpty && (
             <li
               role="presentation"
-              className="px-4 py-10 text-center text-sm text-gray-400"
+              className="px-4 py-10 text-center text-sm text-slate-400"
             >
               No results for “{debounced.trim()}”.
             </li>
           )}
         </ul>
 
-        <div className="flex items-center gap-3 border-t border-gray-100 px-4 py-2 text-[11px] text-gray-400">
+        <div className="flex items-center gap-3 border-t border-slate-100 px-4 py-2 text-[11px] text-slate-400">
           <KbdHint keys="↑↓" label="Navigate" />
           <KbdHint keys="↵" label="Open" />
           <KbdHint keys="Esc" label="Close" />
@@ -371,7 +371,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
 function KbdHint({ keys, label }: { keys: string; label: string }) {
   return (
     <span className="flex items-center gap-1">
-      <kbd className="rounded border border-gray-200 bg-gray-50 px-1.5 py-0.5 font-sans text-[10px] text-gray-500">
+      <kbd className="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-sans text-[10px] text-slate-500">
         {keys}
       </kbd>
       {label}
