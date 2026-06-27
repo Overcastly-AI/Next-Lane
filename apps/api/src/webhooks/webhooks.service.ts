@@ -14,6 +14,7 @@ import {
   type WebhookEventType,
   type WebhookSubscriptionDto,
 } from '@next-lane/shared';
+import { Queue, Worker, type Job } from 'bullmq';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const pLimit = require('p-limit') as (concurrency: number) => (<T>(fn: () => Promise<T>) => Promise<T>);
 import { PrismaService } from '../prisma/prisma.service';
@@ -79,7 +80,7 @@ export function isBlockedIp(ip: string): boolean {
  * When `WEBHOOK_ALLOW_PRIVATE=true` the blocklist is entirely skipped so
  * self-hosters can target internal infrastructure they control.
  */
-async function resolveAndCheckBlocked(urlString: string): Promise<{ blocked: boolean; reason?: string }> {
+export async function resolveAndCheckBlocked(urlString: string): Promise<{ blocked: boolean; reason?: string }> {
   if (process.env.WEBHOOK_ALLOW_PRIVATE === 'true') {
     return { blocked: false };
   }
@@ -129,6 +130,10 @@ const RECENT_DELIVERIES_LIMIT = 20;
 const DELIVERY_TIMEOUT_MS = 5000;
 // Number of attempts (initial + retries) before recording a failed delivery.
 const MAX_DELIVERY_ATTEMPTS = 2;
+// BullMQ queue name.
+export const WEBHOOK_QUEUE_NAME = 'webhook-delivery';
+// BullMQ worker concurrency cap.
+const WORKER_CONCURRENCY = 10;
 
 type SubscriptionRow = {
   id: string;
@@ -178,11 +183,157 @@ export function signPayload(secret: string, rawBody: string): string {
   return `sha256=${hmac}`;
 }
 
+// ---- Job payload shape (used by both the enqueuer and the worker) ----------
+
+export interface WebhookJobData {
+  sub: WebhookSubscriptionDto;
+  /** The subscription secret — kept in the job body (BullMQ queue is internal). */
+  secret: string;
+  payload: WebhookEventPayload;
+}
+
+// ---- Shared per-delivery logic (called by both paths) ----------------------
+
+/**
+ * Attempt to POST the payload to a subscription's URL with an HMAC signature,
+ * retrying on failure up to MAX_DELIVERY_ATTEMPTS, then return a delivery result.
+ *
+ * This is the single source of truth for delivery behaviour — both the
+ * in-process fan-out and the BullMQ worker call this function so SSRF / HMAC
+ * logic cannot drift between paths.
+ *
+ * SSRF protection: before sending, the target hostname is resolved to its IP
+ * addresses and any address in a private/loopback/link-local range causes
+ * delivery to be rejected. Gate via WEBHOOK_ALLOW_PRIVATE=true if you are a
+ * self-hoster legitimately targeting internal infrastructure.
+ *
+ * Redirect safety: fetch is called with redirect:'manual' so a 3xx response
+ * cannot redirect to an internal host after the pre-flight check.
+ *
+ * Socket leak fix: the response body is always drained so the undici connection
+ * is released back to the pool even when we don't read the body content.
+ */
+export async function executeDelivery(
+  sub: WebhookSubscriptionDto,
+  secret: string,
+  payload: WebhookEventPayload,
+): Promise<{ success: boolean; responseStatus: number | null; error: string | null }> {
+  const rawBody = JSON.stringify(payload);
+  const signature = signPayload(secret, rawBody);
+  let responseStatus: number | null = null;
+  let error: string | null = null;
+  let success = false;
+
+  // SSRF pre-flight: resolve hostname and check against blocked IP ranges.
+  const ssrf = await resolveAndCheckBlocked(sub.url);
+  if (ssrf.blocked) {
+    const reason = ssrf.reason ?? 'blocked by SSRF policy';
+    return {
+      success: false,
+      responseStatus: null,
+      error: `SSRF blocked: ${reason}`,
+    };
+  }
+
+  for (let attempt = 1; attempt <= MAX_DELIVERY_ATTEMPTS; attempt++) {
+    try {
+      const res = await fetch(sub.url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-NextLane-Signature': signature,
+          'X-NextLane-Event': payload.event,
+        },
+        body: rawBody,
+        signal: AbortSignal.timeout(DELIVERY_TIMEOUT_MS),
+        // Prevent a 30x from bouncing to an internal host after the SSRF check.
+        redirect: 'manual',
+      });
+      responseStatus = res.status;
+
+      // Always drain the body to release the underlying TCP socket back to the
+      // connection pool; ignoring the body content is intentional.
+      await res.text().catch(() => undefined);
+
+      if (res.ok) {
+        success = true;
+        error = null;
+        break;
+      }
+      error = `Receiver responded ${res.status}`;
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err);
+      responseStatus = null;
+    }
+  }
+
+  return { success, responseStatus, error };
+}
+
+// ---- Service ---------------------------------------------------------------
+
 @Injectable()
 export class WebhooksService {
   private readonly logger = new Logger(WebhooksService.name);
+  private readonly queue: Queue<WebhookJobData> | null;
+  private worker: Worker<WebhookJobData> | null = null;
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) {
+    const redisUrl = process.env.REDIS_URL;
+    if (redisUrl) {
+      // BullMQ accepts a URL string as its connection — this avoids any ioredis
+      // version mismatch between BullMQ's internal peer and our own ioredis.
+      const connection = { url: redisUrl, maxRetriesPerRequest: null as null };
+      this.queue = new Queue<WebhookJobData>(WEBHOOK_QUEUE_NAME, {
+        connection,
+        defaultJobOptions: {
+          attempts: 3,
+          backoff: { type: 'exponential', delay: 2000 },
+          removeOnComplete: { count: 100 },
+          removeOnFail: { count: 500 },
+        },
+      });
+      this.logger.log('Webhook delivery queue initialised (BullMQ / Redis mode)');
+      this.startWorker(connection);
+    } else {
+      this.queue = null;
+      this.logger.log('Webhook delivery queue disabled (REDIS_URL not set; in-process mode)');
+    }
+  }
+
+  /** Start the BullMQ worker that processes delivery jobs. */
+  private startWorker(connection: { url: string; maxRetriesPerRequest: null }): void {
+    this.worker = new Worker<WebhookJobData>(
+      WEBHOOK_QUEUE_NAME,
+      async (job: Job<WebhookJobData>) => {
+        const { sub, secret, payload } = job.data;
+        this.logger.debug(
+          `Processing webhook job ${job.id} for subscription ${sub.id} (event=${payload.event})`,
+        );
+        const result = await executeDelivery(sub, secret, payload);
+        if (!result.success && result.error?.startsWith('SSRF blocked')) {
+          // SSRF-blocked deliveries should not be retried — record and done.
+          this.logger.warn(
+            `Webhook delivery to ${sub.url} blocked by SSRF policy (subscriptionId=${sub.id})`,
+          );
+        }
+        await this.recordDelivery(sub.id, payload.event, result);
+      },
+      {
+        connection,
+        concurrency: WORKER_CONCURRENCY,
+      },
+    );
+
+    this.worker.on('failed', (job, err: Error) => {
+      this.logger.error(
+        `Webhook job ${job?.id ?? '?'} failed after retries: ${err.message}`,
+      );
+    });
+    this.worker.on('error', (err: Error) => {
+      this.logger.error(`BullMQ worker error: ${err.message}`);
+    });
+  }
 
   // ---- CRUD (admin-only, project-scoped) ---------------------------------
 
@@ -270,8 +421,16 @@ export class WebhooksService {
       data: { test: true, message: 'Next Lane webhook test event' },
     };
     // Awaited here (not fire-and-forget) so the admin sees the result reflected
-    // in the delivery log promptly, but failures are swallowed into a row.
-    await this.deliver(toSubscriptionDto(sub), sub.secret, payload);
+    // in the delivery log promptly.  Errors are swallowed into a delivery row.
+    if (this.queue) {
+      await this.queue.add('test', {
+        sub: toSubscriptionDto(sub),
+        secret: sub.secret,
+        payload,
+      });
+    } else {
+      await this.deliverInProcess(toSubscriptionDto(sub), sub.secret, payload);
+    }
     return { ok: true };
   }
 
@@ -281,6 +440,11 @@ export class WebhooksService {
    * Enqueue webhook deliveries for a domain event to all matching active
    * subscriptions of `projectId`. Fire-and-forget: never blocks or throws into
    * the caller (the originating request must not be affected by webhook I/O).
+   *
+   * When REDIS_URL is set: each (subscription, event) pair is enqueued as a
+   * BullMQ job — durable, retried, deduplicated across replicas.
+   * When REDIS_URL is unset: falls back to the original in-process p-limit
+   * fan-out for zero-config single-node deployments.
    */
   dispatch(
     projectId: string,
@@ -289,9 +453,7 @@ export class WebhooksService {
   ): void {
     void this.dispatchAsync(projectId, event, data).catch((err) => {
       this.logger.error(
-        `webhook dispatch failed for ${event} on project ${projectId}: ${String(
-          err,
-        )}`,
+        `webhook dispatch failed for ${event} on project ${projectId}: ${String(err)}`,
       );
     });
   }
@@ -316,99 +478,53 @@ export class WebhooksService {
       data,
     };
 
-    // Cap concurrency at 10 so a project with many webhooks cannot create an
-    // unbounded number of simultaneous outbound TCP connections.
-    const limit = pLimit(10);
-    await Promise.all(
-      matching.map((s) =>
-        limit(() =>
-          this.deliver(toSubscriptionDto(s), s.secret, payload).catch((err) =>
-            this.logger.error(`webhook delivery error: ${String(err)}`),
+    if (this.queue) {
+      // Redis mode: enqueue one BullMQ job per matching subscription.
+      await Promise.all(
+        matching.map((s) =>
+          this.queue!.add(event, {
+            sub: toSubscriptionDto(s),
+            secret: s.secret,
+            payload,
+          }).catch((err: Error) =>
+            this.logger.error(
+              `Failed to enqueue webhook job for sub ${s.id}: ${err.message}`,
+            ),
           ),
         ),
-      ),
-    );
+      );
+    } else {
+      // In-process mode: original p-limit fan-out (unchanged).
+      const limit = pLimit(10);
+      await Promise.all(
+        matching.map((s) =>
+          limit(() =>
+            this.deliverInProcess(toSubscriptionDto(s), s.secret, payload).catch(
+              (err) =>
+                this.logger.error(`webhook delivery error: ${String(err)}`),
+            ),
+          ),
+        ),
+      );
+    }
   }
 
   /**
-   * Attempt to POST the payload to a subscription's URL with an HMAC signature,
-   * retrying on failure up to MAX_DELIVERY_ATTEMPTS, then record a delivery row.
-   * Always resolves; never throws.
-   *
-   * SSRF protection: before sending, the target hostname is resolved to its IP
-   * addresses and any address in a private/loopback/link-local range causes
-   * delivery to be rejected. Gate this via WEBHOOK_ALLOW_PRIVATE=true if you
-   * are a self-hoster legitimately targeting internal infrastructure.
-   *
-   * Redirect safety: fetch is called with redirect:'manual' so a 3xx response
-   * cannot redirect to an internal host after the pre-flight check.
-   *
-   * Socket leak fix: the response body is always drained so the undici connection
-   * is released back to the pool even when we don't read the body content.
+   * In-process delivery: calls executeDelivery() then records the result.
+   * Used by the in-process fan-out path and the sendTest path (non-Redis mode).
    */
-  private async deliver(
+  private async deliverInProcess(
     sub: WebhookSubscriptionDto,
     secret: string,
     payload: WebhookEventPayload,
   ): Promise<void> {
-    const rawBody = JSON.stringify(payload);
-    const signature = signPayload(secret, rawBody);
-    let responseStatus: number | null = null;
-    let error: string | null = null;
-    let success = false;
-
-    // SSRF pre-flight: resolve hostname and check against blocked IP ranges.
-    const ssrf = await resolveAndCheckBlocked(sub.url);
-    if (ssrf.blocked) {
-      const reason = ssrf.reason ?? 'blocked by SSRF policy';
+    const result = await executeDelivery(sub, secret, payload);
+    if (!result.success && result.error?.startsWith('SSRF blocked')) {
       this.logger.warn(
-        `webhook delivery to ${sub.url} blocked: ${reason} (subscriptionId=${sub.id})`,
+        `webhook delivery to ${sub.url} blocked: ${result.error} (subscriptionId=${sub.id})`,
       );
-      await this.recordDelivery(sub.id, payload.event, {
-        success: false,
-        responseStatus: null,
-        error: `SSRF blocked: ${reason}`,
-      });
-      return;
     }
-
-    for (let attempt = 1; attempt <= MAX_DELIVERY_ATTEMPTS; attempt++) {
-      try {
-        const res = await fetch(sub.url, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-NextLane-Signature': signature,
-            'X-NextLane-Event': payload.event,
-          },
-          body: rawBody,
-          signal: AbortSignal.timeout(DELIVERY_TIMEOUT_MS),
-          // Prevent a 30x from bouncing to an internal host after the SSRF check.
-          redirect: 'manual',
-        });
-        responseStatus = res.status;
-
-        // Always drain the body to release the underlying TCP socket back to the
-        // connection pool; ignoring the body content is intentional.
-        await res.text().catch(() => undefined);
-
-        if (res.ok) {
-          success = true;
-          error = null;
-          break;
-        }
-        error = `Receiver responded ${res.status}`;
-      } catch (err) {
-        error = err instanceof Error ? err.message : String(err);
-        responseStatus = null;
-      }
-    }
-
-    await this.recordDelivery(sub.id, payload.event, {
-      success,
-      responseStatus,
-      error,
-    });
+    await this.recordDelivery(sub.id, payload.event, result);
   }
 
   private async recordDelivery(

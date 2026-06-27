@@ -5,14 +5,18 @@ import {
   MessageBody,
   ConnectedSocket,
   OnGatewayConnection,
+  OnGatewayInit,
   WsException,
 } from '@nestjs/websockets';
-import { Logger } from '@nestjs/common';
+import { Inject, Logger, Optional } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { Server, Socket } from 'socket.io';
+import { createAdapter } from '@socket.io/redis-adapter';
+import type Redis from 'ioredis';
 import { PrismaService } from '../prisma/prisma.service';
 import { assertProjectMember } from '../common/membership.util';
 import type { JwtPayload } from '../auth/jwt.strategy';
+import { REDIS_PUB_CLIENT, REDIS_SUB_CLIENT } from '../redis/redis.module';
 
 /** Authenticated user attached to the socket after a valid handshake. */
 interface SocketUser {
@@ -26,7 +30,7 @@ export function userRoom(userId: string): string {
 }
 
 @WebSocketGateway({ cors: true })
-export class RealtimeGateway implements OnGatewayConnection {
+export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection {
   @WebSocketServer()
   server!: Server;
 
@@ -35,7 +39,24 @@ export class RealtimeGateway implements OnGatewayConnection {
   constructor(
     private readonly jwt: JwtService,
     private readonly prisma: PrismaService,
+    @Optional() @Inject(REDIS_PUB_CLIENT) private readonly pubClient: Redis | null,
+    @Optional() @Inject(REDIS_SUB_CLIENT) private readonly subClient: Redis | null,
   ) {}
+
+  /**
+   * Attach the Redis adapter when REDIS_URL is configured.
+   * Falls back to the default in-memory adapter when Redis is absent.
+   */
+  afterInit(server: Server): void {
+    if (this.pubClient && this.subClient) {
+      server.adapter(createAdapter(this.pubClient, this.subClient));
+      this.logger.log('Socket.io Redis adapter attached (multi-replica mode)');
+    } else {
+      this.logger.log(
+        'Socket.io using in-memory adapter (REDIS_URL not set; single-node mode)',
+      );
+    }
+  }
 
   /**
    * Authenticate every socket at handshake time. The client passes its JWT in
