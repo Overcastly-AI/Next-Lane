@@ -7,6 +7,7 @@ import { AuthController } from './auth.controller';
 import { JwtStrategy } from './jwt.strategy';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { getJwtExpiresIn, getJwtSecret } from './auth.config';
+import { PasswordResetService } from './password-reset.service';
 
 @Module({
   imports: [
@@ -19,10 +20,11 @@ import { getJwtExpiresIn, getJwtSecret } from './auth.config';
   controllers: [AuthController],
   providers: [
     AuthService,
+    PasswordResetService,
     JwtStrategy,
     // Global JWT guard — routes are protected unless marked @Public()
     { provide: APP_GUARD, useClass: JwtAuthGuard },
   ],
-  exports: [AuthService],
+  exports: [AuthService, PasswordResetService],
 })
 export class AuthModule {}

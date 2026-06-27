@@ -68,8 +68,24 @@ model User {
   watching       Watcher[]
 
   // Notifications addressed to this user (recipient) and ones this user caused.
-  notifications      Notification[] @relation("recipient")
-  actedNotifications Notification[] @relation("actor")
+  notifications      Notification[]      @relation("recipient")
+  actedNotifications Notification[]      @relation("actor")
+  passwordResetTokens PasswordResetToken[]
+}
+
+// Single-use time-limited token for password reset.
+// Only the SHA-256 hash of the raw token is stored — the raw token is never
+// persisted and only travels through the delivery channel (log in dev / SMTP later).
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique // SHA-256 hex of the raw 32-byte token
+  expiresAt DateTime
+  usedAt    DateTime? // null = not yet consumed
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model Workspace {

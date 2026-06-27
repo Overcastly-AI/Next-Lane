@@ -64,7 +64,18 @@ export function LoginPage() {
             placeholder="you@company.com"
           />
         </Field>
-        <Field label="Password" htmlFor="password">
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+              Password
+            </label>
+            <Link
+              to="/forgot-password"
+              className="text-xs text-brand-600 hover:text-brand-700"
+            >
+              Forgot password?
+            </Link>
+          </div>
           <Input
             id="password"
             type="password"
@@ -74,7 +85,7 @@ export function LoginPage() {
             onChange={(e) => setPassword(e.target.value)}
             placeholder="••••••••"
           />
-        </Field>
+        </div>
         {error && (
           <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
             {error}

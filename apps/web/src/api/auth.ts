@@ -52,3 +52,28 @@ export function cachedUser(): UserDto | null {
     return null;
   }
 }
+
+/**
+ * Request a password-reset link for the given email.
+ * Always resolves (the API never reveals whether the email is registered).
+ */
+export async function forgotPassword(email: string): Promise<void> {
+  await request<{ message: string }>('/auth/forgot-password', {
+    method: 'POST',
+    body: { email },
+  });
+}
+
+/**
+ * Consume a reset token and set a new password.
+ * Throws ApiError (400) when the token is invalid/expired/already-used.
+ */
+export async function resetPassword(
+  token: string,
+  newPassword: string,
+): Promise<void> {
+  await request<{ message: string }>('/auth/reset-password', {
+    method: 'POST',
+    body: { token, newPassword },
+  });
+}
