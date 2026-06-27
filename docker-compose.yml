@@ -39,6 +39,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    # REDIS_URL is set below so the api uses the Redis adapter + BullMQ queue.
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-nextlane}:${POSTGRES_PASSWORD:-nextlane}@db:5432/${POSTGRES_DB:-nextlane}?schema=public
       JWT_SECRET: "${JWT_SECRET:?JWT_SECRET must be set - see .env.example}"

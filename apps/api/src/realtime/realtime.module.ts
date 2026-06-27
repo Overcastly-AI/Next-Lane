@@ -4,6 +4,10 @@ import { getJwtExpiresIn, getJwtSecret } from '../auth/auth.config';
 import { RealtimeGateway } from './realtime.gateway';
 import { RealtimeService } from './realtime.service';
 
+// RedisModule is @Global — the pub/sub clients are injected into the gateway
+// via @Optional() so no explicit import is needed here; the tokens resolve from
+// the global context automatically.
+
 @Global()
 @Module({
   imports: [

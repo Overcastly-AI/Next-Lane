@@ -4,6 +4,7 @@ import { ThrottlerModule } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
 import { ConfigurableThrottlerGuard } from './common/configurable-throttler.guard';
 import { PrismaModule } from './prisma/prisma.module';
+import { RedisModule } from './redis/redis.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { WorkspacesModule } from './workspaces/workspaces.module';
@@ -66,6 +67,7 @@ const isProd = process.env.NODE_ENV === 'production';
       },
     ]),
     PrismaModule,
+    RedisModule,
     RealtimeModule,
     AuthModule,
     UsersModule,
