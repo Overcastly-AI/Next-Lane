@@ -43,14 +43,18 @@ async function requestResetToken(
   // from your email provider. Here we parse the log file path that the
   // dev-up-instance.sh script writes to.
   //
-  // Per-instance log: /tmp/nl-api-i<N>.log (N derived from API_URL port).
+  // The API log path depends on how it was started: the main env (port 4000)
+  // logs to /tmp/nl-api.log; per-instance envs (port 400N) log to
+  // /tmp/nl-api-i<N>.log. Try both so the spec passes under either harness.
   const port = new URL(API_URL).port;
   const n = String(Number(port) - 4000);
-  const logPath = `/tmp/nl-api-i${n}.log`;
+  const candidatePaths = [`/tmp/nl-api-i${n}.log`, '/tmp/nl-api.log'];
 
   // Read the log file directly from the test runner (same machine as the API).
-  const { readFileSync } = await import('fs');
-  const log = readFileSync(logPath, 'utf8');
+  const { readFileSync, existsSync } = await import('fs');
+  const logPath = candidatePaths.find((p) => existsSync(p));
+  expect(logPath, `No API log found at ${candidatePaths.join(' or ')}`).toBeTruthy();
+  const log = readFileSync(logPath as string, 'utf8');
   // Pattern: "Reset link for <email> → http://...token=<TOKEN>"
   const escapedEmail = user.email.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const matches = [
