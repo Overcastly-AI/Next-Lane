@@ -1257,3 +1257,242 @@ pass and leave the platform in a state appropriate for a public OSS v1 release.
 - **Batch notifyComment watcher inserts (`createMany`) — carry-forward** · P2 · M · Serial N inserts per watcher; `notifications.service.ts`
 - **rebalanceAndPlace batch UPDATE via `$executeRaw` — carry-forward** · P2 · M · N individual tx.issue.update() calls in rebalance; `issues.service.ts`
 - **Slim planning-view endpoint or virtual scroll — carry-forward** · P3 · M · useProjectIssues walks all cursor pages; `apps/web/src/api/issues.ts:26-47`
+
+---
+
+## 2026-06-27 — Pass 6 (Debugging & QA-discipline audit; Board/NLQL in-flight work)
+
+Scope: dedicated debugging/QA-discipline review (new mandate), diagnosability in
+production, engineering risks from concurrently-landing Board model / NLQL / color-
+rules work, and a briefer-than-usual sweep of the ongoing health areas. All Pass-5
+P1/P2 items confirmed closed before this pass.
+
+### Ratings
+
+| Area | Score | Note |
+|------|:----:|------|
+| Architecture & module boundaries | 4 | Board module correctly added under NestJS per-domain pattern; no boundary leaks. Legacy `/projects/:id/board` and new `/boards/:id` co-exist cleanly. |
+| Data model & migrations | 4 | Board migration `20260627250000_add_board` is well-structured with backfill INSERT. `filterQuery TEXT?` and `colorRules Json?` column choice is appropriate. `prisma generate` not re-run — see P0. |
+| AuthN | 4 | Unchanged from Pass 5 — argon2, JWT, global guard. No regression. |
+| AuthZ & multi-tenant isolation | 3 | Board CRUD uses `assertProjectMember/Role` correctly; but Board routes have **no `@RequireScope`** (PAT scope bypass), and the new `/boards/:boardId` endpoints are absent from the tenant-isolation integration test matrix. |
+| Input validation | 3 | Board DTOs are well-formed. Gap: `BoardColorRuleDto.query` (`@IsString()` only) has no `@MaxLength` — unbounded NLQL strings can be stored in JSONB. `filterQuery` is correctly capped at 2000 chars. |
+| Error handling | 4 | `AllExceptionsFilter` correctly maps Prisma error codes. Board service throws typed NestJS exceptions throughout. No regression. |
+| N+1 / query efficiency | 3 | `getBoardById` makes 3 sequential DB round-trips (board fetch, membership check, statuses, issues). Statuses and issues could be parallelised with `Promise.all`. Issue load is capped at `BOARD_ISSUES_CAP = 500` with `issuesTruncated` signal — good defensive design. |
+| Realtime correctness | 3 | No realtime events emitted for Board CRUD (create/update/delete); clients must poll. Acceptable for now but inconsistent with issue/comment live updates. |
+| Rank / ordering integrity | 4 | Board `order` is assigned via `MAX(order)+1` — non-atomic and susceptible to concurrent-create collision, but low-frequency. Fractional indexing for issues unchanged. |
+| Test coverage (unit + e2e) | **2** | `board.service.spec.ts` exists — but **cannot compile** because `prisma generate` was not run; the spec file references `this.prisma.board` which doesn't exist in the generated client. Tenant isolation matrix covers legacy `/board` but not `/boards` CRUD. E2e suite still uses `vite preview`, not the shipped docker image. |
+| Type safety | **2** | `tsc --noEmit` exits non-zero (12 errors in `board.service.spec.ts` + `board.service.ts`: `TS2339 Property 'board' does not exist on type 'PrismaService'`, `TS2694 Namespace 'Prisma' has no exported member 'BoardUpdateInput'`). This was clean in every prior pass — a clear regression from the un-generated Prisma client. |
+| Build / CI / Docker | 3 | CI runs build + typecheck + unit; e2e workflow exists. **Critical gap**: e2e tests run against `vite preview`, never the nginx docker container. `images.yml` builds and publishes the image with zero smoke tests against it. The CSP/connect-src substitution in `docker-entrypoint.sh` is untested in any automated path. |
+| Secrets / config hygiene | 4 | No regressions. pino redaction correct, webhook secret out of job body (Pass-5 fix confirmed). |
+| Dependency risk | 4 | `file-type` (magic-byte) and `nestjs-pino` added; both mainstream. No new abandoned deps. |
+| **QA / debugging discipline** | **2** | E2e tests never exercise the shipped nginx artifact. `docker-entrypoint.sh` CSP substitution untested. `images.yml` publishes with no post-build smoke test. No regression guard for the CSP/connect-src bug class that reached the user. |
+| Diagnosability (production) | 4 | pino structured JSON, `X-Request-Id` correlation header, typed `GET /health` (503 on DB down) + `GET /health/live` liveness, `AllExceptionsFilter` consistent error envelope. Missing: no `/metrics` (Prometheus), no OpenTelemetry tracing, no `/debug` or config-dump endpoint. |
+
+### Debugging & QA-discipline findings (dedicated section)
+
+#### Where tests do NOT exercise the shipped artifact
+
+**Finding 1 — e2e suite runs against `vite preview`, not nginx**
+
+`apps/web/playwright.config.ts` sets `webServer.command` to
+`pnpm exec vite preview --port ${WEB_PORT} --strictPort`. The `.github/workflows/e2e.yml`
+workflow manually starts `vite preview` on port 3000 and sets `PW_NO_WEBSERVER: '1'`.
+The nginx docker container is never started in any automated test path.
+
+Consequences:
+- Vite's built-in server serves files with its own response headers; none of nginx's
+  `add_header` directives (CSP, HSTS, X-Frame-Options, etc.) are present.
+- `docker-entrypoint.sh` never executes, so the `__NL_CONNECT_SRC__` placeholder in
+  `nginx.conf` is never substituted. Every test that makes an XHR/fetch call is passing
+  against a server that has no Content-Security-Policy at all.
+- `window.__NL_CONFIG__` is injected in tests via `page.addInitScript` (see
+  `e2e/runtime-config.spec.ts`), not by the real entrypoint writing `/config.js` and
+  nginx serving it — a different execution path.
+
+**Finding 2 — `docker-entrypoint.sh` CSP substitution path is entirely untested**
+
+`apps/web/docker-entrypoint.sh` derives `CONNECT_SRC` from `API_URL`, builds the
+`ws://`/`wss://` pair, then runs `sed -i` on `/etc/nginx/conf.d/default.conf`. No test
+at any layer verifies:
+- The `sed` substitution actually replaces all three occurrences across the three
+  location blocks in `nginx.conf`.
+- The derived CSP value is syntactically correct for any non-default `API_URL` shape
+  (e.g., an `https://` URL with a path component, a URL that already has a port).
+- The final nginx config is valid (`nginx -t`) before nginx starts.
+
+This is exactly the mechanism that caused the original user-reported CSP bug.
+
+**Finding 3 — `images.yml` publishes the docker image with zero smoke tests**
+
+`.github/workflows/images.yml` builds multi-arch images via `docker buildx bake` and
+pushes to GHCR. There is no `docker run` step, no healthcheck probe against `GET /health`,
+and no browser-level smoke test. An image with a broken entrypoint would be published
+and tagged `latest` without detection.
+
+**Finding 4 — `docker-compose.yml` `web` service has no runtime `API_URL`**
+
+The `web` service in `docker-compose.yml` has no `environment:` block. The entrypoint
+falls back to `http://localhost:4000` — which is correct for local single-host deploys
+but will silently produce a wrong CSP (and broken login) if a user runs the compose
+stack with `API_URL` unset and the API on a different host.
+
+**Proposed regression guard for the CSP/connect-src bug class**
+
+A minimal shell test (bash + `curl` + `grep`) that can be appended to `images.yml` after
+the image push:
+
+```
+1. docker run -d --name nl-web-smoke \
+     -e API_URL=https://api.example.com \
+     -p 8080:80 ghcr.io/…/nl-web:${TAG}
+2. sleep 2
+3. HEADERS=$(curl -sI http://localhost:8080/)
+4. Assert: HEADERS contains "connect-src https://api.example.com wss://api.example.com"
+5. Assert: HEADERS does NOT contain "__NL_CONNECT_SRC__" (unreplaced placeholder)
+6. docker exec nl-web-smoke nginx -t     # config validity
+7. docker stop nl-web-smoke
+```
+
+A second, Playwright-level approach: add one spec in `apps/web/e2e/` that is gated by
+`process.env.TEST_REAL_NGINX === '1'`, sets `baseURL` to `http://localhost:8080`, and
+asserts the `Content-Security-Policy` response header contains the expected origin —
+runnable against the real container in a separate `e2e-docker.yml` workflow.
+
+**Finding 5 — Other "tests pass ≠ works for users" gaps**
+
+- `HSTS` and `X-Frame-Options` headers set by nginx are never verified in any test.
+- The `/config.js` endpoint that vends `window.__NL_CONFIG__` is simulated in tests
+  via `page.addInitScript`; the real file is only written by the entrypoint. If the
+  template in the entrypoint changes, no test will catch it until a user reports a
+  blank API URL at runtime.
+- The `docker-compose.yml` health-check uses `curl -f http://localhost:4000/health/live`
+  which is correct — but the web container has no Docker HEALTHCHECK directive at all,
+  so compose never reports the web container unhealthy even if nginx fails to start.
+
+### In-flight work: Board / NLQL / color-rules engineering risks
+
+#### P0 — Board module non-functional at runtime (prisma generate not run)
+
+Migration `20260627250000_add_board` adds the `Board` table and `BoardType` enum to the
+Prisma schema (`apps/api/prisma/schema.prisma`), but `prisma generate` was not run after
+the migration. As a result:
+
+- `PrismaService` has no `.board` property at runtime → every Board endpoint throws
+  `TypeError: Cannot read properties of undefined` on first call.
+- `Prisma.BoardUpdateInput` does not exist in the generated namespace → `board.service.ts`
+  references an undefined type.
+- `tsc --noEmit` exits 2 with 12 errors (`TS2339`, `TS2694`).
+- `board.service.spec.ts` cannot be compiled by Jest, so the spec silently does not run.
+
+Fix: `pnpm --filter @next-lane/api exec prisma generate`. This is a S (< 1 hour) fix
+but a P0 impact — all six Board endpoints are broken in the currently-published image.
+File refs: `apps/api/prisma/schema.prisma`, `apps/api/src/board/board.service.ts`.
+
+#### P1 — Board CRUD missing `@RequireScope` (PAT scope bypass)
+
+All six Board controller routes in `apps/api/src/board/board.controller.ts` lack
+`@RequireScope(...)` decorators. Issues routes use `@RequireScope('issues:write')` and
+`@RequireScope('issues:read')`. A PAT issued with scope `issues:read` only can still
+call `POST /projects/:id/boards`, `PATCH /boards/:id`, and `DELETE /boards/:id` because
+`ScopeGuard` passes through when no `@RequireScope` metadata is present on the handler.
+File ref: `apps/api/src/board/board.controller.ts:23-79`.
+
+Fix: add `@RequireScope('boards:write')` to POST/PATCH/DELETE routes and
+`@RequireScope('boards:read')` to GET routes, or accept that Board routes are intentionally
+unscoped (document the decision). Size: S.
+
+#### P1 — Board endpoints absent from tenant-isolation integration test matrix
+
+`apps/api/src/tenant-isolation.integration.spec.ts` covers 40+ endpoints but the new
+Board routes (`GET /projects/:id/boards`, `POST /projects/:id/boards`,
+`GET /boards/:boardId`, `PATCH /boards/:boardId`, `DELETE /boards/:boardId`) are absent.
+This means cross-workspace Board access is untested. `getBoardById` does call
+`assertProjectMember` but the test matrix is the only systematic proof that the guard is
+wired correctly for every code path. File ref: `apps/api/src/tenant-isolation.integration.spec.ts`.
+
+Fix: add Board endpoint rows to the matrix. Size: S.
+
+#### P2 — NLQL color-rule query strings have no length bound in DTO
+
+`apps/api/src/board/dto/update-board.dto.ts` validates `BoardColorRuleDto.query` with
+`@IsString()` only. A board can have an arbitrary number of color rules, each with an
+unbounded query string. These are stored in `colorRules JSONB` and will be evaluated
+client-side (future). A hostile user (MEMBER role) can POST arbitrarily large query
+strings into the DB. Add `@MaxLength(500)` consistent with the filter-query convention.
+File ref: `apps/api/src/board/dto/update-board.dto.ts:17-18`.
+
+#### P2 — NLQL query engine: injection and DoS risk surface (pre-emptive)
+
+The NLQL query engine in `packages/shared` evaluates filter expressions client-side.
+When this evaluator is wired to real data, the risk surface is:
+- **ReDoS**: if any regex-backed parser accepts user-crafted queries, a pathological
+  string can lock the JS event loop for seconds. Mitigate by capping query length at DTO
+  validation and timing-out the evaluator.
+- **Prototype pollution / injection**: if the evaluator allows field names as free text
+  and those names are used as property-accessor keys on issue objects, craft a query with
+  field name `__proto__` or `constructor`. Validate all field-name tokens against an
+  allowlist of known issue fields.
+- **Server-side evaluation path**: if NLQL is ever evaluated server-side (e.g., for
+  server-rendered board filtering), user-supplied expressions must be treated as
+  untrusted input and sandboxed. Do not use `eval()` or `new Function()`.
+  Pre-emptive fix: write an allowlist of evaluable field names into `packages/shared`
+  alongside the parser and enforce it before any field access. Size: M.
+
+#### P3 — Board `order` assignment is non-atomic
+
+`createBoard` in `board.service.ts:136-141` reads `MAX(order)` and increments outside
+a transaction. Two concurrent board-create requests can compute the same `order` value,
+producing duplicate positions. The current uniqueness constraint on `order` is
+`@@unique([projectId, order])` (if present) or silently accepts duplicates. Low
+frequency but worth a `SELECT ... FOR UPDATE` or a DB sequence. File ref:
+`apps/api/src/board/board.service.ts:136-141`. Size: S.
+
+### Technical investments (ideation)
+
+1. **Docker-level smoke-test workflow (`e2e-docker.yml`)**: Build the web image, run it
+   with a known `API_URL`, and use `curl` to assert the CSP `connect-src` header is
+   correctly substituted and does not contain the literal placeholder. Add one Playwright
+   spec (flag-gated) that hits the real nginx container and verifies `config.js` is
+   correctly served. This closes the entire CSP/connect-src regression class permanently.
+   P1, M.
+
+2. **Prometheus `/metrics` endpoint on the API**: Add `@willsoto/nestjs-prometheus` or
+   expose metrics via the existing pino-http counters. Export: HTTP request latency
+   histograms (p50/p95/p99), DB connection pool saturation, BullMQ queue depth/lag,
+   WebSocket room counts. Self-hosters running Grafana get instant observability without
+   log parsing. P2, M.
+
+3. **OpenTelemetry distributed tracing**: Add `@opentelemetry/sdk-node` with auto-
+   instrumentation for HTTP (NestJS), Prisma (via `@prisma/instrumentation`), and
+   Socket.io. Export to an OTLP endpoint (Jaeger or Grafana Tempo). Enables root-causing
+   slow endpoints and N+1 queries in production without needing a repro. P2, L.
+
+### Direction (Pass 6)
+
+The single most urgent action is running `prisma generate` — every Board endpoint in
+the shipped image is broken right now and users will hit TypeError on first use. This
+is a one-minute fix with P0 impact.
+
+The second-most important investment is closing the "tests pass but the docker artifact
+is untested" gap. The CSP/connect-src bug that reached the user cannot recur if a
+smoke-test workflow runs `docker run -e API_URL=... image` and asserts the response
+header. Without it, any future change to `docker-entrypoint.sh` or `nginx.conf` carries
+the same risk. This is the highest-leverage engineering investment of this pass.
+
+The Board-level authz gaps (missing `@RequireScope`, absent from isolation matrix) are
+quick fixes that should be bundled with the Board launch — they are S-sized and prevent
+a class of authorization confusion as the PAT model matures.
+
+### Backlog-groomer feed (Pass 6 — compact)
+
+- **Run `prisma generate` after Board migration (board module broken at runtime)** · P0 · S · `this.prisma.board` undefined at runtime; all 6 Board endpoints throw TypeError; `tsc --noEmit` exits 2; `apps/api/prisma/schema.prisma`, `apps/api/src/board/board.service.ts`
+- **Add docker-level CSP smoke test in `images.yml`** · P1 · M · e2e suite uses `vite preview`; nginx `docker-entrypoint.sh` CSP substitution is never tested in any CI path; the CSP/connect-src bug class has no regression guard; `apps/web/docker-entrypoint.sh`, `.github/workflows/images.yml`
+- **Add Board routes to tenant-isolation integration test matrix** · P1 · S · New `/boards/:boardId` CRUD endpoints absent from 40-endpoint isolation matrix; `apps/api/src/tenant-isolation.integration.spec.ts`
+- **Add `@RequireScope` to Board controller routes** · P1 · S · PAT scope bypass: any PAT regardless of declared scope can mutate boards; `apps/api/src/board/board.controller.ts:23-79`
+- **Add `@MaxLength(500)` to `BoardColorRuleDto.query`** · P2 · S · Unbounded NLQL strings storable in JSONB; `apps/api/src/board/dto/update-board.dto.ts:17`
+- **Add Docker HEALTHCHECK to web nginx container** · P2 · S · Web container has no HEALTHCHECK; compose never marks it unhealthy if nginx fails to start; `apps/web/Dockerfile`
+- **Harden NLQL evaluator against field-name injection and ReDoS** · P2 · M · Future server-side evaluation of user-supplied filter expressions; allowlist field names before property access; `packages/shared`
+- **Add Prometheus `/metrics` endpoint to API** · P2 · M · No machine-readable metrics surface; self-hosters cannot monitor latency, queue depth, or DB pool saturation without log parsing
+- **Add `runtime-config` Playwright spec against real nginx container (flag-gated)** · P2 · M · `runtime-config.spec.ts` uses `page.addInitScript` simulation; the real `/config.js` serving path is untested
+- **OpenTelemetry distributed tracing (API + Prisma + Socket.io)** · P3 · L · No trace context; production root-causing requires log correlation across multiple services manually
+- **Make board `order` assignment atomic (SELECT FOR UPDATE or DB sequence)** · P3 · S · Concurrent board creates can assign duplicate `order` values; `apps/api/src/board/board.service.ts:136-141`
