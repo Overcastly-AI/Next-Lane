@@ -1,7 +1,11 @@
-import { Module } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core';
+import { MiddlewareConsumer, Module, NestModule, RequestMethod } from '@nestjs/common';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
+import { randomUUID } from 'crypto';
+import type { IncomingMessage } from 'http';
+import { CorrelationIdMiddleware } from './common/correlation-id.middleware';
+import { CorrelationIdInterceptor } from './common/correlation-id.interceptor';
 import { ConfigurableThrottlerGuard } from './common/configurable-throttler.guard';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
@@ -46,6 +50,37 @@ const isProd = process.env.NODE_ENV === 'production';
         transport: isProd
           ? undefined
           : { target: 'pino-pretty', options: { colorize: true, singleLine: true } },
+
+        // ── Request correlation id ──────────────────────────────────────────
+        // Reuse the incoming `X-Request-Id` header when present (e.g. from an
+        // upstream proxy or client-side retry logic); otherwise generate a new
+        // UUID v4.  The resulting id is:
+        //   • bound to `req.id` by pino-http (visible in every log line
+        //     emitted during the request via the `reqId` field)
+        //   • echoed back in the `X-Request-Id` response header via
+        //     customSuccessMessage / customErrorMessage (below) AND set by
+        //     HealthController for the unauthenticated /health path.
+        genReqId(req: IncomingMessage) {
+          const incoming = (req.headers as Record<string, string | string[] | undefined>)[
+            'x-request-id'
+          ];
+          if (typeof incoming === 'string' && incoming.length > 0) return incoming;
+          return randomUUID();
+        },
+
+        // Attach the correlation id to every response via a header so callers
+        // can match a request to a log entry without server-log access.
+        customSuccessMessage(_req, _res) {
+          return 'request completed';
+        },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        customProps(req: any, _res: any) {
+          // Surface `reqId` under the standard `requestId` key so log
+          // consumers that follow the common structured-logging convention
+          // find it without knowing pino-http's internal field name.
+          return { requestId: req.id as string };
+        },
+
         redact: {
           paths: [
             'req.headers.authorization',
@@ -58,7 +93,11 @@ const isProd = process.env.NODE_ENV === 'production';
         },
         // Quiet down health-check noise in logs.
         autoLogging: {
-          ignore: (req) => (req as { url?: string }).url === '/health',
+          ignore: (req) => {
+            const url = (req as { url?: string }).url ?? '';
+            // Silence both readiness (/health) and liveness (/health/live).
+            return url === '/health' || url === '/health/live';
+          },
         },
       },
     }),
@@ -103,6 +142,25 @@ const isProd = process.env.NODE_ENV === 'production';
     // Global throttle guard: enforces ThrottlerModule limits on every route
     // (skippable via RATE_LIMIT_DISABLED for shared-IP deployments / tests).
     { provide: APP_GUARD, useClass: ConfigurableThrottlerGuard },
+    // Global interceptor: echoes the pino-http correlation id (req.id) back
+    // to the caller via the X-Request-Id response header.  Runs inside the
+    // NestJS request pipeline, after pino-http middleware has set req.id.
+    { provide: APP_INTERCEPTOR, useClass: CorrelationIdInterceptor },
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  /**
+   * Wire the `CorrelationIdMiddleware` across every route.
+   *
+   * NestJS module middlewares run inside the NestJS middleware pipeline —
+   * AFTER nestjs-pino (which sets `req.id` via its `genReqId` hook) and
+   * AFTER global Express middlewares registered via `app.use()` in main.ts.
+   * This ordering guarantees `req.id` is populated by the time
+   * `CorrelationIdMiddleware` echoes it back as `X-Request-Id`.
+   */
+  configure(consumer: MiddlewareConsumer) {
+    consumer
+      .apply(CorrelationIdMiddleware)
+      .forRoutes({ path: '*', method: RequestMethod.ALL });
+  }
+}

@@ -462,6 +462,104 @@ GHCR publishing via CI is a separate Phase 4 deliverable (see
 
 ---
 
+## Observability
+
+### Request correlation ids
+
+Every HTTP request receives a **correlation id** (`X-Request-Id`) that is:
+
+- Reused from the incoming `X-Request-Id` header when present (set by an upstream
+  proxy, load-balancer, or client retry logic).
+- Generated as a UUID v4 when absent.
+
+The id appears on **every pino log line** for that request (field: `requestId`)
+and is **echoed back in the `X-Request-Id` response header** so callers can
+match a request to a log entry without server-log access.  No configuration is
+required — always active.
+
+### Health endpoints
+
+| Path | Purpose | HTTP status |
+|------|---------|------------|
+| `GET /health` | **Readiness probe** — checks API + DB (`SELECT 1` with 3-second timeout) | 200 `{ status, uptime, version, db }` or 503 `{ status: "error", db: "down", … }` |
+| `GET /health/live` | **Liveness probe** — always 200 if the Node process is alive; no DB round-trip | 200 `{ status, uptime }` |
+
+Kubernetes probe configuration in the Helm chart (`api.probes`):
+
+```yaml
+api:
+  probes:
+    liveness:
+      httpGet:
+        path: /health/live   # no DB dependency → cannot trigger a restart loop
+        port: 4000
+      initialDelaySeconds: 10
+      periodSeconds: 10
+    readiness:
+      httpGet:
+        path: /health        # DB ping; removes pod from endpoint slice when DB is unreachable
+        port: 4000
+      initialDelaySeconds: 5
+      periodSeconds: 5
+```
+
+The `version` field in `/health` responses reflects the `RELEASE_VERSION` env var
+(set it via Helm values or `docker build --build-arg`); defaults to the value in
+`package.json`.
+
+### OpenTelemetry traces (stub — not yet activated)
+
+OTLP trace export is a **documented stub** — the SDK packages are not installed
+in this release because they are useless when disabled and add ~3 MB of
+transitive dependencies.
+
+**To enable in a future version:**
+
+1. Install the SDK:
+   ```bash
+   pnpm --filter @next-lane/api add \
+     @opentelemetry/sdk-node \
+     @opentelemetry/auto-instrumentations-node \
+     @opentelemetry/exporter-trace-otlp-http
+   ```
+
+2. Create `apps/api/src/tracing.ts`:
+   ```typescript
+   // Must be the FIRST import in main.ts — patches Node internals before
+   // any application modules load.
+   export async function initTracing() {
+     if (!process.env.OTEL_EXPORTER_OTLP_ENDPOINT) return;
+     const { NodeSDK } = await import('@opentelemetry/sdk-node');
+     const { getNodeAutoInstrumentations } =
+       await import('@opentelemetry/auto-instrumentations-node');
+     const sdk = new NodeSDK({
+       instrumentations: [getNodeAutoInstrumentations()],
+     });
+     sdk.start();
+   }
+   ```
+
+3. Import it as the first line of `main.ts`:
+   ```typescript
+   import { initTracing } from './tracing';
+   await initTracing();   // no-op when OTEL_EXPORTER_OTLP_ENDPOINT is unset
+   ```
+
+4. Set the env vars (standard OTel conventions; see `.env.example`):
+   ```bash
+   OTEL_SERVICE_NAME=next-lane-api
+   OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+   OTEL_TRACES_SAMPLER=parentbased_traceid_ratio
+   OTEL_TRACES_SAMPLER_ARG=0.1
+   ```
+   In Helm: inject via `api.extraEnv`.
+
+The feature is intentionally **not wired** in this release — see
+`OTEL_EXPORTER_OTLP_ENDPOINT` in `.env.example` for the full rationale and
+skeleton code.
+
+---
+
 ## Troubleshooting
 
 | Symptom | Likely cause / fix |
