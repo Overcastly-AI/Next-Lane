@@ -42,7 +42,17 @@ docker compose up -d --build   # full stack
 - **Shared domain enums/types live in `packages/shared`.** Never duplicate them.
 - **Board/sprint ordering uses fractional indexing** (rank string between neighbors). Never renumber all rows.
 - **NestJS module pattern** for every domain. DTOs validated with `class-validator`.
-- Keep changes scoped; update `docs/ROADMAP.md` status as features land.
+- Keep changes scoped.
+
+## Keep the docs in sync — NON-NEGOTIABLE
+
+Stale docs are a defect. The roadmap once sat on "Phase 1" while Phases 2–3 had
+shipped — that must never happen again.
+
+- **Every commit that lands a feature/fix MUST, in the same commit, update status in BOTH `docs/ROADMAP.md` and `docs/BACKLOG.md`.** Tick the item, move the phase forward. A PR/commit that ships work but leaves the roadmap stale is incomplete.
+- **`docs/ROADMAP.md` is the source of truth for "what phase are we in".** Its phase headers (✅/🚧/⬜) and "Current focus" line must always match reality (git history).
+- **Audit-and-fix every cycle:** every audit/groom pass reconciles `docs/ROADMAP.md` + `docs/BACKLOG.md` against `git log` and ticks/advances anything that shipped but wasn't recorded. This is the groomer's job (see `.claude/agents/backlog-groomer.md`) and part of every build agent's definition-of-done.
+- Definition of done for ANY change = builds + typecheck + unit/e2e green (desktop+mobile) **+ ROADMAP/BACKLOG updated** + committed & pushed.
 
 ## Work as a dev team (use agents, skills, workflows, hooks)
 
@@ -70,7 +80,7 @@ This project is built by a **team of specialized AI agents**, not one generalist
 - `nightly-build-loop` — work down the ROADMAP MVP items autonomously until done.
 - `autonomous-dev-loop` — the full org loop: independent audits → groom the board → build the top backlog items (each fully QA'd) → **loop again on completion** (event-driven, not time-based).
 
-**The loop for every feature:** plan → implement (specialist agent) → review (`code-reviewer`) → **functional QA with `qa-tester` on desktop AND mobile** → **UI/UX QA with `frontend-qa`** (consistency, a11y, responsive) feeding `docs/UI-REVIEW.md` back to the dev team → update `docs/ROADMAP.md` → commit. Never mark work done without the `verification-before-completion` evidence.
+**The loop for every feature:** plan → implement (specialist agent) → review (`code-reviewer`) → **functional QA with `qa-tester` on desktop AND mobile** → **UI/UX QA with `frontend-qa`** (consistency, a11y, responsive) feeding `docs/UI-REVIEW.md` back to the dev team → **update `docs/ROADMAP.md` + `docs/BACKLOG.md` (mandatory)** → commit. Never mark work done without the `verification-before-completion` evidence, and never leave the roadmap stale.
 
 ## Working style for autonomous build
 

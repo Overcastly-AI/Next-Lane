@@ -10,6 +10,7 @@ import { canEdit } from '@/lib/permissions';
 import { AppHeader } from '@/components/AppHeader';
 import { ProjectNav } from '@/components/project/ProjectNav';
 import { ColumnFormModal } from '@/components/board/ColumnFormModal';
+import { WebhooksSection } from '@/components/settings/WebhooksSection';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Textarea } from '@/components/ui/Textarea';
@@ -117,6 +118,8 @@ export function SettingsPage() {
         <ColumnsSection projectId={projectId} editable={editable} isAdmin={isAdmin} />
 
         <LabelsSection projectId={projectId} editable={editable} isAdmin={isAdmin} />
+
+        <WebhooksSection projectId={projectId} isAdmin={isAdmin} />
 
         {editable && (
           <DangerZone

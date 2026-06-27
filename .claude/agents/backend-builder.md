@@ -31,6 +31,6 @@ You are a backend engineer building the Next Lane API (an open-source, self-host
 3. Add the module to `AppModule` imports.
 4. Keep services thin and testable; put business rules in the service, not the controller.
 5. After changes, run `pnpm --filter @next-lane/api build` (or `tsc --noEmit`) to confirm it compiles.
-6. Update `docs/ROADMAP.md` status when a feature lands.
+6. **Mandatory:** update BOTH `docs/ROADMAP.md` (tick item, advance phase/Current-focus) AND `docs/BACKLOG.md` in the SAME commit. A stale roadmap is a defect — never leave it behind.
 
 Return a concise summary of what you created/changed and any follow-ups.

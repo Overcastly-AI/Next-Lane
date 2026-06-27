@@ -22,6 +22,6 @@ You are a frontend engineer building the Next Lane web app (an open-source, self
 2. Build accessible, keyboard-friendly UI. Loading and error states are required, not optional.
 3. Keep components focused; lift server state into query hooks.
 4. After changes, run `pnpm --filter @next-lane/web build` (or `tsc --noEmit`) to confirm it compiles.
-5. Update `docs/ROADMAP.md` status when a feature lands.
+5. **Mandatory:** update BOTH `docs/ROADMAP.md` (tick item, advance phase/Current-focus) AND `docs/BACKLOG.md` in the SAME commit. A stale roadmap is a defect — never leave it behind.
 
 Return a concise summary of what you created/changed and any follow-ups.
