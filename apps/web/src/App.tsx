@@ -24,6 +24,7 @@ import { SettingsPage } from '@/pages/SettingsPage';
 import { TriagePage } from '@/pages/TriagePage';
 import { ProfileSettingsPage } from '@/pages/ProfileSettingsPage';
 import { WorkspaceAuditLogPage } from '@/pages/WorkspaceAuditLogPage';
+import { WorkspaceMembersPage } from '@/pages/WorkspaceMembersPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -130,6 +131,14 @@ export default function App() {
               element={
                 <RequireAuth>
                   <WorkspaceAuditLogPage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/workspaces/:workspaceId/members"
+              element={
+                <RequireAuth>
+                  <WorkspaceMembersPage />
                 </RequireAuth>
               }
             />
