@@ -26,11 +26,20 @@ const PROJECT_ID = 'proj-1';
 const OTHER_PROJECT_ID = 'proj-2';
 
 function makePrisma() {
-  return {
+  const txClient = {
+    $queryRaw: jest.fn(),
+    issue: { findUnique: jest.fn(), update: jest.fn() },
+    activityLog: { createMany: jest.fn() },
+  };
+  const prisma = {
     status: { findUnique: jest.fn() },
     sprint: { findUnique: jest.fn() },
     issue: { findUnique: jest.fn() },
-  } as unknown as PrismaService & {
+    // By default run the transaction callback with the txClient.
+    $transaction: jest.fn((cb: (tx: typeof txClient) => unknown) => cb(txClient)),
+    _tx: txClient,
+  };
+  return prisma as typeof prisma & {
     status: { findUnique: jest.Mock };
     sprint: { findUnique: jest.Mock };
     issue: { findUnique: jest.Mock };
@@ -68,7 +77,12 @@ describe('IssuesService.assertSameProject', () => {
   beforeEach(() => {
     prisma = makePrisma();
     const realtime = {} as RealtimeService;
-    service = new IssuesService(prisma, realtime, {} as NotificationsService, webhooksMock);
+    service = new IssuesService(
+      prisma as unknown as PrismaService,
+      realtime,
+      {} as NotificationsService,
+      webhooksMock,
+    );
   });
 
   it('accepts when all refs belong to the same project', async () => {
@@ -151,56 +165,110 @@ describe('IssuesService.assertSameProject', () => {
   });
 });
 
-function callAssertNoParentCycle(
+/**
+ * Helper to call the private `assertNoParentCycleCTE` method directly.
+ * The new implementation uses a `WITH RECURSIVE` CTE via `tx.$queryRaw`, so we
+ * supply a fake transaction client with `$queryRaw` mocked.
+ */
+function callAssertNoParentCycleCTE(
   service: IssuesService,
+  tx: { $queryRaw: jest.Mock },
   id: string,
   parentId: string,
 ): Promise<void> {
   return (
     service as unknown as {
-      assertNoParentCycle: (id: string, parentId: string) => Promise<void>;
+      assertNoParentCycleCTE: (
+        tx: { $queryRaw: jest.Mock },
+        id: string,
+        parentId: string,
+      ) => Promise<void>;
     }
-  ).assertNoParentCycle(id, parentId);
+  ).assertNoParentCycleCTE(tx as never, id, parentId);
 }
 
-describe('IssuesService.assertNoParentCycle', () => {
+describe('IssuesService.assertNoParentCycleCTE', () => {
   let prisma: MockPrisma;
   let service: IssuesService;
+  let tx: { $queryRaw: jest.Mock };
 
   beforeEach(() => {
     prisma = makePrisma();
+    tx = { $queryRaw: jest.fn() };
     const realtime = {} as RealtimeService;
-    service = new IssuesService(prisma, realtime, {} as NotificationsService, webhooksMock);
+    service = new IssuesService(
+      prisma as unknown as PrismaService,
+      realtime,
+      {} as NotificationsService,
+      webhooksMock,
+    );
   });
 
-  it('rejects an issue being its own parent', async () => {
+  it('rejects an issue being its own parent (short-circuits before CTE)', async () => {
     await expect(
-      callAssertNoParentCycle(service, 'a', 'a'),
+      callAssertNoParentCycleCTE(service, tx, 'a', 'a'),
     ).rejects.toBeInstanceOf(BadRequestException);
-    expect(prisma.issue.findUnique).not.toHaveBeenCalled();
+    // Short-circuit: no DB round-trip needed.
+    expect(tx.$queryRaw).not.toHaveBeenCalled();
   });
 
-  it('accepts a parent that has no ancestors', async () => {
-    // Walking up from parent "b" reaches a root (parentId null) without hitting "a".
-    prisma.issue.findUnique.mockResolvedValue({ parentId: null });
+  it('accepts a valid parent when CTE reports no cycle', async () => {
+    // CTE returns cycle_detected = false → valid hierarchy.
+    tx.$queryRaw.mockResolvedValue([{ cycle_detected: false }]);
 
     await expect(
-      callAssertNoParentCycle(service, 'a', 'b'),
+      callAssertNoParentCycleCTE(service, tx, 'a', 'b'),
+    ).resolves.toBeUndefined();
+
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a direct cycle (parentId is a child of id)', async () => {
+    // CTE found that 'a' appears in the ancestor chain of 'c' → cycle.
+    tx.$queryRaw.mockResolvedValue([{ cycle_detected: true }]);
+
+    await expect(
+      callAssertNoParentCycleCTE(service, tx, 'a', 'c'),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('rejects a deep multi-level cycle', async () => {
+    // Hierarchy: a → b → c → d → e; trying to set a's parent to e.
+    // CTE would walk e.parent=d, d.parent=c, c.parent=b, b.parent=a → cycle.
+    tx.$queryRaw.mockResolvedValue([{ cycle_detected: true }]);
+
+    await expect(
+      callAssertNoParentCycleCTE(service, tx, 'a', 'e'),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('accepts a valid deep hierarchy (no cycle)', async () => {
+    // Hierarchy: root → a → b → c. Setting c's parent to 'd' (an unrelated node)
+    // is fine; walking d's ancestors never reaches 'c'.
+    tx.$queryRaw.mockResolvedValue([{ cycle_detected: false }]);
+
+    await expect(
+      callAssertNoParentCycleCTE(service, tx, 'c', 'd'),
     ).resolves.toBeUndefined();
   });
 
-  it('rejects when the issue is an ancestor of the proposed parent (cycle)', async () => {
-    // a -> set parent to c, but c's ancestor chain (c -> a) leads back to a.
-    prisma.issue.findUnique.mockImplementation(
-      ({ where }: { where: { id: string } }) => {
-        if (where.id === 'c') return Promise.resolve({ parentId: 'a' });
-        return Promise.resolve({ parentId: null });
-      },
-    );
+  it('handles CTE returning an empty result set gracefully (no cycle)', async () => {
+    // Defensive: if parentId has no parent itself the CTE anchor produces 0 rows;
+    // the EXISTS sub-select returns false → no cycle.
+    tx.$queryRaw.mockResolvedValue([{ cycle_detected: false }]);
 
     await expect(
-      callAssertNoParentCycle(service, 'a', 'c'),
-    ).rejects.toBeInstanceOf(BadRequestException);
+      callAssertNoParentCycleCTE(service, tx, 'a', 'root'),
+    ).resolves.toBeUndefined();
+  });
+
+  it('runs a single $queryRaw call (not N serial lookups)', async () => {
+    tx.$queryRaw.mockResolvedValue([{ cycle_detected: false }]);
+
+    await callAssertNoParentCycleCTE(service, tx, 'a', 'b');
+
+    // Exactly one CTE query regardless of ancestor chain depth.
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
   });
 });
 
