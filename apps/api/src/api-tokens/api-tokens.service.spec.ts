@@ -12,16 +12,20 @@
  *   6. validateRawToken() — expired token is rejected (UnauthorizedException).
  *   7. validateRawToken() — unknown token is rejected (UnauthorizedException).
  *   8. isPat() — correctly detects the nlp_ prefix.
+ *   9. (Pass 5) CreateApiTokenDto.expiresAt — past date rejected by IsFutureDate validator.
  */
 
 import { NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { createHash } from 'crypto';
+import { validate } from 'class-validator';
+import { plainToInstance } from 'class-transformer';
 import {
   ApiTokensService,
   generateRawToken,
   hashToken,
   PAT_PREFIX,
 } from './api-tokens.service';
+import { CreateApiTokenDto } from './dto/api-token.dto';
 import type { PrismaService } from '../prisma/prisma.service';
 import type { AuditService } from '../audit/audit.service';
 
@@ -349,5 +353,50 @@ describe('ApiTokensService', () => {
       // Should still resolve without throwing.
       await expect(service.validateRawToken(RAW)).resolves.toEqual(USER);
     });
+  });
+});
+
+// ── Pass 5: CreateApiTokenDto.expiresAt past-date validation ─────────────────
+
+describe('CreateApiTokenDto — IsFutureDate validator', () => {
+  async function validate_dto(plain: Record<string, unknown>) {
+    const dto = plainToInstance(CreateApiTokenDto, plain);
+    return validate(dto);
+  }
+
+  it('accepts a valid future ISO 8601 date for expiresAt', async () => {
+    const future = new Date(Date.now() + 86_400_000).toISOString();
+    const errors = await validate_dto({ name: 'My token', expiresAt: future });
+    expect(errors).toHaveLength(0);
+  });
+
+  it('rejects a past date for expiresAt', async () => {
+    const past = new Date(Date.now() - 1_000).toISOString();
+    const errors = await validate_dto({ name: 'My token', expiresAt: past });
+    expect(errors.length).toBeGreaterThan(0);
+    const constraints = errors.flatMap((e) => Object.keys(e.constraints ?? {}));
+    expect(constraints).toContain('isFutureDate');
+  });
+
+  it('rejects the current instant (Date.now() with no offset) as "not future"', async () => {
+    // Use a date clearly in the past
+    const past = new Date(Date.now() - 1).toISOString();
+    const errors = await validate_dto({ name: 'My token', expiresAt: past });
+    expect(errors.length).toBeGreaterThan(0);
+  });
+
+  it('accepts omitting expiresAt entirely (non-expiring token)', async () => {
+    const errors = await validate_dto({ name: 'My token' });
+    expect(errors).toHaveLength(0);
+  });
+
+  it('rejects a non-ISO-8601 string', async () => {
+    const errors = await validate_dto({ name: 'My token', expiresAt: 'not-a-date' });
+    expect(errors.length).toBeGreaterThan(0);
+  });
+
+  it('requires a non-empty name', async () => {
+    const errors = await validate_dto({ name: '' });
+    expect(errors.length).toBeGreaterThan(0);
   });
 });

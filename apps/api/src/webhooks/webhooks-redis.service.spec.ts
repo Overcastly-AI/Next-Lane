@@ -7,6 +7,8 @@
  *   3. executeDelivery() computes correct HMAC signature on outbound requests.
  *   4. SSRF guard still blocks 127.0.0.1 when WEBHOOK_ALLOW_PRIVATE is unset.
  *   5. SSRF guard is bypassed when WEBHOOK_ALLOW_PRIVATE=true.
+ *   6. (Pass 5 fix) Job body contains subscriptionId but NOT the secret.
+ *   7. (Pass 5 fix) Worker re-fetches the subscription from DB to get the secret.
  */
 import { WebhookEventTypes } from '@next-lane/shared';
 import {
@@ -121,11 +123,29 @@ describe('WebhooksService (Redis mode) — enqueue on dispatch', () => {
     const [jobName, jobData] = queueAddMock.mock.calls[0] as [string, unknown];
     expect(jobName).toBe(WebhookEventTypes.IssueCreated);
 
-    const data = jobData as { sub: { id: string; url: string }; secret: string; payload: { event: string } };
-    expect(data.sub.id).toBe(SUB_ID);
-    expect(data.sub.url).toBe(HOOK_URL);
-    expect(data.secret).toBe(SECRET);
+    // Pass 5 fix: job carries subscriptionId (not the full sub object or secret).
+    const data = jobData as { subscriptionId: string; event: string; payload: { event: string } };
+    expect(data.subscriptionId).toBe(SUB_ID);
+    // Secret must NOT appear anywhere in the job data stored in Redis.
+    expect((data as Record<string, unknown>).secret).toBeUndefined();
+    expect((data as Record<string, unknown>).sub).toBeUndefined();
     expect(data.payload.event).toBe(WebhookEventTypes.IssueCreated);
+  });
+
+  it('(Pass 5) job body never contains the secret field', async () => {
+    const prisma = makePrisma();
+    prisma.webhookSubscription.findMany.mockResolvedValue([subRow()]);
+
+    const service = new WebhooksService(prisma as unknown as PrismaService, mockAudit as unknown as AuditService);
+    service.dispatch(PROJECT, WebhookEventTypes.IssueCreated, { id: 'i-sec' });
+    await flush();
+
+    expect(queueAddMock).toHaveBeenCalledTimes(1);
+    const jobData = queueAddMock.mock.calls[0][1] as Record<string, unknown>;
+    // Secret must be absent so it is never stored in plaintext in Redis.
+    expect(jobData.secret).toBeUndefined();
+    // subscriptionId is present so the worker can re-fetch from DB.
+    expect(typeof jobData.subscriptionId).toBe('string');
   });
 
   it('does NOT call fetch directly in Redis mode (delivery is delegated to BullMQ)', async () => {
@@ -158,7 +178,7 @@ describe('WebhooksService (Redis mode) — enqueue on dispatch', () => {
     // sub-a (all) + sub-b (issue.created) match; sub-c (sprint.started) does not
     expect(queueAddMock).toHaveBeenCalledTimes(2);
     const jobSubIds = queueAddMock.mock.calls.map(
-      (c) => (c[1] as { sub: { id: string } }).sub.id,
+      (c) => (c[1] as { subscriptionId: string }).subscriptionId,
     );
     expect(jobSubIds).toContain('sub-a');
     expect(jobSubIds).toContain('sub-b');

@@ -9,6 +9,9 @@
  *  - Delete permission: uploader can delete their own file
  *  - Delete permission: project admin can delete any file
  *  - Delete permission: a MEMBER who is NOT the uploader is rejected
+ *  - (Pass 5) SVG upload rejected (not in ALLOWED_MIME_TYPES)
+ *  - (Pass 5) Null/undefined file throws BadRequestException
+ *  - (Pass 5) Magic-byte MIME mismatch rejected (detected vs declared type)
  */
 
 import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
@@ -18,6 +21,14 @@ import type { PrismaService } from '../prisma/prisma.service';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+
+// Mock file-type so magic-byte detection is controllable in tests.
+// The service does: const fileType = require('file-type');
+// We intercept that require here.
+const mockFromFile = jest.fn<Promise<{ mime: string } | undefined>, [string]>();
+jest.mock('file-type', () => ({
+  fromFile: (...args: unknown[]) => mockFromFile(args[0] as string),
+}));
 
 // Silence console noise from safeUnlink during tests.
 jest.spyOn(console, 'error').mockImplementation(() => {});
@@ -146,6 +157,12 @@ function makeService(prisma: PrismaService) {
 // ── tests ─────────────────────────────────────────────────────────────────────
 
 describe('AttachmentsService', () => {
+  beforeEach(() => {
+    // Default: file-type returns undefined (no magic bytes — e.g. text/plain).
+    // Individual tests override this as needed.
+    mockFromFile.mockResolvedValue(undefined);
+  });
+
   afterAll(() => {
     delete process.env.UPLOADS_DIR;
   });
@@ -222,6 +239,87 @@ describe('AttachmentsService', () => {
       expect(ALLOWED_MIME_TYPES.has('application/zip')).toBe(true);
       expect(ALLOWED_MIME_TYPES.has('application/x-msdownload')).toBe(false);
       expect(ALLOWED_MIME_TYPES.has('application/javascript')).toBe(false);
+    });
+
+    // ── Pass 5 new tests ─────────────────────────────────────────────────────
+
+    it('(Pass 5) rejects SVG uploads — not in ALLOWED_MIME_TYPES', async () => {
+      const prisma = makePrisma();
+      const svc = makeService(prisma);
+      const file = makeTmpFile('<svg><script>alert(1)</script></svg>', 'evil.svg');
+      file.mimetype = 'image/svg+xml';
+
+      await expect(svc.upload(UPLOADER_ID, ISSUE_ID, file)).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('(Pass 5) SVG is absent from ALLOWED_MIME_TYPES', () => {
+      expect(ALLOWED_MIME_TYPES.has('image/svg+xml')).toBe(false);
+    });
+
+    it('(Pass 5) throws BadRequestException when file is undefined (no file field in multipart)', async () => {
+      const prisma = makePrisma();
+      const svc = makeService(prisma);
+
+      await expect(
+        svc.upload(UPLOADER_ID, ISSUE_ID, undefined),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('(Pass 5) rejects when detected magic-byte type does not match declared MIME type', async () => {
+      // Simulate: user declares image/png but the file contains a JPEG.
+      mockFromFile.mockResolvedValue({ mime: 'image/jpeg' });
+
+      const prisma = makePrisma();
+      const svc = makeService(prisma);
+      const file = makeTmpFile('fake-jpeg-bytes', 'tricky.png');
+      file.mimetype = 'image/png'; // declared as PNG, but detected as JPEG
+
+      await expect(svc.upload(UPLOADER_ID, ISSUE_ID, file)).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('(Pass 5) rejects when detected magic-byte type is not in the allowlist', async () => {
+      // Simulate: file-type detects an exe hidden inside a fake .pdf.
+      mockFromFile.mockResolvedValue({ mime: 'application/x-msdownload' });
+
+      const prisma = makePrisma();
+      const svc = makeService(prisma);
+      const file = makeTmpFile('MZ...exe-bytes', 'sneaky.pdf');
+      file.mimetype = 'application/pdf';
+
+      await expect(svc.upload(UPLOADER_ID, ISSUE_ID, file)).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('(Pass 5) accepts an image/png file whose magic bytes also detect as image/png', async () => {
+      // file-type detects 'image/png' — matches declared MIME → accepted (no throw).
+      mockFromFile.mockResolvedValue({ mime: 'image/png' });
+
+      const prisma = makePrisma({ memberRole: Role.MEMBER });
+      const svc = makeService(prisma);
+      const file = makeTmpFile('\x89PNG\r\n\x1a\n', 'photo.png');
+      file.mimetype = 'image/png';
+
+      // Should not throw — the magic byte check passes.
+      await expect(svc.upload(UPLOADER_ID, ISSUE_ID, file)).resolves.toBeDefined();
+    });
+
+    it('(Pass 5) accepts a .docx declared as docx when magic bytes are application/zip (ZIP family)', async () => {
+      // OOXML (.docx) is a ZIP archive — file-type detects "application/zip".
+      // The MIME_EQUIVALENTS map treats application/zip as compatible with docx.
+      mockFromFile.mockResolvedValue({ mime: 'application/zip' });
+
+      const prisma = makePrisma({ memberRole: Role.MEMBER });
+      const svc = makeService(prisma);
+      const file = makeTmpFile('PK...', 'report.docx');
+      file.mimetype = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+
+      // Should not throw — ZIP-family equivalence allows this.
+      await expect(svc.upload(UPLOADER_ID, ISSUE_ID, file)).resolves.toBeDefined();
     });
   });
 

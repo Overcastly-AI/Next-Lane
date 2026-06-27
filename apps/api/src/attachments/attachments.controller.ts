@@ -73,7 +73,14 @@ export class AttachmentsController {
     // and limit to US-ASCII safe characters.
     const safeName = attachment.filename.replace(/[^\x20-\x7E]/g, '_');
     const ext = path.extname(safeName).toLowerCase();
-    // For inline-viewable types (images, PDF) use inline; everything else forces download.
+    // For inline-viewable raster images and PDF use inline disposition;
+    // everything else (including any legacy SVG that somehow exists in the
+    // store) forces a download with a safe Content-Type so the browser can
+    // never render it as an active document.
+    //
+    // SVG is intentionally absent from inlineTypes: if an SVG slipped in
+    // before the upload allowlist was tightened, we serve it as
+    // application/octet-stream to prevent in-browser script execution.
     const inlineTypes = new Set([
       'image/jpeg',
       'image/png',
@@ -81,11 +88,20 @@ export class AttachmentsController {
       'image/webp',
       'application/pdf',
     ]);
-    const disposition = inlineTypes.has(attachment.mimeType)
+
+    // Any SVG (legacy or otherwise) is served as a binary download to prevent
+    // in-browser rendering.  All other non-inline types already get
+    // Content-Disposition: attachment below.
+    const isSvg = attachment.mimeType === 'image/svg+xml';
+    const effectiveContentType = isSvg
+      ? 'application/octet-stream'
+      : attachment.mimeType;
+
+    const disposition = inlineTypes.has(attachment.mimeType) && !isSvg
       ? `inline; filename="${safeName}"`
       : `attachment; filename="${safeName}"`;
 
-    res.setHeader('Content-Type', attachment.mimeType);
+    res.setHeader('Content-Type', effectiveContentType);
     res.setHeader('Content-Disposition', disposition);
     res.setHeader('Content-Length', String(attachment.sizeBytes));
     // Allow browsers to cache for a short window; ETag would require hashing

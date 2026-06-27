@@ -48,6 +48,7 @@ Status legend: ✅ done · 🚧 in progress · ⬜ planned
 - ✅ CI pipeline (GitHub Actions) + API unit-test suite
 - ✅ Cursor pagination for large lists (keyset on `createdAt,id`; `GET /issues` → `{ items, nextCursor }`)
 - ✅ Security hardening pass (P1+P2): webhook SSRF guard (DNS pre-flight + redirect:manual + socket drain + fan-out cap), composite pagination index `@@index([projectId,createdAt,id])` + migration, `helmet()` security headers, global throttler (100 req/min) + stricter auth throttle (10 req/min), `WEBHOOK_ALLOW_PRIVATE` opt-out for self-hosters
+- ✅ Security hardening Pass 5 (P1+P2): password-reset token no longer logged in production; SVG upload XSS vector removed (image/svg+xml removed from allowlist; legacy SVGs served as octet-stream); magic-byte MIME validation via file-type@16; null-file guard; PAT expiresAt past-date rejected; webhook HMAC secret removed from Redis job body (worker re-fetches from DB); 6 new unit tests; `file-type@16` dep added (2026-06-27)
 - ✅ `assertNoParentCycle` replaced with atomic recursive CTE (`WITH RECURSIVE` via `$queryRaw` inside `$transaction`; TOCTOU-safe; O(1) round-trips; 100-hop depth cap; 6 new unit tests)
 - ✅ Password reset (POST /auth/forgot-password + time-limited token + dev-log delivery + frontend forgot/reset pages)
 - ✅ Keyboard triage mode (`/projects/:id/triage`): j/k navigate, s/p/a/l inline pickers, Enter drawer, f filter, ? help overlay, VIEWER read-only, mobile open button, command palette entry

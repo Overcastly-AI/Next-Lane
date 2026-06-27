@@ -186,10 +186,21 @@ export function signPayload(secret: string, rawBody: string): string {
 
 // ---- Job payload shape (used by both the enqueuer and the worker) ----------
 
+/**
+ * Shape of data stored in a BullMQ Redis job.
+ *
+ * Security fix (Pass 5): the subscription `secret` is intentionally NOT
+ * included here. Redis job data is stored as plaintext JSON — including the
+ * HMAC signing secret would expose it to anyone with Redis read access. The
+ * worker re-fetches the subscription (one indexed DB lookup) at delivery time
+ * to obtain the secret. This keeps secrets entirely out of the Redis store.
+ */
 export interface WebhookJobData {
-  sub: WebhookSubscriptionDto;
-  /** The subscription secret — kept in the job body (BullMQ queue is internal). */
-  secret: string;
+  /** The subscription ID — used by the worker to re-fetch the full record. */
+  subscriptionId: string;
+  /** The event type being delivered. */
+  event: WebhookEventType;
+  /** The full event payload to deliver. */
   payload: WebhookEventPayload;
 }
 
@@ -310,11 +321,26 @@ export class WebhooksService {
     this.worker = new Worker<WebhookJobData>(
       WEBHOOK_QUEUE_NAME,
       async (job: Job<WebhookJobData>) => {
-        const { sub, secret, payload } = job.data;
+        const { subscriptionId, payload } = job.data;
         this.logger.debug(
-          `Processing webhook job ${job.id} for subscription ${sub.id} (event=${payload.event})`,
+          `Processing webhook job ${job.id} for subscription ${subscriptionId} (event=${payload.event})`,
         );
-        const result = await executeDelivery(sub, secret, payload);
+
+        // Security fix (Pass 5): re-fetch the subscription from the DB at
+        // delivery time so the HMAC secret is never stored in Redis.  This is
+        // one indexed lookup (subscriptionId has a unique index on the DB).
+        const sub = await this.prisma.webhookSubscription.findUnique({
+          where: { id: subscriptionId },
+        });
+        if (!sub) {
+          // Subscription was deleted between enqueue and delivery — skip.
+          this.logger.warn(
+            `Webhook job ${job.id}: subscription ${subscriptionId} no longer exists; skipping`,
+          );
+          return;
+        }
+
+        const result = await executeDelivery(toSubscriptionDto(sub), sub.secret, payload);
         if (!result.success && result.error?.startsWith('SSRF blocked')) {
           // SSRF-blocked deliveries should not be retried — record and done.
           this.logger.warn(
@@ -466,9 +492,10 @@ export class WebhooksService {
     // Awaited here (not fire-and-forget) so the admin sees the result reflected
     // in the delivery log promptly.  Errors are swallowed into a delivery row.
     if (this.queue) {
+      // Security fix: enqueue only subscriptionId (no secret in Redis job).
       await this.queue.add('test', {
-        sub: toSubscriptionDto(sub),
-        secret: sub.secret,
+        subscriptionId: sub.id,
+        event: WebhookEventTypes.IssueCreated,
         payload,
       });
     } else {
@@ -485,7 +512,8 @@ export class WebhooksService {
    * the caller (the originating request must not be affected by webhook I/O).
    *
    * When REDIS_URL is set: each (subscription, event) pair is enqueued as a
-   * BullMQ job — durable, retried, deduplicated across replicas.
+   * BullMQ job carrying only `subscriptionId` + `event` + `payload` — the
+   * HMAC secret is NOT stored in Redis; the worker re-fetches it from the DB.
    * When REDIS_URL is unset: falls back to the original in-process p-limit
    * fan-out for zero-config single-node deployments.
    */
@@ -523,13 +551,17 @@ export class WebhooksService {
 
     if (this.queue) {
       // Redis mode: enqueue one BullMQ job per matching subscription.
+      // Security fix (Pass 5): job body contains only subscriptionId, event,
+      // and payload — the HMAC secret is intentionally omitted so it is never
+      // stored in plaintext in Redis.  The worker re-fetches the subscription
+      // from the DB at delivery time.
       await Promise.all(
         matching.map((s) =>
           this.queue!.add(event, {
-            sub: toSubscriptionDto(s),
-            secret: s.secret,
+            subscriptionId: s.id,
+            event,
             payload,
-          }).catch((err: Error) =>
+          } satisfies WebhookJobData).catch((err: Error) =>
             this.logger.error(
               `Failed to enqueue webhook job for sub ${s.id}: ${err.message}`,
             ),
