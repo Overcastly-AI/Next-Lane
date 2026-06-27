@@ -44,6 +44,7 @@ Status legend: ✅ done · 🚧 in progress · ⬜ planned
 - ✅ "My Work" personal dashboard
 - ✅ CI pipeline (GitHub Actions) + API unit-test suite
 - ✅ Cursor pagination for large lists (keyset on `createdAt,id`; `GET /issues` → `{ items, nextCursor }`)
+- ✅ Security hardening pass (P1+P2): webhook SSRF guard (DNS pre-flight + redirect:manual + socket drain + fan-out cap), composite pagination index `@@index([projectId,createdAt,id])` + migration, `helmet()` security headers, global throttler (100 req/min) + stricter auth throttle (10 req/min), `WEBHOOK_ALLOW_PRIVATE` opt-out for self-hosters
 - ⬜ Query DSL / saved views (filter builder → text query)
 - ⬜ Custom fields (typed, JSONB-backed)
 - ⬜ Workflow automation rules (trigger → action)
@@ -56,10 +57,11 @@ Status legend: ✅ done · 🚧 in progress · ⬜ planned
 ---
 
 ### Current focus
-**Phase 3 power features.** Phases 0–2 are done; the product is a working agile
+**Phase 3 power features + security/scale hardening.** Phases 0–2 are done; the product is a working agile
 tracker (board, backlog, sprints, reports, roadmap, labels, story points, epics,
 comments, search, command palette, My Work, roles, notifications, webhooks, realtime).
-Now shipping Phase 3 in parallel batches and hardening for scale.
+Security hardening pass is complete (SSRF guard, pagination index, helmet, rate limiting).
+Remaining: query DSL/saved views, custom fields, automation rules, time tracking, email, dashboards, API tokens, audit log, bulk edit, importers, SSO.
 
 ## v1.0 release criteria — definition of "a good product"
 
@@ -69,7 +71,7 @@ We are done with v1 when ALL of these hold (drive here, then polish, then stop):
 - [ ] **Core flows are bug-free on desktop AND mobile**, verified with real-user QA (per-keystroke typing, real clicks/scroll): auth, create/edit/move issue, drag-and-drop, comments, labels, sprints, backlog, reports, roadmap, search, settings/columns, My Work, notifications.
 - [ ] **First-run experience isn't an empty void:** onboarding offers a sample project or clear "create your first project" guidance.
 - [ ] **No known P0/P1 bugs.** CI (lint + typecheck + unit + e2e desktop/mobile) green on every push.
-- [ ] **Security/multi-tenant solid:** isolation, roles, secrets, CORS, input bounds, webhook SSRF — all closed (mostly done).
+- [x] **Security/multi-tenant solid:** isolation, roles, secrets, CORS, input bounds, webhook SSRF — all closed. (SSRF guard + pagination index + helmet + rate limiting shipped 2026-06-27.)
 - [ ] **Docs accurate:** README quickstart works verbatim; ROADMAP/BACKLOG reflect reality.
 - [ ] **Performance sane at scale:** large boards/lists don't OOM or hang (pagination).
 - [ ] **A short product demo passes:** a scripted "new user → create project → plan a sprint → work the board → see a report" walkthrough works without a hitch on desktop and mobile.

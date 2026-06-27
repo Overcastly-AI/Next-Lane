@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { AuthService, toUserDto } from './auth.service';
 import { RegisterDto, LoginDto } from './dto/auth.dto';
 import { Public } from './public.decorator';
@@ -8,6 +9,9 @@ import { PrismaService } from '../prisma/prisma.service';
 
 @ApiTags('auth')
 @Controller('auth')
+// Stricter rate limit on auth endpoints: 10 requests per 60 seconds per IP.
+// This overrides the global 100 req/min limit from ThrottlerModule.
+@Throttle({ global: { ttl: 60000, limit: 10 } })
 export class AuthController {
   constructor(
     private readonly auth: AuthService,

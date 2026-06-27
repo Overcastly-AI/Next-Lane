@@ -2,7 +2,7 @@ import { createHmac } from 'node:crypto';
 import { ForbiddenException } from '@nestjs/common';
 import { Role, WebhookEventTypes } from '@next-lane/shared';
 import * as membership from '../common/membership.util';
-import { WebhooksService, signPayload } from './webhooks.service';
+import { WebhooksService, signPayload, isBlockedIp } from './webhooks.service';
 import type { PrismaService } from '../prisma/prisma.service';
 
 const PROJECT = 'project-1';
@@ -130,6 +130,14 @@ describe('WebhooksService dispatch / delivery', () => {
   beforeEach(() => {
     prisma = makePrisma();
     service = new WebhooksService(prisma as unknown as PrismaService);
+    // Mock DNS so delivery tests don't need a real network: "example.test"
+    // resolves to a public IP address (not in any blocked range).
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const dnsModule = require('node:dns') as typeof import('node:dns');
+    jest
+      .spyOn(dnsModule.promises, 'lookup')
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .mockResolvedValue([{ address: '93.184.216.34', family: 4 }] as any);
   });
 
   afterEach(() => {
@@ -141,7 +149,7 @@ describe('WebhooksService dispatch / delivery', () => {
     prisma.webhookSubscription.findMany.mockResolvedValue([subRow()]);
     const fetchMock = jest
       .fn()
-      .mockResolvedValue({ ok: true, status: 200 } as Response);
+      .mockResolvedValue({ ok: true, status: 200, text: () => Promise.resolve('') } as unknown as Response);
     global.fetch = fetchMock as unknown as typeof fetch;
 
     service.dispatch(PROJECT, WebhookEventTypes.IssueCreated, { id: 'i1' });
@@ -190,7 +198,7 @@ describe('WebhooksService dispatch / delivery', () => {
     ]);
     const fetchMock = jest
       .fn()
-      .mockResolvedValue({ ok: true, status: 204 } as Response);
+      .mockResolvedValue({ ok: true, status: 204, text: () => Promise.resolve('') } as unknown as Response);
     global.fetch = fetchMock as unknown as typeof fetch;
 
     service.dispatch(PROJECT, WebhookEventTypes.IssueCreated, { id: 'i1' });
@@ -213,5 +221,175 @@ describe('WebhooksService dispatch / delivery', () => {
 
     expect(fetchMock).not.toHaveBeenCalled();
     expect(prisma.webhookDelivery.create).not.toHaveBeenCalled();
+  });
+});
+
+// ---- isBlockedIp unit tests ------------------------------------------------
+
+describe('isBlockedIp', () => {
+  describe('IPv4 blocked ranges', () => {
+    it.each([
+      ['127.0.0.1', 'loopback'],
+      ['127.1.2.3', 'loopback /8'],
+      ['169.254.169.254', 'AWS link-local metadata endpoint'],
+      ['169.254.0.1', 'link-local /16'],
+      ['10.0.0.1', 'private class A /8'],
+      ['10.255.255.255', 'private class A edge'],
+      ['172.16.0.1', 'private class B /12 lower'],
+      ['172.31.255.255', 'private class B /12 upper'],
+      ['192.168.0.1', 'private class C /16'],
+      ['192.168.255.255', 'private class C edge'],
+      ['0.0.0.0', 'this-network /8'],
+      ['0.255.255.255', 'this-network /8 edge'],
+    ])('blocks %s (%s)', (ip) => {
+      expect(isBlockedIp(ip)).toBe(true);
+    });
+
+    it.each([
+      ['8.8.8.8', 'public Google DNS'],
+      ['1.1.1.1', 'public Cloudflare DNS'],
+      ['172.15.255.255', 'just below private class B /12'],
+      ['172.32.0.0', 'just above private class B /12'],
+      ['192.169.0.0', 'just above private class C /16'],
+    ])('allows %s (%s)', (ip) => {
+      expect(isBlockedIp(ip)).toBe(false);
+    });
+  });
+
+  describe('IPv6 blocked ranges', () => {
+    it.each([
+      ['::1', 'loopback'],
+      ['fe80::1', 'link-local'],
+      ['fe80::dead:beef', 'link-local with suffix'],
+      ['fc00::1', 'unique-local fc00::/7 lower'],
+      ['fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff', 'unique-local fc00::/7 upper'],
+    ])('blocks %s (%s)', (ip) => {
+      expect(isBlockedIp(ip)).toBe(true);
+    });
+
+    it.each([
+      ['2001:4860:4860::8888', 'public Google DNS v6'],
+      ['2606:4700:4700::1111', 'public Cloudflare DNS v6'],
+    ])('allows %s (%s)', (ip) => {
+      expect(isBlockedIp(ip)).toBe(false);
+    });
+  });
+});
+
+// ---- SSRF delivery guard integration tests ---------------------------------
+
+describe('WebhooksService SSRF delivery guard', () => {
+  let prisma: ReturnType<typeof makePrisma>;
+  let service: WebhooksService;
+  const realFetch = global.fetch;
+  const realEnv = process.env.WEBHOOK_ALLOW_PRIVATE;
+
+  const subRow = (url: string) => ({
+    id: SUB_ID,
+    projectId: PROJECT,
+    url,
+    secret: SECRET,
+    events: [] as string[],
+    active: true,
+    createdAt: new Date('2026-01-01T00:00:00Z'),
+    updatedAt: new Date('2026-01-01T00:00:00Z'),
+  });
+
+  beforeEach(() => {
+    prisma = makePrisma();
+    service = new WebhooksService(prisma as unknown as PrismaService);
+    delete process.env.WEBHOOK_ALLOW_PRIVATE;
+  });
+
+  afterEach(() => {
+    global.fetch = realFetch;
+    if (realEnv === undefined) {
+      delete process.env.WEBHOOK_ALLOW_PRIVATE;
+    } else {
+      process.env.WEBHOOK_ALLOW_PRIVATE = realEnv;
+    }
+    jest.restoreAllMocks();
+  });
+
+  it('blocks delivery to 127.0.0.1 (loopback) and records a failed row without calling fetch', async () => {
+    prisma.webhookSubscription.findMany.mockResolvedValue([subRow('http://127.0.0.1/hook')]);
+    const fetchMock = jest.fn();
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    service.dispatch(PROJECT, WebhookEventTypes.IssueCreated, { id: 'i1' });
+    await flush();
+
+    // fetch must never be called for a blocked target
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    // A failed delivery row should still be recorded
+    expect(prisma.webhookDelivery.create).toHaveBeenCalledTimes(1);
+    const row = prisma.webhookDelivery.create.mock.calls[0][0].data;
+    expect(row.status).toBe('failed');
+    expect(row.error).toMatch(/SSRF blocked/i);
+  });
+
+  it('blocks delivery to 169.254.169.254 (link-local / cloud metadata) without calling fetch', async () => {
+    prisma.webhookSubscription.findMany.mockResolvedValue([
+      subRow('http://169.254.169.254/latest/meta-data/'),
+    ]);
+    const fetchMock = jest.fn();
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    service.dispatch(PROJECT, WebhookEventTypes.IssueCreated, { id: 'i1' });
+    await flush();
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(prisma.webhookDelivery.create).toHaveBeenCalledTimes(1);
+    const row = prisma.webhookDelivery.create.mock.calls[0][0].data;
+    expect(row.status).toBe('failed');
+    expect(row.error).toMatch(/SSRF blocked/i);
+  });
+
+  it('allows delivery to a public host when WEBHOOK_ALLOW_PRIVATE is unset', async () => {
+    // For this test we mock the DNS lookup to return a public IP so we don't
+    // need real network access.
+    prisma.webhookSubscription.findMany.mockResolvedValue([
+      subRow('https://example.test/hook'),
+    ]);
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValue({ ok: true, status: 200, text: () => Promise.resolve('') } as Response);
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    // To avoid real DNS in CI we spy on the dns module.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const dnsModule = require('node:dns') as typeof import('node:dns');
+    jest
+      .spyOn(dnsModule.promises, 'lookup')
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .mockResolvedValue([{ address: '93.184.216.34', family: 4 }] as any);
+
+    service.dispatch(PROJECT, WebhookEventTypes.IssueCreated, { id: 'i1' });
+    await flush();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const row = prisma.webhookDelivery.create.mock.calls[0][0].data;
+    expect(row.status).toBe('success');
+  });
+
+  it('bypasses SSRF guard when WEBHOOK_ALLOW_PRIVATE=true', async () => {
+    process.env.WEBHOOK_ALLOW_PRIVATE = 'true';
+
+    prisma.webhookSubscription.findMany.mockResolvedValue([
+      subRow('http://192.168.1.100/hook'),
+    ]);
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValue({ ok: true, status: 200, text: () => Promise.resolve('') } as Response);
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    service.dispatch(PROJECT, WebhookEventTypes.IssueCreated, { id: 'i1' });
+    await flush();
+
+    // When the flag is set, fetch should be called even for a private IP
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const row = prisma.webhookDelivery.create.mock.calls[0][0].data;
+    expect(row.status).toBe('success');
   });
 });

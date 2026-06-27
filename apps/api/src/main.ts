@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { assertAuthConfig } from './auth/auth.config';
 import { AllExceptionsFilter } from './common/all-exceptions.filter';
@@ -11,6 +12,9 @@ async function bootstrap() {
   assertAuthConfig();
 
   const app = await NestFactory.create(AppModule);
+
+  // Security headers via Helmet (XSS, clickjacking, MIME sniff, etc.).
+  app.use(helmet());
 
   // Catch-all filter: map Prisma errors and unexpected throws to clean,
   // consistent envelopes and suppress internal detail in production.
