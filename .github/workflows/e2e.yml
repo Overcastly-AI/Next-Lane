@@ -1,0 +1,163 @@
+# Playwright end-to-end suite (desktop + mobile projects) against the real
+# built artifacts. ci.yml intentionally skips this (it's the fast, DB-free net);
+# this workflow brings up Postgres + Redis service containers, builds + starts
+# the API and the web preview, then runs the full Playwright suite.
+#
+# Mirrors the LOCAL harness env (see apps/web/playwright.config.ts + e2e/helpers.ts):
+#   PW_BASE_URL     -> where Playwright drives the browser (web preview :3000)
+#   PW_API_URL      -> where helpers.ts hits the REST API (:4000)
+#   PW_NO_WEBSERVER -> we start vite preview ourselves, so disable the managed one
+# The API runs with rate limiting + the webhook SSRF guard relaxed, exactly as
+# the local config header documents (the suite logs in far more than 10/min and
+# the webhook spec delivers to a localhost mock).
+name: E2E
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: e2e-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    name: Playwright (desktop + mobile)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: nextlane
+          POSTGRES_PASSWORD: nextlane
+          POSTGRES_DB: nextlane
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U nextlane"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://nextlane:nextlane@localhost:5432/nextlane?schema=public
+      REDIS_URL: redis://localhost:6379
+      JWT_SECRET: ci-e2e-secret-not-for-production
+      API_PORT: '4000'
+      # Relax limits for the suite (defaults stay strict in prod).
+      RATE_LIMIT_DISABLED: 'true'
+      WEBHOOK_ALLOW_PRIVATE: 'true'
+      # Playwright harness wiring (mirrors local).
+      PW_BASE_URL: http://localhost:3000
+      PW_API_URL: http://localhost:4000
+      PW_WEB_PORT: '3000'
+      PW_NO_WEBSERVER: '1'
+      CI: 'true'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm --filter @next-lane/api exec prisma generate
+
+      - name: Build shared
+        run: pnpm --filter @next-lane/shared build
+
+      - name: Build API
+        run: pnpm --filter @next-lane/api build
+
+      # The web preview (vite preview) does NOT load /config.js, so the API URL
+      # must be baked at build time here via VITE_API_URL (getApiUrl fallback).
+      - name: Build web (VITE_API_URL baked for preview)
+        run: pnpm --filter @next-lane/web build
+        env:
+          VITE_API_URL: http://localhost:4000
+
+      - name: Apply database migrations
+        run: pnpm --filter @next-lane/api exec prisma migrate deploy
+
+      - name: Seed demo data
+        run: pnpm --filter @next-lane/api db:seed
+
+      - name: Start API
+        run: |
+          node apps/api/dist/main.js > "$RUNNER_TEMP/api.log" 2>&1 &
+          echo "API_PID=$!" >>"$GITHUB_ENV"
+
+      - name: Wait for API health
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:4000/health >/dev/null 2>&1; then
+              echo "API is up"; exit 0
+            fi
+            sleep 2
+          done
+          echo "API did not become healthy in time" >&2
+          cat "$RUNNER_TEMP/api.log" || true
+          exit 1
+
+      - name: Start web preview
+        run: |
+          pnpm --filter @next-lane/web exec vite preview --port 3000 --strictPort \
+            > "$RUNNER_TEMP/web.log" 2>&1 &
+          echo "WEB_PID=$!" >>"$GITHUB_ENV"
+
+      - name: Wait for web preview
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:3000 >/dev/null 2>&1; then
+              echo "Web preview is up"; exit 0
+            fi
+            sleep 2
+          done
+          echo "Web preview did not start in time" >&2
+          cat "$RUNNER_TEMP/web.log" || true
+          exit 1
+
+      - name: Install Playwright browser (chromium)
+        run: pnpm --filter @next-lane/web exec playwright install --with-deps chromium
+
+      - name: Run Playwright e2e (desktop + mobile)
+        run: pnpm --filter @next-lane/web exec playwright test
+
+      - name: Dump server logs on failure
+        if: failure()
+        run: |
+          echo "===== API log ====="; cat "$RUNNER_TEMP/api.log" || true
+          echo "===== Web log ====="; cat "$RUNNER_TEMP/web.log" || true
+
+      - name: Upload Playwright HTML report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: apps/web/playwright-report
+          retention-days: 14
+          if-no-files-found: warn

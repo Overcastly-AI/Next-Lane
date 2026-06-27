@@ -1,0 +1,139 @@
+# Publish multi-arch container images for the api + web apps to GHCR.
+#
+# Triggers:
+#   - push to the default branch  -> tags: edge, sha-<short>, branch name
+#   - push of a semver tag v*     -> tags: <version>, <major.minor>, latest, sha
+#
+# Auth uses the built-in GITHUB_TOKEN (no PAT needed) with packages:write.
+# Image names are derived from the repo OWNER at runtime and lowercased, so
+# forks publish to their own namespace without editing this file:
+#   ghcr.io/<owner>/next-lane-api
+#   ghcr.io/<owner>/next-lane-web
+# These match the image refs in deploy/helm + deploy/kustomize.
+name: Publish images
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+concurrency:
+  group: images-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build-push:
+    name: Build & push ${{ matrix.app }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - app: api
+            image: next-lane-api
+            dockerfile: apps/api/Dockerfile
+          - app: web
+            image: next-lane-web
+            dockerfile: apps/web/Dockerfile
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # GHCR (and image refs) must be lowercase; ${{ github.repository_owner }}
+      # may contain uppercase, so normalise it here.
+      - name: Compute lowercase image ref
+        id: ref
+        run: |
+          owner_lc=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          echo "image=${REGISTRY}/${owner_lc}/${{ matrix.image }}" >>"$GITHUB_OUTPUT"
+
+      - name: Set up QEMU (multi-arch emulation)
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract image metadata (tags + labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.ref.outputs.image }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,format=short
+            type=ref,event=branch
+            type=edge,branch=main
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+
+      - name: Build & push (multi-arch)
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          provenance: true
+          sbom: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # The web image must NOT bake an API URL — runtime /config.js handles
+          # it (getApiUrl: window.__NL_CONFIG__ -> VITE_API_URL -> default).
+          # Passing an empty build-arg is a no-op for the api image.
+          build-args: |
+            VITE_API_URL=
+          cache-from: type=gha,scope=${{ matrix.app }}
+          cache-to: type=gha,scope=${{ matrix.app }},mode=max
+
+      # Generate an SPDX SBOM artifact in addition to the attestation buildx
+      # attaches (sbom: true above). Useful for supply-chain review / archival.
+      - name: Generate SBOM (SPDX)
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ steps.ref.outputs.image }}@${{ steps.build.outputs.digest }}
+          format: spdx-json
+          artifact-name: sbom-${{ matrix.app }}.spdx.json
+          output-file: ${{ runner.temp }}/sbom-${{ matrix.app }}.spdx.json
+
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ matrix.app }}
+          path: ${{ runner.temp }}/sbom-${{ matrix.app }}.spdx.json
+          if-no-files-found: warn
+
+      - name: Trivy image scan
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ steps.ref.outputs.image }}@${{ steps.build.outputs.digest }}
+          format: sarif
+          output: trivy-${{ matrix.app }}.sarif
+          severity: CRITICAL,HIGH
+          # Report-only: don't fail the publish on findings (gate later if desired).
+          exit-code: '0'
+          ignore-unfixed: true
+
+      - name: Upload Trivy SARIF
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: trivy-${{ matrix.app }}
+          path: trivy-${{ matrix.app }}.sarif
+          if-no-files-found: warn
