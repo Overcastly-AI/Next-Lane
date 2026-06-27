@@ -40,3 +40,7 @@ postgres-data/
 test-results/
 playwright-report/
 .playwright/
+
+# Attachment uploads (runtime storage; UPLOADS_DIR — maps to a PVC in K8s)
+uploads/
+apps/api/uploads/
