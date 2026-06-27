@@ -49,6 +49,7 @@ Status legend: ✅ done · 🚧 in progress · ⬜ planned
 - ✅ Security hardening pass (P1+P2): webhook SSRF guard (DNS pre-flight + redirect:manual + socket drain + fan-out cap), composite pagination index `@@index([projectId,createdAt,id])` + migration, `helmet()` security headers, global throttler (100 req/min) + stricter auth throttle (10 req/min), `WEBHOOK_ALLOW_PRIVATE` opt-out for self-hosters
 - ✅ `assertNoParentCycle` replaced with atomic recursive CTE (`WITH RECURSIVE` via `$queryRaw` inside `$transaction`; TOCTOU-safe; O(1) round-trips; 100-hop depth cap; 6 new unit tests)
 - ✅ Password reset (POST /auth/forgot-password + time-limited token + dev-log delivery + frontend forgot/reset pages)
+- ✅ Keyboard triage mode (`/projects/:id/triage`): j/k navigate, s/p/a/l inline pickers, Enter drawer, f filter, ? help overlay, VIEWER read-only, mobile open button, command palette entry
 - ⬜ Query DSL / saved views (filter builder → text query)
 - ⬜ Custom fields (typed, JSONB-backed)
 - ⬜ Workflow automation rules (trigger → action)
@@ -98,7 +99,8 @@ Board type/priority filters, @mention autocomplete (MentionComposer picker match
 UX/a11y polish pass (2026-06-27): MentionComposer no-results state; password min-length aligned to 8 (ResetPasswordPage + ResetPasswordDto); auto-redirect removed from reset success; board toolbar mobile overflow-x-auto strip; aria-haspopup corrected; picker shadow + position improved; MyWorkPage EmptyState unified; autoFocus on all auth forms.
 Perf + polish pass #2 (2026-06-27): useProjectIssues passes `limit=200` (API cap) — reduces planning-view round-trips 5x; BoardColumn empty-button contrast raised to `text-sm text-gray-500` (WCAG-AA); OnboardingPanel emoji icons replaced with consistent inline SVGs; MyWork per-section EmptyState now has "Go to board" action. 16 e2e green (onboarding + my-work, desktop + mobile).
 Socket.io Redis adapter + BullMQ webhook queue (2026-06-27): `REDIS_URL`-gated — when set, Socket.io uses `@socket.io/redis-adapter` for multi-replica fan-out and webhook delivery is queued via BullMQ (3 attempts, exponential backoff, concurrency 10); when unset, existing in-memory adapter and in-process p-limit fan-out are unchanged. Phase 4 multi-replica HA prerequisites now met.
-**v1 is feature-complete and green** (all release criteria met except the real `docker compose up` first-run check, which requires a host with registry access — see below). Remaining work is **post-v1**: query DSL/saved views, custom fields, automation rules, time tracking, email, dashboards, API tokens, audit log, bulk edit, importers, SSO — plus hardening (wire e2e into CI, JWT→httpOnly cookie, structured logging).
+Keyboard triage mode shipped 2026-06-27: `/projects/:id/triage` with full j/k/s/p/a/l/Enter/f/? keyboard model, ARIA listbox, VIEWER read-only, mobile open button, command palette entry, 12 e2e tests green.
+**v1 is feature-complete and green** (all release criteria met except the real `docker compose up` first-run check, which requires a host with registry access — see below). Remaining work is **post-v1**: query DSL/saved views, custom fields, automation rules, time tracking, email, dashboards, API tokens, audit log, bulk edit, importers, SSO — plus hardening (wire e2e into CI, JWT→httpOnly cookie) and the rest of Phase 4 packaging (GHCR images, Helm chart, web runtime-config).
 
 ## v1.0 release criteria — definition of "a good product"
 

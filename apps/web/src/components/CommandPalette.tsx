@@ -112,6 +112,15 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
         onSelect: () => go(`/projects/${proj}/backlog`),
       },
       {
+        id: 'qa-triage',
+        group: 'Actions',
+        label: 'Triage issues',
+        text: 'Triage issues',
+        hint: 'T',
+        icon: <GlyphTriage />,
+        onSelect: () => go(`/projects/${proj}/triage`),
+      },
+      {
         id: 'qa-reports',
         group: 'Actions',
         label: 'Go to Reports',
@@ -420,6 +429,14 @@ function GlyphFolder() {
   return (
     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
       <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+    </svg>
+  );
+}
+function GlyphTriage() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 10h16M4 14h10M4 18h6" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M17 15l2 2 4-4" />
     </svg>
   );
 }
