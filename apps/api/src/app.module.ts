@@ -26,6 +26,8 @@ import { ApiTokensModule } from './api-tokens/api-tokens.module';
 import { AttachmentsModule } from './attachments/attachments.module';
 import { AuditModule } from './audit/audit.module';
 import { MailModule } from './mail/mail.module';
+import { ShareTokensModule } from './share-tokens/share-tokens.module';
+import { PublicModule } from './public/public.module';
 import { HealthController } from './health.controller';
 
 const isProd = process.env.NODE_ENV === 'production';
@@ -93,6 +95,8 @@ const isProd = process.env.NODE_ENV === 'production';
     AttachmentsModule,
     AuditModule,
     MailModule,
+    ShareTokensModule,
+    PublicModule,
   ],
   controllers: [HealthController],
   providers: [

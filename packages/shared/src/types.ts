@@ -482,6 +482,46 @@ export interface PaginatedAuditEventsDto {
   nextCursor: string | null;
 }
 
+// ── Public Share Tokens ──────────────────────────────────────────────────────
+
+/**
+ * Metadata for a project public share link (ADMIN view).
+ * The raw token is returned only on creation; only the hash is stored.
+ */
+export interface ShareTokenDto {
+  id: string;
+  projectId: string;
+  createdById: string;
+  createdAt: string;
+  revokedAt: string | null;
+}
+
+/**
+ * Response from POST /projects/:id/share-tokens.
+ * Contains the raw share URL token (shown ONCE — caller must copy it).
+ */
+export interface CreateShareTokenResponse {
+  id: string;
+  projectId: string;
+  /** Raw "nls_..." token — shown exactly once and never retrievable again. */
+  rawToken: string;
+  createdAt: string;
+}
+
+/**
+ * Read-only board snapshot returned by the public (unauthenticated) endpoint.
+ * Minimal fields needed to render the board; no members, comments, or attachments.
+ */
+export interface PublicBoardDto {
+  project: {
+    id: string;
+    key: string;
+    name: string;
+  };
+  statuses: StatusDto[];
+  issues: IssueDto[];
+}
+
 // ── Personal API Tokens (PATs) ───────────────────────────────────────────────
 
 /**
