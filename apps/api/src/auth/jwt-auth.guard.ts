@@ -44,9 +44,12 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     // and skip the standard JWT verification path entirely.
     if (rawBearer && ApiTokensService.isPat(rawBearer)) {
       // Throws UnauthorizedException on invalid/revoked/expired token.
-      const user = await this.apiTokens.validateRawToken(rawBearer);
-      // Attach the user to the request — same shape as JwtStrategy.validate().
-      request.user = user;
+      // Returns user + patScopes (empty array = unscoped/unrestricted).
+      const principal = await this.apiTokens.validateRawToken(rawBearer);
+      // Attach to request. patScopes is only set when the token has an explicit
+      // non-empty scopes list; unscoped tokens pass patScopes=[] which ScopeGuard
+      // treats as unrestricted (backward-compatible with all existing PATs).
+      request.user = principal;
       return true;
     }
 

@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import type { ApiTokenDto, CreateApiTokenResponse } from '@next-lane/shared';
+import { PAT_SCOPES } from '@next-lane/shared';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Field } from '@/components/ui/Field';
@@ -13,6 +14,18 @@ import {
   useCreateApiToken,
   useRevokeApiToken,
 } from '@/api/api-tokens';
+
+/** Human-readable label for each scope string. */
+const SCOPE_LABELS: Record<string, string> = {
+  'issues:read': 'Issues — read',
+  'issues:write': 'Issues — write',
+  'projects:read': 'Projects — read',
+  'projects:write': 'Projects — write',
+  'webhooks:read': 'Webhooks — read',
+  'webhooks:write': 'Webhooks — write',
+  'comments:read': 'Comments — read',
+  'comments:write': 'Comments — write',
+};
 
 /** Formats an ISO date string for display. */
 function fmtDate(iso: string): string {
@@ -51,7 +64,7 @@ function SectionCard({
   );
 }
 
-/** Modal that captures token name + optional expiry, then shows the raw token once. */
+/** Modal that captures token name + optional expiry + optional scopes, then shows the raw token once. */
 function CreateTokenModal({
   open,
   onClose,
@@ -64,12 +77,14 @@ function CreateTokenModal({
 
   const [name, setName] = useState('');
   const [expiresAt, setExpiresAt] = useState('');
+  const [selectedScopes, setSelectedScopes] = useState<string[]>([]);
   const [result, setResult] = useState<CreateApiTokenResponse | null>(null);
   const [copied, setCopied] = useState(false);
 
   function reset() {
     setName('');
     setExpiresAt('');
+    setSelectedScopes([]);
     setResult(null);
     setCopied(false);
   }
@@ -79,12 +94,23 @@ function CreateTokenModal({
     onClose();
   }
 
+  function toggleScope(scope: string) {
+    setSelectedScopes((prev) =>
+      prev.includes(scope) ? prev.filter((s) => s !== scope) : [...prev, scope],
+    );
+  }
+
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
     const trimmed = name.trim();
     if (!trimmed) return;
     create.mutate(
-      { name: trimmed, expiresAt: expiresAt || undefined },
+      {
+        name: trimmed,
+        expiresAt: expiresAt || undefined,
+        // Pass scopes only when at least one is selected; empty = unrestricted.
+        scopes: selectedScopes.length > 0 ? selectedScopes : [],
+      },
       {
         onSuccess: (data) => setResult(data),
         onError: (err) =>
@@ -132,6 +158,38 @@ function CreateTokenModal({
               Leave blank to create a non-expiring token.
             </p>
           </Field>
+
+          {/* Scope selection */}
+          <fieldset>
+            <legend className="mb-1.5 text-xs font-medium text-gray-700">
+              Scopes (optional)
+            </legend>
+            <p className="mb-2 text-xs text-gray-400">
+              Leave all unchecked for an unrestricted token with full owner
+              permissions. Selecting scopes restricts this token to only those
+              operations.
+            </p>
+            <div
+              className="grid grid-cols-2 gap-x-4 gap-y-1.5"
+              data-testid="pat-scope-checkboxes"
+            >
+              {PAT_SCOPES.map((scope) => (
+                <label
+                  key={scope}
+                  className="flex cursor-pointer items-center gap-2 text-sm text-gray-700"
+                >
+                  <input
+                    type="checkbox"
+                    className="h-3.5 w-3.5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                    checked={selectedScopes.includes(scope)}
+                    onChange={() => toggleScope(scope)}
+                    data-testid={`pat-scope-${scope}`}
+                  />
+                  {SCOPE_LABELS[scope] ?? scope}
+                </label>
+              ))}
+            </div>
+          </fieldset>
 
           <div className="flex justify-end gap-2 pt-1">
             <Button type="button" variant="secondary" onClick={handleClose}>
@@ -197,6 +255,14 @@ function CreateTokenModal({
               <p className="text-xs text-gray-500">Created</p>
               <p className="font-medium text-gray-900">
                 {fmtDate(result.createdAt)}
+              </p>
+            </div>
+            <div className="col-span-2">
+              <p className="text-xs text-gray-500">Scopes</p>
+              <p className="font-medium text-gray-900">
+                {result.scopes.length > 0
+                  ? result.scopes.map((s) => SCOPE_LABELS[s] ?? s).join(', ')
+                  : 'Unrestricted (full owner permissions)'}
               </p>
             </div>
           </div>
@@ -339,6 +405,23 @@ function TokenRow({
             ? `Last used ${fmtDate(token.lastUsedAt)}`
             : 'Never used'}
         </p>
+        {/* Scope pills */}
+        {token.scopes && token.scopes.length > 0 ? (
+          <div className="mt-1 flex flex-wrap gap-1" data-testid="pat-scopes">
+            {token.scopes.map((scope) => (
+              <span
+                key={scope}
+                className="rounded-full bg-indigo-50 px-1.5 py-0.5 text-xs font-medium text-indigo-700"
+              >
+                {SCOPE_LABELS[scope] ?? scope}
+              </span>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-0.5 text-xs text-gray-400" data-testid="pat-scopes-unrestricted">
+            Unrestricted
+          </p>
+        )}
       </div>
 
       {/* Status badge */}

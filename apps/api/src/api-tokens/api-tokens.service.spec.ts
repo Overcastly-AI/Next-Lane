@@ -13,6 +13,11 @@
  *   7. validateRawToken() — unknown token is rejected (UnauthorizedException).
  *   8. isPat() — correctly detects the nlp_ prefix.
  *   9. (Pass 5) CreateApiTokenDto.expiresAt — past date rejected by IsFutureDate validator.
+ *  10. (PAT scopes) create() — scopes stored and returned.
+ *  11. (PAT scopes) validateRawToken() — returns patScopes from the record.
+ *  12. (PAT scopes) validateRawToken() — unscoped token returns patScopes=[].
+ *  13. (PAT scopes) CreateApiTokenDto — invalid scope string rejected.
+ *  14. (PAT scopes) CreateApiTokenDto — valid scope list accepted.
  */
 
 import { NotFoundException, UnauthorizedException } from '@nestjs/common';
@@ -28,6 +33,7 @@ import {
 import { CreateApiTokenDto } from './dto/api-token.dto';
 import type { PrismaService } from '../prisma/prisma.service';
 import type { AuditService } from '../audit/audit.service';
+import { PAT_SCOPES } from '@next-lane/shared';
 
 const mockAudit: Pick<AuditService, 'record'> = { record: jest.fn() };
 
@@ -144,6 +150,7 @@ describe('ApiTokensService', () => {
         createdAt,
         revokedAt: null,
         lastUsedAt: null,
+        scopes: [],
       });
 
       const result = await service.create(USER.id, { name: 'CI token' });
@@ -177,6 +184,7 @@ describe('ApiTokensService', () => {
         createdAt: new Date(),
         revokedAt: null,
         lastUsedAt: null,
+        scopes: [],
       });
 
       const result = await service.create(USER.id, {
@@ -203,6 +211,7 @@ describe('ApiTokensService', () => {
           createdAt: now,
           revokedAt: null,
           userId: USER.id,
+          scopes: [],
         },
       ]);
 
@@ -283,24 +292,37 @@ describe('ApiTokensService', () => {
     function makeRecord(overrides: Partial<{
       revokedAt: Date | null;
       expiresAt: Date | null;
+      scopes: string[];
     }> = {}) {
       return {
         id: 'tok-1',
         tokenHash: sha256(RAW),
         revokedAt: null,
         expiresAt: null,
+        scopes: [],
         user: USER,
         ...overrides,
       };
     }
 
-    it('returns the user when the token is valid', async () => {
+    it('returns the user + patScopes when the token is valid', async () => {
       prisma.apiToken.findUnique.mockResolvedValue(makeRecord());
       prisma.apiToken.update.mockResolvedValue({});
 
       const result = await service.validateRawToken(RAW);
 
-      expect(result).toEqual(USER);
+      expect(result).toEqual({ ...USER, patScopes: [] });
+    });
+
+    it('returns patScopes=[issues:read] for a scoped token', async () => {
+      prisma.apiToken.findUnique.mockResolvedValue(
+        makeRecord({ scopes: ['issues:read'] }),
+      );
+      prisma.apiToken.update.mockResolvedValue({});
+
+      const result = await service.validateRawToken(RAW);
+
+      expect(result.patScopes).toEqual(['issues:read']);
     });
 
     it('looks up by SHA-256 hash of the raw token', async () => {
@@ -350,8 +372,10 @@ describe('ApiTokensService', () => {
       // Simulate the async update failing — should not propagate to caller.
       prisma.apiToken.update.mockRejectedValue(new Error('DB error'));
 
-      // Should still resolve without throwing.
-      await expect(service.validateRawToken(RAW)).resolves.toEqual(USER);
+      // Should still resolve without throwing; result includes patScopes.
+      const result = await service.validateRawToken(RAW);
+      expect(result.id).toBe(USER.id);
+      expect(result.email).toBe(USER.email);
     });
   });
 });
@@ -398,5 +422,66 @@ describe('CreateApiTokenDto — IsFutureDate validator', () => {
   it('requires a non-empty name', async () => {
     const errors = await validate_dto({ name: '' });
     expect(errors.length).toBeGreaterThan(0);
+  });
+});
+
+// ── PAT scope vocabulary validation ──────────────────────────────────────────
+
+describe('CreateApiTokenDto — scope validation', () => {
+  async function validate_dto(plain: Record<string, unknown>) {
+    const dto = plainToInstance(CreateApiTokenDto, plain);
+    return validate(dto);
+  }
+
+  it('accepts an empty scopes array (unscoped token)', async () => {
+    const errors = await validate_dto({ name: 'My token', scopes: [] });
+    expect(errors).toHaveLength(0);
+  });
+
+  it('accepts a valid scope string', async () => {
+    const errors = await validate_dto({
+      name: 'My token',
+      scopes: ['issues:read'],
+    });
+    expect(errors).toHaveLength(0);
+  });
+
+  it('accepts multiple valid scopes', async () => {
+    const errors = await validate_dto({
+      name: 'My token',
+      scopes: ['issues:read', 'issues:write', 'projects:read'],
+    });
+    expect(errors).toHaveLength(0);
+  });
+
+  it('accepts all defined PAT_SCOPES', async () => {
+    const errors = await validate_dto({
+      name: 'My token',
+      scopes: [...PAT_SCOPES],
+    });
+    expect(errors).toHaveLength(0);
+  });
+
+  it('rejects an unrecognised scope string', async () => {
+    const errors = await validate_dto({
+      name: 'My token',
+      scopes: ['admin:all'],
+    });
+    expect(errors.length).toBeGreaterThan(0);
+    const constraints = errors.flatMap((e) => Object.keys(e.constraints ?? {}));
+    expect(constraints).toContain('isIn');
+  });
+
+  it('rejects a mix of valid and invalid scopes', async () => {
+    const errors = await validate_dto({
+      name: 'My token',
+      scopes: ['issues:read', 'not:valid'],
+    });
+    expect(errors.length).toBeGreaterThan(0);
+  });
+
+  it('accepts omitting scopes entirely (non-scoped token)', async () => {
+    const errors = await validate_dto({ name: 'My token' });
+    expect(errors).toHaveLength(0);
   });
 });

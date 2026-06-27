@@ -6,6 +6,7 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './jwt.strategy';
 import { JwtAuthGuard } from './jwt-auth.guard';
+import { ScopeGuard } from './scope.guard';
 import { getJwtExpiresIn, getJwtSecret } from './auth.config';
 import { PasswordResetService } from './password-reset.service';
 import { ApiTokensModule } from '../api-tokens/api-tokens.module';
@@ -31,6 +32,11 @@ import { MailModule } from '../mail/mail.module';
     JwtStrategy,
     // Global JWT guard — routes are protected unless marked @Public()
     { provide: APP_GUARD, useClass: JwtAuthGuard },
+    // Global scope guard — runs AFTER JwtAuthGuard (same module, listed second).
+    // Enforces @RequireScope on decorated handlers.
+    // No-op for JWT sessions and unscoped PATs; scoped PATs missing the
+    // declared scope receive a 403 Forbidden.
+    { provide: APP_GUARD, useClass: ScopeGuard },
   ],
   exports: [AuthService, PasswordResetService],
 })
