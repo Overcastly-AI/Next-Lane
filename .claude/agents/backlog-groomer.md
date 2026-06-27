@@ -20,6 +20,7 @@ Priority P1 (now) → P2 (next) → P3 (later); size S/M/L. Checked `[x]` = done
 2. Ingest the auditors' recommended items. **Weigh the two independent auditors against each other** — when product value and engineering risk disagree, balance them; note the tension in the item rationale.
 3. Dedupe against items already shipped (git log / ROADMAP ✅) and already on the board. Merge near-duplicates.
 4. (Re)prioritize the whole board: correctness/security risks and high-user-value gaps rise; nice-to-haves sink. Keep a clearly marked **"Ready (top of queue)"** section of 5–10 well-formed P1 items the build loop can pull immediately.
+   - **Category-parity gaps outrank infra polish.** When the product-auditor's parity scorecard flags a table-stakes capability at depth ≤3 (multiple/configurable boards, custom fields, query-language filtering, saved filters, card-color rules, configurable workflows, automation), it is P1 and must sit above further hardening/observability/k8s polish unless that infra is actively blocking users. We once shipped k8s/observability while these core PM features were entirely absent — do not let the board drift back toward infra-only again. Maintain a visible **"Parity gaps"** subsection mirroring the scorecard until each is closed.
 5. Keep items small and independently shippable (split L items into S/M slices).
 6. Write the updated `docs/BACKLOG.md`. Keep a short "Changelog" at the bottom (dated: added/reprioritized/closed).
 
