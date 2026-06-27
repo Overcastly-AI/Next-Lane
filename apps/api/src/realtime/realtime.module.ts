@@ -3,6 +3,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { getJwtExpiresIn, getJwtSecret } from '../auth/auth.config';
 import { RealtimeGateway } from './realtime.gateway';
 import { RealtimeService } from './realtime.service';
+import { ApiTokensModule } from '../api-tokens/api-tokens.module';
 
 // RedisModule is @Global — the pub/sub clients are injected into the gateway
 // via @Optional() so no explicit import is needed here; the tokens resolve from
@@ -17,6 +18,9 @@ import { RealtimeService } from './realtime.service';
       secret: getJwtSecret(),
       signOptions: { expiresIn: getJwtExpiresIn() },
     }),
+    // ApiTokensModule exports ApiTokensService so the gateway can validate
+    // PAT tokens at WebSocket handshake time.
+    ApiTokensModule,
   ],
   providers: [RealtimeGateway, RealtimeService],
   exports: [RealtimeService],

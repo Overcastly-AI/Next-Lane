@@ -17,6 +17,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { assertProjectMember } from '../common/membership.util';
 import type { JwtPayload } from '../auth/jwt.strategy';
 import { REDIS_PUB_CLIENT, REDIS_SUB_CLIENT } from '../redis/redis.module';
+import { ApiTokensService } from '../api-tokens/api-tokens.service';
 
 /** Authenticated user attached to the socket after a valid handshake. */
 interface SocketUser {
@@ -39,6 +40,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection {
   constructor(
     private readonly jwt: JwtService,
     private readonly prisma: PrismaService,
+    private readonly apiTokens: ApiTokensService,
     @Optional() @Inject(REDIS_PUB_CLIENT) private readonly pubClient: Redis | null,
     @Optional() @Inject(REDIS_SUB_CLIENT) private readonly subClient: Redis | null,
   ) {}
@@ -59,9 +61,15 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection {
   }
 
   /**
-   * Authenticate every socket at handshake time. The client passes its JWT in
-   * `handshake.auth.token` (preferred) or `?token=` query. Unauthenticated
-   * sockets are disconnected so they can never subscribe to any room.
+   * Authenticate every socket at handshake time. The client passes its JWT or
+   * PAT in `handshake.auth.token` (preferred) or `?token=` query.
+   *
+   * When the token starts with the `nlp_` PAT prefix it is validated through
+   * `ApiTokensService.validateRawToken()` — the same code path the REST
+   * JwtAuthGuard uses for PAT bearer tokens.  Invalid, revoked, or expired PATs
+   * are disconnected immediately.  All other tokens are verified as JWTs via the
+   * existing path.  Unauthenticated sockets are disconnected so they can never
+   * subscribe to any room.
    */
   handleConnection(client: Socket): void {
     const token = this.extractToken(client);
@@ -70,12 +78,38 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection {
       client.disconnect(true);
       return;
     }
+
+    if (ApiTokensService.isPat(token)) {
+      // PAT path — async validation; we must void the promise and handle
+      // rejection ourselves because handleConnection is called synchronously
+      // by Socket.io but the DB lookup is async.
+      void this.authenticateWithPat(client, token);
+    } else {
+      // JWT path — synchronous verification.
+      try {
+        const payload = this.jwt.verify<JwtPayload>(token);
+        const user: SocketUser = { id: payload.sub, email: payload.email };
+        client.data.user = user;
+      } catch {
+        this.logger.warn(`Rejecting socket ${client.id}: invalid JWT`);
+        client.disconnect(true);
+      }
+    }
+  }
+
+  /**
+   * Async PAT validation called from `handleConnection`.
+   *
+   * Resolves the owning user from the DB, attaches it to `client.data.user`,
+   * and disconnects the socket on any validation failure (revoked, expired,
+   * unknown token, or DB error).
+   */
+  private async authenticateWithPat(client: Socket, rawToken: string): Promise<void> {
     try {
-      const payload = this.jwt.verify<JwtPayload>(token);
-      const user: SocketUser = { id: payload.sub, email: payload.email };
-      client.data.user = user;
+      const user = await this.apiTokens.validateRawToken(rawToken);
+      client.data.user = { id: user.id, email: user.email } satisfies SocketUser;
     } catch {
-      this.logger.warn(`Rejecting socket ${client.id}: invalid token`);
+      this.logger.warn(`Rejecting socket ${client.id}: invalid/revoked/expired PAT`);
       client.disconnect(true);
     }
   }
