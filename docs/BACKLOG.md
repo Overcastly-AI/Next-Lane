@@ -42,7 +42,7 @@ _Remaining P2 security hardening from Pass 5 (small, high-signal):_
 _Product P1s — queue after security batch:_
 
 - [x] (P1, S) Wire SMTP email delivery for password reset (nodemailer into existing stub seam) — `MailModule`/`MailService` added (`apps/api/src/mail/`); nodemailer transport when `SMTP_HOST` set; dev-log fallback when absent; production-safe (token never logged in prod without SMTP); all SMTP_* env vars documented in `.env.example`; `MailService.send()` injected into `PasswordResetService.deliverResetLink()`; 8 new `mail.service.spec.ts` tests + updated `password-reset.service.spec.ts`; 255 unit tests green; build clean; dev-log fallback verified on live instance ✅ shipped 2026-06-27 [product-auditor Pass 5]
-- [ ] (P1, S) Emit `WATCHED_UPDATED` notification on issue field changes — `NotificationType.WATCHED_UPDATED` is defined in the schema enum and the bell label map but never emitted anywhere; `IssuesService.update` does not fan-out to watchers when status/assignee/priority/sprint changes; watchers are auto-populated on assignment and comment but receive zero notification on subsequent edits; add a single fan-out call in `IssuesService.update` mirroring the `notifyComment` pattern [product-auditor Pass 5]
+- [x] (P1, S) Emit `WATCHED_UPDATED` notification on issue field changes — `IssuesService.update` now fans out to watchers (minus the actor) on meaningful field changes (status/assignee/priority/title/dueDate) via batched `createMany` + realtime, with a human-readable message; 11 unit tests — ✅ shipped 2026-06-27 [product-auditor Pass 5]
 - [x] (P1, M) Due date on issues — add optional `dueDate DateTime?` to the `Issue` model (Prisma migration + DTO + drawer date-picker); show a due-date chip on the card when set; flag overdue issues in "My Work" with a warning color; add a due-date sort option to the backlog; the most commonly requested primitive in any issue tracker and the one missing from the schema [product-auditor Pass 4, Pass 5] ✅ shipped 2026-06-27 (migration `20260627220000_add_issue_due_date`; drawer date picker with clear + overdue amber; card chip; My Work sort + badge; 5 unit + 8 e2e)
 
 ---
@@ -50,7 +50,7 @@ _Product P1s — queue after security batch:_
 ## Next (P1 — high value, queue as Ready empties)
 
 - [ ] (P1, L) Tenant-isolation test harness + declarative authz layer — reusable two-workspace matrix asserting every mutating endpoint + socket room rejects cross-tenant access; `@RequireRole`/`@ResourceScope` decorator so isolation is structural, not hand-rolled per service [engineering-auditor]
-- [ ] (P1, M) Full-text search + structured filters + saved views — move beyond `title ILIKE`; Postgres full-text search (GIN/tsvector) across title + description + comments; filter grammar (status/assignee/label/sprint/type/priority); persisted `SavedView` model; tracker unusable at scale without this [engineering-auditor, product-auditor]
+- [x] (P1, M) Full-text search — Postgres `tsvector` generated column (title+description) + GIN index (migration `20260627230000_issue_full_text_search`); `websearch_to_tsquery` + `ts_rank` in search.service + `findAll` (q≥2; ILIKE fallback for short/key queries); parameterized; 15 unit + 10 e2e — ✅ shipped 2026-06-27. (Structured filter-grammar + persisted SavedView remain tracked at P3 "Saved/shareable views + query DSL".) [engineering-auditor, product-auditor]
 
 ---
 
