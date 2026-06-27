@@ -67,17 +67,32 @@ kubectl -n next-lane port-forward svc/next-lane-web 8080:80
 # open http://localhost:8080
 ```
 
-> The bundled PostgreSQL password defaults to `nextlane`. **Change
-> `postgresql.auth.password`** (or use an external DB) before any real use.
+> **The chart fails fast on the default bundled-PostgreSQL password.** When
+> `postgresql.enabled=true` and `postgresql.auth.password` is empty or still the
+> insecure default `nextlane`, `helm install`/`template` refuses to render (same
+> guard as `secrets.jwtSecret`). Provide a strong value:
+>
+> ```bash
+> --set postgresql.auth.password="$(openssl rand -hex 24)"
+> ```
+>
+> Alternatives: set `postgresql.auth.existingSecret` to a Secret you manage, or
+> disable the bundled DB (`postgresql.enabled=false`) and use `externalDatabase`.
+> For a throwaway demo only, bypass the guard with
+> `--set postgresql.auth.allowInsecurePassword=true` (never for real use).
 
 ### Validate before installing
 
 ```bash
 helm lint deploy/helm/next-lane
-# Render with defaults and confirm valid manifests:
+# Render with defaults and confirm valid manifests. Note both required values:
+# a JWT secret AND a non-default bundled-Postgres password (the chart fails fast
+# without them).
 helm template next-lane deploy/helm/next-lane \
-  --set secrets.jwtSecret=dummy | kubectl apply --dry-run=client -f -
-# Render the external-datastore (production) shape:
+  --set secrets.jwtSecret=dummy \
+  --set postgresql.auth.password=dummy | kubectl apply --dry-run=client -f -
+# Render the external-datastore (production) shape (bundled PG disabled there, so
+# no pg password is needed):
 helm template next-lane deploy/helm/next-lane \
   -f deploy/helm/next-lane/values-prod.example.yaml \
   --set secrets.jwtSecret=dummy | kubectl apply --dry-run=client -f -
@@ -405,7 +420,9 @@ Redis). For a batteries-included quick-start, prefer the Helm chart.
 | `migrations.resources` | 100m/256Mi → 1/512Mi | Job resources. |
 | `serviceAccount.create` / `name` / `annotations` | `true` / `""` / `{}` | ServiceAccount (IRSA/Workload Identity via annotations). |
 | `postgresql.enabled` | `true` | Bundle Bitnami PostgreSQL (demo only). |
-| `postgresql.auth.username`/`password`/`database` | nextlane/nextlane/nextlane | **Change the password.** |
+| `postgresql.auth.username`/`password`/`database` | nextlane/nextlane/nextlane | **Required change:** chart fails fast if `password` is empty/`nextlane`. |
+| `postgresql.auth.existingSecret` | `""` | Managed Secret for the PG password (skips the fail-fast guard). |
+| `postgresql.auth.allowInsecurePassword` | `false` | Demo-only escape hatch to bypass the password fail-fast. Never in prod. |
 | `postgresql.primary.persistence.*` | enabled, 8Gi | PG storage. |
 | `redis.enabled` | `false` | Bundle Bitnami Redis (enables HA realtime). |
 | `redis.architecture` | `standalone` | `standalone` or `replication`. |
