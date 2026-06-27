@@ -219,6 +219,13 @@ export class IssuesService {
    * `limit` items (default {@link DEFAULT_ISSUES_PAGE_SIZE}, capped at
    * {@link MAX_ISSUES_PAGE_SIZE}) plus the cursor for the next page, or `null`
    * when the last page is reached. A malformed cursor is treated as the start.
+   *
+   * When `q` is provided and is at least 2 characters, the text filter uses
+   * Postgres full-text search on the GIN-indexed `searchVector` generated
+   * column (covers title + description). Shorter queries fall back to an ILIKE
+   * filter on `title` for simplicity. FTS results within each cursor page are
+   * ordered by `(createdAt asc, id asc)` (same stable order as non-FTS pages)
+   * so the cursor encoding is consistent across all calls.
    */
   async findAll(
     userId: string,
@@ -229,21 +236,32 @@ export class IssuesService {
     }
     await assertProjectMember(this.prisma, userId, query.projectId);
 
-    const where: Prisma.IssueWhereInput = { projectId: query.projectId };
-    if (query.sprintId) where.sprintId = query.sprintId;
-    if (query.assigneeId) where.assigneeId = query.assigneeId;
-    if (query.type) where.type = query.type as Prisma.IssueWhereInput['type'];
-    if (query.statusId) where.statusId = query.statusId;
-    if (query.q) {
-      where.title = { contains: query.q, mode: 'insensitive' };
-    }
-
     const take = Math.min(
       Math.max(query.limit ?? DEFAULT_ISSUES_PAGE_SIZE, 1),
       MAX_ISSUES_PAGE_SIZE,
     );
 
     const decoded = query.cursor ? decodeIssueCursor(query.cursor) : null;
+
+    // Use full-text search when q is long enough; fall back to ILIKE otherwise.
+    const qTrimmed = query.q?.trim() ?? '';
+    const useFts = qTrimmed.length >= 2;
+
+    if (useFts) {
+      return this.findAllFts(query, take, qTrimmed, decoded);
+    }
+
+    // --- Standard Prisma path (no q, or very short q) ---
+    const where: Prisma.IssueWhereInput = { projectId: query.projectId };
+    if (query.sprintId) where.sprintId = query.sprintId;
+    if (query.assigneeId) where.assigneeId = query.assigneeId;
+    if (query.type) where.type = query.type as Prisma.IssueWhereInput['type'];
+    if (query.statusId) where.statusId = query.statusId;
+    if (qTrimmed) {
+      // Short query: title ILIKE
+      where.title = { contains: qTrimmed, mode: 'insensitive' };
+    }
+
     if (decoded) {
       // Keyset predicate for (createdAt asc, id asc): the next item is either
       // strictly later, or same timestamp with a greater id.
@@ -269,6 +287,97 @@ export class IssuesService {
       hasMore && last ? encodeIssueCursor(last.createdAt, last.id) : null;
 
     return { items: page.map(toIssueDto), nextCursor };
+  }
+
+  /**
+   * FTS variant of findAll. Uses `$queryRaw` with composable `Prisma.sql`
+   * fragments to build a single parameterized query that applies FTS via
+   * `websearch_to_tsquery` on the GIN-indexed `searchVector` column, the
+   * cursor keyset predicate, and any additional scalar filters (sprintId,
+   * assigneeId, type, statusId). Fetches full rows by the returned ids via
+   * `findMany` to preserve all relation includes. Response shape is identical
+   * to the non-FTS path so callers are unaffected.
+   *
+   * All values are passed as bind parameters — no user input is concatenated
+   * into the query string. `websearch_to_tsquery` is user-input-safe by design
+   * (handles quotes, operators, stop words, special chars without error).
+   */
+  private async findAllFts(
+    query: ListIssuesQueryDto,
+    take: number,
+    q: string,
+    decoded: { createdAt: Date; id: string } | null,
+  ): Promise<PaginatedIssuesDto> {
+    type IdRow = { id: string; created_at: Date };
+
+    // Build optional WHERE fragments. Each uses `Prisma.sql` so the final
+    // query is a single parameterized statement, not string concatenation.
+    const extraClauses: Prisma.Sql[] = [];
+    if (query.sprintId) {
+      extraClauses.push(Prisma.sql`AND "sprintId" = ${query.sprintId}`);
+    }
+    if (query.assigneeId) {
+      extraClauses.push(Prisma.sql`AND "assigneeId" = ${query.assigneeId}`);
+    }
+    if (query.type) {
+      // Cast the enum value explicitly; Prisma raw params default to text.
+      extraClauses.push(
+        Prisma.sql`AND "type" = ${query.type}::"IssueType"`,
+      );
+    }
+    if (query.statusId) {
+      extraClauses.push(Prisma.sql`AND "statusId" = ${query.statusId}`);
+    }
+    if (decoded) {
+      const cursorDate = decoded.createdAt;
+      const cursorId = decoded.id;
+      extraClauses.push(
+        Prisma.sql`AND ("createdAt" > ${cursorDate} OR ("createdAt" = ${cursorDate} AND id > ${cursorId}))`,
+      );
+    }
+
+    // Combine all extra clauses into a single fragment.
+    const extraSql =
+      extraClauses.length > 0
+        ? Prisma.join(extraClauses, '\n            ')
+        : Prisma.empty;
+
+    const limit = take + 1;
+    const idRows = await this.prisma.$queryRaw<IdRow[]>`
+      SELECT id, "createdAt" AS created_at FROM "Issue"
+      WHERE "projectId" = ${query.projectId}
+        AND "searchVector" @@ websearch_to_tsquery('english', ${q})
+        ${extraSql}
+      ORDER BY "createdAt" ASC, id ASC
+      LIMIT ${limit}
+    `;
+
+    const hasMore = idRows.length > take;
+    const pageRows = hasMore ? idRows.slice(0, take) : idRows;
+
+    if (pageRows.length === 0) {
+      return { items: [], nextCursor: null };
+    }
+
+    const ids = pageRows.map((r) => r.id);
+
+    // Fetch full rows with all includes using Prisma (preserves relation loading).
+    const issues = await this.prisma.issue.findMany({
+      where: { id: { in: ids } },
+      include: listInclude,
+    });
+
+    // Re-sort to match the raw query order (findMany with IN doesn't guarantee order).
+    const indexMap = new Map(ids.map((id, idx) => [id, idx]));
+    issues.sort((a, b) => (indexMap.get(a.id) ?? 0) - (indexMap.get(b.id) ?? 0));
+
+    const lastRow = pageRows[pageRows.length - 1];
+    const nextCursor =
+      hasMore && lastRow
+        ? encodeIssueCursor(new Date(lastRow.created_at), lastRow.id)
+        : null;
+
+    return { items: issues.map(toIssueDto), nextCursor };
   }
 
   async findOne(
