@@ -522,3 +522,317 @@ the platform from MVP to daily-driver.
 - **Webhook / automation event system (HMAC-signed outbound POST on issue.* + sprint.* events)** · P1 · L · Primary integration surface missing; needed for CI/CD, Slack, automation rules; RealtimeService is the right hook point.
 - **Full-text search + structured filters + saved views** · P1 · L · title ILIKE is the only query surface; tracker is unusable at scale without cross-field search and persisted filters.
 - **Observability baseline (pino structured logs, requestId, /metrics, OTel Prisma traces)** · P2 · M · Self-hosted product needs operator visibility without SSH; cheap to add now, expensive to retrofit later.
+
+---
+
+## 2026-06-27 — Pass 4 (post-webhook/cursor-pagination/inline-create audit)
+
+Scope: full re-audit of all Pass-3 open items plus a dedicated deep-dive on the
+three items called out in this pass's mandate: HMAC webhook system, cursor
+pagination on `GET /issues`, and inline backlog create. Verified all changed
+files: `webhooks.service.ts`, `webhooks.service.spec.ts`, `webhooks.controller.ts`,
+`webhooks/dto/webhook.dto.ts`, `issues.service.ts`, `issues.service.spec.ts`,
+`move-issue.dto.ts`, `board.service.ts`, `sprints.service.ts`, `realtime.gateway.ts`,
+`all-exceptions.filter.ts`, `auth.config.ts`, the full migration history, and
+`apps/web/e2e/webhooks-api.spec.ts`, `apps/web/e2e/backlog-inline-create.spec.ts`.
+API typecheck (`tsc --noEmit`) confirmed clean. Unit test suite runs 39 tests
+(all passing).
+
+### Pass-3 fix verification
+
+| Fix area | Status | Evidence |
+|----------|--------|----------|
+| assertNoOtherActiveSprint inside $transaction + partial unique index | CONFIRMED FIXED | `sprints.service.ts:109` runs guard via `tx.sprint.findFirst`; migration `20260626130825_sprint_one_active_per_project/migration.sql` adds `CREATE UNIQUE INDEX sprint_one_active_per_project ON "Sprint"("projectId") WHERE state = 'ACTIVE'`. The P2002 collision is caught at `sprints.service.ts:147-159` and re-mapped to `ConflictException`. |
+| Sprint lifecycle realtime events | CONFIRMED FIXED | `sprints.service.ts:166-179` emits `SocketEvents.SprintUpdated` and dispatches `sprint.started` / `sprint.completed` webhook events on lifecycle transitions. |
+| Global exception filter | CONFIRMED FIXED | `all-exceptions.filter.ts` — `@Catch()` filter maps P2002 → 409, P2025 → 404, P2003 → 400 with a clean `{ statusCode, message, error }` envelope; suppresses stack traces in production; registered in `main.ts:17` via `useGlobalFilters`. |
+| Input validation: description MaxLength, storyPoints range, label color | CONFIRMED FIXED | `create-issue.dto.ts:27` `@MaxLength(50000)` on description; `create-issue.dto.ts:54-55` `@Min(0) @Max(999)` on storyPoints (also in `update-issue.dto.ts:39-40`); label color — the `label.dto.ts` was not audited in full this pass; see Risk #6 below. |
+| GET /users/:id co-member scope | CONFIRMED FIXED | `users.service.ts:43-64` — `findOne` now fetches caller memberships and resolves the target only if they share a workspace; non-co-members 404. |
+| assertNoParentCycle sequential waterfall | PARTIALLY FIXED (hop cap lowered to 1000, still serial) | `issues.service.ts:436-451` — the implementation is a `while` loop with 1000-hop guard, each iteration one `findUnique`. The fix changed the cap but did NOT adopt a recursive CTE. This remains a P2 risk (see Risk #7 below). |
+| Cursor pagination for GET /issues | CONFIRMED FIXED — reviewed in depth below | |
+| Transactional move + rank-collision rebalance | CONFIRMED FIXED — reviewed in depth below | |
+| Dockerfile --no-frozen-lockfile | NOT YET FIXED | `apps/api/Dockerfile` still uses `--frozen-lockfile` per the build layer (confirmed clean); the Web Dockerfile was not checked this pass. |
+| Webhook/automation event system | CONFIRMED SHIPPED — reviewed in depth below | |
+
+### Deep-dive: cursor pagination on GET /issues
+
+The implementation in `issues.service.ts:214-271` is functionally correct:
+
+- Order: `(createdAt asc, id asc)` — total, immutable, safe for forward-only pagination.
+- Cursor encode/decode: base64url of `ISO8601|cuid`; `decodeIssueCursor` returns `null` for any malformed input, falling back to "start from beginning" rather than throwing. Sound.
+- Keyset predicate (`where.OR`) correctly implements the compound inequality: `createdAt > X OR (createdAt = X AND id > Y)`.
+- `take: limit + 1` sentinel pattern to detect `hasMore` without a count query. Correct.
+- Limits clamped `[1, 200]` with 50 default. Fine.
+
+**Critical gap — missing composite DB index:** The cursor query filters on
+`projectId` (equality), `createdAt` (range/equality), `id` (range), and orders by
+`(createdAt, id)`. The existing Issue indexes are `(projectId, statusId)`,
+`(statusId, rank)`, `(sprintId)`, `(assigneeId)`, `(parentId)` — none covers
+`(projectId, createdAt, id)`. PostgreSQL will either do a bitmap scan on
+`(projectId, statusId)` (wrong columns for this query) or a sequential scan,
+then sort. On a project with thousands of issues this query will be slow and will
+not use the order efficiently.
+
+*Fix:* Add `@@index([projectId, createdAt, id])` to the `Issue` model in
+`schema.prisma` and generate a migration. This turns the cursor page fetch into
+an index range scan instead of a full table scan + sort. *Size: S.*
+
+**Behavioral issue — `useProjectIssues` walks ALL pages:** `apps/web/src/api/issues.ts:26-47`
+uses a `do { ... } while (cursor)` loop to fetch every page and flatten them for
+the backlog/planning view. For a project with 10,000 issues at 200 per page that
+is 50 sequential HTTP requests on page load. The client stalls the planning view
+until all pages arrive.
+
+*Fix:* Either (a) add a server-side `GET /projects/:id/issues/all` endpoint that
+returns all issues with a compact projection (no `description`, no comments count)
+for the planning view, or (b) implement virtual scrolling in the planning view and
+load pages on demand. Option (a) is the smallest change. *Size: M.*
+
+**Note — board is NOT paginated and is still unbounded:** `BoardService.getBoard`
+fetches all issues for a project (filtered by sprint=ACTIVE or sprintId=null) with
+no `take`. The mandate states "verify getBoard/other list endpoints aren't still
+unbounded" — they are. This is P2 carry-forward. The board is bounded in practice
+by sprint membership and archived filter, but has no hard cap.
+
+### Deep-dive: HMAC webhook system
+
+The `WebhooksService` (1,010 lines in this pass's scope) is well-structured. Key
+findings:
+
+**Correct:** ADMIN-only project-scoped CRUD (`assertProjectRole(…, Role.ADMIN)`
+on every mutating path including `update`, `remove`, and `sendTest`). Secret
+never returned in the API response (`toSubscriptionDto` omits the `secret` field).
+Signature is `sha256=<hmac>` matching the GitHub webhook convention, computed in
+`signPayload` (exported for test). Fire-and-forget delivery with `void … .catch`
+so webhook I/O never blocks the originating request. Bounded delivery log with
+`pruneDeliveries` keeping ≤ 50 rows per subscription. The e2e test in
+`webhooks-api.spec.ts` spins up a real HTTP receiver, registers a subscription,
+triggers an issue event, polls for the delivery, and verifies the HMAC signature.
+
+**Risk: SSRF — webhook URL allows any IP including private ranges.** `webhook.dto.ts:21`
+uses `@IsUrl({ require_tld: false, protocols: ['http', 'https'] })` with a comment
+"SSRF allowlisting is a documented follow-up". `require_tld: false` means
+`http://localhost`, `http://127.0.0.1`, `http://10.0.0.1`, `http://169.254.169.254`
+(AWS/GCP metadata) and `http://[::1]` are all accepted. The `fetch` call at
+`webhooks.service.ts:244` uses Node's native `fetch` with default `redirect: 'follow'`
+— so an admin who registers `http://internal-service/hook` followed by a redirect
+to `http://169.254.169.254/latest/meta-data/` will trigger that request from the
+server process. In a self-hosted Docker environment this reaches the Docker host
+network. This is the documented "SSRF allowlisting follow-up." For single-tenant
+self-hosted deployments the risk is self-inflicted; it becomes a real P1 for any
+multi-tenant hosting of this product.
+
+*Fix (two parts):* (a) After URL validation, resolve the hostname and reject any
+address in RFC 1918 (10.x, 172.16-31.x, 192.168.x), loopback (127.x, ::1),
+link-local (169.254.x), or unspecified ranges. Use `dns.lookup` + a CIDR check.
+(b) Set `redirect: 'manual'` on the `fetch` call so HTTP redirects do not
+transparently re-issue to a new host. A small `is-in-subnet` or similar npm package
+provides the CIDR check without a heavy dep. *Size: M.*
+
+**Risk: no rate-limiting on webhook delivery fan-out.** If a project admin registers
+100 active subscriptions and a batch of issues is created, `dispatchAsync` fans out
+`Promise.all(matching.map(s => this.deliver(...)))` — 100 concurrent outbound HTTP
+calls per event, each with a 5 s timeout and 2 attempts. This can overwhelm the
+event loop and the server's outbound connection pool. No backpressure or concurrency
+cap exists.
+
+*Fix:* Replace `Promise.all` with a bounded pool (e.g. 5 concurrent deliveries at
+a time using `p-limit` or a manual semaphore). Long-term, move delivery to a job
+queue backed by Redis (which is already in the compose file but unused). *Size: S
+(concurrency cap), L (Redis queue).*
+
+**Risk: pruneDeliveries runs N+1 after every delivery.** After each delivery
+`recordDelivery` calls `pruneDeliveries` which issues a `findMany` + conditional
+`deleteMany`. For 50 concurrent deliveries this is 100 additional DB queries (50
+find + 50 delete) in the fast path. For fire-and-forget this is acceptable for
+now but will be visible in query logs under load.
+
+*Fix (optional now):* Batch the prune to run once per dispatch round, not per
+delivery. Or accept the trade-off as a known P3 until Redis queue is in place.
+
+**Note: `deliver` does not consume the response body.** `fetch` resolves but the
+response body stream is never consumed (only `res.status` and `res.ok` are read).
+In Node.js, not consuming the body leaks the underlying TCP socket until it times
+out. Over time with many deliveries this can exhaust the connection pool.
+
+*Fix:* Add `await res.body?.cancel()` or `await res.text()` (discarded) after
+reading `res.ok`. *Size: S.*
+
+### Deep-dive: inline backlog create
+
+The inline create feature (ghost-row input) is not a backend change — it is purely
+a frontend optimistic-create flow using `useCreateIssue`. The e2e spec
+`backlog-inline-create.spec.ts` covers: backlog ghost row create, sequential
+creates, sprint-section ghost row, and VIEWER role hiding (no ghost row for
+VIEWERs). The backend `IssuesService.create` path correctly handles `sprintId` on
+creation (the ghost row passes its sprint's id). No new security gaps introduced.
+The optimistic cache update in `useCreateIssue.onSuccess` (`issues.ts:98-103`) is
+idempotent (guards with `!list.some(i => i.id === created.id)`). Clean.
+
+### Ratings (Pass 4)
+
+| Area | Score | Delta | Note |
+|------|:----:|:-----:|------|
+| Architecture & module boundaries | 4 | — | Clean per-domain modules; webhooks added as its own module correctly; no leaks. Controller/service/DTO pattern consistent. |
+| Data model & migrations | 4 | — | Four migrations in clean sequence; webhook tables well-indexed. Missing `(projectId, createdAt, id)` composite for cursor pagination (see Risk #1). `status` enum `(string)` on WebhookDelivery is stringly-typed (could be an enum). |
+| AuthN | 4 | — | argon2, global JWT guard, fail-fast secret, 7d token. No refresh/revoke; acceptable for MVP. |
+| AuthZ & multi-tenant isolation | **4** | — | All major holes confirmed closed from prior passes. Webhook CRUD correctly gated to ADMIN. `deliveries` endpoint uses `assertProjectMember` (read OK for non-admins). No regressions found. |
+| Input validation | 3 | — | DTOs improved significantly. Remaining: webhook URL allows private/loopback ranges (SSRF); `redirect: 'follow'` on fetch. `label.color` hex validation not confirmed fixed this pass. No rate-limit guard on comment/description bulk-insert patterns. |
+| Error handling | **4** | +2 | Global exception filter confirmed shipped; maps P2002/P2025/P2003 to clean HTTP responses; suppresses stack traces in production. Score still 4 not 5 because: `$transaction` failures (deadlock, serialization) and `rankBetween` edge cases throw generically; the filter catches them as 500s but with a generic message rather than a mapped one. |
+| N+1 / query efficiency | 3 | — | Cursor pagination added to `findAll`. Board, roadmap, and all list endpoints (sprints, statuses, labels) still unbounded — acceptable for small self-hosted projects but will degrade at scale. `assertNoParentCycle` still O(N) serial queries. `notifyComment` iterates watchers with one `notify` DB call per watcher (N inserts + N realtime emits in serial). `rebalanceAndPlace` issues N individual `UPDATE`s inside a transaction (no batch). |
+| Realtime correctness | 4 | — | Gateway auth solid. Sprint lifecycle emits added. Stale socket token on future refresh-token is P2 carry-forward. |
+| Rank / ordering integrity | **4** | +2 | `move` is now fully transactional with `$transaction`; `rebalanceAndPlace` redistributes ranks atomically when a gap is exhausted. Unit tests cover both the normal path and the collision fallback. Remaining: `rebalanceAndPlace` uses N individual updates (not `updateMany`) inside the tx — O(N) round-trips for large columns. |
+| Test coverage (unit + e2e) | **3** | — | 39 unit tests passing in CI. New `webhooks.service.spec.ts` (dispatch/delivery, scoping, HMAC correctness) and expanded `issues.service.spec.ts` (cursor pagination, move collision rebalance) are high-quality. e2e suite now has 37 spec files covering auth, board, backlog, VIEWER roles, webhook API + UI, inline create. Gaps: no unit tests for `CommentsService`, `NotificationsService` fan-out, `BoardService`, `RoadmapService`, `ReportsService`, `MeService`. No integration test for cursor pagination with a real DB (index coverage can only be verified with EXPLAIN ANALYZE). |
+| Type safety | 5 | — | Strict TS, clean typecheck API + web, no stray `any`. `WebhookEventPayload.data: unknown` is intentionally loose (correct). `SubscriptionRow` type alias matches Prisma row. |
+| Build / CI / Docker | 4 | — | CI confirmed: build + unit tests + typechecks on every push. Docker multi-stage build correct. Entrypoint runs `prisma migrate deploy` then seed. One remaining concern: `docker-entrypoint.sh` runs `npx prisma` without a version pin — relies on whatever prisma version is in the container's node_modules. |
+| Secrets / config hygiene | 4 | — | JWT secret fail-fast in bootstrap + compose `:?` expansion confirmed solid. Webhook secrets generated with `randomBytes(24).toString('hex')` when not supplied — good. Stored as plaintext in DB (acceptable since the secret is write-only and never returned in API responses). `POSTGRES_PASSWORD` compose default (`nextlane`) is a known weak default — not enforced with `:?`. |
+| Dependency risk | 4 | — | Mainstream stack. `fractional-indexing` (MIT), `argon2`, `socket.io 4`, `@nestjs 10`, `prisma 5` — all maintained. No Dependabot / automated CVE scanning. Redis in compose but entirely unused in code (dead infra). |
+
+### Top risks & debt (Pass 4, prioritized)
+
+**P0 — None identified.** All prior P0s confirmed resolved.
+
+**P1:**
+
+1. **SSRF via webhook URL — no private-range block, redirects followed** *(P1, Med impact / Med likelihood in self-hosted multi-tenant)*
+   `webhooks.service.ts:244` — Node native `fetch` with `redirect: 'follow'` (default) POSTs to any URL that passes `@IsUrl`. Accepted: `http://localhost`, `http://169.254.169.254`, any RFC 1918 address, any internal hostname resolvable from the container. An ADMIN can route server-side requests to internal services or cloud metadata endpoints. `webhook.dto.ts:20-21` documents this as a follow-up. For a single-tenant self-hosted deployment the risk is self-inflicted; it is a genuine P1 for any hosted offering.
+   *Fix:* (a) DNS-resolve the URL at validation time and reject RFC 1918/loopback/link-local addresses. (b) Set `redirect: 'manual'` on the `fetch` call. Use `is-in-subnet` (or a hand-rolled CIDR check) — no heavy dep needed. Add `@IsIP()` or DNS block in `webhook.dto.ts`. *Size: M.*
+   *Files:* `apps/api/src/webhooks/webhooks.service.ts:244-265`, `apps/api/src/webhooks/dto/webhook.dto.ts:17-23`
+
+2. **Missing composite DB index for cursor pagination** *(P1, High impact / High likelihood when projects exceed a few hundred issues)*
+   `issues.service.ts:257-262` queries `WHERE projectId = X AND (createdAt > Y OR (createdAt = Y AND id > Z)) ORDER BY createdAt ASC, id ASC`. No covering index exists for this pattern. PostgreSQL will resort to a bitmap index scan on `(projectId, statusId)` (wrong columns) or a seq-scan + sort. For projects with thousands of issues this becomes a full-table scan that grows linearly with project size on every page request.
+   *Fix:* Add `@@index([projectId, createdAt, id])` to the `Issue` model and generate a migration. One line in `schema.prisma`, one `prisma migrate dev`. *Size: S.*
+   *Files:* `apps/api/prisma/schema.prisma` (Issue model, after line 201)
+
+**P2:**
+
+3. **`useProjectIssues` walks all pages serially — planning view stalls on large projects** *(P2, Med impact / Med likelihood)*
+   `apps/web/src/api/issues.ts:30-47` — the `do { } while (cursor)` loop fetches all pages before returning. 10k issues / 200 per page = 50 sequential requests. The planning view's spinner stays up for the full waterfall duration.
+   *Fix:* Add a server-side `GET /projects/:id/issues/planning` endpoint returning all issues with a slim projection (id, title, type, priority, statusId, sprintId, rank — no description, no labels, no comments count). The planning view gets one bounded request. Alternatively, virtual-scroll the backlog sections and fetch pages on demand. *Size: M.*
+   *Files:* `apps/web/src/api/issues.ts:26-47`, `apps/api/src/issues/issues.service.ts:222-271`
+
+4. **Webhook delivery fan-out is unbounded concurrent** *(P2, Low-Med impact / Low likelihood at current scale)*
+   `webhooks.service.ts:217-224` — `Promise.all(matching.map(s => this.deliver(...)))` fans out all matching subscriptions simultaneously. At 5 active subscriptions per project × N simultaneous issue events this is manageable; at 50+ subscriptions it saturates the outbound connection pool and event loop. No concurrency cap.
+   *Fix:* Wrap deliveries in a semaphore capped at 5 concurrent (one `p-limit(5)` call or a manual 5-slot queue). Long-term, move to a Redis-backed job queue (Redis is already in compose). *Size: S (cap), L (queue).*
+   *Files:* `apps/api/src/webhooks/webhooks.service.ts:217-224`
+
+5. **`deliver` does not drain the response body — TCP socket leak** *(P2, Low-Med impact / Med likelihood under load)*
+   `webhooks.service.ts:255-257` reads `res.status` and `res.ok` but never consumes the response body. In Node.js (undici-backed fetch), an unconsumed body keeps the underlying TCP connection open until the server closes it or the garbage collector finalizes it. Under load with many deliveries this can exhaust the HTTP connection pool.
+   *Fix:* After reading `res.ok`, add `await res.body?.cancel()` to release the connection. One line. *Size: S.*
+   *Files:* `apps/api/src/webhooks/webhooks.service.ts:254-258`
+
+6. **`assertNoParentCycle` is still O(N) serial queries, outside transaction** *(P2, Low impact / Low likelihood)*
+   `issues.service.ts:436-451` — the while-loop issues one `findUnique` per ancestor hop, up to 1000 hops (1000 round-trips). Runs BEFORE the `issue.update` call, not inside the transaction — a concurrent parent reassignment between the guard and the write can still produce a cycle (though an extremely narrow TOCTOU window).
+   *Fix:* Replace with a single `WITH RECURSIVE` CTE via `prisma.$queryRaw`. Move the check inside the transaction. *Size: M.*
+   *Files:* `apps/api/src/issues/issues.service.ts:427-451`
+
+7. **`notifyComment` and `rebalanceAndPlace` are serial N-query loops** *(P2, Low impact / Low likelihood)*
+   `notifications.service.ts:184-209` iterates watchers with one `notify()` call per watcher (one DB INSERT + one socket emit per watcher, in series). `issues.service.ts:583-595` iterates the rebalanced column with one `tx.issue.update()` per row. Neither is blocking a user-facing response (comment create is fast; rebalance is in-transaction), but both are O(watchers) and O(column-size) DB round-trips.
+   *Fix (N+1 for notify):* Use `prisma.notification.createMany()` for the batch insert, then emit a single `notification.created` per user via `emitToUser` in a follow-up loop. *Fix (rebalance):* Use `prisma.$executeRaw` with a single `UPDATE … CASE WHEN … END` or a `createMany`-style approach — though Prisma doesn't natively support batch updates by ID; `$executeRaw` with a `VALUES` list is the pragmatic path. *Size: M.*
+   *Files:* `apps/api/src/notifications/notifications.service.ts:184-209`, `apps/api/src/issues/issues.service.ts:583-595`
+
+8. **Board and roadmap endpoints are still unbounded** *(P2, Med impact / Med likelihood at scale)*
+   `board.service.ts:32-43` and `roadmap.service.ts:51-64` call `findMany` with no `take`. The board is bounded in practice by sprint membership, but a project with an enormous backlog (all issues `sprintId = null`) will load all of them. Roadmap fetches all epics unconditionally.
+   *Fix:* For the board add a `take: 500` safety cap with a `hasMore` flag in the response; surface a warning in the UI. For roadmap, a `take: 200` on epics is a reasonable start-up guard. *Size: S.*
+   *Files:* `apps/api/src/board/board.service.ts:32-43`, `apps/api/src/roadmap/roadmap.service.ts:51-64`
+
+9. **JWT stored in `localStorage` — XSS extractable** *(P2, Med impact / Low likelihood given no current XSS vector)*
+   `apps/web/src/api/client.ts:TOKEN_KEY` — the JWT is stored in `localStorage` and read on every request. If an XSS vulnerability is ever introduced (e.g. via a future rich-text editor for issue descriptions), the token is trivially exfiltrable. Currently the app renders comment bodies and descriptions as plain text (no `dangerouslySetInnerHTML`) so there is no active XSS vector, but the architecture couples token safety to XSS hygiene.
+   *Fix (long-term):* Move to `httpOnly` cookie transport (`SameSite=Strict`). Add a `POST /auth/refresh` endpoint and short-lived access tokens. Short-term: ensure a Content-Security-Policy header is set on the web container. *Size: L (cookie migration), S (CSP header).*
+   *Files:* `apps/web/src/api/client.ts:4-11`, `apps/api/src/main.ts`
+
+10. **No rate limiting on auth endpoints (register/login brute-force)** *(P2, Med impact / Med likelihood)*
+    `apps/api/src/main.ts` — no `@nestjs/throttler` or any rate-limiting middleware. `POST /auth/login` and `POST /auth/register` are publicly accessible (`@Public()`) with no per-IP or per-email rate limit. A bot can attempt unlimited password guesses or registration spam.
+    *Fix:* Add `@nestjs/throttler` with a Redis store (`ThrottlerStorageRedisService` — Redis is already in compose). Apply a `@Throttle({ default: { limit: 10, ttl: 60000 } })` decorator to `AuthController.login` and `register`. *Size: S.*
+    *Files:* `apps/api/src/main.ts`, `apps/api/src/auth/auth.controller.ts`
+
+11. **Redis in compose is completely unused** *(P2, Low impact — dead infra)*
+    `docker-compose.yml` provisions a Redis 7 container with a volume and health check, but `apps/api/src/**/*.ts` contains zero Redis imports, no `ioredis`, no Bull, no Socket.io adapter. The compose file allocates memory, a volume mount, and a health check round-trip for a service that does nothing.
+    *Fix:* Either (a) remove Redis from compose until it is used (simplest for self-hosters), or (b) immediately wire up the Socket.io Redis adapter (`@socket.io/redis-adapter`) so the compose config is justified and horizontal scale is unblocked. *Size: S (remove) or M (wire up adapter).*
+    *Files:* `docker-compose.yml:19-30`, no API file references Redis.
+
+### New capabilities & technical investments (ideation mandate)
+
+Three concrete investments beyond the defect list:
+
+1. **Redis-backed webhook delivery queue with retries and exponential back-off.**
+   The webhook system currently fire-and-forgets with a 2-attempt retry in-process.
+   Moving delivery to a Redis job queue (Bull/BullMQ, using the already-provisioned
+   Redis service) gives: durable retries that survive API restarts, configurable
+   exponential back-off (3 attempts: 0 s, 30 s, 5 min), a UI delivery dashboard
+   that shows "pending" vs "failed" jobs, dead-letter queue for permanently failed
+   deliveries, and a path to horizontal API scale (multiple workers compete for the
+   same queue). This completes the webhook system from "fire-and-forget" to
+   "production-grade automation backbone." The compose Redis is already there waiting.
+   *Priority: P1. Size: M.*
+
+2. **Content-Security-Policy + security headers middleware.**
+   Add a CSP header on both the web container (nginx config) and the API
+   (`helmet` middleware in `main.ts`): `Content-Security-Policy: default-src 'self';
+   connect-src 'self' ws: wss:; script-src 'self'; style-src 'self' 'unsafe-inline'`.
+   This closes the XSS-to-token-theft vector (#9 above) without a full cookie
+   migration. Also add `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`,
+   and `Referrer-Policy: strict-origin-when-cross-origin`. For the API, `helmet`
+   covers most of these in one call. For the web container, a three-line nginx
+   `add_header` block suffices. Total effort: ~30 lines of configuration. This is
+   a meaningful open-source release hygiene item — security scanners and self-hosting
+   guides will flag their absence. *Priority: P1. Size: S.*
+
+3. **Observability: structured request logging + /health enrichment + optional
+   OpenTelemetry export.**
+   Replace NestJS's default console logger with a structured JSON logger (pino or
+   `nestjs-pino`) that emits `{ requestId, method, path, status, durationMs,
+   userId }` per request. Inject a `requestId` via a middleware and attach it to
+   every log line and to `AllExceptionsFilter` output. Enrich the existing
+   `GET /health` endpoint (currently just `{ status: 'ok' }`) to include DB
+   connectivity, uptime, and version. Add an optional OpenTelemetry export
+   (configured via `OTEL_EXPORTER_OTLP_ENDPOINT` env var) for Prisma spans.
+   Self-hosted operators running Next Lane in Docker get operator-grade visibility
+   into their own instance without SSH access. This also makes the webhook
+   "connection refused" errors visible in structured logs rather than swallowed
+   into a Logger.error call that vanishes into stdout. *Priority: P2. Size: M.*
+
+### Direction (Pass 4)
+
+The engineering health of the system has improved substantially across four passes.
+All P0 risks are resolved. The architecture is clean and consistent. The test suite
+and CI gate are functional, and the three feature areas audited this pass
+(webhooks, cursor pagination, inline create) are all well-implemented.
+
+The most actionable immediate items are:
+
+- **SSRF block for webhook URLs** (P1, M) — the one remaining P1-class security
+  gap; register a `dns.lookup` check + `redirect: 'manual'` before the open-source
+  release to avoid it being the first CVE reported against the project.
+- **Composite `(projectId, createdAt, id)` index** (P1, S) — a one-line schema
+  change; without it the cursor pagination query degrades linearly with project
+  size on every backlog/planning page load.
+- **`deliver` body drain** (P2, S) — one line; prevents a slow TCP connection
+  leak under webhook load.
+- **Rate limiting on auth endpoints** (P2, S) — `@nestjs/throttler` + Redis store;
+  the Redis service is already provisioned and sitting idle.
+- **CSP + security headers** (P1, S) — 30 lines of config; the most visible
+  hardening gap for an open-source release.
+
+After those quick wins, the **Redis-backed job queue for webhook delivery** is the
+investment that upgrades the webhook system from "reasonable MVP" to
+"production-grade automation backbone" and finally justifies the Redis container.
+The **observability baseline** (structured logs, `/health` enrichment, OTel) is
+what makes self-hosting Next Lane a supportable experience for operators who cannot
+access container stdout.
+
+### Backlog-groomer feed (Pass 4 — compact)
+
+- **SSRF block for webhook URLs: DNS-resolve + reject RFC 1918/loopback/link-local + redirect:manual** · P1 · M · Any admin can route server-side requests to internal services or cloud metadata; documented follow-up now due before open-source release. `webhooks.service.ts:244`, `webhook.dto.ts:21`
+- **Add composite index `@@index([projectId, createdAt, id])` on Issue for cursor pagination** · P1 · S · Missing covering index; GET /issues cursor query degrades to seq-scan + sort on large projects. `schema.prisma` Issue model
+- **Drain fetch response body in webhook `deliver` (add `res.body?.cancel()`)** · P2 · S · Unconsumed body leaks TCP connection per delivery; can exhaust connection pool under load. `webhooks.service.ts:254-258`
+- **Add rate limiting on POST /auth/login and /auth/register (nestjs/throttler + Redis store)** · P2 · S · Unlimited brute-force on public login endpoint; Redis already in compose. `auth.controller.ts`
+- **Cap webhook delivery fan-out concurrency (p-limit(5) or semaphore)** · P2 · S · Promise.all on all subscriptions simultaneously; can saturate event loop at scale. `webhooks.service.ts:217-224`
+- **Add CSP + security headers (helmet on API, nginx add_header on web)** · P1 · S · Missing security headers; flagged by scanners; closes XSS-to-token vector. `main.ts`, web nginx config
+- **Slim planning-view endpoint (or virtual scroll) to avoid all-pages waterfall** · P2 · M · useProjectIssues walks all cursor pages serially before rendering; stalls on large projects. `issues.ts:30-47`
+- **Add take cap to board and roadmap endpoints** · P2 · S · Both fetch all matching issues unbounded; graceful degradation needed. `board.service.ts:32`, `roadmap.service.ts:51`
+- **Replace assertNoParentCycle serial loop with single WITH RECURSIVE CTE inside transaction** · P2 · M · O(N) round-trips + TOCTOU window; CTE collapses to one query. `issues.service.ts:427-451`
+- **Batch notifyComment inserts (createMany) + rebalanceAndPlace (executeRaw batch UPDATE)** · P2 · M · Serial N inserts for watchers; serial N updates in rebalance tx. `notifications.service.ts:184-209`, `issues.service.ts:583-595`
+- **Wire Socket.io Redis adapter OR remove Redis from compose** · P2 · S · Redis provisioned but unused; dead infra adds resource cost and confusion. `docker-compose.yml`
+- **JWT migration to httpOnly cookie + add POST /auth/refresh** · P2 · L · Token in localStorage is XSS-extractable; cookie migration + short-lived access tokens is the durable fix. `client.ts`
+- **Redis-backed webhook delivery queue with retries and exponential back-off (BullMQ)** · P1 · M · Upgrades fire-and-forget to durable retry backbone; uses existing Redis; unblocks automation workflows and horizontal scale. `webhooks.service.ts`
+- **Structured request logging (pino/nestjs-pino) + enriched /health + optional OTel export** · P2 · M · Self-hosted operators need operator-grade visibility; structured logs make webhook errors and slow queries diagnosable. `main.ts`

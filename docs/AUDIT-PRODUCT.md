@@ -456,3 +456,216 @@ planning sessions.
 - Label rename / edit (not just create/delete) · P3 · S · obvious gap in label management; users can't correct a typo without delete-and-recreate
 - Automation rules engine (trigger → action, project settings) · P3 · L · flagship differentiator; ActivityLog is a natural event source
 - JWT refresh tokens + password reset + logout-everywhere · P2 · S · auth hardening; single access token; self-hosted teams need account recovery
+
+---
+
+## 2026-06-27 — Pass 4 (post-power-features sprint)
+
+**Method.** Read every new page and component that was claimed as shipped since
+Pass 3: `ReportsPage.tsx`, `VelocityChart.tsx`, `BurndownChart.tsx`,
+`RoadmapPage.tsx`, `RoadmapTimeline.tsx`, `MyWorkPage.tsx`, `CommandPalette.tsx`,
+`CommandPaletteProvider.tsx`, `NotificationBell.tsx`, `BacklogPage.tsx`
+(inline creation section), `SettingsPage.tsx` (Webhooks section),
+`WebhooksSection.tsx`, `AppHeader.tsx`, `ProjectNav.tsx`. Read the
+corresponding API services: `ReportsService`, `MeService`, `SearchService`,
+`NotificationsService`, `WebhooksService`. Cross-checked `.env.example`,
+`README.md`, `schema.prisma`, and the e2e suite listing (27 specs). Exercised
+the live stack on `:3000` / `:4000` to confirm claims.
+
+**Headline.** Pass 4 finds a product that has closed virtually every P1 gap
+identified in Pass 3. All five high-value items from that pass are now shipped
+and verified: sprint burndown + velocity reports (real SVG charts, sprint
+selector, proper empty states); board active-sprint badge with end-date
+countdown; cross-project global search via the command palette (fuzzy, key-
+style "NL-12" parsing, cross-workspace, result-capped); "My Work" dashboard
+(assigned + reported, cross-workspace, no tenant leak); and notifications with
+@mention auto-watch, realtime socket delivery, and a read-all inbox. The command
+palette (Cmd-K) ships with grouped project/issue results, quick-actions per
+project, ↑↓/Enter/Esc keyboard flow, and a mobile-icon fallback. Inline backlog
+creation (ghost row, type-and-Enter) eliminates the modal round-trip for bulk
+sprint planning. Webhooks (HMAC-signed, delivery log, Send test) and project
+settings (columns, labels, archive) are fully wired through the UI.
+
+This is a qualitatively different product than Pass 3. The question now is
+not "can it do agile?" but "is it polished, observable, and trustworthy enough
+for a team to commit to?" That means: auth durability (no refresh tokens),
+missing board-level type/priority filters, no @mention autocomplete affordance
+in the comment box, no label rename, no onboarding, missing SSRF hardening for
+webhooks, a README tech-stack table that falsely claims "JWT (access + refresh)"
+when only a 7-day access token exists, and no due date on issues.
+
+### What shipped (verified claim vs. reality — Pass 4)
+
+| Shipped item | Evidence | Verdict |
+|---|---|---|
+| Burndown chart | `BurndownChart.tsx`: hand-rolled SVG, ideal-vs-remaining lines, date labels, legend; `ReportsService.burndown()` derives day-by-day remaining from `ActivityLog` status→DONE transitions; sprint selector in `ReportsPage.tsx` defaults to active sprint | Confirmed — good quality |
+| Velocity chart | `VelocityChart.tsx`: grouped bars committed/completed per sprint; `ReportsService.velocity()` sums story points from sprint issues vs DONE-category status; empty state "No completed sprints yet" | Confirmed |
+| Active sprint badge on board | `BoardPage.tsx` `ActiveSprintBadge`: renders sprint name + "active" + relative end-date countdown with amber/red tones from `sprintDates` helper; handles no-sprint case gracefully | Confirmed |
+| Command palette (Cmd-K) | `CommandPalette.tsx`: portal overlay, 200ms debounce, ↑↓/Enter/Esc, grouped Actions + Projects + Issues, fuzzy plus key-style parsing; `AppHeader.tsx` desktop "Search ⌘K" button + mobile icon both open the palette | Confirmed |
+| Cross-project search | `SearchService.search()`: workspace-scoped, OR across title/description/key, key-style "NL-12" shortcut, 20-result cap; palette issues show type dot + status hint | Confirmed |
+| "My Work" page | `MyWorkPage.tsx`: assigned + reported sections, type icon, status pill, sprint badge, project key, priority icon, click navigates to board with `?issue=`; `MeService` workspace-scoped, 100-result cap | Confirmed |
+| Notifications (bell + inbox) | `NotificationBell.tsx`: unread badge (99+ cap), dropdown panel, actor avatar, relative time, click marks-read + navigates, "Mark all read"; `NotificationsService` creates on assign/comment/mention, socket `user:<id>` room, 60s poll fallback | Confirmed |
+| Inline backlog creation (ghost row) | `BacklogPage.tsx` `GhostRow`: appears at bottom of each sprint section and Backlog section for MEMBER/ADMIN; type title + Enter creates TASK at medium priority in that sprint/backlog; input clears and stays focused; VIEWERs never see it | Confirmed — well-implemented |
+| Webhooks settings UI | `WebhooksSection.tsx`: ADMIN-only, list/add/edit/delete via `WebhookFormModal`, active toggle, expandable delivery log, Send test button; matches backend ADMIN enforcement | Confirmed |
+| Project Settings (all sections) | `SettingsPage.tsx`: Details (name/desc/immutable key), Columns (reorder/rename/delete via Settings, not board), Labels (create/delete with swatches), Webhooks, Danger zone (archive, ADMIN-only); "View only" chip for VIEWERs | Confirmed |
+| ProjectNav 5-tab navigation | `ProjectNav.tsx`: Board / Backlog / Reports / Roadmap / Settings — all NavLinks with active underline; no tab for Workspaces/Members config (expected) | Confirmed |
+| Roadmap / timeline | `RoadmapTimeline.tsx`: hand-rolled SVG, month axis, today marker, sprint bars colored by state, epic bars with progress fill and click-to-open, "No dates" lane for undated epics | Confirmed |
+
+### Ratings (Pass 4)
+
+| Area | Score | Pass-3 | Delta | Note |
+|---|---|---|---|---|
+| Auth (register/login) | 4 | 4 | = | Still a single 7-day non-revocable access token. README tech-stack table says "JWT (access + refresh)" — that is a false claim. No password reset, no logout-everywhere. Token stored in `localStorage` (XSS risk pattern). |
+| Projects | 5 | 4 | +1 | Settings page now fully wired: edit name/description, manage columns, manage labels, archive, webhooks. All ADMIN/MEMBER/VIEWER gated correctly. The immutable key is surfaced read-only with a clear explanation. |
+| Board (kanban) | 5 | 5 | = | Unchanged strength. DnD, fractional ranks, realtime, active-sprint badge with countdown, label filter, VIEWER read-only. Missing: type filter, priority filter (board has title + assignee + label only). |
+| Issues (CRUD) | 5 | 5 | = | Drawer remains complete. Still missing: due date field (no `dueDate` in schema), markdown rendering in description/comments (plain textarea). Neither blocks functionality but both are common expectations. |
+| Comments / activity | 4 | 4 | = | Comment edit/delete (own only), human-readable activity log, notifications on comment. Still missing: @mention autocomplete affordance in the comment composer (notifications work but users must type the email address raw from memory), no markdown rendering. |
+| Search / filter | 4 | 3 | +1 | Command palette is a real cross-project, fuzzy, keyboard-driven search with key-style shortcuts. Board search is still title + assignee + labels only — no type/priority filter on the board. Backlog has no search at all. Score limited by missing board type/priority filter. |
+| Sprints / backlog | 5 | 4 | +1 | Full lifecycle: create/start/complete/delete; inline ghost-row creation; move-to-sprint; single-active enforcement with amber warning; sprint dates rendered in backlog header and board badge; incomplete issues returned on complete. This is a genuinely complete sprint planning surface. |
+| Labels | 4 | 4 | = | Create/delete in Settings, assign/unassign in drawer, filter on board, badge rendering everywhere. Still no label rename — a typo requires delete-and-recreate. |
+| Reports | 4 | 1 | +3 | Burndown and velocity are both real, well-implemented SVG charts with empty/loading/error states. Sprint selector defaults to active. The biggest jump in the pass. Missing: status distribution (pie/donut per sprint), cumulative-flow, no "stuck issues" widget, no date on the burndown when sprint has no dates (shows graceful empty state, but this is a common occurrence before sprint dates are set). |
+| Notifications | 4 | 2 | +2 | Full in-app inbox: bell badge, dropdown panel, real-time via socket `user:<id>` room, 60s poll fallback, click-to-navigate-and-mark-read, mark-all-read. Auto-watch on assignment and comment. Missing: @mention autocomplete (must type email raw); no email/SMTP delivery; no per-user notification preferences; no WATCHED_UPDATED notification on non-comment edits. |
+| Roles / permissions | 5 | 3 | +2 | API enforcement confirmed (MEMBER for mutations, ADMIN for member mgmt, VIEWER blocked). UI enforcement confirmed: VIEWER sees "View only" chip on board, backlog, drawer, settings; DnD disabled; create buttons hidden; delete affordances hidden. Webhooks ADMIN-only. Inline ghost row hidden for VIEWERs. Full coverage. |
+| Mobile experience | 3 | 3 | = | Navigation tabs are touch-friendly (px-3 py-2). Board horizontal scroll usable. Command palette usable on mobile (icon fallback). Notification dropdown is 80-96vw on mobile (`w-80 sm:w-96`). Create-issue modal still has `grid-cols-2` without `sm:` responsive guard — two-column layout on a 375px screen is cramped. Backlog ghost row single-column and fine. Reports charts use `viewBox` SVG (responsive). Roadmap has `min-w-[640px]` overflow-x-auto — workable but not native. |
+| Onboarding / empty states | 3 | 3 | = | Empty states on every page are consistent and helpful. Auto-creates "My Workspace" on first login. No product tour, no "sample project" offer, no "what should I do next?" guidance after the workspace is created. The DashboardPage hits you with a workspace selector + "No projects yet" — functional but cold. |
+
+### Top gaps (prioritized backlog candidates — Pass 4)
+
+1. **README accuracy: remove false "JWT (access + refresh)" claim + ship real
+   refresh tokens** — *What:* The README tech-stack table asserts "JWT (access
+   + refresh)" but `AuthService.sign()` emits only a single access token with a
+   7-day expiry. No refresh endpoint exists. Fix the README immediately (S); then
+   implement a proper `refreshToken` endpoint + `HttpOnly` cookie or secure
+   storage pattern (M). *Why:* A self-hosted product's README is the first thing
+   operators read. False documentation erodes trust harder than missing features.
+   Refresh tokens also mean a team member whose account was compromised can be
+   logged out. *Size:* S (README fix, ship now) + M (real refresh tokens).
+
+2. **Board type + priority filters** — *What:* Add "Type" and "Priority"
+   multi-select filter controls in the board toolbar alongside the existing title
+   search, assignee select, and label filter. Client-side, like the label filter.
+   *Why:* These are the two most common triage filters in any issue tracker.
+   Teams on-call or in bug-bashes routinely filter by "Bug + High" — today they
+   must open the command palette and search by title instead. The board toolbar
+   already has the pattern established. *Size:* S.
+
+3. **@mention autocomplete in the comment composer** — *What:* When the user
+   types `@` in the comment textarea, pop a member-picker dropdown (co-members
+   of the workspace, already fetched via `useUsers`) and insert `@email` on
+   selection. The notification fan-out on mention already works end-to-end; the
+   gap is only the autocomplete affordance in the UI. *Why:* Without it, @mention
+   is a hidden feature — users who discover it must remember the exact email
+   address format. The `NotificationsService` already parses `@<email>` from
+   comment bodies; the picker just surfaces what the system already supports.
+   *Size:* M.
+
+4. **Password reset + logout-everywhere** — *What:* A `POST /auth/forgot-password`
+   endpoint (email → time-limited reset token, delivered via SMTP or shown in a
+   dev log) and `POST /auth/logout-all` (revoke all active sessions). *Why:*
+   Self-hosted teams frequently onboard colleagues and forget passwords. There is
+   currently no recovery path at all — a locked-out user needs DB access to
+   recover. This is a table-stakes auth feature for any multi-user self-hosted
+   tool. *Size:* M.
+
+5. **First-run onboarding flow** — *What:* After registration, if the user has
+   zero projects, show a guided "Create your first project" modal (one step:
+   pick a name) and then auto-navigate to the board with a brief 3-tooltip tour
+   (board, backlog, create-issue). Optionally offer to seed a sample project
+   ("Try with demo data"). *Why:* The current new-user experience is: register
+   → workspace auto-created → empty project list → confused. The product is
+   genuinely capable now; the first impression doesn't reflect that. *Size:* M.
+
+6. **Label rename** — *What:* An inline edit affordance on the label row in
+   project Settings (pencil icon → text input → save) and potentially on the
+   badge in the drawer. PATCH endpoint needs to be added (`label.name` is
+   unique per project, so rename just updates the name field). *Why:* Users
+   make typos. Today they must delete the label (removing it from all issues)
+   and recreate it. This is a small but persistent friction for teams that
+   iterate on their label taxonomy. *Size:* S.
+
+7. **Webhook SSRF hardening** — *What:* Before delivering to the admin-configured
+   URL, resolve the hostname and reject private/loopback/link-local IP ranges
+   (RFC 1918, ::1, 169.254.x.x). The webhook DTO already has a comment
+   acknowledging this gap. *Why:* In a multi-tenant or shared self-hosted
+   environment, an ADMIN could register `http://192.168.1.1/admin` as a webhook
+   URL and have the server POST to internal services. Low-severity for single-
+   org deployments but a real issue for any shared instance. *Size:* S.
+
+8. **Due date on issues** — *What:* Add an optional `dueDate DateTime?` to the
+   Issue model (migration + DTO + drawer date picker). Show a due-date chip on
+   the card when set; surface overdue issues in "My Work" and on the board with
+   a warning color. *Why:* "My Work" and board filtering are the daily-driver
+   loops; due dates are the most common primitive teams use to prioritize within
+   a sprint. The schema currently has no per-issue deadline concept. *Size:* M.
+
+### New / ambitious ideas (ideation mandate — Pass 4)
+
+Three net-new bets:
+
+- **L. "Team pulse" widget on the Dashboard.** Replace the current workspace
+  selector + project grid with a richer home page: recent activity across all
+  projects (last 10 events from ActivityLog), "Your sprint ends in N days"
+  banner when an active sprint nears its end date, "Issues awaiting you" count
+  (assigned + unread notifications). The data is all available; only a new
+  read endpoint and a redesigned DashboardPage are needed. This turns the home
+  page from a project-file-picker into a morning check-in screen. *Size:* M.
+
+- **M. Keyboard-first issue triage mode.** A dedicated full-screen "triage
+  view" accessible from the command palette: issues listed one-per-row, press
+  `a` to assign (member picker), `p` to set priority, `l` to add label, `s`
+  to change status, `Enter` to open drawer, `j`/`k` to navigate up/down, `f`
+  to filter. Think rapid inbox-zero for issue queues. Power users who need to
+  triage 20 new bugs in 5 minutes will pick a tracker largely based on whether
+  this kind of flow exists. No schema changes needed. *Size:* L.
+
+- **N. Per-project "Definition of Done" checklist on issues.** An ADMIN
+  configures a per-project checklist (e.g. "Code reviewed", "Tests written",
+  "Docs updated") stored as a JSON array on the Project model. When an issue
+  is moved to a DONE-category status, the drawer shows a blocking checklist
+  before allowing the move — or surfaced as a progress badge on the card. This
+  is the kind of workflow guardrail that self-hosted teams adopt precisely
+  because they can configure it to their process, and it requires minimal
+  schema additions. *Size:* M.
+
+### Direction (next quarter — Pass 4 view)
+
+Pass 4 marks a genuine turning point: Next Lane is now a credible, complete
+agile tracker end-to-end. The sprint loop, reports, roadmap, notifications,
+command palette, webhooks, and roles are all genuinely shipped. The honest
+question for next quarter is not "what is missing?" but "what makes this the
+tracker a team recommends to a friend?"
+
+Three bets answer that:
+
+**Trust and durability.** Fix the README accuracy gap immediately (the false
+"JWT refresh" claim is a small but visible credibility hit). Then ship real
+password reset and auth hardening. Self-hosted adoption depends on operators
+trusting the product to not lock them out.
+
+**Daily-driver UX.** The board type/priority filter (S) and @mention
+autocomplete (M) are the two highest-leverage UX gaps remaining — both are
+things users will hit on day one and immediately compare against alternatives.
+The first-run onboarding (M) determines whether a new user converts to a
+daily user at all.
+
+**Differentiation.** The keyboard triage mode (idea M) and "Team pulse"
+dashboard (idea L) are the features that make Next Lane genuinely *different*
+from alternatives — not just an equivalent that self-hosts. A team choosing
+between self-hosted options will pick the one that feels fastest for their
+workflow. Keyboard-first triage and a meaningful home page are the bets that
+earn that choice.
+
+### Backlog-groomer ingest — Pass 4 (title · priority · size · rationale)
+
+- Fix README tech-stack: remove false "JWT (access + refresh)" claim · P0 · S · documentation fraud erodes trust; instant fix
+- Board type + priority filters (multi-select, client-side) · P1 · S · most common triage filters; board only has title/assignee/label today
+- @mention autocomplete in comment composer (member picker on @ keystroke) · P1 · M · notification fan-out works; affordance is hidden without autocomplete; users must know email addresses from memory
+- Password reset + logout-everywhere · P1 · M · no account recovery today; self-hosted teams get locked out; table-stakes auth feature
+- First-run onboarding (create-first-project guide + optional 3-tooltip tour) · P1 · M · new users land on empty project list with no guidance; product is capable but first impression is cold
+- Label rename / edit (PATCH label.name, inline in Settings) · P2 · S · delete-and-recreate on typo removes label from all issues; obvious gap in label management
+- Webhook SSRF hardening (block private/loopback IP ranges on delivery) · P2 · S · low-severity for single-org; real risk for shared instances; already noted in webhook DTO comment
+- Due date on issues (schema field + drawer picker + card chip + My Work warning) · P2 · M · no per-issue deadline concept; teams rely on due dates for within-sprint prioritization
+- "Team pulse" home dashboard (recent activity, sprint countdown, awaiting-you count) · P2 · M · current dashboard is just a project file-picker; home page should be a morning check-in
+- Keyboard triage mode (full-screen row view, j/k navigation, inline a/p/l/s shortcuts) · P3 · L · power-user differentiator; reduces bug-triage time dramatically; no schema changes
+- Project "Definition of Done" checklist (admin-configured per project, blocks DONE transition) · P3 · M · workflow guardrail; self-hosted teams pick trackers they can configure to their process
+- SMTP email notification delivery (opt-in per user, sendgrid/SMTP env config) · P3 · M · in-app only today; async notifications for users not logged in
