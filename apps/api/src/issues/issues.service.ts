@@ -753,6 +753,10 @@ export class IssuesService {
    * rank the moved issue should receive; the caller persists it together with
    * the status change. Runs on the supplied transaction client so the rebalance
    * and the move commit atomically.
+   *
+   * All non-moved rows are updated in a single `UPDATE … SET rank = CASE … END`
+   * statement — one DB round-trip regardless of column size, replacing the
+   * previous O(N) serial loop.
    */
   private async rebalanceAndPlace(
     tx: Prisma.TransactionClient,
@@ -778,17 +782,42 @@ export class IssuesService {
     if (!inserted) order.push(id);
 
     const ranks = initialRanks(order.length);
+
+    // Split into the moved issue's rank (returned to the caller) and the batch
+    // of other-issue id→rank pairs that we will update in one SQL statement.
     let movedRank: string | null = null;
+    const otherPairs: Array<{ issueId: string; rank: string }> = [];
     for (let i = 0; i < order.length; i += 1) {
       if (order[i] === id) {
         movedRank = ranks[i];
-        continue; // caller writes the moved issue's rank + status together
+      } else {
+        otherPairs.push({ issueId: order[i], rank: ranks[i] });
       }
-      await tx.issue.update({
-        where: { id: order[i] },
-        data: { rank: ranks[i] },
-      });
     }
+
+    // Single bulk UPDATE for all non-moved rows.
+    // Uses a CASE expression and ANY(ARRAY[…]) so every id and rank value is a
+    // bind parameter — one DB round-trip regardless of column size.
+    if (otherPairs.length > 0) {
+      // Build: CASE id WHEN $id1 THEN $rank1 WHEN $id2 THEN $rank2 … END
+      const caseFragments = otherPairs.map(
+        (p) => Prisma.sql`WHEN ${p.issueId}::text THEN ${p.rank}`,
+      );
+      const caseExpr = Prisma.join(caseFragments, ' ');
+
+      // Build: ANY(ARRAY[$id1, $id2, …])
+      const anyList = Prisma.join(
+        otherPairs.map((p) => Prisma.sql`${p.issueId}::text`),
+        ', ',
+      );
+
+      await tx.$executeRaw`
+        UPDATE "Issue"
+        SET rank = CASE id ${caseExpr} END
+        WHERE id = ANY(ARRAY[${anyList}])
+      `;
+    }
+
     // order always contains `id`, so movedRank is assigned above.
     return movedRank as string;
   }
