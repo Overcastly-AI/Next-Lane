@@ -11,6 +11,7 @@ import { toUserDto } from '../auth/auth.service';
 import { CreateWorkspaceDto, AddMemberDto } from './dto/workspace.dto';
 import { Role } from '@next-lane/shared';
 import type { WorkspaceDto, MembershipDto } from '@next-lane/shared';
+import { AuditService } from '../audit/audit.service';
 
 type WorkspaceRow = {
   id: string;
@@ -30,7 +31,10 @@ function toWorkspaceDto(w: WorkspaceRow): WorkspaceDto {
 
 @Injectable()
 export class WorkspacesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+  ) {}
 
   async findAll(userId: string): Promise<WorkspaceDto[]> {
     const workspaces = await this.prisma.workspace.findMany({
@@ -77,12 +81,20 @@ export class WorkspacesService {
     userId: string,
     id: string,
     dto: AddMemberDto,
+    ip?: string | null,
   ): Promise<MembershipDto> {
     await assertWorkspaceRole(this.prisma, userId, id, Role.ADMIN);
     const target = await this.prisma.user.findUnique({
       where: { email: dto.email.toLowerCase() },
     });
     if (!target) throw new NotFoundException('User not found');
+
+    // Check if it's a new membership or a role change (for audit action label).
+    const existing = await this.prisma.membership.findUnique({
+      where: { userId_workspaceId: { userId: target.id, workspaceId: id } },
+    });
+    const action = existing ? 'membership.role_change' : 'membership.add';
+    const prevRole = existing?.role ?? null;
 
     const membership = await this.prisma.membership.upsert({
       where: {
@@ -96,11 +108,59 @@ export class WorkspacesService {
       },
       include: { user: true },
     });
+
+    this.audit.record({
+      workspaceId: id,
+      actorId: userId,
+      action,
+      targetType: 'Membership',
+      targetId: membership.id,
+      metadata: {
+        targetEmail: target.email,
+        role: membership.role,
+        ...(prevRole ? { previousRole: prevRole } : {}),
+      },
+      ip,
+    });
+
     return {
       id: membership.id,
       role: membership.role as Role,
       user: toUserDto(membership.user),
     };
+  }
+
+  async removeMember(
+    userId: string,
+    workspaceId: string,
+    membershipId: string,
+    ip?: string | null,
+  ): Promise<{ id: string }> {
+    await assertWorkspaceRole(this.prisma, userId, workspaceId, Role.ADMIN);
+    const membership = await this.prisma.membership.findUnique({
+      where: { id: membershipId },
+      include: { user: true },
+    });
+    if (!membership || membership.workspaceId !== workspaceId) {
+      throw new NotFoundException('Membership not found');
+    }
+
+    await this.prisma.membership.delete({ where: { id: membershipId } });
+
+    this.audit.record({
+      workspaceId,
+      actorId: userId,
+      action: 'membership.remove',
+      targetType: 'Membership',
+      targetId: membershipId,
+      metadata: {
+        targetEmail: membership.user.email,
+        role: membership.role,
+      },
+      ip,
+    });
+
+    return { id: membershipId };
   }
 
   private async uniqueSlug(base: string): Promise<string> {

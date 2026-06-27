@@ -14,6 +14,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
+  Role,
   SprintState,
   StatusCategory,
   type MyWorkIssueDto,
@@ -31,7 +32,7 @@ import { ProjectCard } from '@/components/project/ProjectCard';
 import { OnboardingPanel } from '@/components/project/OnboardingPanel';
 import { CreateProjectModal } from '@/components/project/CreateProjectModal';
 import { CreateWorkspaceModal } from '@/components/workspace/CreateWorkspaceModal';
-import { useWorkspaces, useCreateWorkspace } from '@/api/workspaces';
+import { useWorkspaces, useCreateWorkspace, useMyRole } from '@/api/workspaces';
 import { useProjects } from '@/api/projects';
 import { useMyWork } from '@/api/me';
 import { useNotifications } from '@/api/notifications';
@@ -86,6 +87,9 @@ export function PulseDashboardPage() {
     () => workspaces?.find((w) => w.id === selectedWs),
     [workspaces, selectedWs],
   );
+
+  const myRole = useMyRole(activeWorkspace?.id);
+  const isAdmin = myRole === Role.ADMIN;
 
   const projectsQuery = useProjects(activeWorkspace?.id);
   const projects = projectsQuery.data ?? [];
@@ -150,7 +154,19 @@ export function PulseDashboardPage() {
             </Button>
           </div>
         </div>
-        <Button onClick={() => setProjectModalOpen(true)}>+ New Project</Button>
+        <div className="flex items-center gap-2">
+          {isAdmin && activeWorkspace && (
+            <Button
+              variant="secondary"
+              size="md"
+              onClick={() => navigate(`/workspaces/${activeWorkspace.id}/audit-log`)}
+              data-testid="audit-log-nav-link"
+            >
+              Audit log
+            </Button>
+          )}
+          <Button onClick={() => setProjectModalOpen(true)}>+ New Project</Button>
+        </div>
       </div>
 
       {projectsQuery.isLoading && <LoadingState label="Loading projects…" />}

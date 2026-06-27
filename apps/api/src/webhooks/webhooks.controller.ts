@@ -6,11 +6,19 @@ import {
   Param,
   Patch,
   Post,
+  Req,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import type { Request } from 'express';
 import { WebhooksService } from './webhooks.service';
 import { CreateWebhookDto, UpdateWebhookDto } from './dto/webhook.dto';
 import { CurrentUser, AuthUser } from '../auth/current-user.decorator';
+
+function extractIp(req: Request): string | null {
+  const forwarded = req.headers['x-forwarded-for'];
+  if (typeof forwarded === 'string') return forwarded.split(',')[0].trim();
+  return req.socket?.remoteAddress ?? null;
+}
 
 @ApiTags('webhooks')
 @ApiBearerAuth()
@@ -31,8 +39,9 @@ export class WebhooksController {
     @CurrentUser() user: AuthUser,
     @Param('projectId') projectId: string,
     @Body() dto: CreateWebhookDto,
+    @Req() req: Request,
   ) {
-    return this.webhooks.create(user.id, projectId, dto);
+    return this.webhooks.create(user.id, projectId, dto, extractIp(req));
   }
 
   @Patch('projects/:projectId/webhooks/:id')
@@ -40,13 +49,18 @@ export class WebhooksController {
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Body() dto: UpdateWebhookDto,
+    @Req() req: Request,
   ) {
-    return this.webhooks.update(user.id, id, dto);
+    return this.webhooks.update(user.id, id, dto, extractIp(req));
   }
 
   @Delete('projects/:projectId/webhooks/:id')
-  remove(@CurrentUser() user: AuthUser, @Param('id') id: string) {
-    return this.webhooks.remove(user.id, id);
+  remove(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Req() req: Request,
+  ) {
+    return this.webhooks.remove(user.id, id, extractIp(req));
   }
 
   @Get('projects/:projectId/webhooks/:id/deliveries')

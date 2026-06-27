@@ -23,6 +23,7 @@ import {
   assertProjectRole,
 } from '../common/membership.util';
 import { CreateWebhookDto, UpdateWebhookDto } from './dto/webhook.dto';
+import { AuditService } from '../audit/audit.service';
 
 // ---- SSRF protection -------------------------------------------------------
 
@@ -278,7 +279,10 @@ export class WebhooksService {
   private readonly queue: Queue<WebhookJobData> | null;
   private worker: Worker<WebhookJobData> | null = null;
 
-  constructor(private readonly prisma: PrismaService) {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+  ) {
     const redisUrl = process.env.REDIS_URL;
     if (redisUrl) {
       // BullMQ accepts a URL string as its connection — this avoids any ioredis
@@ -353,8 +357,9 @@ export class WebhooksService {
     userId: string,
     projectId: string,
     dto: CreateWebhookDto,
+    ip?: string | null,
   ): Promise<WebhookSubscriptionDto> {
-    await assertProjectRole(this.prisma, userId, projectId, Role.ADMIN);
+    const project = await assertProjectRole(this.prisma, userId, projectId, Role.ADMIN);
     const sub = await this.prisma.webhookSubscription.create({
       data: {
         projectId,
@@ -364,6 +369,17 @@ export class WebhooksService {
         active: dto.active ?? true,
       },
     });
+
+    this.audit.record({
+      workspaceId: project.workspaceId,
+      actorId: userId,
+      action: 'webhook.create',
+      targetType: 'WebhookSubscription',
+      targetId: sub.id,
+      metadata: { url: dto.url, projectId },
+      ip,
+    });
+
     return toSubscriptionDto(sub);
   }
 
@@ -371,9 +387,10 @@ export class WebhooksService {
     userId: string,
     id: string,
     dto: UpdateWebhookDto,
+    ip?: string | null,
   ): Promise<WebhookSubscriptionDto> {
     const existing = await this.requireSubscription(id);
-    await assertProjectRole(this.prisma, userId, existing.projectId, Role.ADMIN);
+    const project = await assertProjectRole(this.prisma, userId, existing.projectId, Role.ADMIN);
     const sub = await this.prisma.webhookSubscription.update({
       where: { id },
       data: {
@@ -383,13 +400,39 @@ export class WebhooksService {
         active: dto.active,
       },
     });
+
+    this.audit.record({
+      workspaceId: project.workspaceId,
+      actorId: userId,
+      action: 'webhook.update',
+      targetType: 'WebhookSubscription',
+      targetId: id,
+      metadata: { url: sub.url, active: sub.active },
+      ip,
+    });
+
     return toSubscriptionDto(sub);
   }
 
-  async remove(userId: string, id: string): Promise<{ id: string }> {
+  async remove(
+    userId: string,
+    id: string,
+    ip?: string | null,
+  ): Promise<{ id: string }> {
     const existing = await this.requireSubscription(id);
-    await assertProjectRole(this.prisma, userId, existing.projectId, Role.ADMIN);
+    const project = await assertProjectRole(this.prisma, userId, existing.projectId, Role.ADMIN);
     await this.prisma.webhookSubscription.delete({ where: { id } });
+
+    this.audit.record({
+      workspaceId: project.workspaceId,
+      actorId: userId,
+      action: 'webhook.delete',
+      targetType: 'WebhookSubscription',
+      targetId: id,
+      metadata: { url: existing.url },
+      ip,
+    });
+
     return { id };
   }
 

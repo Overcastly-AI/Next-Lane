@@ -16,6 +16,9 @@ import {
   WEBHOOK_QUEUE_NAME,
 } from './webhooks.service';
 import type { PrismaService } from '../prisma/prisma.service';
+import type { AuditService } from '../audit/audit.service';
+
+const mockAudit: Pick<AuditService, 'record'> = { record: jest.fn() };
 
 // ---- helpers ---------------------------------------------------------------
 
@@ -92,7 +95,7 @@ describe('WebhooksService (Redis mode) — enqueue on dispatch', () => {
   it('creates a BullMQ Queue when REDIS_URL is set', () => {
     const { Queue } = jest.requireMock<typeof import('bullmq')>('bullmq');
     const prisma = makePrisma();
-    new WebhooksService(prisma as unknown as PrismaService);
+    new WebhooksService(prisma as unknown as PrismaService, mockAudit as unknown as AuditService);
     expect(Queue).toHaveBeenCalledWith(
       WEBHOOK_QUEUE_NAME,
       expect.objectContaining({ connection: expect.objectContaining({ url: 'redis://127.0.0.1:6379' }) }),
@@ -110,7 +113,7 @@ describe('WebhooksService (Redis mode) — enqueue on dispatch', () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .mockResolvedValue([{ address: '93.184.216.34', family: 4 }] as any);
 
-    const service = new WebhooksService(prisma as unknown as PrismaService);
+    const service = new WebhooksService(prisma as unknown as PrismaService, mockAudit as unknown as AuditService);
     service.dispatch(PROJECT, WebhookEventTypes.IssueCreated, { id: 'i-1' });
     await flush();
 
@@ -132,7 +135,7 @@ describe('WebhooksService (Redis mode) — enqueue on dispatch', () => {
     const fetchMock = jest.fn();
     global.fetch = fetchMock as unknown as typeof fetch;
 
-    const service = new WebhooksService(prisma as unknown as PrismaService);
+    const service = new WebhooksService(prisma as unknown as PrismaService, mockAudit as unknown as AuditService);
     service.dispatch(PROJECT, WebhookEventTypes.IssueCreated, { id: 'i-2' });
     await flush();
 
@@ -148,7 +151,7 @@ describe('WebhooksService (Redis mode) — enqueue on dispatch', () => {
       subRow({ id: 'sub-c', events: ['sprint.started'] }), // does not match
     ]);
 
-    const service = new WebhooksService(prisma as unknown as PrismaService);
+    const service = new WebhooksService(prisma as unknown as PrismaService, mockAudit as unknown as AuditService);
     service.dispatch(PROJECT, WebhookEventTypes.IssueCreated, { id: 'i-3' });
     await flush();
 
@@ -316,7 +319,7 @@ describe('WebhooksService (in-process mode) — no queue created when REDIS_URL 
     const bullmq = jest.requireMock<{ Queue: jest.Mock; Worker: jest.Mock }>('bullmq');
     bullmq.Queue.mockClear();
     const prisma = makePrisma();
-    new WebhooksService(prisma as unknown as PrismaService);
+    new WebhooksService(prisma as unknown as PrismaService, mockAudit as unknown as AuditService);
     expect(bullmq.Queue).not.toHaveBeenCalled();
   });
 });
