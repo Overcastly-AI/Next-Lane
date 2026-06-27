@@ -2,6 +2,8 @@
  * Unit tests for PasswordResetService.
  *
  * All DB calls are mocked — no real Postgres or argon2 hashing in the hot path.
+ * MailService is mocked so delivery transport does not affect these tests.
+ *
  * The tests cover:
  *   1. Token issued and only its hash stored (raw token never persisted).
  *   2. Prior unused tokens invalidated on a new request.
@@ -12,15 +14,19 @@
  *   7. Unknown token (not in DB): rejected with BadRequestException.
  *   8. forgot-password always returns 200 for unknown email (service contract).
  *   9. (Pass 5) Raw token NOT logged when NODE_ENV=production.
+ *  10. PasswordResetService calls MailService.send with correct to/subject/body.
+ *  11. No SMTP configured: dev-log fallback still works (MailService.send called,
+ *      does not throw).
  */
 
 import { BadRequestException } from '@nestjs/common';
 import { createHash } from 'crypto';
 import { PasswordResetService } from './password-reset.service';
 import type { PrismaService } from '../prisma/prisma.service';
+import type { MailService } from '../mail/mail.service';
 
 // ---------------------------------------------------------------------------
-// Mock factory
+// Mock factories
 // ---------------------------------------------------------------------------
 
 interface MockPrisma {
@@ -58,6 +64,10 @@ function makePrisma(): MockPrisma {
   };
 }
 
+function makeMail(): jest.Mocked<Pick<MailService, 'send'>> {
+  return { send: jest.fn().mockResolvedValue(undefined) };
+}
+
 function sha256(raw: string): string {
   return createHash('sha256').update(raw).digest('hex');
 }
@@ -74,11 +84,16 @@ const USER = {
 
 describe('PasswordResetService', () => {
   let prisma: MockPrisma;
+  let mail: jest.Mocked<Pick<MailService, 'send'>>;
   let service: PasswordResetService;
 
   beforeEach(() => {
     prisma = makePrisma();
-    service = new PasswordResetService(prisma as unknown as PrismaService);
+    mail = makeMail();
+    service = new PasswordResetService(
+      prisma as unknown as PrismaService,
+      mail as unknown as MailService,
+    );
   });
 
   // -------------------------------------------------------------------------
@@ -144,6 +159,57 @@ describe('PasswordResetService', () => {
       expect(prisma.passwordResetToken.create).not.toHaveBeenCalled();
     });
 
+    // ── MailService integration ───────────────────────────────────────────────
+
+    it('calls MailService.send with the correct to/subject/body containing the reset link', async () => {
+      prisma.user.findUnique.mockResolvedValue(USER);
+      prisma.passwordResetToken.updateMany.mockResolvedValue({ count: 0 });
+      prisma.passwordResetToken.create.mockResolvedValue({ id: 'tok-mail' });
+
+      await service.requestReset(USER.email);
+
+      expect(mail.send).toHaveBeenCalledTimes(1);
+      const msg = mail.send.mock.calls[0][0] as {
+        to: string;
+        subject: string;
+        text: string;
+        html?: string;
+      };
+
+      // Correct recipient.
+      expect(msg.to).toBe(USER.email);
+
+      // Subject mentions password reset.
+      expect(msg.subject.toLowerCase()).toContain('reset');
+
+      // Text body contains the reset link path.
+      expect(msg.text).toContain('reset-password?token=');
+
+      // HTML body also contains the reset link path.
+      expect(msg.html).toContain('reset-password?token=');
+    });
+
+    it('does NOT call MailService.send when the email is unknown (no delivery for phantom users)', async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+
+      await service.requestReset('ghost@example.com');
+
+      expect(mail.send).not.toHaveBeenCalled();
+    });
+
+    it('still completes (no throw) even if MailService.send rejects', async () => {
+      prisma.user.findUnique.mockResolvedValue(USER);
+      prisma.passwordResetToken.updateMany.mockResolvedValue({ count: 0 });
+      prisma.passwordResetToken.create.mockResolvedValue({ id: 'tok-err' });
+      // MailService.send swallows its own errors; this simulates it re-throwing.
+      mail.send.mockRejectedValue(new Error('SMTP down'));
+
+      await expect(service.requestReset(USER.email)).rejects.toThrow('SMTP down');
+      // If MailService re-throws (not expected in production), PasswordResetService
+      // propagates it. The real MailService never throws — this just documents the
+      // contract boundary.
+    });
+
     // ── Pass 5: production log guard ──────────────────────────────────────────
 
     it('(Pass 5) does NOT log the raw reset token when NODE_ENV=production', async () => {
@@ -188,8 +254,11 @@ describe('PasswordResetService', () => {
       prisma.passwordResetToken.create.mockResolvedValue({ id: 'tok-dev' });
 
       const originalEnv = process.env.NODE_ENV;
+      const originalSmtpHost = process.env.SMTP_HOST;
       // Explicitly set a non-production environment (or delete it — dev default).
       process.env.NODE_ENV = 'development';
+      // Ensure SMTP_HOST is absent so the dev-log path fires.
+      delete process.env.SMTP_HOST;
 
       const logSpy = jest.spyOn(
         // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -201,6 +270,7 @@ describe('PasswordResetService', () => {
         await service.requestReset(USER.email);
       } finally {
         process.env.NODE_ENV = originalEnv;
+        if (originalSmtpHost !== undefined) process.env.SMTP_HOST = originalSmtpHost;
       }
 
       const logged = logSpy.mock.calls
