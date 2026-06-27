@@ -419,34 +419,58 @@ export class IssuesService {
   }
 
   /**
-   * Reject a parent assignment that would create a cycle. A cycle happens if the
-   * proposed parent is the issue itself, or if the issue is an ancestor of the
-   * proposed parent (i.e. walking up from `parentId` reaches `id`). We walk the
-   * ancestor chain with a hop cap as a defensive guard against any pre-existing
-   * corrupt data.
+   * Reject a parent assignment that would create a cycle using a single
+   * `WITH RECURSIVE` CTE executed inside the caller's transaction. A cycle
+   * occurs when the proposed `parentId` is either the issue itself, or any
+   * descendant of `id` (walking up from `parentId` would reach `id`).
+   *
+   * The CTE walks UP the ancestor chain from `parentId`, stopping when it
+   * finds a row whose own parentId is NULL or when 100 hops are exhausted
+   * (defensive cap against pre-existing corrupt data). If any visited row has
+   * `id = issueId`, the assignment would create a cycle.
+   *
+   * @param tx  - Prisma transaction client (keeps the check + write atomic).
+   * @param id  - The issue being updated.
+   * @param parentId - The proposed new parent.
    */
-  private async assertNoParentCycle(
+  private async assertNoParentCycleCTE(
+    tx: Prisma.TransactionClient,
     id: string,
     parentId: string,
   ): Promise<void> {
     if (parentId === id) {
       throw new BadRequestException('An issue cannot be its own parent');
     }
-    let cursor: string | null = parentId;
-    let hops = 0;
-    while (cursor && hops < 1000) {
-      if (cursor === id) {
-        throw new BadRequestException(
-          'parentId would create a cycle in the issue hierarchy',
-        );
-      }
-      const next: { parentId: string | null } | null =
-        await this.prisma.issue.findUnique({
-          where: { id: cursor },
-          select: { parentId: true },
-        });
-      cursor = next?.parentId ?? null;
-      hops += 1;
+
+    // Walk ancestor chain from parentId upward; if id appears anywhere in that
+    // chain it means id is an ancestor of parentId → cycle.
+    // The CTE is parameterized: $1 = parentId (start node), $2 = id (the node
+    // to detect), $3 = hop limit.
+    const rows = await tx.$queryRaw<{ cycle_detected: boolean }[]>`
+      WITH RECURSIVE ancestors(node_id, depth) AS (
+        SELECT "parentId"::text, 1
+        FROM "Issue"
+        WHERE id = ${parentId}::text
+          AND "parentId" IS NOT NULL
+
+        UNION ALL
+
+        SELECT i."parentId"::text, a.depth + 1
+        FROM "Issue" i
+        INNER JOIN ancestors a ON i.id = a.node_id
+        WHERE i."parentId" IS NOT NULL
+          AND a.depth < 100
+      )
+      SELECT EXISTS (
+        SELECT 1 FROM ancestors WHERE node_id = ${id}::text
+      ) AS cycle_detected
+    `;
+
+    const cycleDetected = rows[0]?.cycle_detected ?? false;
+    if (cycleDetected) {
+      throw new BadRequestException(
+        'parentId would create a cycle in the issue hierarchy',
+      );
     }
   }
 
@@ -469,9 +493,6 @@ export class IssuesService {
       sprintId: dto.sprintId,
       parentId: dto.parentId,
     });
-    if (dto.parentId != null) {
-      await this.assertNoParentCycle(id, dto.parentId);
-    }
     await this.assertAssigneeInWorkspace(project.workspaceId, dto.assigneeId);
 
     const activities: Prisma.ActivityLogCreateManyInput[] = [];
@@ -506,25 +527,35 @@ export class IssuesService {
       });
     }
 
-    const issue = await this.prisma.issue.update({
-      where: { id },
-      data: {
-        title: dto.title,
-        description: dto.description,
-        type: dto.type,
-        statusId: dto.statusId,
-        assigneeId: dto.assigneeId,
-        priority: dto.priority,
-        storyPoints: dto.storyPoints,
-        parentId: dto.parentId,
-        sprintId: dto.sprintId,
-      },
-      include: listInclude,
-    });
+    // Run cycle-check + write atomically so a concurrent parent reassignment
+    // cannot slip through between the check and the UPDATE (TOCTOU fix).
+    const issue = await this.prisma.$transaction(async (tx) => {
+      if (dto.parentId != null) {
+        await this.assertNoParentCycleCTE(tx, id, dto.parentId);
+      }
 
-    if (activities.length > 0) {
-      await this.prisma.activityLog.createMany({ data: activities });
-    }
+      const updated = await tx.issue.update({
+        where: { id },
+        data: {
+          title: dto.title,
+          description: dto.description,
+          type: dto.type,
+          statusId: dto.statusId,
+          assigneeId: dto.assigneeId,
+          priority: dto.priority,
+          storyPoints: dto.storyPoints,
+          parentId: dto.parentId,
+          sprintId: dto.sprintId,
+        },
+        include: listInclude,
+      });
+
+      if (activities.length > 0) {
+        await tx.activityLog.createMany({ data: activities });
+      }
+
+      return updated;
+    });
 
     const dtoOut = toIssueDto(issue);
     this.realtime.emitToProject(

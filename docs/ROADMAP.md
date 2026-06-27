@@ -46,6 +46,7 @@ Status legend: ✅ done · 🚧 in progress · ⬜ planned
 - ✅ CI pipeline (GitHub Actions) + API unit-test suite
 - ✅ Cursor pagination for large lists (keyset on `createdAt,id`; `GET /issues` → `{ items, nextCursor }`)
 - ✅ Security hardening pass (P1+P2): webhook SSRF guard (DNS pre-flight + redirect:manual + socket drain + fan-out cap), composite pagination index `@@index([projectId,createdAt,id])` + migration, `helmet()` security headers, global throttler (100 req/min) + stricter auth throttle (10 req/min), `WEBHOOK_ALLOW_PRIVATE` opt-out for self-hosters
+- ✅ `assertNoParentCycle` replaced with atomic recursive CTE (`WITH RECURSIVE` via `$queryRaw` inside `$transaction`; TOCTOU-safe; O(1) round-trips; 100-hop depth cap; 6 new unit tests)
 - ✅ Password reset (POST /auth/forgot-password + time-limited token + dev-log delivery + frontend forgot/reset pages)
 - ⬜ Query DSL / saved views (filter builder → text query)
 - ⬜ Custom fields (typed, JSONB-backed)
@@ -64,6 +65,7 @@ tracker (board, backlog, sprints, reports, roadmap, labels, story points, epics,
 comments, search, command palette, My Work, roles, notifications, webhooks, realtime).
 Security hardening pass is complete (SSRF guard, pagination index, helmet, rate limiting).
 Board type/priority filters, @mention autocomplete (MentionComposer picker matching the backend fan-out parser), and password reset (token model + forgot/reset endpoints + frontend pages, dev-log delivery seam) all shipped.
+`assertNoParentCycle` replaced with a single atomic `WITH RECURSIVE` CTE inside the update transaction (TOCTOU closed, O(1) DB round-trips).
 Remaining: query DSL/saved views, custom fields, automation rules, time tracking, email, dashboards, API tokens, audit log, bulk edit, importers, SSO.
 
 ## v1.0 release criteria — definition of "a good product"
