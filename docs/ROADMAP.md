@@ -66,6 +66,7 @@ comments, search, command palette, My Work, roles, notifications, webhooks, real
 Security hardening pass is complete (SSRF guard, pagination index, helmet, rate limiting).
 Board type/priority filters, @mention autocomplete (MentionComposer picker matching the backend fan-out parser), and password reset (token model + forgot/reset endpoints + frontend pages, dev-log delivery seam) all shipped.
 `assertNoParentCycle` replaced with a single atomic `WITH RECURSIVE` CTE inside the update transaction (TOCTOU closed, O(1) DB round-trips).
+UX/a11y polish pass (2026-06-27): MentionComposer no-results state; password min-length aligned to 8 (ResetPasswordPage + ResetPasswordDto); auto-redirect removed from reset success; board toolbar mobile overflow-x-auto strip; aria-haspopup corrected; picker shadow + position improved; MyWorkPage EmptyState unified; autoFocus on all auth forms.
 Remaining: query DSL/saved views, custom fields, automation rules, time tracking, email, dashboards, API tokens, audit log, bulk edit, importers, SSO.
 
 ## v1.0 release criteria — definition of "a good product"

@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { resetPassword } from '@/api/auth';
 import { ApiError } from '@/api/client';
 import { AuthShell } from './AuthShell';
@@ -8,7 +8,6 @@ import { Input } from '@/components/ui/Input';
 import { Field } from '@/components/ui/Field';
 
 export function ResetPasswordPage() {
-  const navigate = useNavigate();
   const [params] = useSearchParams();
   const token = params.get('token') ?? '';
 
@@ -66,8 +65,8 @@ export function ResetPasswordPage() {
       setError('Passwords do not match.');
       return;
     }
-    if (newPassword.length < 6) {
-      setError('Password must be at least 6 characters.');
+    if (newPassword.length < 8) {
+      setError('Password must be at least 8 characters.');
       return;
     }
 
@@ -75,10 +74,6 @@ export function ResetPasswordPage() {
     try {
       await resetPassword(token, newPassword);
       setSuccess(true);
-      // Redirect to login after a brief pause so the success message renders.
-      setTimeout(() => {
-        navigate('/login', { replace: true });
-      }, 2_000);
     } catch (err) {
       setError(
         err instanceof ApiError ? err.message : 'Unable to reset password. Try again.',
@@ -101,13 +96,14 @@ export function ResetPasswordPage() {
       }
     >
       <form onSubmit={onSubmit} className="space-y-4">
-        <Field label="New password" htmlFor="new-password" hint="At least 6 characters.">
+        <Field label="New password" htmlFor="new-password" hint="At least 8 characters.">
           <Input
             id="new-password"
             type="password"
             autoComplete="new-password"
             required
-            minLength={6}
+            autoFocus
+            minLength={8}
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
             placeholder="••••••••"

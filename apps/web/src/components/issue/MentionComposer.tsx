@@ -242,7 +242,11 @@ export const MentionComposer = forwardRef<
   // We use `onMouseDown` on picker items (not `onClick`) so the textarea never
   // loses focus when the user clicks a suggestion.
 
-  const isOpen = mentionQuery !== null && filteredUsers.length > 0;
+  // Show picker whenever there is an active mention query (even if no matches),
+  // so users get feedback that their query didn't match anyone.
+  const isOpen = mentionQuery !== null;
+  // Only enable keyboard navigation/insertion when there are actual results.
+  const hasResults = filteredUsers.length > 0;
 
   return (
     <div className="relative">
@@ -260,7 +264,7 @@ export const MentionComposer = forwardRef<
         aria-expanded={isOpen}
         aria-controls={isOpen ? 'mention-picker' : undefined}
         aria-activedescendant={
-          isOpen ? `mention-option-${selectedIndex}` : undefined
+          isOpen && hasResults ? `mention-option-${selectedIndex}` : undefined
         }
         data-testid={dataTestId}
       />
@@ -272,36 +276,48 @@ export const MentionComposer = forwardRef<
           data-testid="mention-picker"
           aria-label="Select a member to mention"
           className={cn(
-            'absolute bottom-full left-0 z-50 mb-1 w-72',
-            'max-h-48 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg',
+            'absolute top-full left-0 z-50 mt-1 w-72',
+            'max-h-48 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-cardHover',
           )}
         >
-          {filteredUsers.map((user, idx) => (
+          {hasResults ? (
+            filteredUsers.map((user, idx) => (
+              <li
+                key={user.id}
+                id={`mention-option-${idx}`}
+                role="option"
+                aria-selected={idx === selectedIndex}
+                data-testid={`mention-option-${idx}`}
+                className={cn(
+                  'flex cursor-pointer items-center gap-2.5 px-3 py-2 text-sm',
+                  idx === selectedIndex
+                    ? 'bg-brand-50 text-brand-700'
+                    : 'text-gray-700 hover:bg-gray-50',
+                )}
+                // onMouseDown instead of onClick keeps the textarea focused
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  insertMention(user);
+                }}
+              >
+                <Avatar user={user} size="sm" />
+                <div className="min-w-0">
+                  <p className="truncate font-medium">{user.name}</p>
+                  <p className="truncate text-xs text-gray-400">{user.email}</p>
+                </div>
+              </li>
+            ))
+          ) : (
             <li
-              key={user.id}
-              id={`mention-option-${idx}`}
               role="option"
-              aria-selected={idx === selectedIndex}
-              data-testid={`mention-option-${idx}`}
-              className={cn(
-                'flex cursor-pointer items-center gap-2.5 px-3 py-2 text-sm',
-                idx === selectedIndex
-                  ? 'bg-brand-50 text-brand-700'
-                  : 'text-gray-700 hover:bg-gray-50',
-              )}
-              // onMouseDown instead of onClick keeps the textarea focused
-              onMouseDown={(e) => {
-                e.preventDefault();
-                insertMention(user);
-              }}
+              aria-selected={false}
+              aria-disabled="true"
+              data-testid="mention-no-results"
+              className="px-3 py-2 text-sm text-gray-400"
             >
-              <Avatar user={user} size="sm" />
-              <div className="min-w-0">
-                <p className="truncate font-medium">{user.name}</p>
-                <p className="truncate text-xs text-gray-400">{user.email}</p>
-              </div>
+              No members match &ldquo;@{mentionQuery}&rdquo;
             </li>
-          ))}
+          )}
         </ul>
       )}
     </div>
