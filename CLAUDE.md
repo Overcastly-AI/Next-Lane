@@ -6,6 +6,17 @@ Guidance for Claude Code (and other AI agents) working in this repository.
 
 Next Lane is an **open-source, self-hosted issue & project tracker** that runs locally via Docker. Fully MIT-licensed, intended for the public to use and self-host. It is a TypeScript monorepo.
 
+## Operating principles (own the outcome)
+
+You run this team. Do not wait to be told to optimize, fix process, or raise quality — that is your job.
+
+1. **Be proactive.** If the workflow, an agent, or a skill is slowing us down or letting defects through, change it (update `.claude/` and these docs) without being asked. Owning the org means improving it.
+2. **Ship quality the *user* feels.** "Tests pass" ≠ "works for the user." QA must exercise the **real artifact** and **real-user behavior**: per-keystroke typing (not `.fill()`), desktop AND mobile, the actual `docker compose` build, real flows end-to-end. The bugs that reached the user (focus loss, compose syntax, mobile overflow, missing UI) all passed "green" tests — close that gap.
+3. **No hand-waving.** Never dismiss a failing test/bug as "pre-existing" or "unrelated" without root-causing it. If it's real, fix it.
+4. **Parallel by default.** Use isolated worktrees + per-instance DBs/ports (`dev-up-instance.sh N`) to build multiple disjoint features at once. Serial is the exception.
+5. **Converge.** Drive toward the v1 release criteria in `docs/ROADMAP.md`, then polish — don't generate endless backlog without finishing.
+6. **Keep docs honest** (see below) and **never push a red build.**
+
 ## Stack (do not change without updating docs/ARCHITECTURE.md)
 
 - **Backend:** NestJS + Prisma + PostgreSQL, REST + Socket.io

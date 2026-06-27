@@ -60,3 +60,18 @@ Status legend: ✅ done · 🚧 in progress · ⬜ planned
 tracker (board, backlog, sprints, reports, roadmap, labels, story points, epics,
 comments, search, command palette, My Work, roles, notifications, webhooks, realtime).
 Now shipping Phase 3 in parallel batches and hardening for scale.
+
+## v1.0 release criteria — definition of "a good product"
+
+We are done with v1 when ALL of these hold (drive here, then polish, then stop):
+
+- [ ] **Runs first-try:** `git clone && cp .env.example .env && docker compose up -d --build` yields a working app with seeded demo + working login, no manual steps. (Validated against the real Docker artifact, not a proxy.)
+- [ ] **Core flows are bug-free on desktop AND mobile**, verified with real-user QA (per-keystroke typing, real clicks/scroll): auth, create/edit/move issue, drag-and-drop, comments, labels, sprints, backlog, reports, roadmap, search, settings/columns, My Work, notifications.
+- [ ] **First-run experience isn't an empty void:** onboarding offers a sample project or clear "create your first project" guidance.
+- [ ] **No known P0/P1 bugs.** CI (lint + typecheck + unit + e2e desktop/mobile) green on every push.
+- [ ] **Security/multi-tenant solid:** isolation, roles, secrets, CORS, input bounds, webhook SSRF — all closed (mostly done).
+- [ ] **Docs accurate:** README quickstart works verbatim; ROADMAP/BACKLOG reflect reality.
+- [ ] **Performance sane at scale:** large boards/lists don't OOM or hang (pagination).
+- [ ] **A short product demo passes:** a scripted "new user → create project → plan a sprint → work the board → see a report" walkthrough works without a hitch on desktop and mobile.
+
+Everything beyond this (custom fields, automation rules, time tracking, SSO, email-to-issue, importers) is **post-v1** and should not block the release.
