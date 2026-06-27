@@ -38,6 +38,11 @@ enum SprintState {
   COMPLETED
 }
 
+enum BoardType {
+  KANBAN
+  SCRUM
+}
+
 enum Role {
   ADMIN
   MEMBER
@@ -159,11 +164,37 @@ model Project {
   statuses     Status[]
   sprints      Sprint[]
   labels       Label[]
+  boards       Board[]
   webhooks     WebhookSubscription[]
   shareTokens  ShareToken[]
 
   @@unique([workspaceId, key])
   @@index([workspaceId])
+}
+
+/// A view of a project's issues. A project can have many boards; each has a
+/// `type` (KANBAN = continuous flow; SCRUM = active-sprint focus) that controls
+/// how issues are scoped. Boards share the project's statuses (columns). The
+/// `filterQuery` (NLQL) and `colorRules` columns are reserved for later slices
+/// (saved query filtering + conditional card colors) and are dormant until then.
+model Board {
+  id          String    @id @default(cuid())
+  projectId   String
+  name        String
+  type        BoardType @default(KANBAN)
+  /// NLQL query string applied on top of the board's base scope. Null = no filter.
+  filterQuery String?
+  /// Ordered list of conditional color rules: [{ id, query, color, label }].
+  /// First match wins. Null/empty = no card coloring.
+  colorRules  Json?
+  order       Int       @default(0)
+  isDefault   Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
 }
 
 model Status {

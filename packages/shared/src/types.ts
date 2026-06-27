@@ -5,6 +5,7 @@ import type {
   SprintState,
   Role,
   NotificationType,
+  BoardType,
 } from './enums';
 
 /** API DTO shapes shared between server and client. These mirror Prisma models
@@ -140,7 +141,40 @@ export interface SprintDto {
   projectId: string;
 }
 
+/**
+ * One conditional card-color rule on a board. The card adopts `color` when an
+ * issue matches the NLQL `query`. Rules are evaluated in array order and the
+ * first match wins. (The `query`/coloring behaviour is wired in a later slice;
+ * the shape is defined here so the Board contract is stable.)
+ */
+export interface BoardColorRule {
+  id: string;
+  /** NLQL condition; an issue matching it adopts this rule's color. */
+  query: string;
+  /** Hex color applied to the card accent (e.g. "#ef4444"). */
+  color: string;
+  /** Short human label shown in the board's color legend. */
+  label?: string;
+}
+
+/** Summary of a board for the project's board switcher / list. */
+export interface BoardSummaryDto {
+  id: string;
+  projectId: string;
+  name: string;
+  type: BoardType;
+  isDefault: boolean;
+  order: number;
+  /** NLQL filter saved on the board (null = no saved filter). */
+  filterQuery: string | null;
+  colorRules: BoardColorRule[];
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface BoardDto {
+  /** The board this view belongs to (null only for legacy/default fallback). */
+  board: BoardSummaryDto;
   project: ProjectDto;
   statuses: StatusDto[];
   issues: IssueDto[];

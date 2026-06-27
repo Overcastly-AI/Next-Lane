@@ -34,6 +34,12 @@ export enum Role {
   VIEWER = 'VIEWER',
 }
 
+/** Board view type. KANBAN = continuous flow; SCRUM = active-sprint focus. */
+export enum BoardType {
+  KANBAN = 'KANBAN',
+  SCRUM = 'SCRUM',
+}
+
 /** Why a notification was created. Keep in sync with the Prisma schema. */
 export enum NotificationType {
   ASSIGNED = 'ASSIGNED',
@@ -45,6 +51,7 @@ export enum NotificationType {
 export const ISSUE_TYPES = Object.values(IssueType);
 export const PRIORITIES = Object.values(Priority);
 export const STATUS_CATEGORIES = Object.values(StatusCategory);
+export const BOARD_TYPES = Object.values(BoardType);
 
 /** Display + ordering metadata for priorities (highest first). */
 export const PRIORITY_ORDER: Record<Priority, number> = {
