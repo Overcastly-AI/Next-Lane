@@ -6,6 +6,40 @@
 
 ---
 
+## 🎨 Design Elevation — component redesign loop (LIVE tracker)
+
+Standing directive (see CLAUDE.md "Design elevation"): audit & **redesign every
+component/screen** using the `frontend-design` skill; loop until done; keep tests
+green; post before/after screenshots (desktop + mobile) to the user as work lands.
+Each item below is redesigned design-skill-led, then ✅ when shipped + verified.
+
+**Phase A — Foundation (design tokens + primitives)** — establishes the system everything else derives from
+- [ ] Design tokens — `tailwind.config.js` + `index.css` (palette, type scale, spacing, radius, shadow, motion; self-hosted fonts)
+- [ ] `ui/Button` · `ui/Input` · `ui/Select` · `ui/Textarea` · `ui/Field`
+- [ ] `ui/Badge` · `ui/Avatar` · `ui/Modal` · `ui/ConfirmDialog` · `ui/Toast` · `ui/States` · `ui/MarkdownRenderer`
+
+**Phase B — Core shell + board + drawer** (highest-traffic surfaces)
+- [ ] `AppHeader` · `Logo` · `NotificationBell` · `project/ProjectNav`
+- [ ] `board/BoardColumn` · `board/IssueCard` · `board/SortableIssueCard` · `board/CardStatusPicker` · `board/PresenceAvatars`
+- [ ] `board/CreateIssueModal` · `board/ColumnFormModal`
+- [ ] `issue/IssueDetailDrawer` · `issue/CommentsPanel` · `issue/AttachmentsPanel` · `issue/ActivityPanel` · `issue/LabelPicker` · `issue/MentionComposer` · `issue/ParentSubtasks` · `issue/issueMeta`
+
+**Phase C — Pages**
+- [ ] Auth: `AuthShell` · `LoginPage` · `RegisterPage` · `ForgotPasswordPage` · `ResetPasswordPage`
+- [ ] `PulseDashboardPage` · `DashboardPage` · `MyWorkPage`
+- [ ] `BoardPage` · `BacklogPage` · `TriagePage`
+- [ ] `ReportsPage` (+ `reports/BurndownChart` · `VelocityChart` · `CumulativeFlowChart`)
+- [ ] `RoadmapPage` (+ `roadmap/RoadmapTimeline`)
+- [ ] `SettingsPage` (+ `settings/WebhooksSection` · `WebhookFormModal` · `ShareSection` · `ApiTokensSection`)
+- [ ] `ProfileSettingsPage` · `WorkspaceMembersPage` · `WorkspaceAuditLogPage` · `SharedBoardPage`
+
+**Phase D — Cross-cutting components**
+- [ ] `CommandPalette` / `CommandPaletteProvider` · `project/OnboardingPanel` · `project/ProjectCard` · `project/CreateProjectModal` · `workspace/CreateWorkspaceModal`
+
+> Screenshots from each pass are captured (desktop + mobile) and posted to the user.
+
+---
+
 ## 2026-06-26 — Design / UX consistency audit
 
 **Scope reviewed:** `apps/web/src/components/ui/*` (primitives), `pages/*` (Login,

@@ -17,6 +17,38 @@ You run this team. Do not wait to be told to optimize, fix process, or raise qua
 5. **Converge.** Drive toward the v1 release criteria in `docs/ROADMAP.md`, then polish — don't generate endless backlog without finishing.
 6. **Keep docs honest** (see below) and **never push a red build.**
 
+## Design elevation — CURRENT TOP PRIORITY (UI/UX)
+
+The product is functionally complete; the focus now is making it **look and feel
+premium, distinctive, and intentional** — not templated. This is a standing,
+looping directive until told otherwise.
+
+1. **Audit & redesign every component.** Go through **each and every** component
+   and screen (`apps/web/src/components/**`, `apps/web/src/pages/**`), review it
+   against the design system, and **redesign it** where it reads as generic,
+   inconsistent, or dated. A redesign is *encouraged* — don't settle for tweaks.
+   Track progress as a component checklist in `docs/UI-REVIEW.md` and work it down.
+2. **Always use the `frontend-design` skill.** Any UI work MUST invoke the
+   Anthropic `frontend-design` skill: establish a distinctive token system
+   (palette / type / layout / **one signature element**), avoid AI-default looks
+   (generic SaaS indigo; cream-serif-terracotta; near-black-acid-green;
+   broadsheet hairlines), spend boldness in one place, keep the rest disciplined.
+3. **Loop on this direction.** audit → redesign a component (design-skill led) →
+   verify (tests stay green + screenshots) → next component → repeat,
+   continuously, the same way the build loop works.
+4. **Surface screenshots to the user during progression.** Capture before/after,
+   **desktop AND mobile**, and post them back to the user as the redesign lands
+   (use the file-sending mechanism) — the user wants to *see* it evolve.
+5. **Cohesion first.** The design tokens + `src/components/ui/*` primitives are
+   the single source of truth; every component derives from them. Fix the system,
+   then ripple it outward.
+6. **Never break the product.** This is a *visual* elevation: preserve every test
+   hook (`data-testid`, roles, `aria-label`, accessible names, e2e-asserted text)
+   so the e2e + unit suites stay green. Fonts must be **self-hosted** (the prod
+   nginx CSP restricts `font-src` to `'self'`); no runtime font CDN. Quality
+   floor: responsive to mobile, visible keyboard focus, `prefers-reduced-motion`,
+   WCAG-AA contrast.
+
 ## Stack (do not change without updating docs/ARCHITECTURE.md)
 
 - **Backend:** NestJS + Prisma + PostgreSQL, REST + Socket.io
