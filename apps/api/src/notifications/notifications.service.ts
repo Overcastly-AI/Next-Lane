@@ -17,6 +17,15 @@ import type {
   UnreadCountDto,
 } from '@next-lane/shared';
 
+/** Fields that are considered meaningful changes for watcher notifications. */
+export const WATCHED_FIELDS = [
+  'status',
+  'assignee',
+  'priority',
+  'title',
+  'dueDate',
+] as const;
+
 /** Cap on how many notifications a single list request returns. */
 const LIST_LIMIT = 50;
 
@@ -206,6 +215,84 @@ export class NotificationsService {
         issue: params.issue,
         message: `${params.authorName} commented on ${params.issue.key}`,
       });
+    }
+  }
+
+  /**
+   * Fan out a WATCHED_UPDATED notification to every watcher of an issue when a
+   * meaningful field changes (status, assignee, priority, title, dueDate).
+   *
+   * Uses a single `createMany` to batch all inserts rather than N sequential
+   * `create` calls. Each watcher then gets a realtime push via their private
+   * `user:<id>` room. The actor is excluded (never notify yourself).
+   *
+   * @param params.actorId      - User who made the change.
+   * @param params.actorName    - Display name of the actor.
+   * @param params.issue        - Snapshot of the updated issue.
+   * @param params.changedFields - Which meaningful fields changed (used in message).
+   */
+  async notifyWatchersUpdated(params: {
+    actorId: string;
+    actorName: string;
+    issue: IssueSnapshot & { title: string };
+    changedFields: string[];
+  }): Promise<void> {
+    const watchers = await this.prisma.watcher.findMany({
+      where: { issueId: params.issue.id },
+      select: { userId: true },
+    });
+
+    // Exclude the actor themselves.
+    const recipients = watchers
+      .map((w) => w.userId)
+      .filter((uid) => uid !== params.actorId);
+
+    if (recipients.length === 0) return;
+
+    const fieldLabel =
+      params.changedFields.length === 1
+        ? params.changedFields[0]
+        : params.changedFields.slice(0, -1).join(', ') +
+          ' and ' +
+          params.changedFields[params.changedFields.length - 1];
+
+    const message = `${params.actorName} updated ${params.issue.key} (${fieldLabel})`;
+
+    // Batch insert — one round-trip regardless of watcher count.
+    await this.prisma.notification.createMany({
+      data: recipients.map((userId) => ({
+        userId,
+        actorId: params.actorId,
+        type: NotificationType.WATCHED_UPDATED,
+        issueId: params.issue.id,
+        issueKey: params.issue.key,
+        projectId: params.issue.projectId,
+        message,
+      })),
+      skipDuplicates: true,
+    });
+
+    // Push realtime events to each recipient's private room. Fetch the created
+    // notifications to get their generated ids and createdAt timestamps.
+    const created = await this.prisma.notification.findMany({
+      where: {
+        issueId: params.issue.id,
+        actorId: params.actorId,
+        type: NotificationType.WATCHED_UPDATED,
+        userId: { in: recipients },
+        message,
+      },
+      include: { actor: true },
+      orderBy: { createdAt: 'desc' },
+      take: recipients.length,
+    });
+
+    for (const n of created) {
+      this.realtime.emitToUser(
+        n.userId,
+        SocketEvents.NotificationCreated,
+        toNotificationDto(n),
+      );
     }
   }
 

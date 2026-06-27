@@ -12,7 +12,7 @@ import type { RealtimeService } from '../realtime/realtime.service';
 
 interface MockPrisma {
   notification: Record<
-    'create' | 'findUnique' | 'update' | 'updateMany' | 'findMany' | 'count',
+    'create' | 'findUnique' | 'update' | 'updateMany' | 'findMany' | 'count' | 'createMany',
     jest.Mock
   >;
   watcher: Record<'upsert' | 'findMany', jest.Mock>;
@@ -29,6 +29,7 @@ function makePrisma(): MockPrisma {
       updateMany: jest.fn(),
       findMany: jest.fn(),
       count: jest.fn(),
+      createMany: jest.fn(),
     },
     watcher: { upsert: jest.fn(), findMany: jest.fn() },
     membership: { findMany: jest.fn() },
@@ -203,6 +204,164 @@ describe('NotificationsService', () => {
           },
         }),
       );
+    });
+  });
+
+  describe('notifyWatchersUpdated', () => {
+    const ISSUE_WITH_TITLE = {
+      id: ISSUE.id,
+      key: ISSUE.key,
+      projectId: ISSUE.projectId,
+      title: 'Fix the thing',
+    };
+
+    function makeNotificationRow(userId: string, id: string) {
+      return {
+        id,
+        userId,
+        actorId: 'u-actor',
+        type: NotificationType.WATCHED_UPDATED,
+        issueId: ISSUE.id,
+        issueKey: ISSUE.key,
+        projectId: ISSUE.projectId,
+        message: 'Actor updated AB-1 (status)',
+        read: false,
+        createdAt: new Date(),
+        actor: actorRow('u-actor', 'Actor'),
+      };
+    }
+
+    it('uses createMany (batched insert) not N sequential creates', async () => {
+      // Two watchers — actor is excluded.
+      prisma.watcher.findMany.mockResolvedValue([
+        { userId: 'u-watcher-1' },
+        { userId: 'u-watcher-2' },
+        { userId: 'u-actor' }, // actor, must be excluded
+      ]);
+      prisma.notification.createMany.mockResolvedValue({ count: 2 });
+      prisma.notification.findMany.mockResolvedValue([
+        makeNotificationRow('u-watcher-1', 'n-w1'),
+        makeNotificationRow('u-watcher-2', 'n-w2'),
+      ]);
+
+      await service.notifyWatchersUpdated({
+        actorId: 'u-actor',
+        actorName: 'Actor',
+        issue: ISSUE_WITH_TITLE,
+        changedFields: ['status'],
+      });
+
+      // Must use createMany (one DB round-trip), not notification.create.
+      expect(prisma.notification.createMany).toHaveBeenCalledTimes(1);
+      expect(prisma.notification.create).not.toHaveBeenCalled();
+
+      const createManyArgs = prisma.notification.createMany.mock.calls[0][0];
+      // Both non-actor watchers are included.
+      expect(createManyArgs.data).toHaveLength(2);
+      expect(createManyArgs.data.map((d: { userId: string }) => d.userId)).toEqual(
+        expect.arrayContaining(['u-watcher-1', 'u-watcher-2']),
+      );
+      expect(createManyArgs.data.every(
+        (d: { type: string }) => d.type === NotificationType.WATCHED_UPDATED,
+      )).toBe(true);
+    });
+
+    it('emits a realtime event per recipient via their user:<id> room', async () => {
+      prisma.watcher.findMany.mockResolvedValue([
+        { userId: 'u-watcher-1' },
+        { userId: 'u-watcher-2' },
+      ]);
+      prisma.notification.createMany.mockResolvedValue({ count: 2 });
+      prisma.notification.findMany.mockResolvedValue([
+        makeNotificationRow('u-watcher-1', 'n-w1'),
+        makeNotificationRow('u-watcher-2', 'n-w2'),
+      ]);
+
+      await service.notifyWatchersUpdated({
+        actorId: 'u-actor',
+        actorName: 'Actor',
+        issue: ISSUE_WITH_TITLE,
+        changedFields: ['status'],
+      });
+
+      expect(realtime.emitToUser).toHaveBeenCalledTimes(2);
+      expect(realtime.emitToUser).toHaveBeenCalledWith(
+        'u-watcher-1',
+        'notification.created',
+        expect.objectContaining({ type: NotificationType.WATCHED_UPDATED }),
+      );
+      expect(realtime.emitToUser).toHaveBeenCalledWith(
+        'u-watcher-2',
+        'notification.created',
+        expect.objectContaining({ type: NotificationType.WATCHED_UPDATED }),
+      );
+    });
+
+    it('never notifies the actor (excluded from recipients)', async () => {
+      prisma.watcher.findMany.mockResolvedValue([
+        { userId: 'u-actor' }, // actor only
+      ]);
+
+      await service.notifyWatchersUpdated({
+        actorId: 'u-actor',
+        actorName: 'Actor',
+        issue: ISSUE_WITH_TITLE,
+        changedFields: ['priority'],
+      });
+
+      // No inserts, no realtime — actor-only watcher list is a no-op.
+      expect(prisma.notification.createMany).not.toHaveBeenCalled();
+      expect(realtime.emitToUser).not.toHaveBeenCalled();
+    });
+
+    it('is a no-op when there are no watchers', async () => {
+      prisma.watcher.findMany.mockResolvedValue([]);
+
+      await service.notifyWatchersUpdated({
+        actorId: 'u-actor',
+        actorName: 'Actor',
+        issue: ISSUE_WITH_TITLE,
+        changedFields: ['status'],
+      });
+
+      expect(prisma.notification.createMany).not.toHaveBeenCalled();
+      expect(realtime.emitToUser).not.toHaveBeenCalled();
+    });
+
+    it('formats single-field message correctly', async () => {
+      prisma.watcher.findMany.mockResolvedValue([{ userId: 'u-w1' }]);
+      prisma.notification.createMany.mockResolvedValue({ count: 1 });
+      prisma.notification.findMany.mockResolvedValue([
+        makeNotificationRow('u-w1', 'n1'),
+      ]);
+
+      await service.notifyWatchersUpdated({
+        actorId: 'u-actor',
+        actorName: 'Alice',
+        issue: ISSUE_WITH_TITLE,
+        changedFields: ['status'],
+      });
+
+      const data = prisma.notification.createMany.mock.calls[0][0].data[0];
+      expect(data.message).toBe('Alice updated AB-1 (status)');
+    });
+
+    it('formats multi-field message correctly', async () => {
+      prisma.watcher.findMany.mockResolvedValue([{ userId: 'u-w1' }]);
+      prisma.notification.createMany.mockResolvedValue({ count: 1 });
+      prisma.notification.findMany.mockResolvedValue([
+        makeNotificationRow('u-w1', 'n1'),
+      ]);
+
+      await service.notifyWatchersUpdated({
+        actorId: 'u-actor',
+        actorName: 'Alice',
+        issue: ISSUE_WITH_TITLE,
+        changedFields: ['status', 'priority'],
+      });
+
+      const data = prisma.notification.createMany.mock.calls[0][0].data[0];
+      expect(data.message).toBe('Alice updated AB-1 (status and priority)');
     });
   });
 

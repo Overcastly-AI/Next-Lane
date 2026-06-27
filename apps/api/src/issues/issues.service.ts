@@ -497,6 +497,9 @@ export class IssuesService {
     await this.assertAssigneeInWorkspace(project.workspaceId, dto.assigneeId);
 
     const activities: Prisma.ActivityLogCreateManyInput[] = [];
+    /** Tracks which meaningful fields changed for watcher notifications. */
+    const changedFields: string[] = [];
+
     if (dto.statusId !== undefined && dto.statusId !== existing.statusId) {
       activities.push({
         issueId: id,
@@ -505,6 +508,7 @@ export class IssuesService {
         from: existing.statusId,
         to: dto.statusId,
       });
+      changedFields.push('status');
     }
     if (
       dto.assigneeId !== undefined &&
@@ -517,6 +521,7 @@ export class IssuesService {
         from: existing.assigneeId,
         to: dto.assigneeId,
       });
+      changedFields.push('assignee');
     }
     if (dto.priority !== undefined && dto.priority !== existing.priority) {
       activities.push({
@@ -526,6 +531,10 @@ export class IssuesService {
         from: existing.priority,
         to: dto.priority,
       });
+      changedFields.push('priority');
+    }
+    if (dto.title !== undefined && dto.title !== existing.title) {
+      changedFields.push('title');
     }
     const existingDueDateStr = existing.dueDate?.toISOString() ?? null;
     const incomingDueDateStr =
@@ -541,6 +550,7 @@ export class IssuesService {
         from: existingDueDateStr,
         to: incomingDueDateStr,
       });
+      changedFields.push('dueDate');
     }
 
     // Run cycle-check + write atomically so a concurrent parent reassignment
@@ -597,6 +607,32 @@ export class IssuesService {
     ) {
       await this.notifyAssignment(userId, dto.assigneeId, dtoOut);
     }
+
+    // Fan out WATCHED_UPDATED to all watchers (minus actor) when any meaningful
+    // field changed. This is a fire-and-forget — do not await to keep the HTTP
+    // response fast; errors are non-fatal to the caller.
+    if (changedFields.length > 0) {
+      const actor = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { name: true },
+      });
+      this.notifications
+        .notifyWatchersUpdated({
+          actorId: userId,
+          actorName: actor?.name ?? 'Someone',
+          issue: {
+            id: issue.id,
+            key: dtoOut.key,
+            projectId: issue.projectId,
+            title: issue.title,
+          },
+          changedFields,
+        })
+        .catch(() => {
+          // Notification failure must not break the update response.
+        });
+    }
+
     return dtoOut;
   }
 

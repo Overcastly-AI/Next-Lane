@@ -57,7 +57,7 @@ Status legend: ✅ done · 🚧 in progress · ⬜ planned
 - ✅ Cumulative-flow diagram (CFD) — stacked-area chart; 14/30/90-day window; historical ActivityLog replay; `GET /projects/:id/reports/cfd`; 5 unit tests + 6 e2e tests (desktop + mobile) (2026-06-27)
 - 🚧 Security hardening sprint (Pass 5): fixing plaintext token log, SVG-XSS in ALLOWED_MIME_TYPES, unbounded CFD/burndown queries (generate_series rewrite), null-file 500→400, webhook secret in Redis, PAT expiresAt validation, nginx CSP header, Helm Postgres fail-fast guard
 - ✅ SMTP email delivery for password reset — `MailModule`/`MailService` (nodemailer); real SMTP when `SMTP_HOST` set; dev-log fallback when absent; production-safe (no token logged); 8 `mail.service.spec` unit tests + updated `password-reset.service.spec` (255 tests total); shipped 2026-06-27
-- ⬜ WATCHED_UPDATED notification emission (fan-out to watchers on issue field change)
+- ✅ WATCHED_UPDATED notification emission (fan-out to watchers on issue field change) — `IssuesService.update` fans out to all watchers (minus actor) via batched `createMany` + per-user realtime push on status/assignee/priority/title/dueDate changes; no-op patches skip fan-out; 11 new unit tests (281 total); shipped 2026-06-27
 - ✅ Due date on issues — `dueDate DateTime?` on Issue model (migration `20260627220000_add_issue_due_date` + `@@index([dueDate])`); create/update DTOs + nullable/clearable; `IssueDto.dueDate` + `MyWorkIssueDto.dueDate` in shared types; drawer date picker with clear button + overdue amber styling; card chip (amber when overdue, neutral when future); My Work overdue sort + badge; 5 new unit tests + 8 e2e tests (desktop + mobile) — 2026-06-27
 - ⬜ Query DSL / saved views (filter builder → text query)
 - ⬜ Custom fields (typed, JSONB-backed)
@@ -112,7 +112,7 @@ SMTP email delivery for password reset shipped 2026-06-27: `MailModule`/`MailSer
 Due dates shipped 2026-06-27: `dueDate DateTime?` on Issue model (migration `20260627220000_add_issue_due_date`); create/update DTOs; `IssueDto.dueDate` + `MyWorkIssueDto.dueDate`; drawer date picker with clear button + overdue amber styling; card chip; My Work overdue badge + sort; 5 unit tests + 8 e2e (desktop + mobile).
 PAT auth at the WebSocket handshake shipped 2026-06-27: `nlp_` tokens authenticate the socket via `ApiTokensService.validateRawToken()`; JWT path unchanged; 11 gateway unit tests.
 
-Next build order: WATCHED_UPDATED emission (S) → full-text search (M, P1) → public share link (M, P2) → presence indicators + remaining P2s.
+Next build order: full-text search (M, P1) → public share link (M, P2) → presence indicators + remaining P2s.
 
 PATs shipped 2026-06-27: `nlp_`-prefixed (SHA-256 hashed) with create/list/revoke + JWT-guard extension + profile-settings UI.
 PAT-at-WS-handshake shipped 2026-06-27: `RealtimeGateway.handleConnection` now detects `nlp_` prefix and validates via `ApiTokensService.validateRawToken()`; revoked/expired/unknown PATs disconnect the socket immediately; JWT path unchanged; 11 new unit tests.

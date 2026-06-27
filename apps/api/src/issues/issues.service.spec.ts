@@ -1,5 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
-import { Role, rankBetween } from '@next-lane/shared';
+import { NotificationType, Priority, Role, rankBetween } from '@next-lane/shared';
 import {
   IssuesService,
   DEFAULT_ISSUES_PAGE_SIZE,
@@ -641,6 +641,7 @@ describe('IssuesService.update dueDate', () => {
       membership: { findUnique: jest.fn() },
       status: { findUnique: jest.fn() },
       sprint: { findUnique: jest.fn() },
+      user: { findUnique: jest.fn().mockResolvedValue({ name: 'Actor' }) },
       $transaction: jest.fn((cb: (tx: typeof txClient) => unknown) => cb(txClient)),
       _tx: txClient,
     };
@@ -694,7 +695,7 @@ describe('IssuesService.update dueDate', () => {
     service = new IssuesService(
       mocks.prisma as unknown as PrismaService,
       { emitToProject: jest.fn() } as unknown as RealtimeService,
-      {} as NotificationsService,
+      { notifyWatchersUpdated: jest.fn().mockResolvedValue(undefined) } as unknown as NotificationsService,
       webhooksMock,
     );
   });
@@ -754,5 +755,198 @@ describe('IssuesService.update dueDate', () => {
       const logged = (createManyCall[0] as { data: { field: string }[] }).data;
       expect(logged.every((a) => a.field !== 'dueDate')).toBe(true);
     }
+  });
+});
+
+/**
+ * Unit tests for IssuesService.update watcher fan-out.
+ * Verifies that WATCHED_UPDATED notifications are emitted to watchers (minus
+ * actor) on meaningful field changes, and are NOT emitted on no-op patches.
+ */
+describe('IssuesService.update watcher fan-out', () => {
+  const ISSUE_ID = 'issue-watch-1';
+  const WATCH_PROJECT = 'proj-watch';
+  const WATCH_WORKSPACE = 'ws-watch';
+  const ACTOR = 'user-actor';
+  const WATCH_STATUS = 'status-watch';
+
+  function makeWatchPrisma() {
+    const txClient = {
+      $queryRaw: jest.fn().mockResolvedValue([{ cycle_detected: false }]),
+      issue: { findUnique: jest.fn(), update: jest.fn() },
+      activityLog: { createMany: jest.fn() },
+    };
+    const prisma = {
+      issue: { findUnique: jest.fn() },
+      project: { findUnique: jest.fn() },
+      membership: { findUnique: jest.fn() },
+      status: { findUnique: jest.fn() },
+      sprint: { findUnique: jest.fn() },
+      user: { findUnique: jest.fn() },
+      $transaction: jest.fn((cb: (tx: typeof txClient) => unknown) => cb(txClient)),
+      _tx: txClient,
+    };
+    return { prisma, tx: txClient };
+  }
+
+  function makeExistingIssue(overrides: Partial<{
+    statusId: string;
+    assigneeId: string | null;
+    priority: string;
+    title: string;
+    dueDate: Date | null;
+  }> = {}) {
+    return {
+      id: ISSUE_ID,
+      number: 1,
+      projectId: WATCH_PROJECT,
+      type: 'TASK',
+      title: 'Watch me',
+      description: null,
+      statusId: WATCH_STATUS,
+      assigneeId: null,
+      reporterId: null,
+      priority: 'MEDIUM',
+      storyPoints: null,
+      parentId: null,
+      sprintId: null,
+      dueDate: null,
+      rank: 'a0',
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+      ...overrides,
+    };
+  }
+
+  function makeUpdatedIssueRow(overrides: Partial<{ statusId: string; title: string }> = {}) {
+    return {
+      ...makeExistingIssue(),
+      status: { id: WATCH_STATUS, name: 'To Do', category: 'TODO', order: 0, projectId: WATCH_PROJECT },
+      assignee: null,
+      reporter: null,
+      labels: [],
+      project: { key: 'WP' },
+      _count: { comments: 0 },
+      ...overrides,
+    };
+  }
+
+  let mocks: ReturnType<typeof makeWatchPrisma>;
+  let notificationsService: { notifyWatchersUpdated: jest.Mock; notifyAssigned: jest.Mock };
+  let service: IssuesService;
+
+  beforeEach(() => {
+    mocks = makeWatchPrisma();
+    mocks.prisma.project.findUnique.mockResolvedValue({
+      id: WATCH_PROJECT,
+      workspaceId: WATCH_WORKSPACE,
+    });
+    mocks.prisma.membership.findUnique.mockResolvedValue({ role: Role.ADMIN });
+    mocks.prisma.user.findUnique.mockResolvedValue({ name: 'Actor Name' });
+    // assertSameProject verifies that any referenced statusId belongs to the project.
+    mocks.prisma.status.findUnique.mockResolvedValue({ projectId: WATCH_PROJECT });
+
+    notificationsService = {
+      notifyWatchersUpdated: jest.fn().mockResolvedValue(undefined),
+      notifyAssigned: jest.fn().mockResolvedValue(undefined),
+    };
+
+    service = new IssuesService(
+      mocks.prisma as unknown as PrismaService,
+      { emitToProject: jest.fn() } as unknown as RealtimeService,
+      notificationsService as unknown as NotificationsService,
+      webhooksMock,
+    );
+  });
+
+  it('fans out WATCHED_UPDATED when status changes', async () => {
+    mocks.prisma.issue.findUnique.mockResolvedValue(makeExistingIssue());
+    mocks.tx.issue.update.mockResolvedValue(
+      makeUpdatedIssueRow({ statusId: 'status-done' }),
+    );
+
+    await service.update(ACTOR, ISSUE_ID, { statusId: 'status-done' });
+
+    // Allow the fire-and-forget promise to resolve.
+    await Promise.resolve();
+
+    expect(notificationsService.notifyWatchersUpdated).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorId: ACTOR,
+        changedFields: expect.arrayContaining(['status']),
+        issue: expect.objectContaining({ id: ISSUE_ID }),
+      }),
+    );
+  });
+
+  it('fans out WATCHED_UPDATED when priority changes', async () => {
+    mocks.prisma.issue.findUnique.mockResolvedValue(makeExistingIssue({ priority: Priority.LOW }));
+    mocks.tx.issue.update.mockResolvedValue(makeUpdatedIssueRow());
+
+    await service.update(ACTOR, ISSUE_ID, { priority: Priority.HIGH });
+    await Promise.resolve();
+
+    expect(notificationsService.notifyWatchersUpdated).toHaveBeenCalledWith(
+      expect.objectContaining({
+        changedFields: expect.arrayContaining(['priority']),
+      }),
+    );
+  });
+
+  it('does NOT fan out when no meaningful field changes (no-op patch)', async () => {
+    // Patch with the same values that are already on the issue — no effective change.
+    const existing = makeExistingIssue();
+    mocks.prisma.issue.findUnique.mockResolvedValue(existing);
+    mocks.tx.issue.update.mockResolvedValue(makeUpdatedIssueRow());
+
+    // Send a patch where title is undefined (no-op) and statusId is same.
+    await service.update(ACTOR, ISSUE_ID, { statusId: WATCH_STATUS });
+    await Promise.resolve();
+
+    expect(notificationsService.notifyWatchersUpdated).not.toHaveBeenCalled();
+  });
+
+  it('does NOT fan out when only non-meaningful fields change (e.g. storyPoints)', async () => {
+    mocks.prisma.issue.findUnique.mockResolvedValue(makeExistingIssue());
+    mocks.tx.issue.update.mockResolvedValue(makeUpdatedIssueRow());
+
+    await service.update(ACTOR, ISSUE_ID, { storyPoints: 5 });
+    await Promise.resolve();
+
+    expect(notificationsService.notifyWatchersUpdated).not.toHaveBeenCalled();
+  });
+
+  it('includes all changed fields in the fan-out call', async () => {
+    mocks.prisma.issue.findUnique.mockResolvedValue(makeExistingIssue({ priority: Priority.LOW }));
+    mocks.tx.issue.update.mockResolvedValue(makeUpdatedIssueRow({ statusId: 'status-done' }));
+
+    await service.update(ACTOR, ISSUE_ID, {
+      statusId: 'status-done',
+      priority: Priority.HIGH,
+    });
+    await Promise.resolve();
+
+    expect(notificationsService.notifyWatchersUpdated).toHaveBeenCalledWith(
+      expect.objectContaining({
+        changedFields: expect.arrayContaining(['status', 'priority']),
+      }),
+    );
+    const call = notificationsService.notifyWatchersUpdated.mock.calls[0][0];
+    expect(call.changedFields).toHaveLength(2);
+  });
+
+  it('passes WATCHED_UPDATED type implicitly (method is responsible for type)', async () => {
+    // Verify that the service calls notifyWatchersUpdated (not notify) so
+    // the notification type is always WATCHED_UPDATED for this fan-out path.
+    mocks.prisma.issue.findUnique.mockResolvedValue(makeExistingIssue());
+    mocks.tx.issue.update.mockResolvedValue(makeUpdatedIssueRow({ statusId: 'status-done' }));
+
+    await service.update(ACTOR, ISSUE_ID, { statusId: 'status-done' });
+    await Promise.resolve();
+
+    // notifyWatchersUpdated called, not the generic notify.
+    expect(notificationsService.notifyWatchersUpdated).toHaveBeenCalledTimes(1);
+    // Ensure the type constant is correct in the notifications service.
+    expect(NotificationType.WATCHED_UPDATED).toBe('WATCHED_UPDATED');
   });
 });
