@@ -139,8 +139,16 @@ export function useUpdateIssue() {
       qc.setQueryData<IssueDto>(qk.issue(updated.id), (prev) =>
         prev ? { ...prev, ...updated } : updated,
       );
+      // Also patch the project-issues list used by the triage/backlog views so
+      // status/priority/assignee changes are immediately visible there.
+      qc.setQueryData<IssueDto[]>(qk.projectIssues(vars.projectId), (list) =>
+        list
+          ? list.map((i) => (i.id === updated.id ? { ...i, ...updated } : i))
+          : list,
+      );
       void qc.invalidateQueries({ queryKey: qk.issue(updated.id) });
       void qc.invalidateQueries({ queryKey: qk.board(vars.projectId) });
+      void qc.invalidateQueries({ queryKey: qk.projectIssues(vars.projectId) });
     },
   });
 }

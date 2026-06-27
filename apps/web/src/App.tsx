@@ -21,6 +21,7 @@ import { BacklogPage } from '@/pages/BacklogPage';
 import { ReportsPage } from '@/pages/ReportsPage';
 import { RoadmapPage } from '@/pages/RoadmapPage';
 import { SettingsPage } from '@/pages/SettingsPage';
+import { TriagePage } from '@/pages/TriagePage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -95,6 +96,14 @@ export default function App() {
               element={
                 <RequireAuth>
                   <RoadmapPage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/projects/:projectId/triage"
+              element={
+                <RequireAuth>
+                  <TriagePage />
                 </RequireAuth>
               }
             />

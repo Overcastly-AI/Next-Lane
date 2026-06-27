@@ -9,6 +9,7 @@ export function ProjectNav({ projectId }: { projectId: string }) {
   const tabs = [
     { to: `/projects/${projectId}/board`, label: 'Board' },
     { to: `/projects/${projectId}/backlog`, label: 'Backlog' },
+    { to: `/projects/${projectId}/triage`, label: 'Triage' },
     { to: `/projects/${projectId}/reports`, label: 'Reports' },
     { to: `/projects/${projectId}/roadmap`, label: 'Roadmap' },
     { to: `/projects/${projectId}/settings`, label: 'Settings' },
