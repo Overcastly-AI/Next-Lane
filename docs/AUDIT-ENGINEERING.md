@@ -836,3 +836,424 @@ access container stdout.
 - **JWT migration to httpOnly cookie + add POST /auth/refresh** · P2 · L · Token in localStorage is XSS-extractable; cookie migration + short-lived access tokens is the durable fix. `client.ts`
 - **Redis-backed webhook delivery queue with retries and exponential back-off (BullMQ)** · P1 · M · Upgrades fire-and-forget to durable retry backbone; uses existing Redis; unblocks automation workflows and horizontal scale. `webhooks.service.ts`
 - **Structured request logging (pino/nestjs-pino) + enriched /health + optional OTel export** · P2 · M · Self-hosted operators need operator-grade visibility; structured logs make webhook errors and slow queries diagnosable. `main.ts`
+
+---
+
+## 2026-06-27 — Pass 5 (post-PAT/attachments/password-reset/BullMQ/pino/cursor-index/Helm audit)
+
+Scope: full re-audit of all Pass-4 open items plus a deep-dive on every major
+feature wave shipped since then: personal API tokens (PAT, `nlp_` prefix, JWT
+guard extension), file attachments (multer diskStorage, MIME validation,
+path-traversal safety, Content-Disposition), password reset (single-use
+SHA-256-hashed tokens, anti-enumeration, transaction-atomic mark-used), BullMQ
+Redis-backed webhook queue (REDIS_URL-gated, in-process fallback), Socket.io
+Redis adapter (REDIS_URL-gated, in-memory fallback), nestjs-pino structured
+logging (redact config), label rename, CFD report (ActivityLog in-memory
+replay), team-pulse, keyboard triage, and the Helm / Kustomize Kubernetes
+manifests. API typecheck (`tsc --noEmit`) clean; `pnpm --filter api test` runs
+214 tests across 18 suites — all passing.
+
+### Pass-4 fix verification
+
+| Fix area | Status | Evidence |
+|----------|--------|----------|
+| SSRF block for webhook URLs | CONFIRMED FIXED | `webhooks.service.ts` — `resolveAndCheckBlocked()` DNS-resolves the hostname via `dns.promises.lookup`, then passes the resolved address through `isBlockedIp()` which checks RFC 1918 (10.x, 172.16-31.x, 192.168.x), loopback (127.x, ::1), and link-local (169.254.x) ranges. `fetch` called with `redirect: 'manual'`. Delivery silently aborts with `blocked_ip` status if resolved. |
+| Composite index `(projectId, createdAt, id)` on Issue | CONFIRMED FIXED | Migration `20260627012032_issue_pagination_index/migration.sql` adds `CREATE INDEX "Issue_projectId_createdAt_id_idx"`. `schema.prisma` Issue model line 241 has `@@index([projectId, createdAt, id])`. |
+| Drain fetch response body in webhook `deliver` | CONFIRMED FIXED | `webhooks.service.ts` — `await res.text().catch(() => undefined)` consumes the body after reading `res.ok`. |
+| Rate limiting on auth endpoints | CONFIRMED FIXED | `ThrottlerModule` configured globally in `app.module.ts`. `ConfigurableThrottlerGuard` applied as `APP_GUARD`. Auth controller has stricter per-route `@Throttle()`. `RATE_LIMIT_DISABLED` env escape hatch for shared-IP / test environments. |
+| Webhook delivery concurrency cap | CONFIRMED FIXED | `webhooks.service.ts` — in-process fallback uses `pLimit(10)` for concurrency capping. BullMQ queue (when REDIS_URL is set) handles concurrency via worker `concurrency` option. |
+| CSP + security headers (helmet, nginx) | CONFIRMED PARTIAL | `main.ts` — `app.use(helmet())` added; Helmet defaults include `X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN`, and related headers. Nginx configs (Kustomize `configmap-web-nginx.yaml` and Helm `configmap.yaml`) still lack `add_header Content-Security-Policy`. The SPA itself does not get a CSP response header from nginx. |
+| Wire Socket.io Redis adapter | CONFIRMED FIXED | `realtime.module.ts` — `@socket.io/redis-adapter` registered when `REDIS_URL` is set; falls back to in-memory adapter. `docker-compose.yml` sets `REDIS_URL: redis://redis:6379`. |
+| Redis-backed BullMQ webhook queue | CONFIRMED FIXED | `webhooks.service.ts` — `Queue<WebhookJobData>` instantiated only when `REDIS_URL` is set; Worker registered in same guard. In-process `pLimit(10)` fallback retained. REDIS_URL plumbed via `compose.yml`. |
+| Add take cap to board and roadmap endpoints | CONFIRMED FIXED | `board.service.ts` — `BOARD_ISSUES_CAP = 500` applied as `take` limit; `hasMore` flag returned. `roadmap.service.ts` — `ROADMAP_EPICS_CAP = 500` applied. |
+| assertNoParentCycle WITH RECURSIVE CTE inside transaction | CONFIRMED FIXED | `issues.service.ts` — `assertNoParentCycleCTE()` uses `$queryRaw` with `WITH RECURSIVE` CTE; runs inside the `$transaction` block. |
+| Batch notifyComment inserts | PARTIALLY FIXED — BullMQ / watchers serial still present | `notifications.service.ts` — `notifyComment()` still issues sequential `await this.notify()` per watcher. The watcher list is iterated serially. |
+| rebalanceAndPlace batch UPDATE | NOT FIXED | `issues.service.ts` — `rebalanceAndPlace` still uses individual `tx.issue.update()` calls in a loop. N round-trips for large columns. Carry-forward P2. |
+| Slim planning-view endpoint / virtual scroll | NOT FIXED | `useProjectIssues` in `apps/web/src/api/issues.ts` still walks all cursor pages. Carry-forward P2. |
+| Dockerfile `--frozen-lockfile` | CONFIRMED FIXED | `apps/api/Dockerfile` and `apps/web/Dockerfile` both use `--frozen-lockfile`. |
+| nestjs-pino structured logging | CONFIRMED FIXED | `app.module.ts` `LoggerModule.forRoot(...)` with `pino-pretty` in dev, JSON in prod. Redact config covers `req.headers.authorization`, `req.headers.cookie`, `req.body.password`, `req.body.token`, `req.body.newPassword`. |
+
+### Deep-dive: PAT authentication path
+
+The PAT design is architecturally correct. The JwtAuthGuard extension at
+`jwt-auth.guard.ts:45-51` correctly intercepts any bearer token prefixed
+`nlp_`, calls `ApiTokensService.validateRawToken()`, and attaches `request.user`
+to the same shape (`{ id, email, name }`) that `JwtStrategy.validate()` produces
+— so every downstream service that reads `request.user` behaves identically
+regardless of whether the caller used a JWT or a PAT. There is no bypass path:
+the `@Public()` decorator short-circuits before the PAT check at line 34, so
+public routes remain public. For all non-public routes, the `isPat` branch fires
+first; a crafted token that starts with `nlp_` but is invalid will throw
+`UnauthorizedException` at `validateRawToken`, never reaching the Passport JWT
+path.
+
+`validateRawToken` hashes the raw token with SHA-256 and does a
+`findUnique({ where: { tokenHash } })` — the unique index makes this a constant-
+time lookup from the DB's perspective, and the raw token is never persisted.
+Revocation and expiry are checked correctly.
+
+**No privilege escalation path found.** PATs are scoped to the owning user's
+permissions; the token carries the user's identity and all role checks
+downstream apply normally.
+
+**Functional gap confirmed: PATs cannot authenticate the WebSocket gateway.**
+`realtime.gateway.ts:74` calls `this.jwt.verify<JwtPayload>(token)` which only
+accepts JWT format. A CI script or automation tool that authenticates with a
+PAT (`nlp_...`) will be rejected at the socket handshake with "invalid token."
+This is a functional limitation, not a security hole, but scripts that need
+real-time subscription (e.g., waiting for issue state changes) cannot use PATs.
+
+**Defect: the `expiresAt` field on `CreateApiTokenDto` accepts past dates.**
+`api-token.dto.ts:20-21` uses `@IsOptional() @IsISO8601()` with no `@MinDate`
+constraint. A caller can submit `expiresAt: "2020-01-01T00:00:00Z"` and the
+token will be created successfully, immediately expire on first validation, and
+become permanently unusable. The service does not check at creation time. This
+is a usability defect (not a security one — creating an expired token harms only
+the creator), but it is a surprising API behavior.
+
+**Defect: no null-file guard on the upload endpoint.**
+`attachments.controller.ts:48-50` — `@UploadedFile() file: Express.Multer.File`
+is typed as non-nullable. If a multipart request arrives without a `file` field
+(e.g. `curl -X POST /issues/x/attachments` with an empty body), multer sets
+`file` to `undefined`. The service's `upload()` method at
+`attachments.service.ts:107` immediately dereferences `file.size`, throwing a
+`TypeError: Cannot read properties of undefined`, which the global exception
+filter catches as a generic 500. The client receives a 500 instead of a 400.
+Fix: add a guard `if (!file) throw new BadRequestException('No file uploaded');`
+at the top of `AttachmentsService.upload()`, or use multer's `fileFilter` to
+reject empty uploads with a 400.
+
+**Risk: MIME type validated from client Content-Type header, not magic bytes.**
+`attachments.service.ts:115` — `ALLOWED_MIME_TYPES.has(file.mimetype)` checks
+the MIME type that multer reads from the `Content-Type` field of the multipart
+part, which is fully client-controlled. A caller can send a PHP script with
+`Content-Type: image/jpeg` and it will pass this check. The `X-Content-Type-
+Options: nosniff` header from Helmet prevents the browser from sniffing the real
+type on download, and the storageKey is UUID-based so the server never executes
+the uploaded content — but the payload is still stored on disk with an extension
+that does not match its actual content type. For a self-hosted deployment that
+also runs a web server serving the uploads directory this is a meaningful risk.
+Fix: validate MIME type against the first magic bytes using a library such as
+`file-type` (pure npm, no native deps) after multer writes the file to tmpdir,
+before moving to the final uploads directory.
+
+**Risk: SVG is in ALLOWED_MIME_TYPES and is served with `image/svg+xml`.**
+`attachments.service.ts:35` allows `image/svg+xml`. SVG files can contain
+embedded `<script>` tags that execute in browser context when the file is served
+inline. The download endpoint at `attachments.controller.ts:77-83` explicitly
+excludes SVG from `inlineTypes`, so SVGs are served with `Content-Disposition:
+attachment` and `Content-Type: image/svg+xml`. The `nosniff` header is present.
+However, a user who navigates directly to the download URL and a browser that
+respects the Content-Type (not the disposition) will render the SVG with script
+execution. The defense is partially effective but not robust. The safest fix is
+to remove `image/svg+xml` from `ALLOWED_MIME_TYPES` outright, or if SVG upload
+is intentional, serve it as `Content-Type: application/octet-stream` on download
+to prevent in-browser rendering.
+
+### Deep-dive: password reset token in logs
+
+`password-reset.service.ts:153-156` logs the raw reset URL (including the
+full 32-byte token as a URL query parameter) at `logger.log()` level — which
+in production emits to stdout as a JSON line via pino. The `app.module.ts`
+redact configuration covers `req.body.token` and `req.headers.authorization`
+but does NOT redact explicit `logger.log()` calls, which bypass the pino-http
+request-logging path entirely. In a self-hosted deployment with a log aggregator
+(Loki, Datadog, CloudWatch), the reset token is captured in plain text and
+remains searchable in the log store for the retention period — potentially longer
+than the token's own 1-hour validity window is designed to allow.
+
+This is intentional for the dev-mode "no SMTP" fallback, with a comment
+directing operators to remove the log in production. However the comment is not
+enforced: there is no `NODE_ENV` guard, no SMTP check before the explicit log,
+and no warning that this is a temporary behavior. Any operator who does not read
+this line of source (the typical self-hoster) will run with tokens in their
+logs.
+
+Fix (two-part): (a) Guard the token log line with
+`if (process.env.NODE_ENV !== 'production')` so production deployments never
+emit it regardless of SMTP status. (b) When `SMTP_HOST` is set, skip the log
+entirely (send only via SMTP). The dev-mode fallback should be the last resort,
+not the default path even for production deployments with no SMTP configured.
+
+### Deep-dive: webhook HMAC secret in Redis
+
+When `REDIS_URL` is set, `webhooks.service.ts` creates a BullMQ `Queue` and
+enqueues a `WebhookJobData` job that includes the subscription's `secret` field
+(the HMAC signing secret) as plaintext in the job body. BullMQ stores job data
+in Redis as JSON strings, with no encryption. The Helm chart's bundled Redis
+(`values.yaml:358-362`) defaults to `auth.enabled: false` — no password
+required. Any process that can reach the Redis port (or any Kubernetes workload
+in the same namespace that can perform a `redis-cli KEYS '*'`) can read the HMAC
+secrets for every webhook subscription.
+
+This does not compromise the API or user data, but it does allow an attacker
+with Redis access to forge webhook signatures, making receivers believe events
+came from Next Lane when they did not. For self-hosted single-tenant installs
+this is lower-risk (same operator owns Redis and the API). For any multi-tenant
+deployment it is a meaningful risk.
+
+Fix (short-term): Enqueue only the `subscriptionId` (not the secret) in the job
+body; have the worker re-fetch the subscription record from the DB (one indexed
+lookup) to get the secret at delivery time. The job body shrinks and secrets
+never enter Redis. Fix (deployment): Update `values.yaml` default comment to
+recommend enabling Redis auth when Redis is enabled; add a `NOTES.txt` Helm
+warning.
+
+### Deep-dive: CFD report unbounded queries
+
+`reports.service.ts:302-310` — the CFD endpoint calls
+`prisma.issue.findMany({ where: { projectId } })` with no `take` limit. For a
+project with 50,000 issues this fetches all rows into application memory. The
+follow-up query at `reports.service.ts:329-336` fetches all `ActivityLog` rows
+for `{ issueId: { in: issueIds }, field: 'status' }` — again unbounded. With
+50,000 issues each averaging 5 status changes, this is 250,000 activityLog rows
+in memory simultaneously. The in-memory reconstruction loop at step 4 is
+O(issues × days), or 50,000 × 366 = 18.3M iterations for a full-year window.
+This will timeout or OOM the API process for any non-trivial project.
+
+The burndown endpoint has a similar pattern (all sprint issues + all their
+activityLog rows).
+
+Fix: Aggregate at the DB level. Replace the in-memory replay with a Postgres
+query that counts issues per status category per calendar day using a window
+function or `generate_series`. This collapses the two unbounded `findMany` calls
+and the in-memory loop into a single query with bounded output (one row per day
+per status category). The result set is always bounded by `windowDays × 3`
+regardless of project size.
+
+### Ratings (Pass 5)
+
+| Area | Score | Delta | Note |
+|------|:----:|:-----:|------|
+| Architecture & module boundaries | 4 | — | PAT, attachments, password reset, and notifications all added as independent modules following the per-domain pattern. Clean. |
+| Data model & migrations | 4 | — | Attachment, ApiToken, PasswordResetToken, WebhookDelivery models well-formed. Composite index on Issue added. WebhookDelivery.status remains a stringly-typed String (not an enum). `sizeBytes` on Attachment is `Int` (32-bit); files up to ~2.1 GB storable in the DB but the 10 MB env guard prevents overflow. |
+| AuthN | 4 | — | PAT path correctly implemented; no bypass found. Password reset tokens single-use, SHA-256 hashed, expiry-checked atomically. Still no refresh-token flow (acceptable for MVP). |
+| AuthZ & multi-tenant isolation | 4 | — | All new endpoints (attachments, PATs via `/me/tokens`, password reset, reports, pulse) correctly membership-gated. Attachment operations check `assertProjectRole(MEMBER)` for upload, `assertProjectMember` for list/download, uploader-or-ADMIN for delete. No regressions found. |
+| Input validation | **3** | — | MIME type check uses client Content-Type (not magic bytes); PAT `expiresAt` accepts past dates; missing null-file guard on upload (500 instead of 400); SVG allowed with no server-side content sanitization. Overall DTO quality remains good; these are specific gaps. |
+| Error handling | 4 | — | Global exception filter confirmed solid. Null-file case produces unhandled TypeError → 500 via filter generic path (should be 400). |
+| N+1 / query efficiency | 3 | — | CFD + burndown unbounded queries (all issues + all activity logs); PAT lookup adds one DB query per PAT-authenticated request (no caching); notifyComment watcher fan-out still serial; rebalanceAndPlace still N individual tx.issue.update() calls. Cursor pagination solid for issues. |
+| Realtime correctness | 4 | — | Socket auth confirmed solid. Redis adapter REDIS_URL-gated with fallback. PAT tokens not accepted at socket handshake (functional gap, not security hole). |
+| Rank / ordering integrity | 4 | — | Transactional move + rebalance confirmed solid from Pass 4; no regressions. rebalanceAndPlace N-round-trips carry-forward P2. |
+| Test coverage (unit + e2e) | **4** | +1 | 214 tests across 18 suites passing in CI. New suites: `api-tokens.service.spec.ts`, `attachments.service.spec.ts`, `password-reset.service.spec.ts`, `reports.service.spec.ts`, `webhooks-redis.service.spec.ts`. Strong growth. Gaps: no CFD DB-level aggregate tested (in-memory path only); no test for null-file upload 500; no test for past-date PAT expiry at creation. |
+| Type safety | 5 | — | Strict TS, clean typecheck API + web, no stray `any`. |
+| Build / CI / Docker | 4 | — | CI gates on build + 214 unit tests + typechecks. Dockerfiles use `--frozen-lockfile`. Redis adapter and BullMQ gated behind REDIS_URL with compile-time safe imports. |
+| Secrets / config hygiene | **3** | -1 | Password reset token logged in plaintext at `logger.log()` level with no NODE_ENV guard — persists in log aggregators beyond token validity window. Webhook HMAC secrets enqueued in plaintext BullMQ job body; bundled Redis has no auth by default in Helm. Postgres default password `nextlane` in Helm values with "CHANGE ME" comment but no fail-fast guard (unlike JWT secret). JWT secret fail-fast remains solid. |
+| Dependency risk | 4 | — | New deps: `multer`, `@nestjs/platform-express` FileInterceptor, `bullmq`, `@socket.io/redis-adapter`, `nestjs-pino`, `pino-pretty`. All mainstream, maintained. No Dependabot / automated CVE scanning. |
+
+### Top risks & debt (Pass 5, prioritized)
+
+**P0 — None identified.**
+
+**P1:**
+
+1. **Password reset token logged in plaintext to production logs** *(P1, High impact / High likelihood — every self-hoster without SMTP configured)*
+   `apps/api/src/auth/password-reset.service.ts:153-156` — the full reset URL
+   (including the raw 32-byte token as a query parameter) is emitted via
+   `this.logger.log()` with no NODE_ENV guard. pino-http request redact rules
+   do not cover explicit `logger.log()` calls. Any log aggregator (Loki, Splunk,
+   CloudWatch, journald) captures the token in the clear and retains it beyond
+   the 1-hour validity window. Anyone with log read access can consume the token
+   before the legitimate user.
+   *Fix:* Wrap the token log line with `if (process.env.NODE_ENV !== 'production')`.
+   When `SMTP_HOST` is configured, skip the log entirely. Size: S.
+
+2. **SVG upload allowed; served with `image/svg+xml` Content-Type — XSS via direct URL** *(P1, Med impact / Low likelihood with nosniff)*
+   `apps/api/src/attachments/attachments.service.ts:35` includes `image/svg+xml`
+   in `ALLOWED_MIME_TYPES`. The download endpoint at
+   `attachments.controller.ts:84-86` serves SVGs with `Content-Disposition:
+   attachment` but `Content-Type: image/svg+xml`. A browser that navigates
+   directly to the download URL (bypassing the disposition hint via Save-as then
+   open, or in certain browser extensions) will render the SVG with full script
+   execution in the page context. The `X-Content-Type-Options: nosniff` header
+   reduces the risk but does not eliminate the direct-navigate vector. An SVG
+   containing `<script>alert(document.cookie)</script>` is fully accepted by the
+   current validation path.
+   *Fix:* Remove `image/svg+xml` from `ALLOWED_MIME_TYPES` (simplest; SVG uploads
+   rarely needed for an issue tracker). If SVG support is intentional, serve all
+   SVG downloads as `Content-Type: application/octet-stream` to prevent browser
+   rendering. Size: S.
+
+**P2:**
+
+3. **MIME type validated from client Content-Type header, not magic bytes** *(P2, Med impact / Med likelihood)*
+   `apps/api/src/attachments/attachments.service.ts:115` — the MIME check is
+   bypassable by any client that sets a legitimate MIME type on a malicious file.
+   Combined with the SVG risk above, a malicious file can be stored on disk under
+   a safe extension while being a different file type internally.
+   *Fix:* After multer writes the file to tmpdir, read the first 4–16 bytes and
+   compare against known magic byte signatures, or use the `file-type` npm
+   package. Reject if the detected type does not match the declared type. Size: M.
+
+4. **Webhook HMAC secrets in plaintext BullMQ job body; bundled Redis unauthenticated by default** *(P2, Med impact / Low likelihood on single-tenant self-hosted)*
+   `apps/api/src/webhooks/webhooks.service.ts` — `WebhookJobData` includes the
+   subscription `secret` field as plaintext JSON stored in Redis. The Helm chart
+   `deploy/helm/next-lane/values.yaml:361` sets `redis.auth.enabled: false` by
+   default. Anyone with Redis port access can read all webhook signing secrets.
+   *Fix (job body):* Enqueue only `subscriptionId`; worker re-fetches the secret
+   from DB at delivery time (one indexed lookup, negligible overhead). *Fix
+   (Helm):* Update default comment to recommend Redis auth when BullMQ is
+   enabled; add a Helm `NOTES.txt` advisory. Size: S (job body), S (Helm docs).
+
+5. **PAT `expiresAt` accepts past dates — token immediately expires on creation** *(P2, Low impact / Low likelihood)*
+   `apps/api/src/api-tokens/dto/api-token.dto.ts:20-21` — `@IsISO8601()` with no
+   `@MinDate(new Date())`. A past `expiresAt` creates a token that is permanently
+   invalid but does not raise an error at creation time. Confusing API behavior.
+   *Fix:* Add `@IsDateString()` (already covered by `@IsISO8601()`) and a custom
+   `@MinDate` using `class-validator`'s built-in, or a custom decorator that
+   rejects dates in the past. Size: S.
+
+6. **Null file on upload → TypeError → 500 instead of 400** *(P2, Low impact / High likelihood — easy to trigger)*
+   `apps/api/src/attachments/attachments.controller.ts:48-50` — if a multipart
+   POST arrives with no `file` field, `file` is `undefined` and
+   `attachments.service.ts:107` dereferences `file.size`, producing a TypeError
+   caught by the global exception filter as a generic 500.
+   *Fix:* Add `if (!file) throw new BadRequestException('No file uploaded');` at
+   the top of `AttachmentsService.upload()`. Size: S.
+
+7. **CFD and burndown reports fetch all project issues and activity logs unbounded** *(P2, High impact / Med likelihood for any active project)*
+   `apps/api/src/reports/reports.service.ts:302-310, 329-336` — `prisma.issue.findMany`
+   and `prisma.activityLog.findMany` with `issueId: { in: issueIds }` have no
+   `take` limit. For large projects these queries can OOM the API process or
+   time out. The in-memory reconstruction is O(issues × days).
+   *Fix:* Rewrite as a single DB-level aggregation using `generate_series` and
+   window functions or date bucketing. Output is bounded by `windowDays × 3`
+   regardless of project size. Size: M.
+
+8. **nginx web container does not set Content-Security-Policy** *(P2, Med impact / Med likelihood — flagged by security scanners)*
+   Kustomize `deploy/kustomize/base/configmap-web-nginx.yaml` and Helm
+   `deploy/helm/next-lane/templates/configmap.yaml` (nginx config) contain no
+   `add_header Content-Security-Policy` directive. Helmet covers the API
+   responses but not the SPA served by the nginx container. Security scanners
+   and browser extensions will flag the SPA as lacking CSP.
+   *Fix:* Add `add_header Content-Security-Policy "default-src 'self'; connect-src 'self' ws: wss:; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:;"` to both nginx configs. Size: S.
+
+9. **PATs cannot authenticate the WebSocket gateway** *(P2, Low impact / Low likelihood — functional gap)*
+   `apps/api/src/realtime/realtime.gateway.ts:74` — `this.jwt.verify<JwtPayload>(token)`
+   accepts only JWT format. Automation scripts using PATs cannot subscribe to
+   project rooms.
+   *Fix:* In `handleConnection`, check whether the token starts with `nlp_`;
+   if so, call `apiTokensService.validateRawToken(token)` and populate
+   `client.data.user` from the returned record. Size: S.
+
+10. **notifyComment watcher fan-out is serial N-queries (carry-forward)** *(P2, Low impact / Low likelihood at MVP scale)*
+    `apps/api/src/notifications/notifications.service.ts` — watchers iterated
+    with one `notify()` call per watcher (INSERT + socket emit per iteration).
+    *Fix:* Batch the DB inserts with `prisma.notification.createMany()` then
+    emit socket events in a single loop. Size: M. (Carry-forward from Pass 4.)
+
+11. **rebalanceAndPlace is N individual tx.issue.update() calls (carry-forward)** *(P2, Low impact / Low likelihood)*
+    `apps/api/src/issues/issues.service.ts` — rank rebalance in transaction uses
+    one `update()` call per row. For a 500-issue column this is 500 round-trips
+    inside one transaction. *Fix:* `$executeRaw` with a single `UPDATE … CASE`
+    expression. Size: M. (Carry-forward from Pass 4.)
+
+12. **Helm bundled Postgres password `nextlane` has no fail-fast guard** *(P2, Low impact — self-inflicted by operator)*
+    `deploy/helm/next-lane/values.yaml:348` — `password: nextlane` with a "CHANGE ME"
+    comment. Unlike the JWT secret (which has a Helm template validation block
+    that aborts the release), the Postgres password has no enforcement. A
+    quick-start install that skips this step runs with a well-known default.
+    *Fix:* Add a `required` validation block in `secret.yaml` that fails the
+    Helm release if `postgresql.auth.password` equals `nextlane` or is empty,
+    similar to the JWT secret guard. Size: S.
+
+**P3:**
+
+13. **PAT per-request DB lookup with no caching** *(P3, Low impact — acceptable for MVP)*
+    Every PAT-authenticated request executes one `prisma.apiToken.findUnique` +
+    `include: { user }`. For CI scripts making many rapid requests this adds one
+    DB round-trip per call. The unique index makes it fast but it does not batch.
+    *Fix (optional):* A short-lived in-memory LRU cache (e.g. 60-second TTL,
+    bounded to 1,000 entries) would eliminate the per-request DB hit for hot
+    tokens. Size: S.
+
+14. **useProjectIssues walks all cursor pages on the client before rendering (carry-forward)** *(P3, Med impact / Med likelihood on large projects)*
+    `apps/web/src/api/issues.ts:26-47` — do/while loop fetches all pages
+    sequentially. Carry-forward from Pass 4. Size: M.
+
+### New capabilities & technical investments (ideation mandate)
+
+Three concrete technical investments to advance the platform:
+
+1. **DB-level CFD and burndown aggregation via `generate_series`.**
+   Replace the in-memory ActivityLog replay with Postgres date-series
+   aggregation. The query joins `generate_series(start, end, '1 day')` against
+   the ActivityLog to count status categories per day without loading all issue
+   or log rows into application memory. This makes both reports safe for
+   projects of any size, reduces API memory pressure, and opens the door to
+   adding more time-series reports (throughput, cycle time, age distribution)
+   with negligible marginal cost. Pair with a database index on
+   `(activityLog.createdAt, field)` to make the date-range scan efficient.
+   Priority: P1. Size: M.
+
+2. **Magic-byte MIME validation + malware scanning hook.**
+   Add a validation step in the attachment upload path that reads the first 16
+   bytes of the uploaded file (after multer writes to tmpdir) and compares
+   against known magic signatures using the `file-type` package. Reject uploads
+   where the declared MIME type does not match the detected type. Expose a
+   `SCAN_COMMAND` environment variable that, when set, pipes the temp file
+   through an external command (e.g. `clamscan --stdout`) before storing it.
+   This gives self-hosters who run ClamAV in their stack a built-in integration
+   point without adding a required dependency. The hook is a no-op (zero
+   overhead) when `SCAN_COMMAND` is unset. Priority: P1 (magic-byte), P3
+   (scan hook). Size: M.
+
+3. **Personal API Token scoping and webhook signing key rotation.**
+   Extend the PAT model with an optional `scopes` string array (e.g.
+   `['issues:read', 'issues:write', 'webhooks:none']`) that the JWT guard
+   enforces at the route level via a `@RequireScope` decorator. Scoped PATs
+   allow CI pipelines to hold minimal-privilege tokens. As a companion
+   investment, add a `POST /projects/:id/webhooks/:wid/rotate-secret` endpoint
+   that generates a new HMAC secret, stores it, and returns it once — giving
+   operators a key-rotation path without deleting and recreating the
+   subscription. Both features directly address the "automation-friendly self-
+   hosted tracker" positioning. Priority: P2. Size: M.
+
+### Direction (Pass 5)
+
+The platform has matured substantially. All prior P0/P1 items are confirmed
+closed. The architecture, auth model, and test suite are genuinely strong for
+an early-stage OSS product.
+
+The most important immediate actions are:
+
+- **Password reset token in logs** (P1, S) — one-line NODE_ENV guard; affects
+  every self-hoster who does not have SMTP configured, which is the majority.
+- **SVG upload restriction** (P1, S) — remove `image/svg+xml` from
+  `ALLOWED_MIME_TYPES`; eliminates a class of stored-XSS risk with no user-
+  visible impact for a project tracker.
+- **Null-file upload guard** (P2, S) — add an explicit check in
+  `AttachmentsService.upload()` to return 400 instead of 500 when no file is
+  sent; a one-liner.
+- **PAT `expiresAt` past-date validator** (P2, S) — add `@MinDate` to
+  `CreateApiTokenDto.expiresAt`; prevents confusing creation of immediately-
+  expired tokens.
+- **Webhook secret out of Redis job body** (P2, S) — enqueue only
+  `subscriptionId` and have the worker re-fetch the secret; eliminates a
+  class of secret exposure without any user-visible change.
+
+After those quick wins, the **DB-level CFD/burndown aggregation** is the highest-
+impact engineering investment: the current in-memory replay will OOM any
+non-trivial project, and it blocks reporting from being a reliable feature. The
+**magic-byte MIME validation** closes the last meaningful attachment security
+gap. The **nginx CSP header** (P2, S) rounds out the security header story
+that Helmet started on the API side. Together these items complete the hardening
+pass and leave the platform in a state appropriate for a public OSS v1 release.
+
+### Backlog-groomer feed (Pass 5 — compact)
+
+- **Guard password reset token log with `NODE_ENV !== production`** · P1 · S · Raw reset URL logged at info level; captured in log aggregators by any self-hoster without SMTP; `password-reset.service.ts:153`
+- **Remove `image/svg+xml` from ALLOWED_MIME_TYPES (or serve as octet-stream)** · P1 · S · SVG with embedded scripts accepted + served with image/svg+xml Content-Type; direct-navigate XSS vector; `attachments.service.ts:35`, `attachments.controller.ts:84`
+- **Add null-file guard in AttachmentsService.upload (400 not 500)** · P2 · S · POST with no file field dereferences undefined → TypeError → generic 500; `attachments.service.ts:107`
+- **Validate PAT expiresAt is a future date (`@MinDate`)** · P2 · S · Past dates accepted at creation; token immediately expires and is permanently unusable; `api-token.dto.ts:20`
+- **Enqueue subscriptionId only in BullMQ job body (not the HMAC secret)** · P2 · S · Secret stored plaintext in Redis; bundled Redis has no auth by default in Helm; `webhooks.service.ts` WebhookJobData
+- **Add CSP `add_header` to nginx configmap (Kustomize + Helm)** · P2 · S · SPA served without Content-Security-Policy; Helmet covers API but not the web container; `configmap-web-nginx.yaml`
+- **Rewrite CFD and burndown as DB-level `generate_series` aggregation** · P1 · M · Unbounded findMany on all project issues + activity logs; OOM risk for any active project; `reports.service.ts:302, 329`
+- **Magic-byte MIME validation using `file-type` package on upload** · P2 · M · Client Content-Type is fully controllable; malicious files stored with mismatched MIME; `attachments.service.ts:115`
+- **Add fail-fast Helm guard for Postgres default password `nextlane`** · P2 · S · No enforcement unlike JWT secret; quick-start installs run with a well-known DB password; `values.yaml:348`
+- **PAT authentication in WebSocket gateway handshake** · P2 · S · `nlp_` tokens rejected at socket handshake; automation scripts cannot subscribe to real-time events; `realtime.gateway.ts:74`
+- **PAT token scope model + `@RequireScope` decorator** · P2 · M · PATs currently carry full user permissions; minimal-privilege scopes needed for CI automation safety.
+- **DB-level time-series reports: throughput, cycle time, age distribution** · P2 · M · Once generate_series aggregation is in place, additional report types are marginal cost; high value for team health visibility.
+- **Webhook signing key rotation endpoint** · P2 · S · No key-rotation path without deleting + recreating subscription; needed for production secret hygiene.
+- **Batch notifyComment watcher inserts (`createMany`) — carry-forward** · P2 · M · Serial N inserts per watcher; `notifications.service.ts`
+- **rebalanceAndPlace batch UPDATE via `$executeRaw` — carry-forward** · P2 · M · N individual tx.issue.update() calls in rebalance; `issues.service.ts`
+- **Slim planning-view endpoint or virtual scroll — carry-forward** · P3 · M · useProjectIssues walks all cursor pages; `apps/web/src/api/issues.ts:26-47`
