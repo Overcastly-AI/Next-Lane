@@ -12,6 +12,7 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { useToast } from '@/components/ui/Toast';
 import { errorMessage } from '@/lib/errorMessage';
 import { useAuth } from '@/auth/AuthContext';
+import { MarkdownRenderer } from '@/components/ui/MarkdownRenderer';
 import { MentionComposer } from './MentionComposer';
 import type { CommentDto, UserDto } from '@next-lane/shared';
 
@@ -228,9 +229,9 @@ function CommentItem({
             </div>
           </form>
         ) : (
-          <p className="whitespace-pre-wrap text-sm text-gray-700">
-            {comment.body}
-          </p>
+          <div className="mt-1" data-testid="comment-body-rendered">
+            <MarkdownRenderer content={comment.body} />
+          </div>
         )}
       </div>
 

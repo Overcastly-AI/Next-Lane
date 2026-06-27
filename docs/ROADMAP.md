@@ -38,6 +38,7 @@ Status legend: ✅ done · 🚧 in progress · ⬜ planned
 - ✅ Reports: burndown + velocity
 - ✅ Cumulative-flow report (CFD stacked-area chart, 14/30/90-day window selector, historical reconstruction from ActivityLog; shipped 2026-06-27)
 - ✅ Attachments (file uploads) — `Attachment` model + migration `20260627145511_add_attachment_model`; local disk storage under `UPLOADS_DIR` (K8s-ready PVC mount path); `POST /issues/:id/attachments` (multipart, 10 MB cap, MIME allowlist: images/PDF/text/office/zip), `GET /issues/:id/attachments`, `GET /attachments/:id` (stream with auth + Content-Disposition), `DELETE /attachments/:id` (uploader or project ADMIN); VIEWER-gated upload/delete; drag-drop + file-input AttachmentsPanel in IssueDetailDrawer; 16 unit tests + 5 e2e tests (desktop + mobile) — all green; 208 unit tests total. (2026-06-27)
+- ✅ Markdown rendering in descriptions/comments — `marked` + `DOMPurify` (XSS-safe); view/edit toggle in IssueDetailDrawer; sanitized `MarkdownRenderer` component; `@mention` tokens survive; links open `target=_blank rel=noopener`; admin-delete UX for attachments fixed (ADMIN sees delete button on any attachment, matching API rule); 20 e2e tests (desktop + mobile) all green (2026-06-27)
 - ⬜ Remaining: custom workflow *transitions*
 
 ## Phase 3 — Power features 🚧 (in progress)
@@ -115,7 +116,9 @@ SMTP email delivery for password reset shipped 2026-06-27: `MailModule`/`MailSer
 Due dates shipped 2026-06-27: `dueDate DateTime?` on Issue model (migration `20260627220000_add_issue_due_date`); create/update DTOs; `IssueDto.dueDate` + `MyWorkIssueDto.dueDate`; drawer date picker with clear button + overdue amber styling; card chip; My Work overdue badge + sort; 5 unit tests + 8 e2e (desktop + mobile).
 PAT auth at the WebSocket handshake shipped 2026-06-27: `nlp_` tokens authenticate the socket via `ApiTokensService.validateRawToken()`; JWT path unchanged; 11 gateway unit tests.
 
-Next build order: public read-only share link (M, P2) → markdown rendering in descriptions/comments (M, P2) → inline card status transition (S, P2) → PAT scopes (M, P2) → remaining perf (batch inserts, slim planning endpoint, board-overview prefetch) + P3 ideas (sprint retros, issue templates).
+Markdown rendering + attachment admin-delete shipped 2026-06-27: `marked` + `DOMPurify` for sanitized markdown in issue descriptions (view/edit toggle) and comments; `MarkdownRenderer` component; `@mention` tokens preserved; links open `target=_blank rel=noopener noreferrer`; `AttachmentsPanel` now respects `viewerRole` — ADMIN sees delete button on any attachment (matching API rule); `IssueDetailDrawer`/`BoardPage`/`BacklogPage`/`TriagePage` all pass `viewerRole`; 20 new e2e tests (10 desktop + 10 mobile) all green.
+
+Next build order: public read-only share link (M, P2) → inline card status transition (S, P2) → PAT scopes (M, P2) → remaining perf (batch inserts, slim planning endpoint, board-overview prefetch) + P3 ideas (sprint retros, issue templates).
 
 PATs shipped 2026-06-27: `nlp_`-prefixed (SHA-256 hashed) with create/list/revoke + JWT-guard extension + profile-settings UI.
 PAT-at-WS-handshake shipped 2026-06-27: `RealtimeGateway.handleConnection` now detects `nlp_` prefix and validates via `ApiTokensService.validateRawToken()`; revoked/expired/unknown PATs disconnect the socket immediately; JWT path unchanged; 11 new unit tests.

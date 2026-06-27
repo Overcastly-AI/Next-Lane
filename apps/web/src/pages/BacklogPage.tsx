@@ -324,6 +324,7 @@ export function BacklogPage() {
           statuses={statuses}
           users={users}
           editable={editable}
+          viewerRole={myRole ?? undefined}
           onClose={() => setOpenIssueId(null)}
           onOpenIssue={setOpenIssueId}
         />

@@ -5,14 +5,13 @@ import {
   useDeleteAttachment,
   attachmentDownloadUrl,
 } from '@/api/attachments';
-import { Button } from '@/components/ui/Button';
 import { Spinner, ErrorState } from '@/components/ui/States';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { useToast } from '@/components/ui/Toast';
 import { errorMessage } from '@/lib/errorMessage';
 import { useAuth } from '@/auth/AuthContext';
 import { getToken } from '@/api/client';
-import type { AttachmentDto } from '@next-lane/shared';
+import { Role, type AttachmentDto } from '@next-lane/shared';
 
 /** 10 MB — kept in sync with the API default. */
 const MAX_BYTES = 10 * 1024 * 1024;
@@ -73,10 +72,17 @@ async function downloadFile(
 export function AttachmentsPanel({
   issueId,
   editable = true,
+  viewerRole,
 }: {
   issueId: string;
   /** When false (VIEWER), upload and delete controls are hidden. */
   editable?: boolean;
+  /**
+   * The current viewer's workspace role. When Role.ADMIN, the delete button is
+   * shown for ALL attachments (not just those the viewer uploaded), matching the
+   * server-side rule: uploader OR project ADMIN may delete.
+   */
+  viewerRole?: Role;
 }) {
   const { user } = useAuth();
   const toast = useToast();
@@ -205,13 +211,10 @@ export function AttachmentsPanel({
               attachment={a}
               issueId={issueId}
               canDelete={
-                editable && !!user && (a.uploaderId === user.id)
+                editable &&
+                !!user &&
+                (a.uploaderId === user.id || viewerRole === Role.ADMIN)
               }
-              // Admins can also delete — but we'd need to pass the role here;
-              // instead we let the API reject with 403 if the user isn't
-              // an uploader or admin, surfacing a toast. The delete button is
-              // visible to all editors; the API is the authoritative gate.
-              editable={editable}
             />
           ))}
         </ul>
@@ -226,12 +229,10 @@ function AttachmentRow({
   attachment,
   issueId,
   canDelete,
-  editable,
 }: {
   attachment: AttachmentDto;
   issueId: string;
   canDelete: boolean;
-  editable: boolean;
 }) {
   const toast = useToast();
   const remove = useDeleteAttachment(issueId);
@@ -301,7 +302,7 @@ function AttachmentRow({
             </svg>
           )}
         </button>
-        {editable && (
+        {canDelete && (
           <button
             type="button"
             onClick={() => setConfirmDelete(true)}

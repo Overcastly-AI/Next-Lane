@@ -5,6 +5,7 @@ import {
   PRIORITIES,
   IssueType,
   Priority,
+  Role,
   StatusCategory,
   type IssueDto,
   type StatusDto,
@@ -21,6 +22,7 @@ import { useToast } from '@/components/ui/Toast';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { ErrorState, LoadingState } from '@/components/ui/States';
 import { IssueTypeIcon, titleCase } from '@/components/issue/issueMeta';
+import { MarkdownRenderer } from '@/components/ui/MarkdownRenderer';
 import { LabelPicker } from './LabelPicker';
 import { ParentSubtasks } from './ParentSubtasks';
 import { CommentsPanel } from './CommentsPanel';
@@ -36,6 +38,7 @@ export function IssueDetailDrawer({
   statuses,
   users,
   editable = true,
+  viewerRole,
   onClose,
   onOpenIssue,
 }: {
@@ -45,6 +48,8 @@ export function IssueDetailDrawer({
   users: UserDto[];
   /** When false (VIEWER), all edit controls are hidden/disabled. */
   editable?: boolean;
+  /** The viewer's workspace role, used to determine admin-level permissions (e.g. delete any attachment). */
+  viewerRole?: Role;
   onClose: () => void;
   onOpenIssue: (id: string) => void;
 }) {
@@ -102,6 +107,7 @@ export function IssueDetailDrawer({
             statuses={statuses}
             users={users}
             editable={editable}
+            viewerRole={viewerRole}
             onClose={onClose}
             onOpenIssue={onOpenIssue}
             onPatch={patch}
@@ -145,6 +151,7 @@ function DrawerBody({
   statuses,
   users,
   editable,
+  viewerRole,
   onClose,
   onOpenIssue,
   onPatch,
@@ -157,6 +164,7 @@ function DrawerBody({
   statuses: StatusDto[];
   users: UserDto[];
   editable: boolean;
+  viewerRole?: Role;
   onClose: () => void;
   onOpenIssue: (id: string) => void;
   onPatch: (field: keyof IssueDto, value: unknown) => void;
@@ -166,6 +174,12 @@ function DrawerBody({
 }) {
   const [title, setTitle] = useState(issue.title);
   const [description, setDescription] = useState(issue.description ?? '');
+  // When true, the description is shown as a plain textarea for editing.
+  // When false (default), it is rendered as formatted markdown.
+  const [descriptionEditing, setDescriptionEditing] = useState(false);
+  // Tracks whether Escape was pressed in the description editor so the onBlur
+  // handler knows to skip saving (cancel, not save).
+  const descriptionCancelled = useRef(false);
 
   // Re-sync local editable fields when the underlying issue changes (realtime).
   useEffect(() => setTitle(issue.title), [issue.id, issue.title]);
@@ -230,23 +244,111 @@ function DrawerBody({
             />
 
             <div>
-              <p className="mb-1 text-xs font-medium text-gray-600">
-                Description
-              </p>
-              <Textarea
-                rows={6}
-                value={description}
-                disabled={!editable}
-                placeholder={editable ? 'Add a description…' : 'No description'}
-                onChange={(e) => setDescription(e.target.value)}
-                onBlur={() => {
-                  if (editable && description !== (issue.description ?? ''))
-                    onPatch('description', description || null);
-                }}
-              />
+              <div className="mb-1 flex items-center justify-between">
+                <p className="text-xs font-medium text-gray-600">Description</p>
+                {editable && !descriptionEditing && (
+                  <button
+                    type="button"
+                    onClick={() => setDescriptionEditing(true)}
+                    className="text-xs text-gray-400 hover:text-brand-600 focus:outline-none"
+                  >
+                    Edit
+                  </button>
+                )}
+              </div>
+
+              {editable && descriptionEditing ? (
+                /* Edit mode: plain textarea */
+                <div>
+                  <Textarea
+                    rows={6}
+                    value={description}
+                    placeholder="Add a description… (Markdown supported)"
+                    autoFocus
+                    onChange={(e) => setDescription(e.target.value)}
+                    onBlur={() => {
+                      if (descriptionCancelled.current) {
+                        // Escape was pressed — discard, do not save
+                        descriptionCancelled.current = false;
+                        return;
+                      }
+                      setDescriptionEditing(false);
+                      if (description !== (issue.description ?? ''))
+                        onPatch('description', description || null);
+                    }}
+                    onKeyDown={(e) => {
+                      // Escape cancels the edit without saving. We stop
+                      // immediate propagation so useOverlay's document-level
+                      // Escape handler doesn't also close the drawer.
+                      if (e.key === 'Escape') {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        e.nativeEvent.stopImmediatePropagation();
+                        descriptionCancelled.current = true;
+                        setDescription(issue.description ?? '');
+                        setDescriptionEditing(false);
+                      }
+                    }}
+                    data-testid="description-editor"
+                  />
+                  <p className="mt-1 text-[11px] text-gray-400">
+                    Markdown supported — blur or press Esc to exit
+                  </p>
+                </div>
+              ) : description ? (
+                /* View mode: rendered markdown, click to edit */
+                <div
+                  role={editable ? 'button' : undefined}
+                  tabIndex={editable ? 0 : undefined}
+                  onClick={() => { if (editable) setDescriptionEditing(true); }}
+                  onKeyDown={(e) => {
+                    if (editable && (e.key === 'Enter' || e.key === ' '))
+                      setDescriptionEditing(true);
+                  }}
+                  className={[
+                    'min-h-[3rem] rounded-md border px-2 py-1.5',
+                    editable
+                      ? 'cursor-text border-transparent hover:border-gray-200 focus:border-brand-400 focus:outline-none'
+                      : 'border-transparent',
+                  ].join(' ')}
+                  data-testid="description-rendered"
+                  title={editable ? 'Click to edit description' : undefined}
+                >
+                  <MarkdownRenderer content={description} />
+                  {editable && (
+                    <p className="mt-1.5 text-[11px] text-gray-400">
+                      Markdown supported
+                    </p>
+                  )}
+                </div>
+              ) : (
+                /* Empty state */
+                <div
+                  role={editable ? 'button' : undefined}
+                  tabIndex={editable ? 0 : undefined}
+                  onClick={() => { if (editable) setDescriptionEditing(true); }}
+                  onKeyDown={(e) => {
+                    if (editable && (e.key === 'Enter' || e.key === ' '))
+                      setDescriptionEditing(true);
+                  }}
+                  className={[
+                    'min-h-[3rem] rounded-md border px-2 py-1.5 text-sm',
+                    editable
+                      ? 'cursor-text border-dashed border-gray-200 text-gray-400 hover:border-brand-300 focus:border-brand-400 focus:outline-none'
+                      : 'border-transparent text-gray-400',
+                  ].join(' ')}
+                  data-testid="description-empty"
+                >
+                  {editable ? 'Add a description… (Markdown supported)' : 'No description'}
+                </div>
+              )}
             </div>
 
-            <AttachmentsPanel issueId={issue.id} editable={editable} />
+            <AttachmentsPanel
+              issueId={issue.id}
+              editable={editable}
+              viewerRole={viewerRole}
+            />
 
             <CommentsPanel issueId={issue.id} users={users} editable={editable} />
           </div>
