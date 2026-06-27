@@ -177,6 +177,10 @@ export class NotificationsService {
    * notify each mentioned co-member (MENTIONED). Mentioned users and the
    * commenter are auto-watched. A user mentioned AND watching gets a single
    * MENTIONED notification (mentions take precedence).
+   *
+   * DB writes are batched: one `createMany` for MENTIONED rows, one `createMany`
+   * for COMMENTED rows — two round-trips regardless of how many watchers or
+   * mentions exist. Realtime pushes are per-recipient (socket emit is cheap).
    */
   async notifyComment(params: {
     authorId: string;
@@ -189,32 +193,105 @@ export class NotificationsService {
 
     const mentioned = new Set(params.mentionedUserIds);
 
-    // Mentions: notify + auto-watch each mentioned co-member.
-    for (const userId of mentioned) {
-      await this.addWatcher(params.issue.id, userId);
-      await this.notify({
-        userId,
-        actorId: params.authorId,
-        type: NotificationType.MENTIONED,
-        issue: params.issue,
-        message: `${params.authorName} mentioned you on ${params.issue.key}`,
-      });
+    // Auto-watch all mentioned users in parallel (upserts are idempotent).
+    if (mentioned.size > 0) {
+      await Promise.all(
+        [...mentioned].map((uid) => this.addWatcher(params.issue.id, uid)),
+      );
     }
 
-    // Comment notification to watchers (excluding author + already-mentioned).
+    // Fetch current watchers AFTER the author + mention watches are recorded so
+    // the watcher list is complete before we decide who gets which notification.
     const watchers = await this.prisma.watcher.findMany({
       where: { issueId: params.issue.id },
       select: { userId: true },
     });
-    for (const { userId } of watchers) {
-      if (userId === params.authorId || mentioned.has(userId)) continue;
-      await this.notify({
-        userId,
-        actorId: params.authorId,
-        type: NotificationType.COMMENTED,
-        issue: params.issue,
-        message: `${params.authorName} commented on ${params.issue.key}`,
+
+    // Partition recipients: mentioned users get MENTIONED (higher precedence),
+    // plain watchers (not the author and not already mentioned) get COMMENTED.
+    const mentionMessage = `${params.authorName} mentioned you on ${params.issue.key}`;
+    const commentMessage = `${params.authorName} commented on ${params.issue.key}`;
+
+    // Exclude the author from both notification types (suppress self-notification).
+    const mentionedRecipients = [...mentioned].filter(
+      (uid) => uid !== params.authorId,
+    );
+    const commentedRecipients = watchers
+      .map((w) => w.userId)
+      .filter((uid) => uid !== params.authorId && !mentioned.has(uid));
+
+    // Batch insert MENTIONED notifications (one round-trip).
+    if (mentionedRecipients.length > 0) {
+      await this.prisma.notification.createMany({
+        data: mentionedRecipients.map((userId) => ({
+          userId,
+          actorId: params.authorId,
+          type: NotificationType.MENTIONED,
+          issueId: params.issue.id,
+          issueKey: params.issue.key,
+          projectId: params.issue.projectId,
+          message: mentionMessage,
+        })),
+        skipDuplicates: true,
       });
+
+      // Fetch inserted rows to get generated ids for realtime emit.
+      const mentionedRows = await this.prisma.notification.findMany({
+        where: {
+          issueId: params.issue.id,
+          actorId: params.authorId,
+          type: NotificationType.MENTIONED,
+          userId: { in: mentionedRecipients },
+          message: mentionMessage,
+        },
+        include: { actor: true },
+        orderBy: { createdAt: 'desc' },
+        take: mentionedRecipients.length,
+      });
+      for (const n of mentionedRows) {
+        this.realtime.emitToUser(
+          n.userId,
+          SocketEvents.NotificationCreated,
+          toNotificationDto(n),
+        );
+      }
+    }
+
+    // Batch insert COMMENTED notifications (one round-trip).
+    if (commentedRecipients.length > 0) {
+      await this.prisma.notification.createMany({
+        data: commentedRecipients.map((userId) => ({
+          userId,
+          actorId: params.authorId,
+          type: NotificationType.COMMENTED,
+          issueId: params.issue.id,
+          issueKey: params.issue.key,
+          projectId: params.issue.projectId,
+          message: commentMessage,
+        })),
+        skipDuplicates: true,
+      });
+
+      // Fetch inserted rows to get generated ids for realtime emit.
+      const commentedRows = await this.prisma.notification.findMany({
+        where: {
+          issueId: params.issue.id,
+          actorId: params.authorId,
+          type: NotificationType.COMMENTED,
+          userId: { in: commentedRecipients },
+          message: commentMessage,
+        },
+        include: { actor: true },
+        orderBy: { createdAt: 'desc' },
+        take: commentedRecipients.length,
+      });
+      for (const n of commentedRows) {
+        this.realtime.emitToUser(
+          n.userId,
+          SocketEvents.NotificationCreated,
+          toNotificationDto(n),
+        );
+      }
     }
   }
 

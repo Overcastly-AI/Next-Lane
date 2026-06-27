@@ -142,36 +142,51 @@ describe('NotificationsService', () => {
   });
 
   describe('notifyComment', () => {
-    it('notifies mentioned users + watchers, excludes author, auto-watches', async () => {
+    it('notifies mentioned users + watchers via createMany, excludes author, auto-watches', async () => {
       prisma.watcher.upsert.mockResolvedValue({});
-      // Watchers on the issue: author (excluded), a plain watcher, and the
-      // mentioned user (should get MENTIONED, not COMMENTED).
+      // Watchers on the issue (fetched after author + mention watches are recorded):
+      // author (excluded), a plain watcher, and the mentioned user (gets MENTIONED).
       prisma.watcher.findMany.mockResolvedValue([
         { userId: 'u-author' },
         { userId: 'u-watcher' },
         { userId: 'u-mentioned' },
       ]);
-      prisma.notification.create.mockImplementation((args: {
-        data: {
-          userId: string;
-          actorId: string;
-          type: NotificationType;
-          message: string;
-        };
-      }) => {
-        const { data } = args;
-        return Promise.resolve({
-          id: `n-${data.userId}`,
-          type: data.type,
-          issueId: ISSUE.id,
-          issueKey: ISSUE.key,
-          projectId: ISSUE.projectId,
-          message: data.message,
-          read: false,
-          createdAt: new Date(),
-          actor: actorRow(data.actorId),
-        });
-      });
+
+      // createMany is called once for MENTIONED, once for COMMENTED.
+      prisma.notification.createMany.mockResolvedValue({ count: 1 });
+
+      // findMany is called to fetch inserted rows for realtime emit.
+      prisma.notification.findMany
+        .mockResolvedValueOnce([
+          {
+            id: 'n-mentioned',
+            userId: 'u-mentioned',
+            actorId: 'u-author',
+            type: NotificationType.MENTIONED,
+            issueId: ISSUE.id,
+            issueKey: ISSUE.key,
+            projectId: ISSUE.projectId,
+            message: 'Author mentioned you on AB-1',
+            read: false,
+            createdAt: new Date(),
+            actor: actorRow('u-author'),
+          },
+        ])
+        .mockResolvedValueOnce([
+          {
+            id: 'n-watcher',
+            userId: 'u-watcher',
+            actorId: 'u-author',
+            type: NotificationType.COMMENTED,
+            issueId: ISSUE.id,
+            issueKey: ISSUE.key,
+            projectId: ISSUE.projectId,
+            message: 'Author commented on AB-1',
+            read: false,
+            createdAt: new Date(),
+            actor: actorRow('u-author'),
+          },
+        ]);
 
       await service.notifyComment({
         authorId: 'u-author',
@@ -180,17 +195,26 @@ describe('NotificationsService', () => {
         mentionedUserIds: ['u-mentioned'],
       });
 
-      const calls = prisma.notification.create.mock.calls.map(
-        (c: [{ data: { userId: string; type: NotificationType } }]) =>
-          c[0].data,
-      );
-      const byUser = new Map(calls.map((c) => [c.userId, c.type]));
-      // Author is never notified.
-      expect(byUser.has('u-author')).toBe(false);
-      // Mentioned user gets MENTIONED (precedence over COMMENTED).
-      expect(byUser.get('u-mentioned')).toBe(NotificationType.MENTIONED);
-      // Plain watcher gets COMMENTED.
-      expect(byUser.get('u-watcher')).toBe(NotificationType.COMMENTED);
+      // Must NOT use notification.create (serial O(N) — the old path).
+      expect(prisma.notification.create).not.toHaveBeenCalled();
+
+      // Two batched createMany calls: one for MENTIONED, one for COMMENTED.
+      expect(prisma.notification.createMany).toHaveBeenCalledTimes(2);
+
+      const [mentionCall, commentCall] = prisma.notification.createMany.mock.calls as Array<
+        [{ data: Array<{ userId: string; type: NotificationType }> }]
+      >;
+
+      // MENTIONED batch: only u-mentioned (author excluded).
+      expect(mentionCall[0].data).toHaveLength(1);
+      expect(mentionCall[0].data[0].userId).toBe('u-mentioned');
+      expect(mentionCall[0].data[0].type).toBe(NotificationType.MENTIONED);
+
+      // COMMENTED batch: only u-watcher (author + mentioned excluded).
+      expect(commentCall[0].data).toHaveLength(1);
+      expect(commentCall[0].data[0].userId).toBe('u-watcher');
+      expect(commentCall[0].data[0].type).toBe(NotificationType.COMMENTED);
+
       // Commenter auto-watch + mentioned auto-watch.
       expect(prisma.watcher.upsert).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -204,6 +228,90 @@ describe('NotificationsService', () => {
           },
         }),
       );
+
+      // Realtime emitted to both recipients.
+      expect(realtime.emitToUser).toHaveBeenCalledWith(
+        'u-mentioned',
+        'notification.created',
+        expect.objectContaining({ type: NotificationType.MENTIONED }),
+      );
+      expect(realtime.emitToUser).toHaveBeenCalledWith(
+        'u-watcher',
+        'notification.created',
+        expect.objectContaining({ type: NotificationType.COMMENTED }),
+      );
+    });
+
+    it('author is never notified even if listed as a watcher', async () => {
+      prisma.watcher.upsert.mockResolvedValue({});
+      prisma.watcher.findMany.mockResolvedValue([
+        { userId: 'u-author' }, // only watcher is the author — nobody to notify
+      ]);
+      prisma.notification.createMany.mockResolvedValue({ count: 0 });
+      prisma.notification.findMany.mockResolvedValue([]);
+
+      await service.notifyComment({
+        authorId: 'u-author',
+        authorName: 'Author',
+        issue: ISSUE,
+        mentionedUserIds: [],
+      });
+
+      // No MENTIONED batch (no mentions). No COMMENTED batch (only watcher is the author).
+      expect(prisma.notification.createMany).not.toHaveBeenCalled();
+      expect(prisma.notification.create).not.toHaveBeenCalled();
+    });
+
+    it('uses a single createMany per notification type (batched, not serial)', async () => {
+      prisma.watcher.upsert.mockResolvedValue({});
+      // Three plain watchers + author.
+      prisma.watcher.findMany.mockResolvedValue([
+        { userId: 'u-author' },
+        { userId: 'w1' },
+        { userId: 'w2' },
+        { userId: 'w3' },
+      ]);
+      prisma.notification.createMany.mockResolvedValue({ count: 3 });
+      prisma.notification.findMany.mockResolvedValue([
+        {
+          id: 'n1', userId: 'w1', actorId: 'u-author',
+          type: NotificationType.COMMENTED, issueId: ISSUE.id,
+          issueKey: ISSUE.key, projectId: ISSUE.projectId,
+          message: 'msg', read: false, createdAt: new Date(),
+          actor: actorRow('u-author'),
+        },
+        {
+          id: 'n2', userId: 'w2', actorId: 'u-author',
+          type: NotificationType.COMMENTED, issueId: ISSUE.id,
+          issueKey: ISSUE.key, projectId: ISSUE.projectId,
+          message: 'msg', read: false, createdAt: new Date(),
+          actor: actorRow('u-author'),
+        },
+        {
+          id: 'n3', userId: 'w3', actorId: 'u-author',
+          type: NotificationType.COMMENTED, issueId: ISSUE.id,
+          issueKey: ISSUE.key, projectId: ISSUE.projectId,
+          message: 'msg', read: false, createdAt: new Date(),
+          actor: actorRow('u-author'),
+        },
+      ]);
+
+      await service.notifyComment({
+        authorId: 'u-author',
+        authorName: 'Author',
+        issue: ISSUE,
+        mentionedUserIds: [],
+      });
+
+      // Exactly ONE createMany call (for COMMENTED), not 3 serial create calls.
+      expect(prisma.notification.createMany).toHaveBeenCalledTimes(1);
+      expect(prisma.notification.create).not.toHaveBeenCalled();
+
+      const [call] = prisma.notification.createMany.mock.calls as Array<
+        [{ data: Array<{ userId: string }> }]
+      >;
+      expect(call[0].data).toHaveLength(3);
+      expect(call[0].data.map((d) => d.userId).sort()).toEqual(['w1', 'w2', 'w3']);
     });
   });
 

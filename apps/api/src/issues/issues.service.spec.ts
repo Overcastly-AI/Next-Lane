@@ -323,6 +323,7 @@ function makeMovePrisma() {
   const tx = {
     issue: { findUnique: jest.fn(), findMany: jest.fn(), update: jest.fn() },
     activityLog: { create: jest.fn() },
+    $executeRaw: jest.fn().mockResolvedValue(0),
   };
   const prisma = {
     issue: { findUnique: jest.fn(), findMany: jest.fn(), update: jest.fn() },
@@ -423,27 +424,92 @@ describe('IssuesService.move', () => {
       ({ data }: { data: { rank?: string } }) =>
         Promise.resolve(makeMovedIssueRow(data.rank ?? 'a0')),
     );
+    mocks.tx.$executeRaw.mockResolvedValue(3);
 
     await expect(
       move({ statusId: STATUS, beforeId: 'before', afterId: 'after' }),
     ).resolves.toBeDefined();
 
-    // Rebalance ran: every OTHER issue in the column got a fresh rank, plus the
-    // moved issue's own update — 4 updates total (other-1, other-2, before, moved).
+    // Rebalance ran: column fetched to determine order.
     expect(mocks.tx.issue.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { statusId: STATUS, id: { not: MOVED } },
         orderBy: { rank: 'asc' },
       }),
     );
-    expect(mocks.tx.issue.update).toHaveBeenCalledTimes(4);
-    // The moved issue is placed immediately before "before"; the resulting
-    // ranks must be strictly ascending in the final order.
+
+    // The three non-moved issues are now updated via a SINGLE $executeRaw
+    // (bulk CASE UPDATE) — not N sequential tx.issue.update calls.
+    expect(mocks.tx.$executeRaw).toHaveBeenCalledTimes(1);
+
+    // The moved issue itself is updated exactly once (rank + statusId) via the
+    // normal tx.issue.update after rebalanceAndPlace returns its rank.
+    expect(mocks.tx.issue.update).toHaveBeenCalledTimes(1);
+    expect(mocks.tx.issue.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: MOVED },
+        data: expect.objectContaining({ statusId: STATUS }),
+      }),
+    );
+
+    // The moved issue is placed immediately before "before"; realtime emitted.
     expect(realtime.emitToProject).toHaveBeenCalledWith(
       PROJECT,
       'issue.moved',
       expect.objectContaining({ issueId: MOVED }),
     );
+  });
+
+  it('rebalanceAndPlace: batch $executeRaw called once, moved issue update called once', async () => {
+    // Verify that the batch rebalance uses exactly one $executeRaw for the
+    // non-moved issues and exactly one tx.issue.update for the moved issue.
+    // Use the same collision setup as the test above.
+    const r1 = rankBetween(null, null);
+    const r2 = rankBetween(r1, null);
+    // before=r2, after=r1 → before >= after → rankBetween throws → rebalance.
+    mocks.tx.issue.findUnique.mockImplementation(
+      ({ where }: { where: { id: string } }) => {
+        if (where.id === 'before') return Promise.resolve({ rank: r2 });
+        if (where.id === 'after') return Promise.resolve({ rank: r1 });
+        return Promise.resolve(null);
+      },
+    );
+    // 3 issues in the column besides the moved one.
+    mocks.tx.issue.findMany.mockResolvedValue([
+      { id: 'other-1' },
+      { id: 'other-2' },
+      { id: 'other-3' },
+    ]);
+    mocks.tx.$executeRaw.mockResolvedValue(3);
+    mocks.tx.issue.update.mockImplementation(
+      ({ data }: { data: { rank?: string } }) =>
+        Promise.resolve(makeMovedIssueRow(data.rank ?? 'a0')),
+    );
+
+    await move({ statusId: STATUS, beforeId: 'before', afterId: 'after' });
+
+    // One bulk SQL update for the 3 non-moved issues.
+    expect(mocks.tx.$executeRaw).toHaveBeenCalledTimes(1);
+    // One Prisma update for the moved issue (rank + statusId).
+    expect(mocks.tx.issue.update).toHaveBeenCalledTimes(1);
+    expect(mocks.tx.issue.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: MOVED },
+        data: expect.objectContaining({ statusId: STATUS }),
+      }),
+    );
+  });
+
+  it('rebalanceAndPlace rank ordering is strictly ascending via initialRanks', () => {
+    // Directly test the ordering invariant using the same initialRanks helper
+    // that rebalanceAndPlace calls.  This is a pure-logic test with no mocking.
+    const { initialRanks: genRanks } = require('@next-lane/shared');
+    const n = 4; // other-1, MOVED, other-2, other-3
+    const ranks: string[] = genRanks(n);
+    expect(ranks).toHaveLength(n);
+    for (let i = 0; i + 1 < ranks.length; i++) {
+      expect(ranks[i] < ranks[i + 1]).toBe(true);
+    }
   });
 });
 
