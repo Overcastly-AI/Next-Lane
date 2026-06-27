@@ -1,5 +1,10 @@
 import { test, expect } from '@playwright/test';
-import { setupIsolatedProject } from './helpers';
+import {
+  setupIsolatedProject,
+  registerNewUser,
+  addWorkspaceMember,
+  login,
+} from './helpers';
 
 // UI verification of the Webhooks settings section. An ADMIN registers a webhook
 // through the modal on the Project Settings page, sees it listed, sends a test
@@ -8,6 +13,8 @@ import { setupIsolatedProject } from './helpers';
 // The webhook URL points at a deliberately unreachable host so the test never
 // makes a successful external call; the delivery is still recorded (as failed),
 // which is exactly what we assert appears in the log.
+//
+// Both tests use setupIsolatedProject so the demo account is never touched.
 
 test.describe('Webhooks settings UI', () => {
   test('an admin can add a webhook and see it listed, then log a delivery', async ({
@@ -74,9 +81,6 @@ test.describe('Webhooks settings UI', () => {
     });
 
     // Register a viewer and add them to the workspace.
-    const { registerNewUser, addWorkspaceMember, login } = await import(
-      './helpers'
-    );
     const viewer = await registerNewUser(request, 'wh-viewer');
     await addWorkspaceMember(
       request,
