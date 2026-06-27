@@ -7,7 +7,7 @@
  *   3. Unscoped PAT (patScopes = []) → PASS (backward-compat, full perms).
  *   4. Scoped PAT that has the required scope → PASS.
  *   5. Scoped PAT missing the required scope → 403 ForbiddenException.
- *   6. No user on request → 403 ForbiddenException.
+ *   6. No user on request → PASS (defers to JwtAuthGuard, which 401s unauth).
  */
 
 import { ForbiddenException } from '@nestjs/common';
@@ -90,10 +90,13 @@ describe('ScopeGuard', () => {
     expect(() => guard.canActivate(ctx as never)).toThrow(ForbiddenException);
   });
 
-  it('throws ForbiddenException when the request has no user at all', () => {
+  it('defers (PASS) when no user is set yet — JwtAuthGuard owns 401 for unauthenticated requests', () => {
+    // ScopeGuard must NOT turn an unauthenticated request into a 403; auth is
+    // JwtAuthGuard's responsibility (it rejects missing/invalid creds with 401).
+    // When ScopeGuard runs before user is populated it defers by returning true.
     const guard = new ScopeGuard(makeReflector('issues:write'));
     const ctx = makeContext(undefined);
-    expect(() => guard.canActivate(ctx as never)).toThrow(ForbiddenException);
+    expect(guard.canActivate(ctx as never)).toBe(true);
   });
 
   it('reflector is called with REQUIRE_SCOPE_KEY', () => {
