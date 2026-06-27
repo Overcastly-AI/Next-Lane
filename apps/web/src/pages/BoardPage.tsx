@@ -429,6 +429,7 @@ export function BoardPage() {
           statuses={statuses}
           users={users}
           editable={editable}
+          viewerRole={myRole ?? undefined}
           onClose={closeIssue}
           onOpenIssue={openIssue}
         />
