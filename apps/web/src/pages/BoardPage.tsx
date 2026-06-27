@@ -210,6 +210,36 @@ export function BoardPage() {
     );
   }
 
+  /**
+   * Inline status change from a card's status picker.
+   * Appends the card to the end of the target column (beforeId = last card in
+   * column, afterId = null) — same semantics as dropping it at the bottom via DnD.
+   */
+  function handleCardStatusChange(issueId: string, statusId: string) {
+    if (!editable || !board) return;
+    const issue = board.issues.find((i) => i.id === issueId);
+    if (!issue || issue.statusId === statusId) return; // no-op if already in that status
+
+    // Find the last card in the target column to compute neighbors.
+    const targetColumn = (issuesByStatus.get(statusId) ?? []).filter(
+      (i) => i.id !== issueId,
+    );
+    const lastInColumn = targetColumn[targetColumn.length - 1] ?? null;
+
+    moveIssue.mutate(
+      {
+        id: issueId,
+        statusId,
+        beforeId: lastInColumn?.id ?? null,
+        afterId: null,
+      },
+      {
+        onError: (err) =>
+          toast.error(errorMessage(err, 'Could not change status.')),
+      },
+    );
+  }
+
   function openIssue(id: string) {
     setSearchParams(
       (prev) => {
@@ -398,9 +428,11 @@ export function BoardPage() {
                 key={status.id}
                 status={status}
                 issues={issuesByStatus.get(status.id) ?? []}
+                statuses={statuses}
                 editable={editable}
                 onAdd={(id) => setCreateForStatus(id)}
                 onOpenIssue={openIssue}
+                onStatusChange={handleCardStatusChange}
               />
             ))}
           </div>
