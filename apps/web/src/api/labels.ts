@@ -8,6 +8,11 @@ export interface CreateLabelInput {
   color?: string;
 }
 
+export interface UpdateLabelInput {
+  name?: string;
+  color?: string;
+}
+
 /** Create a new project label. Refreshes the project's label list. */
 export function useCreateLabel(projectId: string) {
   const qc = useQueryClient();
@@ -19,6 +24,37 @@ export function useCreateLabel(projectId: string) {
       }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: qk.labels(projectId) });
+    },
+  });
+}
+
+/**
+ * Update a label's name and/or color. Invalidates the project's label list and
+ * patches any cached issue / board data so label chips update immediately.
+ */
+export function useUpdateLabel(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ labelId, input }: { labelId: string; input: UpdateLabelInput }) =>
+      request<LabelDto>(`/labels/${labelId}`, {
+        method: 'PATCH',
+        body: input,
+      }),
+    onSuccess: (updated) => {
+      // Refresh the authoritative label list for this project.
+      void qc.invalidateQueries({ queryKey: qk.labels(projectId) });
+      // Patch any cached board so label chips on cards update immediately.
+      void qc.invalidateQueries({ queryKey: qk.board(projectId) });
+      // Patch any open issue that carries this label.
+      qc.setQueriesData<IssueDto>({ queryKey: ['issue'] }, (issue) => {
+        if (!issue?.labels) return issue;
+        const hasLabel = issue.labels.some((l) => l.id === updated.id);
+        if (!hasLabel) return issue;
+        return {
+          ...issue,
+          labels: issue.labels.map((l) => (l.id === updated.id ? updated : l)),
+        };
+      });
     },
   });
 }

@@ -8,7 +8,7 @@ import {
   assertProjectRole,
 } from '../common/membership.util';
 import { Role } from '@next-lane/shared';
-import { CreateLabelDto } from './dto/label.dto';
+import { CreateLabelDto, UpdateLabelDto } from './dto/label.dto';
 import type { LabelDto } from '@next-lane/shared';
 
 type LabelRow = {
@@ -43,6 +43,25 @@ export class LabelsService {
     await assertProjectRole(this.prisma, userId, projectId, Role.MEMBER);
     const label = await this.prisma.label.create({
       data: { projectId, name: dto.name, color: dto.color },
+    });
+    return toLabelDto(label);
+  }
+
+  async update(
+    userId: string,
+    id: string,
+    dto: UpdateLabelDto,
+  ): Promise<LabelDto> {
+    const existing = await this.prisma.label.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException('Label not found');
+    // ADMIN or MEMBER may edit; VIEWER is rejected.
+    await assertProjectRole(this.prisma, userId, existing.projectId, Role.MEMBER);
+    const label = await this.prisma.label.update({
+      where: { id },
+      data: {
+        ...(dto.name !== undefined ? { name: dto.name } : {}),
+        ...(dto.color !== undefined ? { color: dto.color } : {}),
+      },
     });
     return toLabelDto(label);
   }

@@ -4,11 +4,12 @@ import {
   Delete,
   Get,
   Param,
+  Patch,
   Post,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { LabelsService } from './labels.service';
-import { CreateLabelDto, AddIssueLabelDto } from './dto/label.dto';
+import { CreateLabelDto, UpdateLabelDto, AddIssueLabelDto } from './dto/label.dto';
 import { CurrentUser, AuthUser } from '../auth/current-user.decorator';
 
 @ApiTags('labels')
@@ -32,6 +33,15 @@ export class LabelsController {
     @Body() dto: CreateLabelDto,
   ) {
     return this.labels.create(user.id, projectId, dto);
+  }
+
+  @Patch('labels/:id')
+  update(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body() dto: UpdateLabelDto,
+  ) {
+    return this.labels.update(user.id, id, dto);
   }
 
   @Delete('labels/:id')
