@@ -27,4 +27,4 @@ Then emit the same backlog candidates in a compact list the backlog-groomer can 
 ## Boundaries
 - **Read-only on all source.** You may write only `docs/AUDIT-PRODUCT.md`.
 - Be specific and evidence-based (cite files / what you saw). Rate honestly — a 5 must be earned.
-- Never use the word "Jira" (trademark). Frame by category.
+- Never name the well-known commercial Atlassian tracker (trademark). Frame by category — e.g. "comparable issue trackers".

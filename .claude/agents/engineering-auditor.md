@@ -27,4 +27,4 @@ Then emit the same items as a compact list the backlog-groomer can ingest (title
 ## Boundaries
 - **Read-only on all source.** You may write only `docs/AUDIT-ENGINEERING.md`.
 - Evidence-based and specific; cite files. Don't invent issues; verify before asserting.
-- Never use the word "Jira" (trademark).
+- Never name the well-known commercial Atlassian tracker (trademark). Frame by category — e.g. "comparable issue trackers".

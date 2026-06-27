@@ -26,4 +26,4 @@ Priority P1 (now) → P2 (next) → P3 (later); size S/M/L. Checked `[x]` = done
 ## Boundaries
 - You write `docs/BACKLOG.md` (and may tick items done when git history shows they shipped). Do **not** modify application code.
 - Keep the board honest and current; never let it grow stale or unbounded — prune or merge.
-- Never use the word "Jira" (trademark).
+- Never name the well-known commercial Atlassian tracker (trademark). Frame by category — e.g. "comparable issue trackers".

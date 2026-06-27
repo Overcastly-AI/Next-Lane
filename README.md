@@ -21,21 +21,31 @@ Most issue trackers are SaaS — your roadmap lives on someone else's server. Ne
 
 > Next Lane is built incrementally. See [`docs/ROADMAP.md`](./docs/ROADMAP.md) for the full plan and current status.
 
-**MVP (in progress)**
+**Available now**
 - 📋 Projects with issue keys (`NL-123`)
 - 🎫 Issues — Task / Bug / Story with description, assignee, priority, status
-- 🟦 Kanban board with drag-and-drop ordering
+- 🟦 Kanban board with drag-and-drop ordering (fractional ranking)
+- 🏃 Backlog, sprints & scrum boards (create / start / complete)
+- 🧩 Epics & sub-tasks (parent/child hierarchy)
+- 🏷️ Labels & story points
+- 📊 Burndown & velocity reports
+- 🗺️ Roadmap / timeline view
 - 💬 Comments & activity history
-- 🔍 Search and filtering
+- 🔍 Search, filtering & a ⌘K command palette
+- 🙋 "My Work" personal dashboard
+- 🔔 Realtime updates, in-app notifications & @mentions
+- 🔐 Roles & permissions (Admin / Member / Viewer)
+- 🪝 Outbound webhooks (HMAC-signed)
 - 👤 Email/password auth (JWT)
 
 **Planned**
-- 🏃 Backlog, sprints & scrum boards
-- 🧩 Epics & sub-tasks
-- 🏷️ Labels, attachments, story points
-- 📊 Burndown & velocity reports
-- 🔔 Realtime updates & notifications
-- 🔐 Roles & permissions
+- 📎 Attachments / file uploads
+- 🧮 Custom fields & saved views / query DSL
+- ⚙️ Workflow automation rules
+- ⏱️ Time tracking / worklogs
+- ✉️ Email (SMTP) notifications + email-to-issue
+- 🔑 API tokens, audit log, SSO/OIDC
+- 📥 Bulk edit & CSV / tracker import
 
 ## Tech Stack
 
@@ -48,7 +58,7 @@ Most issue trackers are SaaS — your roadmap lives on someone else's server. Ne
 | UI | Tailwind CSS + shadcn/ui |
 | Server state | TanStack Query |
 | Drag & drop | dnd-kit |
-| Auth | JWT (access + refresh) |
+| Auth | JWT (access token; refresh planned) |
 
 See [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) and [`docs/RESEARCH.md`](./docs/RESEARCH.md) for the rationale.
 

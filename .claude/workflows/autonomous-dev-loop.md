@@ -8,11 +8,11 @@ Each invocation runs **one batch** (audit → groom → build N items). When the
 ## Phases per batch
 1. **Audit (parallel, independent)** — `product-auditor` and `engineering-auditor` deeply review the current app and append ratings + prioritized recommendations to their audit docs. They do not see each other's output first.
 2. **Groom** — `backlog-groomer` ingests both audits + `docs/UI-REVIEW.md` + roadmap + git history, dedupes, reprioritizes, and refreshes the **Ready** queue in `docs/BACKLOG.md`.
-3. **Build (sequential, commit-safe)** — pull the top N Ready items; for each: implement via `backend-builder` / `frontend-builder`, then `code-reviewer`, then **`qa-tester`** (functional, desktop + mobile) and a `frontend-qa` spot-check. Commit + tick the board **only if green**; otherwise revert and leave it on the board.
+3. **Build (parallel by default, commit-safe)** — pull the top N Ready items and build **disjoint** items concurrently, each in its own **isolated git worktree + per-instance DB/ports** (`dev-up-instance.sh <N>`) so they don't collide. For each: implement via `backend-builder` / `frontend-builder`, then `code-reviewer`, then **`qa-tester`** (functional, desktop + mobile) and a `frontend-qa` spot-check. Commit + tick the board **only if green**, then integrate the worktree branch into the working branch; otherwise discard the worktree and leave the item on the board. Serialize only items that touch the same files.
 
 ## Guardrails
-- Never push a red build. One commit per item; build sequentially so commits don't collide.
-- Bounded batch size (N≈2–3) so each run is reviewable; the loop continues across batches.
+- Never push a red build. One commit per item; parallel items run in isolated worktrees so commits don't collide, and integrate to the working branch only when green.
+- Bounded batch size (N≈2–4) so each run is reviewable; the loop continues across batches.
 - Read-only roles (auditors, QA) never touch app code.
 - Keep the seeded demo working. Never reintroduce trademarked terms.
 
@@ -28,9 +28,11 @@ await parallel([
 phase('Groom')
 await agent('Refresh docs/BACKLOG.md Ready queue from audits+UI review+roadmap.', {agentType:'backlog-groomer'})
 phase('Build')
-const ready = /* parse top N from docs/BACKLOG.md */ []
-for (const item of ready) {
-  await agent(`Implement, QA (desktop+mobile), and commit-if-green: ${item}. Revert on failure.`)
-}
-// on completion: orchestrator launches the next batch
+const ready = /* parse top N disjoint items from docs/BACKLOG.md */ []
+// Build disjoint items in PARALLEL, each in its own worktree + per-instance DB/ports.
+await parallel(ready.map(item => () =>
+  agent(`Implement, QA (desktop+mobile), and commit-if-green: ${item}. Use dev-up-instance.sh for an isolated env. Discard on failure.`,
+        { isolation: 'worktree' })
+))
+// on completion: orchestrator integrates green branches, then launches the next batch
 ```

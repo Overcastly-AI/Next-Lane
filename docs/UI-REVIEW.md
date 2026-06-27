@@ -162,10 +162,10 @@ trade-off.
 (`dashboard-desktop.png`, `board-desktop.png`). Cosmetic; intentional max-width is
 fine, just flagging the visual emptiness.
 
-**15. Seed/content note (not UI source):** the seeded demo project description reads
-"Building the open-source, self-hosted Jira alternative" (visible on the dashboard
-card). That trademark term should be scrubbed from seed data — outside this review's
-write scope, flagging for the dev team.
+**15. Seed/content note (not UI source) — ✅ RESOLVED:** the seeded demo project
+description previously contained a trademarked category phrase (visible on the
+dashboard card). The seed (`apps/api/prisma/seed.ts`) now reads "Building the
+open-source, self-hosted issue & project tracker." — no trademarked terms remain.
 
 ---
 

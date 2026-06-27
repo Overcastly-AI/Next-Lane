@@ -107,7 +107,7 @@ Format: `- [ ] (P1, M) title — description [src]` · P0 critical / P1 now / P2
 - [ ] (P3, M) Attachments (uploads volume) [roadmap]
 - [ ] (P3, M) Webhooks + REST API tokens + audit log [roadmap]
 - [ ] (P3, L) Time tracking / worklogs; CSV import + tracker importers; SSO/OIDC [roadmap]
-- [ ] (P3, S) Scrub trademarked "Jira alternative" string from seed data [ui-review]
+- [x] (P3, S) Scrub trademarked category phrase from seed data — DONE: `seed.ts` now reads "issue & project tracker"; no trademarked terms remain [ui-review]
 
 ---
 
