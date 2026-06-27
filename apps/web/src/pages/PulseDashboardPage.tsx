@@ -156,14 +156,24 @@ export function PulseDashboardPage() {
         </div>
         <div className="flex items-center gap-2">
           {isAdmin && activeWorkspace && (
-            <Button
-              variant="secondary"
-              size="md"
-              onClick={() => navigate(`/workspaces/${activeWorkspace.id}/audit-log`)}
-              data-testid="audit-log-nav-link"
-            >
-              Audit log
-            </Button>
+            <>
+              <Button
+                variant="secondary"
+                size="md"
+                onClick={() => navigate(`/workspaces/${activeWorkspace.id}/members`)}
+                data-testid="members-nav-link"
+              >
+                Members
+              </Button>
+              <Button
+                variant="secondary"
+                size="md"
+                onClick={() => navigate(`/workspaces/${activeWorkspace.id}/audit-log`)}
+                data-testid="audit-log-nav-link"
+              >
+                Audit log
+              </Button>
+            </>
           )}
           <Button onClick={() => setProjectModalOpen(true)}>+ New Project</Button>
         </div>

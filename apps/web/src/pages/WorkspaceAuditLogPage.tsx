@@ -10,7 +10,7 @@
  * Route: /workspaces/:workspaceId/audit-log
  */
 import { useMemo } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, NavLink, useParams } from 'react-router-dom';
 import { Role } from '@next-lane/shared';
 import type { AuditEventDto } from '@next-lane/shared';
 import { AppHeader } from '@/components/AppHeader';
@@ -338,6 +338,37 @@ function Shell({
           </span>
         </div>
       </AppHeader>
+      {/* Workspace sub-nav */}
+      <nav
+        className="flex items-center gap-1 border-b border-gray-100 bg-white px-4 py-1"
+        aria-label="Workspace navigation"
+      >
+        <NavLink
+          to={`/workspaces/${workspaceId}/members`}
+          className={({ isActive }) =>
+            `rounded-md px-3 py-1.5 text-sm font-medium ${
+              isActive
+                ? 'bg-brand-50 text-brand-700'
+                : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+            }`
+          }
+        >
+          Members
+        </NavLink>
+        <NavLink
+          to={`/workspaces/${workspaceId}/audit-log`}
+          className={({ isActive }) =>
+            `rounded-md px-3 py-1.5 text-sm font-medium ${
+              isActive
+                ? 'bg-brand-50 text-brand-700'
+                : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+            }`
+          }
+          aria-current="page"
+        >
+          Audit log
+        </NavLink>
+      </nav>
       <main className="flex flex-1 flex-col overflow-y-auto">{children}</main>
     </div>
   );

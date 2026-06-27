@@ -50,3 +50,23 @@ export function useCreateWorkspace() {
     },
   });
 }
+
+/**
+ * Remove a workspace member by membershipId.
+ * Only available to ADMINs; the server rejects any attempt that would leave the
+ * workspace with no administrators (returns 400/403 surfaced as a toast).
+ */
+export function useRemoveMember(workspaceId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (membershipId: string) =>
+      request<void>(`/workspaces/${workspaceId}/members/${membershipId}`, {
+        method: 'DELETE',
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({
+        queryKey: qk.workspaceMembers(workspaceId),
+      });
+    },
+  });
+}
