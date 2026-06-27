@@ -24,30 +24,39 @@ Status legend: ✅ done · 🚧 in progress · ⬜ planned
 
 > JWT refresh tokens are a Phase 2 hardening item (currently single access token).
 
-## Phase 2 — Real agile
-- ⬜ Epics & sub-tasks (parent/child hierarchy)
-- ⬜ Backlog view
-- ⬜ Sprints: create/start/complete, goal, dates
-- ⬜ Scrum board
-- ⬜ Custom workflows/statuses + transitions per project
-- ⬜ Labels (M:N), attachments (uploads volume)
-- ⬜ Story points
-- ⬜ Roles & permissions (Admin/Member/Viewer)
-- ⬜ Realtime updates (Socket.io) + in-app notifications
-- ⬜ Reports: burndown, velocity, cumulative flow
+## Phase 2 — Real agile ✅ (complete)
+- ✅ Epics & sub-tasks (parent/child hierarchy in the issue drawer)
+- ✅ Backlog view (`/projects/:id/backlog`)
+- ✅ Sprints: create/start/complete, goal, dates (single-active enforced, txn-safe)
+- ✅ Scrum board (board scopes to the active sprint + backlog)
+- ✅ Custom statuses/columns per project (managed in Project Settings)
+- ✅ Labels (M:N) — create/assign/filter
+- ✅ Story points
+- ✅ Roles & permissions (Admin/Member/Viewer) — enforced API + VIEWER-aware UI
+- ✅ Realtime updates (Socket.io) + in-app notifications & @mentions
+- ✅ Reports: burndown + velocity
+- ⬜ Remaining: custom workflow *transitions*, attachments (uploads), cumulative-flow report
 
-## Phase 3 — Power features
-- ⬜ Query DSL (filter builder → JQL-like text)
+## Phase 3 — Power features 🚧 (in progress)
+- ✅ Roadmap / timeline (epics + sprints as bars, progress, today marker)
+- ✅ Webhooks (HMAC-signed outbound on issue/sprint events + delivery log) — *Settings UI wiring in flight*
+- ✅ Command palette (Cmd-K) + cross-project search
+- ✅ "My Work" personal dashboard
+- ✅ CI pipeline (GitHub Actions) + API unit-test suite
+- 🚧 Cursor pagination for large lists (in flight)
+- ⬜ Query DSL / saved views (filter builder → text query)
 - ⬜ Custom fields (typed, JSONB-backed)
-- ⬜ Workflow automation rules
+- ⬜ Workflow automation rules (trigger → action)
 - ⬜ Time tracking / worklogs
 - ⬜ Email (SMTP) notifications + email-to-issue
-- ⬜ Configurable dashboards
-- ⬜ Roadmap / Gantt
-- ⬜ Webhooks, REST API tokens, audit log
+- ⬜ Configurable dashboards; cumulative-flow
+- ⬜ REST API tokens, audit log
 - ⬜ Bulk edit, CSV import (and importers for other trackers), SSO/OIDC
 
 ---
 
 ### Current focus
-Building Phase 0 → Phase 1 MVP end-to-end so `docker compose up` yields a working board.
+**Phase 3 power features.** Phases 0–2 are done; the product is a working agile
+tracker (board, backlog, sprints, reports, roadmap, labels, story points, epics,
+comments, search, command palette, My Work, roles, notifications, webhooks, realtime).
+Now shipping Phase 3 in parallel batches and hardening for scale.
