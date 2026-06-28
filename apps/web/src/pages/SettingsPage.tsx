@@ -13,6 +13,7 @@ import { ColumnFormModal } from '@/components/board/ColumnFormModal';
 import { WebhooksSection } from '@/components/settings/WebhooksSection';
 import { ShareSection } from '@/components/settings/ShareSection';
 import { CustomFieldsSection } from '@/components/settings/CustomFieldsSection';
+import { WorkflowSection } from '@/components/settings/WorkflowSection';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Textarea } from '@/components/ui/Textarea';
@@ -65,6 +66,16 @@ export function SettingsPage() {
   const myRole = useMyRole(project?.workspaceId);
   const editable = canEdit(myRole);
   const isAdmin = myRole === Role.ADMIN;
+
+  // Statuses needed by WorkflowSection (shared with ColumnsSection internally).
+  const statusesQuery = useStatuses(projectId);
+  const statusesForWorkflow: StatusDto[] = useMemo(
+    () =>
+      statusesQuery.data
+        ? [...statusesQuery.data].sort((a, b) => a.order - b.order)
+        : [],
+    [statusesQuery.data],
+  );
 
   if (projectQuery.isLoading) {
     return (
@@ -122,6 +133,12 @@ export function SettingsPage() {
         <LabelsSection projectId={projectId} editable={editable} isAdmin={isAdmin} />
 
         <CustomFieldsSection projectId={projectId} editable={editable} isAdmin={isAdmin} />
+
+        <WorkflowSection
+          projectId={projectId}
+          statuses={statusesForWorkflow}
+          isAdmin={isAdmin}
+        />
 
         <WebhooksSection projectId={projectId} isAdmin={isAdmin} />
 
