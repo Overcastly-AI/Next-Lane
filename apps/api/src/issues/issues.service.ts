@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -34,14 +35,18 @@ import {
   rankBetween,
   Role,
   IssueType,
+  filterIssues,
+  validateQuery,
 } from '@next-lane/shared';
 import type {
   IssueDto,
   CommentDto,
   ActivityDto,
   PaginatedIssuesDto,
+  ValidateCustomFieldDef,
 } from '@next-lane/shared';
 import { AUTOMATION_EVENTS } from '../automations/automation-events';
+import { csvRow } from './csv.util';
 
 /** Options for automation-aware mutations. */
 export interface MutationOpts {
@@ -1058,6 +1063,157 @@ export class IssuesService {
       issueId: id,
     });
     return { id };
+  }
+
+  // ── CSV Export ────────────────────────────────────────────────────────────
+
+  /**
+   * Load custom field definitions for `projectId` — same helper pattern as
+   * BoardService / SavedFiltersService.
+   */
+  private async loadCustomFieldDefs(
+    projectId: string,
+  ): Promise<ValidateCustomFieldDef[]> {
+    const rows = await this.prisma.customFieldDefinition.findMany({
+      where: { projectId },
+      select: { id: true, key: true, name: true, type: true },
+    });
+    return rows.map((r) => ({
+      id: r.id,
+      key: r.key,
+      name: r.name,
+      type: r.type as ValidateCustomFieldDef['type'],
+    }));
+  }
+
+  /**
+   * Export all issues in a project as an RFC-4180 CSV string.
+   *
+   * Authorization: project member (VIEWER+).
+   *
+   * Columns: Key, Title, Type, Status, Priority, Assignee, Reporter,
+   *   Story Points, Sprint, Labels, Due Date, Created, Updated.
+   *
+   * Optional `q` NLQL filter: validated via `validateQuery`, then evaluated
+   * with `filterIssues` (same evaluator as the board uses). Invalid query →
+   * 400 BadRequestException.
+   *
+   * Rows are ordered by issue number ascending.
+   */
+  async exportCsv(
+    userId: string,
+    projectId: string,
+    q?: string,
+  ): Promise<{ csv: string; projectKey: string }> {
+    // Resolve project + assert membership.
+    const project = await this.prisma.project.findUnique({
+      where: { id: projectId },
+      include: { workspace: true },
+    });
+    if (!project) throw new BadRequestException('Project not found');
+    const membership = await this.prisma.membership.findUnique({
+      where: {
+        userId_workspaceId: {
+          userId,
+          workspaceId: project.workspaceId,
+        },
+      },
+    });
+    if (!membership) {
+      throw new ForbiddenException('Not a member of this project');
+    }
+
+    // Validate the NLQL query if provided.
+    const trimmedQ = q?.trim() || undefined;
+    if (trimmedQ) {
+      const customFieldDefs = await this.loadCustomFieldDefs(projectId);
+      const result = validateQuery(trimmedQ, { customFieldDefs });
+      if (!result.ok) {
+        throw new BadRequestException(
+          `Invalid NLQL query: ${result.error?.message ?? 'parse error'}`,
+        );
+      }
+    }
+
+    // Fetch all issues for the project with the relations needed for columns.
+    const rows = await this.prisma.issue.findMany({
+      where: { projectId },
+      include: {
+        status: true,
+        assignee: true,
+        reporter: true,
+        labels: { include: { label: true } },
+        project: { select: { key: true } },
+        sprint: { select: { name: true } },
+      },
+      orderBy: { number: 'asc' },
+    });
+
+    // Map to IssueDto for NLQL evaluation.
+    let issueDtos: IssueDto[] = rows.map(toIssueDto);
+
+    // Apply NLQL filter if a query was provided (already validated above).
+    if (trimmedQ) {
+      issueDtos = filterIssues(issueDtos, trimmedQ, {
+        currentUserId: userId,
+      });
+    }
+
+    // Build the CSV.
+    const HEADER = [
+      'Key',
+      'Title',
+      'Type',
+      'Status',
+      'Priority',
+      'Assignee',
+      'Reporter',
+      'Story Points',
+      'Sprint',
+      'Labels',
+      'Due Date',
+      'Created',
+      'Updated',
+    ];
+
+    // We need sprint names and label names per-issue — build lookup maps from
+    // the raw rows keyed by issue id.
+    const sprintNameById = new Map<string, string>();
+    const labelsByIssueId = new Map<string, string[]>();
+    for (const row of rows) {
+      if (row.sprint) {
+        sprintNameById.set(row.id, row.sprint.name);
+      }
+      const names = row.labels.map((il) => il.label.name);
+      if (names.length > 0) {
+        labelsByIssueId.set(row.id, names);
+      }
+    }
+
+    const lines: string[] = [csvRow(HEADER)];
+
+    for (const issue of issueDtos) {
+      const labelNames = labelsByIssueId.get(issue.id) ?? [];
+      lines.push(
+        csvRow([
+          issue.key,
+          issue.title,
+          issue.type,
+          issue.status?.name ?? '',
+          issue.priority,
+          issue.assignee ? (issue.assignee.name || issue.assignee.email) : '',
+          issue.reporter ? (issue.reporter.name || issue.reporter.email) : '',
+          issue.storyPoints ?? '',
+          sprintNameById.get(issue.id) ?? '',
+          labelNames.join('; '),
+          issue.dueDate ?? '',
+          issue.createdAt,
+          issue.updatedAt,
+        ]),
+      );
+    }
+
+    return { csv: lines.join(''), projectKey: project.key };
   }
 
   /**
