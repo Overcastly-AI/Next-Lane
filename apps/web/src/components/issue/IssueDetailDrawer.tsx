@@ -12,6 +12,7 @@ import {
   type UserDto,
 } from '@next-lane/shared';
 import { useIssue, useUpdateIssue, useDeleteIssue, useToggleWatch, useWatcherInfo } from '@/api/issues';
+import { useComponents } from '@/api/components';
 import { Button } from '@/components/ui/Button';
 import { Select } from '@/components/ui/Select';
 import { Textarea } from '@/components/ui/Textarea';
@@ -492,6 +493,13 @@ function DrawerBody({
               </Select>
             </Field>
 
+            <ComponentField
+              projectId={projectId}
+              componentId={issue.componentId}
+              editable={editable}
+              onPatch={onPatch}
+            />
+
             <DueDateField
               dueDate={issue.dueDate ?? null}
               statusCategory={issue.status?.category}
@@ -541,6 +549,52 @@ function DrawerBody({
         </div>
       </div>
     </>
+  );
+}
+
+/**
+ * Component picker sidebar field.
+ * Lists the project's components + a "None" option. Calls onPatch with
+ * { componentId: string | null } on change.
+ */
+function ComponentField({
+  projectId,
+  componentId,
+  editable,
+  onPatch,
+}: {
+  projectId: string;
+  componentId: string | null;
+  editable: boolean;
+  onPatch: (field: keyof IssueDto, value: unknown) => void;
+}) {
+  const componentsQuery = useComponents(projectId);
+  const components = componentsQuery.data ?? [];
+
+  return (
+    <Field label="Component" htmlFor="d-component">
+      {editable ? (
+        <Select
+          id="d-component"
+          data-testid="issue-component-picker"
+          value={componentId ?? ''}
+          onChange={(e) => onPatch('componentId', e.target.value || null)}
+        >
+          <option value="">None</option>
+          {components.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </Select>
+      ) : componentId && components.length > 0 ? (
+        <span className="text-sm text-ink-700">
+          {components.find((c) => c.id === componentId)?.name ?? 'Unknown'}
+        </span>
+      ) : (
+        <span className="text-sm text-ink-400">None</span>
+      )}
+    </Field>
   );
 }
 

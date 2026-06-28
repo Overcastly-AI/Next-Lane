@@ -5,7 +5,7 @@ import { useProject, useUpdateProject, useArchiveProject } from '@/api/projects'
 import { useStatuses, useLabels } from '@/api/meta';
 import { useUpdateStatus, useDeleteStatus } from '@/api/statuses';
 import { useCreateLabel, useDeleteLabel, useUpdateLabel } from '@/api/labels';
-import { useMyRole } from '@/api/workspaces';
+import { useMyRole, useWorkspaceMembers } from '@/api/workspaces';
 import { canEdit } from '@/lib/permissions';
 import { AppHeader } from '@/components/AppHeader';
 import { ProjectNav } from '@/components/project/ProjectNav';
@@ -13,6 +13,7 @@ import { ColumnFormModal } from '@/components/board/ColumnFormModal';
 import { WebhooksSection } from '@/components/settings/WebhooksSection';
 import { ShareSection } from '@/components/settings/ShareSection';
 import { CustomFieldsSection } from '@/components/settings/CustomFieldsSection';
+import { ComponentsSection } from '@/components/settings/ComponentsSection';
 import { WorkflowSection } from '@/components/settings/WorkflowSection';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -66,6 +67,10 @@ export function SettingsPage() {
   const myRole = useMyRole(project?.workspaceId);
   const editable = canEdit(myRole);
   const isAdmin = myRole === Role.ADMIN;
+
+  // Workspace members for the ComponentsSection default-assignee picker.
+  const membersQuery = useWorkspaceMembers(project?.workspaceId);
+  const workspaceUsers = (membersQuery.data ?? []).map((m) => m.user);
 
   // Statuses needed by WorkflowSection (shared with ColumnsSection internally).
   const statusesQuery = useStatuses(projectId);
@@ -131,6 +136,13 @@ export function SettingsPage() {
         <ColumnsSection projectId={projectId} editable={editable} isAdmin={isAdmin} />
 
         <LabelsSection projectId={projectId} editable={editable} isAdmin={isAdmin} />
+
+        <ComponentsSection
+          projectId={projectId}
+          editable={editable}
+          isAdmin={isAdmin}
+          users={workspaceUsers}
+        />
 
         <CustomFieldsSection projectId={projectId} editable={editable} isAdmin={isAdmin} />
 

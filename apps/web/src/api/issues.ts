@@ -140,6 +140,8 @@ export interface UpdateIssueInput {
     dueDate: string | null;
     /** Custom field partial merge — only provided keys change, null clears. */
     customFields: Record<string, CustomFieldValue>;
+    /** Component id to assign, or null to clear. */
+    componentId: string | null;
   }>;
 }
 
