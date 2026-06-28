@@ -34,6 +34,7 @@ import { ActivityPanel } from './ActivityPanel';
 import { AttachmentsPanel } from './AttachmentsPanel';
 import { CustomFieldsDrawerSection } from './CustomFieldsDrawerSection';
 import { LinkedIssuesSection } from './LinkedIssuesSection';
+import { ChecklistSection } from './ChecklistSection';
 
 /** Common agile estimate values offered in the Story Points select. */
 const STORY_POINT_VALUES = [1, 2, 3, 5, 8, 13] as const;
@@ -406,6 +407,13 @@ function DrawerBody({
               issueId={issue.id}
               editable={editable}
               viewerRole={viewerRole}
+            />
+
+            <ChecklistSection
+              issueId={issue.id}
+              items={issue.checklist ?? []}
+              progress={issue.checklistProgress ?? { done: 0, total: 0 }}
+              editable={editable}
             />
 
             <CommentsPanel issueId={issue.id} users={users} editable={editable} />

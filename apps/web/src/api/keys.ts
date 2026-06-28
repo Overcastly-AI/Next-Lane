@@ -42,4 +42,5 @@ export const qk = {
   pokerSession: (sessionId: string) => ['pokerSession', sessionId] as const,
   issueLinks: (issueId: string) => ['issueLinks', issueId] as const,
   watchers: (issueId: string) => ['watchers', issueId] as const,
+  checklist: (issueId: string) => ['checklist', issueId] as const,
 };
