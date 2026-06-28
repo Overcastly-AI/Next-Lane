@@ -528,3 +528,225 @@ The rest is quiet. Fonts, colors, and structure support this one signal without 
 - Fonts bundled as woff2 in dist/assets (ibm-plex-mono-latin-400-normal + ibm-plex-mono-latin-500-normal + plus-jakarta-sans-latin-wght-normal). No runtime CDN dependency.
 - 24/24 e2e tests (board, auth, viewer-aware-ui, onboarding, inline-card-status — all 10 status-picker scenarios) pass. Pre-existing failures in board-columns, issue-detail, labels, themed-dialogs, full-text-search confirmed pre-existing on main branch.
 - Screenshots captured (desktop 1280px + mobile 390px): login, home, board (all 3 columns visible), issue drawer open.
+
+---
+
+## Audit — 2026-06-28 — New surfaces vs Dispatch design system
+
+Surfaces audited: `PersonalAnalyticsPage`, `ProjectAnalyticsPage`, analytics component library (`StatCard`, `WindowSelector`, `FlowChart`, `ThroughputChart`, `CycleTimeChart`, `CategoryBars`, `WorkloadBars`), `AutomationsPage`, automation component library (`AutomationRuleEditor`, `ActionParamsEditor`, `NlqlConditionInput`, `AutomationRunsPanel`), `PersonalBoardPage`, `ProjectNav` (10-tab navigation).
+
+Reference baseline: `ReportsPage` and existing `ui/*` primitives.
+
+---
+
+### Surface 1 — Analytics (`PersonalAnalyticsPage` + `ProjectAnalyticsPage` + analytics/*)
+
+#### P1 — Token violations: `slate-*` throughout page chrome and card shells
+
+`PersonalAnalyticsPage` and `ProjectAnalyticsPage` were written partly in `slate-*` and `bg-slate-50` — the old pre-Dispatch palette — rather than the current `ink-*` tokens. The reference page `ReportsPage.tsx` has the same bug (it was not migrated during the Dispatch rollout), so the analytics pages faithfully copied its pattern. This is the single highest-priority fix because it means every section-card border, every page-level heading, every subtitle, and the main canvas background still render in uncalibrated Tailwind `slate-*` that does not resolve to the Dispatch ink palette.
+
+Specific occurrences (not exhaustive — covers the new analytics files only):
+
+- `PersonalAnalyticsPage.tsx:70` — `bg-slate-50` main canvas. Should be `bg-ink-50`.
+- `PersonalAnalyticsPage.tsx:132,163,198,234` — `border-slate-200` on all four chart/stat section cards. Should be `border-ink-200`.
+- `PersonalAnalyticsPage.tsx:138,168,203,241` — `text-slate-900` section headings. Should be `text-ink-900`.
+- `PersonalAnalyticsPage.tsx:142,245` — `text-slate-500` descriptions. Should be `text-ink-500`.
+- `ProjectAnalyticsPage.tsx:50,55,56` — breadcrumb in AppHeader slot: `text-slate-400`, `text-slate-300`, `text-slate-900`. Should be `text-ink-400`, `text-ink-300`, `text-ink-900` (matching the correctly tokenized breadcrumb already in `AutomationsPage.tsx:56-65`).
+- `ProjectAnalyticsPage.tsx:64` — `bg-slate-50` main canvas.
+- `ProjectAnalyticsPage.tsx:71,74` — `text-slate-900`/`text-slate-500` on page h1 and subtitle.
+- `ProjectAnalyticsPage.tsx:135,141,145,166,172,176,203,209,213` — all chart section card borders, headings, and subtitles using `slate-*`.
+
+Recommended fix: do a targeted find-replace on both files — `slate-` → `ink-` for all `border-`, `text-`, and `bg-` usages in these files. Cross-check against the `AutomationsPage` Shell and inline headings which are already fully tokenized and serve as the correct template.
+
+#### P1 — Chart axis labels and grid lines use raw hex and `gray-*` instead of tokens
+
+Every hand-rolled SVG chart — `FlowChart`, `ThroughputChart`, plus the older `VelocityChart`, `BurndownChart`, `CumulativeFlowChart` — uses raw hex `#e5e7eb` (Tailwind's `gray-200`) for grid strokes and `fill-gray-400` / `fill-gray-600` for axis text labels. This means chart chrome is silently diverging from the `ink-*` palette.
+
+- `FlowChart.tsx:80` — `stroke="#e5e7eb"` grid lines. Should be `stroke` resolving to `ink-200` (either `className="stroke-ink-200"` or `stroke={token}` via a CSS var).
+- `FlowChart.tsx:87` — `fill-gray-400` Y-axis label text. Should be `fill-ink-400`.
+- `FlowChart.tsx:104` — `stroke="#8b95a8"` created dashed line. `#8b95a8` is `ink-400` — the correct value but should be expressed as a token class for maintainability: `className="stroke-ink-400"`.
+- `FlowChart.tsx:140` — `fill-gray-600` X-axis date labels. Should be `fill-ink-600`.
+- `FlowChart.tsx:153,160` — legend label `text-slate-500`. Should be `text-ink-500`.
+- `FlowChart.tsx:157` — `border-gray-400` on dashed legend swatch. Should be `border-ink-400`.
+- `ThroughputChart.tsx:78,85,103,142,154,158,161` — identical issues.
+
+Same issues exist in `VelocityChart.tsx`, `BurndownChart.tsx`, and `CumulativeFlowChart.tsx` (pre-existing, not introduced by these pages, but should be fixed in the same pass).
+
+Recommended fix: in each chart's SVG, replace the literal hex grid-stroke with `className="stroke-ink-200"` (SVG supports class-based stroke), replace `fill-gray-*` text classes with `fill-ink-*` equivalents, and replace legend `text-slate-*` with `text-ink-*`. The Tailwind config resolves `ink-*` correctly so no extra plumbing is needed.
+
+#### P1 — Hardcoded hex color constants for category/priority bars in PersonalAnalyticsPage
+
+`PersonalAnalyticsPage.tsx:13-28` defines `TYPE_COLORS` and `PRIORITY_COLORS` as maps of raw hex strings (e.g. `#22c55e`, `#ef4444`, `#a855f7`, `#f59e0b`). These are passed to `CategoryBars` as a `colorFn` and applied via `style.backgroundColor`. Several of these coincide with Tailwind colors that are not in the Dispatch palette at all (`#a855f7` = purple, not in the token set).
+
+The bar fills for IssueType and Priority will therefore never react to future palette changes and are visually unanchored from the `signal-*`/`ink-*`/`status-*` system.
+
+Recommended fix: expose these semantic colors through the shared `issueMeta` helper (which already maps `IssueType` and `Priority` to display metadata) as Tailwind class strings rather than hex, and teach `CategoryBars.colorFn` to accept only Tailwind class strings. If per-type colors must remain diverse (bug=red, epic=purple), document them as semantic constants in the design token file or `issueMeta`, not as floating hex in the page file.
+
+#### P2 — Page-level heading typography inconsistency between the two analytics pages
+
+`PersonalAnalyticsPage.tsx:55` uses `font-display text-sm font-bold tracking-[-0.01em]` (sub-header style, inside the sticky header bar).  
+`ProjectAnalyticsPage.tsx:71` uses `text-lg font-semibold text-slate-900` (in-content page header, no `font-display`, uses the old `slate-` token).
+
+These are semantically the same concept (the page h1) but rendered in two completely different visual registers. The correct pattern for in-page h1 headings in the Dispatch system — as established by `AutomationsPage.tsx:313` — is `text-lg font-semibold text-ink-900`. `PersonalAnalyticsPage` should adopt the same in-page h1 rather than the sub-header layout, or both pages should consistently use the sub-header layout. Mixed patterns create visual weight inconsistency.
+
+#### P2 — `shadow-sm` vs `shadow-card` discrepancy is pre-existing but not introduced here
+
+The analytics pages correctly use `shadow-card` on section cards. No regression here; noted for completeness.
+
+#### P2 — WindowSelector is correctly tokenized; no issues found
+
+`WindowSelector.tsx` uses `ink-*` and `signal-*` throughout. It is the best-executed component in this surface. No findings.
+
+#### P2 — StatCard is correctly tokenized; no issues found
+
+`StatCard.tsx` uses `ink-*` tokens for borders, text, and skeleton fills. No issues.
+
+#### P3 — Loading skeleton in PersonalAnalyticsPage uses mixed token classes
+
+`PersonalAnalyticsPage.tsx:148` — chart loading placeholder uses `bg-ink-100` (correct).
+`PersonalAnalyticsPage.tsx:173,177,208,212` — breakdown loading skeletons also use `bg-ink-100` (correct).
+
+No action needed — these are already using tokens. Noted as a positive.
+
+#### P3 — No `aria-live` region for the refetching spinner in chart sections
+
+When `isFetching` is true, `ReportsPage` and `ProjectAnalyticsPage` show a `<Spinner>` inline next to the section heading. The Spinner has `role="status"` and `aria-label="Loading"` but the containing section has no `aria-live` region, so screen readers will not announce the in-progress refetch. This is a minor accessibility gap — the initial load is communicated via `LoadingState`, but background refresh is silent.
+
+Recommended fix: wrap the inline `Spinner` in a `<span aria-live="polite" aria-atomic="true">` so refetch activity is announced.
+
+---
+
+### Surface 2 — Automations (`AutomationsPage` + automation/*)
+
+#### P1 — `shadow-sm` instead of `shadow-card` on the rules list container
+
+`AutomationsPage.tsx:473` — the rules list card uses `shadow-sm` (Tailwind default shadow) rather than the Dispatch `shadow-card` token. Every other card surface in the app (stats cards in analytics, section cards in Reports, Standup, Poker) uses `shadow-card`. `shadow-sm` resolves to the default Tailwind shadow which has a warmer/different tint than the ink-tinted `shadow-card`.
+
+Recommended fix: change `shadow-sm` to `shadow-card` at `AutomationsPage.tsx:473`.
+
+#### P2 — Tab implementation is missing `role="tablist"` wrapper and `role="tabpanel"`
+
+`AutomationsPage.tsx:333-361` — the tabs div has individual buttons with `role="tab"` and `aria-selected` (correct) but the containing `<div>` lacks `role="tablist"`. The content panels below also have no `role="tabpanel"` or `aria-labelledby` pairing with the tab buttons. ARIA tab pattern requires: `role="tablist"` on the container, `role="tab"` + `aria-controls="panel-id"` on each button, `role="tabpanel"` + `aria-labelledby="tab-id"` on each content region.
+
+Recommended fix:
+- Add `role="tablist"` to `AutomationsPage.tsx:333`'s `<div>`.
+- Add `id` to each tab button and `aria-controls` pointing to the panel.
+- Wrap each tab panel content in a `<div role="tabpanel" aria-labelledby="...">`.
+- Keyboard: implement arrow-key navigation between tabs (left/right) per ARIA spec.
+
+#### P2 — `AutomationRuleEditor` toggle in form has a non-interactive `aria-hidden` thumb span
+
+`AutomationRuleEditor.tsx:364-377` — the toggle for "Enabled" inside the modal editor uses a visually-rendered `<span aria-hidden="true">` as the fake toggle track, with a hidden `<input type="checkbox" className="sr-only">`. This pattern is acceptable, but the `sr-only` checkbox has `aria-label="Enable rule"` while the visible label says "Enabled"/"Disabled" conditionally. The `aria-label` on the input overrides the programmatic label, and does not reflect the toggled state ("Enable rule" is always the label regardless of current state). This is the same minor gap as the outer `EnableToggle`.
+
+Recommended fix: use `aria-label={enabled ? 'Disable rule' : 'Enable rule'}` to reflect the action (not the current state) — matching the outer `EnableToggle` which already does this correctly.
+
+#### P2 — `ActionParamsEditor` raw `<input type="date">` not going through `ui/Input`
+
+`ActionParamsEditor.tsx:342-354` — the DATE `CustomFieldType` renders a raw `<input type="date">` with manually composed class strings instead of the `<Input>` primitive. The classes are close to correct (same focus ring as `ui/Input`) but this creates a maintenance divergence point. The `<Input>` primitive in `ui/Input.tsx` should be used — it accepts `type="date"` and provides consistent styling, including disabled states, without duplication.
+
+Similarly, `ActionParamsEditor.tsx:358-367` (CHECKBOX type) renders a raw `<input type="checkbox">` with `className="h-4 w-4 rounded border-ink-300"` but no focus-visible ring styling — keyboard users pressing Tab to this field will not see a focus indicator.
+
+Recommended fix: route the DATE input through `<Input type="date">`. For CHECKBOX, add `focus-visible:ring-2 focus-visible:ring-signal-300 focus-visible:ring-offset-1` to the class string.
+
+#### P3 — Condition input `font-mono text-xs` label style differs from other `Field` labels
+
+`NlqlConditionInput.tsx:50-53` — the label uses `text-xs font-semibold text-ink-500` which is a slightly different pattern than labels in `Field.tsx` (`text-xs font-medium text-ink-600`). The weight difference (semibold vs medium) and color difference (ink-500 vs ink-600) are small but inconsistent.
+
+Recommended fix: either adopt the `Field` component wrapper here (so label styling is centralised) or align the class string to `text-xs font-medium text-ink-600`.
+
+#### P3 — `AutomationRunsPanel` timestamp is hidden on mobile by default
+
+`AutomationRunsPanel.tsx:143-151` — the timestamp column is `hidden sm:flex` on mobile and then duplicated below (`col-span-2 text-xs text-ink-400 sm:hidden`). This pattern works but results in doubled DOM nodes. The mobile row is shown as a plain `<p>`, not a `<time>` element with `dateTime`, losing the machine-readable date on mobile.
+
+Recommended fix: render a single `<time dateTime={run.createdAt}>` and use flex-wrap or a `flex-col` layout on small screens rather than duplicating the node.
+
+---
+
+### Surface 3 — PersonalBoardPage
+
+#### P2 — `AddCardComposer` uses raw `<input>` instead of `ui/Input`
+
+`PersonalBoardPage.tsx:768-780` — the inline card composer uses a raw `<input type="text">` with manually-composed class string: `rounded border border-ink-200 bg-white px-2 py-1.5 text-sm text-ink-900 placeholder:text-ink-400 focus:border-signal-500 focus:outline-none focus:ring-2 focus:ring-signal-200`. The ring uses `focus:ring-*` (not `focus-visible:ring-*`) so it shows on mouse click, not just keyboard focus — inconsistent with the rest of the app which uses `focus-visible`. Additionally this diverges from `ui/Input` which is the single source of truth for input styling.
+
+Recommended fix: replace the raw `<input>` at line 768 with `<Input>` from `@/components/ui/Input`. The `Input` component already handles the correct `focus-visible` ring.
+
+#### P2 — `PromoteCardModal` selects use raw `<select>` elements, not `ui/Select`
+
+`PersonalBoardPage.tsx:999-1014` and `1034-1047` — the workspace and project dropdowns in the promote modal are raw `<select>` elements with manually-composed class strings. `ui/Select` exists precisely for this and uses the same class pattern. Using raw elements means future Select styling changes will not propagate.
+
+Recommended fix: replace both raw `<select>` elements with `<Select>` from `@/components/ui/Select`.
+
+#### P3 — Column accent color is hard-wired to `signal-300` for all columns
+
+`PersonalBoardPage.tsx:296` — every personal board column has `border-t-signal-300` as its top accent. The project kanban board in `BoardColumn.tsx` uses category-driven accent colors (the `CATEGORY_ACCENT` map with distinct stone/amber/emerald bars). The personal board having all columns in the same cobalt signal accent makes all columns look identical at a glance, removing a key visual parsing cue.
+
+Recommended fix: cycle through a small set of Dispatch-compatible accent colors keyed to column order or a `color` field on the column DTO (e.g., `signal-300`, `amber-300`, `emerald-400`, `violet-300`). This matches the behavior of the project board and gives the personal board better visual scanability.
+
+#### P3 — MoveCardMenu has no Esc key handler
+
+`PersonalBoardPage.tsx:696-728` — the card move menu opens as a popover and closes on outside click via `onBlur`. There is no `onKeyDown` handler to close on `Escape`. Every other menu/popover in the app (e.g., the column editor in `ColumnFormModal`, `AddCardComposer`) handles Escape. This is an accessibility and keyboard-navigation gap.
+
+Recommended fix: add `onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}` to the menu `<div>` and ensure `tabIndex={-1}` is present so the div can receive keyboard events.
+
+---
+
+### Surface 4 — ProjectNav (10 tabs)
+
+#### P1 — Ten flat tabs create a navigation/UX problem on both desktop and mobile
+
+`ProjectNav.tsx` now renders 10 peer-level tabs: Board, Backlog, Triage, Reports, Analytics, Roadmap, Poker, Standup, Automation, Settings. On desktop at 1280px, this row is borderline overfull — the tabs fit, but only because the label text is short. At 1024px (common laptop) or any reduced-width window, overflow-x-auto kicks in silently with no affordance that there are more tabs. On mobile (390px), the first 5-6 tabs are visible and the rest require horizontal scrolling with no visual indicator (no scroll shadow, no fade-out gradient, no "More" indicator).
+
+The 10 tabs also mix navigation depth levels: "Board", "Backlog", and "Triage" are primary work surfaces; "Reports", "Analytics", and "Roadmap" are informational; "Poker" and "Standup" are meeting tools; "Automation" and "Settings" are configuration. Flat presentation implies equal importance and frequency of use, which does not match reality.
+
+**Concrete recommended fix — "More" overflow menu approach:**
+
+Keep the 5 primary tabs visible at all widths: Board, Backlog, Triage, Reports, Settings. Collapse the remaining 5 (Analytics, Roadmap, Poker, Standup, Automation) under a "More" button that opens a dropdown, using the existing `ConfirmDialog`/dropdown pattern already in the codebase. The "More" button should indicate when the current route is inside the collapsed group (e.g., change to `signal-600` text to signal an active child).
+
+Implementation sketch:
+```
+PRIMARY_TABS = [Board, Backlog, Triage, Reports, Settings]
+OVERFLOW_TABS = [Analytics, Roadmap, Poker, Standup, Automation]
+```
+The `ProjectNav` renders the primary tabs as `NavLink`s, then a "More" `<button>` with a chevron that opens a positioned dropdown listing the overflow tabs. This reduces the baseline nav to 6 items (5 + More button), fits comfortably at 390px without scrolling, and makes the most-used surfaces immediately reachable.
+
+Alternative if grouping is preferred: use a two-level nav — a row of section groups ("Work", "Insights", "Tools", "Config") with sub-tabs rendering below on selection. This is heavier to implement but provides better progressive disclosure.
+
+#### P2 — No scroll shadow or fade gradient on the current overflow-x-auto nav at mobile
+
+`ProjectNav.tsx:25` — `overflow-x-auto` is used but there is no CSS mask or `--webkit-overflow-scrolling` affordance to indicate scrollability to the user. On mobile the horizontal scroll is completely invisible — a user seeing Board/Backlog/Triage/Reports/Analytics in the viewport has no signal that Roadmap through Settings exist.
+
+Recommended fix (independent of the overflow-menu fix): add a right-side fade gradient overlay using `::after` pseudo-element or a sibling `<div>` with `pointer-events-none bg-gradient-to-l from-white to-transparent absolute right-0` when there are off-screen tabs, or at minimum a `-webkit-overflow-scrolling: touch` and `scrollbar-width: none` to give smooth scrolling without the intrusive native scrollbar.
+
+#### P3 — No `aria-label` on the `<nav>` element
+
+`ProjectNav.tsx:25` — the `<nav>` element has no `aria-label`. With multiple `<nav>` landmarks on the page (the global sidebar and this project-level sub-nav), screen readers cannot distinguish them. WCAG 2.1 landmark guidance recommends unique labels for multiple same-type landmarks.
+
+Recommended fix: `<nav aria-label="Project navigation">`.
+
+---
+
+### Cross-cutting summary
+
+**What is done well:**
+- `StatCard`, `WindowSelector`, `CycleTimeChart`, `WorkloadBars`, and `CategoryBars` are cleanly tokenized with `ink-*` and `signal-*` — no violations.
+- `AutomationsPage` Shell and inline headings are fully tokenized (correct contrast/colors compared to the analytics pages).
+- All four new surfaces use the `EmptyState`/`LoadingState`/`ErrorState` shared primitives — no one-off empty/error patterns.
+- `AutomationRuleEditor` and `AutomationRunsPanel` use `ui/Modal`, `ui/Button`, `ui/Input`, `ui/Select`, `ui/Field`, `ui/Toast` throughout — no one-off re-implementations of primitives.
+- `PersonalBoardPage` drag-and-drop implementation uses `motion-safe:nl-card-merge-in` and `rotate-[0.5deg]` on the drag overlay — respects reduced-motion and adds a polished physics cue.
+- Focus rings are present on all interactive elements in `PersonalBoardPage` and `AutomationsPage` (except the Checkbox in `ActionParamsEditor` noted above).
+- Run status badges in `AutomationRunsPanel` use `ring-1` for border instead of `border`, producing crisper rendering at small sizes — a nice touch.
+
+---
+
+### Top 5 for the frontend builder (prioritized)
+
+1. **[P1] Migrate `slate-*` → `ink-*` in both analytics pages.** `PersonalAnalyticsPage.tsx` and `ProjectAnalyticsPage.tsx` have 15+ `slate-*` class usages on page chrome (main background, section card borders, all heading/subtitle text). Replace with the matching `ink-*` tokens. Template to follow: `AutomationsPage` Shell which is already correct. Also migrate `ReportsPage.tsx` in the same pass — it is the source of the copied pattern.
+
+2. **[P1] Tokenize SVG chart axis labels and grid lines.** `FlowChart.tsx` and `ThroughputChart.tsx` (and the older `VelocityChart`, `BurndownChart`, `CumulativeFlowChart`) use raw hex `#e5e7eb` for grid strokes and `fill-gray-400`/`fill-gray-600`/`text-slate-500` for labels and legends. Replace with `stroke-ink-200`/`fill-ink-400`/`fill-ink-600`/`text-ink-500` as Tailwind classes. Grid stroke hex `#e5e7eb` is gray-200, not `ink-200` (`#dde1e9`) — the difference is subtle but exists.
+
+3. **[P1] Fix 10-tab ProjectNav overflow UX.** Collapse the lowest-frequency 5 tabs (Analytics, Roadmap, Poker, Standup, Automation) under a "More" dropdown, keeping Board/Backlog/Triage/Reports/Settings always visible. The current horizontal-scroll-only approach is invisible on mobile and the unlabeled scroll is an accessibility and discoverability failure.
+
+4. **[P2] Fix ARIA tab pattern in AutomationsPage.** Add `role="tablist"` to the tabs container div, add `role="tabpanel"` + `aria-labelledby` to the content regions, and implement left/right arrow-key navigation between tabs. Currently `role="tab"` is present but without the required container and panel roles the widget is broken for assistive technology.
+
+5. **[P2] Replace raw `<input>` and `<select>` with `ui/Input` and `ui/Select` in PersonalBoardPage.** `AddCardComposer` (line 768) uses a raw `<input>` with a manually-composed class string that uses `focus:ring-*` instead of `focus-visible:ring-*`, diverging from the design system. The `PromoteCardModal` (lines 999, 1034) uses raw `<select>` elements. Both should use the ui primitives to stay in sync with future token changes and to get consistent focus behavior.
+
