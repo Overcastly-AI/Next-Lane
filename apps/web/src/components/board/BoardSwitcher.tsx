@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { BoardType, BOARD_TYPES, type BoardSummaryDto } from '@next-lane/shared';
+import { BoardType, BOARD_TYPES, type BoardColorRule, type BoardSummaryDto } from '@next-lane/shared';
 import { cn } from '@/lib/cn';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -9,6 +9,8 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { useToast } from '@/components/ui/Toast';
 import { errorMessage } from '@/lib/errorMessage';
 import { useBoards, useCreateBoard, useUpdateBoard, useDeleteBoard } from '@/api/boards';
+import { useCustomFields } from '@/api/custom-fields';
+import { CardColorsManager } from './CardColorsManager';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -153,12 +155,16 @@ function CreateBoardModal({
 // Board settings modal (rename / change type)
 // ---------------------------------------------------------------------------
 
+type SettingsTab = 'general' | 'colors';
+
 interface BoardSettingsModalProps {
   open: boolean;
   onClose: () => void;
   board: BoardSummaryDto;
   projectId: string;
   onDeleted: () => void;
+  /** Initial tab to open (default: 'general'). */
+  initialTab?: SettingsTab;
 }
 
 function BoardSettingsModal({
@@ -167,10 +173,14 @@ function BoardSettingsModal({
   board,
   projectId,
   onDeleted,
+  initialTab = 'general',
 }: BoardSettingsModalProps) {
   const toast = useToast();
   const updateBoard = useUpdateBoard(projectId);
   const deleteBoard = useDeleteBoard(projectId);
+  const customFieldsQuery = useCustomFields(projectId);
+
+  const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab);
   const [name, setName] = useState(board.name);
   const [type, setType] = useState<BoardType>(board.type);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -179,7 +189,8 @@ function BoardSettingsModal({
   useEffect(() => {
     setName(board.name);
     setType(board.type);
-  }, [board.id, board.name, board.type]);
+    setActiveTab(initialTab);
+  }, [board.id, board.name, board.type, initialTab]);
 
   function handleSave(e: React.FormEvent) {
     e.preventDefault();
@@ -217,6 +228,18 @@ function BoardSettingsModal({
     });
   }
 
+  async function handleSaveColorRules(rules: BoardColorRule[]) {
+    await updateBoard.mutateAsync(
+      { boardId: board.id, patch: { colorRules: rules } },
+    );
+    toast.success('Card colors saved.');
+  }
+
+  const tabs: { id: SettingsTab; label: string }[] = [
+    { id: 'general', label: 'General' },
+    { id: 'colors', label: 'Card colors' },
+  ];
+
   return (
     <>
       {/* BUG 2 FIX: hide the settings modal while the confirm dialog is open so
@@ -227,87 +250,131 @@ function BoardSettingsModal({
         open={open && !confirmDelete}
         onClose={onClose}
         title="Board settings"
-        size="max-w-sm"
+        size="max-w-md"
         footer={
-          <div className="flex w-full items-center justify-between">
-            <Button
-              variant="danger"
-              size="sm"
-              type="button"
-              data-testid="board-delete-button"
-              disabled={board.isDefault}
-              title={
-                board.isDefault
-                  ? 'Cannot delete the default board'
-                  : 'Delete this board'
-              }
-              onClick={() => {
-                if (board.isDefault) {
-                  toast.error('The default board cannot be deleted.');
-                  return;
-                }
-                setConfirmDelete(true);
-              }}
-            >
-              Delete board
-            </Button>
-            <div className="flex gap-2">
-              <Button variant="secondary" type="button" onClick={onClose}>
-                Cancel
-              </Button>
+          activeTab === 'general' ? (
+            <div className="flex w-full items-center justify-between">
               <Button
-                type="submit"
-                form="board-settings-form"
-                loading={updateBoard.isPending}
-                disabled={!name.trim()}
+                variant="danger"
+                size="sm"
+                type="button"
+                data-testid="board-delete-button"
+                disabled={board.isDefault}
+                title={
+                  board.isDefault
+                    ? 'Cannot delete the default board'
+                    : 'Delete this board'
+                }
+                onClick={() => {
+                  if (board.isDefault) {
+                    toast.error('The default board cannot be deleted.');
+                    return;
+                  }
+                  setConfirmDelete(true);
+                }}
               >
-                Save
+                Delete board
               </Button>
+              <div className="flex gap-2">
+                <Button variant="secondary" type="button" onClick={onClose}>
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  form="board-settings-form"
+                  loading={updateBoard.isPending}
+                  disabled={!name.trim()}
+                >
+                  Save
+                </Button>
+              </div>
             </div>
-          </div>
+          ) : (
+            <Button variant="secondary" type="button" onClick={onClose}>
+              Close
+            </Button>
+          )
         }
       >
-        <form id="board-settings-form" onSubmit={handleSave} className="space-y-4">
-          <div className="space-y-1.5">
-            <label
-              htmlFor="board-settings-name"
-              className="block text-xs font-semibold text-slate-600"
+        {/* Tab bar */}
+        <div className="mb-4 flex gap-1 border-b border-slate-100 pb-0">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              data-testid={tab.id === 'colors' ? 'card-colors-open' : undefined}
+              onClick={() => setActiveTab(tab.id)}
+              className={cn(
+                'rounded-t px-3 py-1.5 text-xs font-semibold transition-colors',
+                'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300',
+                activeTab === tab.id
+                  ? 'border-b-2 border-brand-600 text-brand-700'
+                  : 'text-slate-500 hover:text-slate-700',
+              )}
+              aria-selected={activeTab === tab.id}
+              role="tab"
             >
-              Name
-            </label>
-            <Input
-              id="board-settings-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-              autoFocus
-            />
-          </div>
-          <div className="space-y-1.5">
-            <label
-              htmlFor="board-settings-type"
-              className="block text-xs font-semibold text-slate-600"
-            >
-              Type
-            </label>
-            <Select
-              id="board-settings-type"
-              value={type}
-              onChange={(e) => setType(e.target.value as BoardType)}
-            >
-              {BOARD_TYPES.map((t) => (
-                <option key={t} value={t}>
-                  {boardTypeLabel(t)}
-                </option>
-              ))}
-            </Select>
-          </div>
-          {board.isDefault && (
-            <p className="text-xs text-slate-400">
-              This is the default board and cannot be deleted.
-            </p>
-          )}
-        </form>
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* General tab */}
+        {activeTab === 'general' && (
+          <form id="board-settings-form" onSubmit={handleSave} className="space-y-4">
+            <div className="space-y-1.5">
+              <label
+                htmlFor="board-settings-name"
+                className="block text-xs font-semibold text-slate-600"
+              >
+                Name
+              </label>
+              <Input
+                id="board-settings-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+                autoFocus
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label
+                htmlFor="board-settings-type"
+                className="block text-xs font-semibold text-slate-600"
+              >
+                Type
+              </label>
+              <Select
+                id="board-settings-type"
+                value={type}
+                onChange={(e) => setType(e.target.value as BoardType)}
+              >
+                {BOARD_TYPES.map((t) => (
+                  <option key={t} value={t}>
+                    {boardTypeLabel(t)}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            {board.isDefault && (
+              <p className="text-xs text-slate-400">
+                This is the default board and cannot be deleted.
+              </p>
+            )}
+          </form>
+        )}
+
+        {/* Card colors tab */}
+        {activeTab === 'colors' && (
+          <CardColorsManager
+            boardId={board.id}
+            projectId={projectId}
+            initialRules={board.colorRules ?? []}
+            customFieldDefs={customFieldsQuery.data ?? []}
+            onSave={handleSaveColorRules}
+            isSaving={updateBoard.isPending}
+          />
+        )}
       </Modal>
 
       <ConfirmDialog
@@ -339,6 +406,13 @@ export interface BoardSwitcherProps {
   onSelectBoard: (boardId: string) => void;
   /** Called after a board is deleted so the parent can fall back to the default. */
   onBoardDeleted: () => void;
+  /**
+   * When true the settings modal for the selected board opens immediately on the
+   * "Card colors" tab. Used by the board toolbar's "Card colors" button.
+   */
+  openColorsTab?: boolean;
+  /** Callback to reset `openColorsTab` after the modal has opened. */
+  onColorsTabOpened?: () => void;
 }
 
 /**
@@ -350,6 +424,8 @@ export function BoardSwitcher({
   selectedBoardId,
   onSelectBoard,
   onBoardDeleted,
+  openColorsTab = false,
+  onColorsTabOpened,
 }: BoardSwitcherProps) {
   const boardsQuery = useBoards(projectId);
   const boards = boardsQuery.data ?? [];
@@ -358,7 +434,16 @@ export function BoardSwitcher({
   const [open, setOpen] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   const [settingsBoard, setSettingsBoard] = useState<BoardSummaryDto | null>(null);
+  const [settingsInitialTab, setSettingsInitialTab] = useState<SettingsTab>('general');
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // When parent asks to open the colors tab for the selected board, do so.
+  useEffect(() => {
+    if (!openColorsTab || !selected) return;
+    setSettingsBoard(selected);
+    setSettingsInitialTab('colors');
+    onColorsTabOpened?.();
+  }, [openColorsTab, selected, onColorsTabOpened]);
 
   // Close the dropdown when clicking outside or pressing Escape.
   useEffect(() => {
@@ -514,6 +599,7 @@ export function BoardSwitcher({
                         onClick={(e) => {
                           e.stopPropagation();
                           setSettingsBoard(board);
+                          setSettingsInitialTab('general');
                           setOpen(false);
                         }}
                       >
@@ -578,10 +664,11 @@ export function BoardSwitcher({
       {settingsBoard && (
         <BoardSettingsModal
           open={!!settingsBoard}
-          onClose={() => setSettingsBoard(null)}
+          onClose={() => { setSettingsBoard(null); setSettingsInitialTab('general'); }}
           board={settingsBoard}
           projectId={projectId}
           onDeleted={onBoardDeleted}
+          initialTab={settingsInitialTab}
         />
       )}
     </>

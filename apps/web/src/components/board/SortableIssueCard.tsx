@@ -9,6 +9,8 @@ export function SortableIssueCard({
   onOpen,
   onStatusChange,
   editable = true,
+  accentColor,
+  accentRuleId,
 }: {
   issue: IssueDto;
   /** Project statuses forwarded to the inline status picker. */
@@ -18,6 +20,10 @@ export function SortableIssueCard({
   onStatusChange: (issueId: string, statusId: string) => void;
   /** Whether the current user may edit issues (hides the picker for VIEWERs). */
   editable?: boolean;
+  /** Hex color from the first matching color rule (undefined = no match). */
+  accentColor?: string;
+  /** Rule id that produced accentColor — set as data-color-rule-id on the card. */
+  accentRuleId?: string;
 }) {
   const {
     attributes,
@@ -64,6 +70,8 @@ export function SortableIssueCard({
         statuses={statuses}
         onStatusChange={(statusId) => onStatusChange(issue.id, statusId)}
         editable={editable}
+        accentColor={accentColor}
+        accentRuleId={accentRuleId}
       />
     </div>
   );

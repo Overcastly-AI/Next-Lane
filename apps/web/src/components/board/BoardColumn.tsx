@@ -3,8 +3,9 @@ import {
   SortableContext,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
-import type { IssueDto, StatusDto } from '@next-lane/shared';
+import type { BoardColorRule, EvalContext, IssueDto, StatusDto } from '@next-lane/shared';
 import { SortableIssueCard } from './SortableIssueCard';
+import { resolveCardColor } from '@/lib/cardColors';
 import { cn } from '@/lib/cn';
 
 /**
@@ -38,6 +39,8 @@ export function BoardColumn({
   onAdd,
   onOpenIssue,
   onStatusChange,
+  colorRules = [],
+  colorCtx,
 }: {
   status: StatusDto;
   issues: IssueDto[];
@@ -50,6 +53,10 @@ export function BoardColumn({
   onOpenIssue: (id: string) => void;
   /** Called when the user selects a new status from a card's inline picker. */
   onStatusChange: (issueId: string, statusId: string) => void;
+  /** Board color rules for conditional card coloring. */
+  colorRules?: BoardColorRule[];
+  /** NLQL evaluation context (users, currentUserId, customFieldDefs). */
+  colorCtx?: EvalContext;
 }) {
   const { setNodeRef, isOver } = useDroppable({
     id: status.id,
@@ -111,16 +118,24 @@ export function BoardColumn({
           items={issues.map((i) => i.id)}
           strategy={verticalListSortingStrategy}
         >
-          {issues.map((issue) => (
-            <SortableIssueCard
-              key={issue.id}
-              issue={issue}
-              statuses={statuses}
-              onOpen={onOpenIssue}
-              onStatusChange={onStatusChange}
-              editable={editable}
-            />
-          ))}
+          {issues.map((issue) => {
+            const matchedRule =
+              colorRules.length > 0 && colorCtx
+                ? resolveCardColor(colorRules, issue, colorCtx)
+                : null;
+            return (
+              <SortableIssueCard
+                key={issue.id}
+                issue={issue}
+                statuses={statuses}
+                onOpen={onOpenIssue}
+                onStatusChange={onStatusChange}
+                editable={editable}
+                accentColor={matchedRule?.color}
+                accentRuleId={matchedRule?.id}
+              />
+            );
+          })}
         </SortableContext>
 
         {issues.length === 0 && editable && (

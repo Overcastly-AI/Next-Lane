@@ -18,6 +18,7 @@ import {
   Priority,
   filterIssues,
   validateQuery,
+  type EvalContext,
   type IssueDto,
   type LabelDto,
   type SprintDto,
@@ -55,6 +56,7 @@ import { CreateIssueModal } from '@/components/board/CreateIssueModal';
 import { IssueDetailDrawer } from '@/components/issue/IssueDetailDrawer';
 import { PresenceAvatars } from '@/components/board/PresenceAvatars';
 import { BoardSwitcher } from '@/components/board/BoardSwitcher';
+import { CardColorLegend } from '@/components/board/CardColorLegend';
 import { useToast } from '@/components/ui/Toast';
 import { errorMessage } from '@/lib/errorMessage';
 import { cn } from '@/lib/cn';
@@ -195,6 +197,9 @@ export function BoardPage() {
   // NLQL query bar state
   const [nlqlQuery, setNlqlQuery] = useState('');
 
+  // Controls opening the Card Colors tab inside the BoardSettingsModal via the toolbar button.
+  const [openColorsTab, setOpenColorsTab] = useState(false);
+
   // ── Modals ────────────────────────────────────────────────────────────────
 
   const [createForStatus, setCreateForStatus] = useState<string | null>(null);
@@ -236,6 +241,28 @@ export function BoardPage() {
     if (!q) return null; // empty = no filter, no error
     return validateQuery(q, { customFieldDefs });
   }, [nlqlQuery, customFieldDefs]);
+
+  // ── Card colors ───────────────────────────────────────────────────────────
+
+  const colorRules = useMemo(
+    () => board?.board?.colorRules ?? [],
+    [board],
+  );
+
+  // EvalContext for color rule evaluation — rebuilt when users/customFields change.
+  const colorCtx = useMemo<EvalContext>(
+    () => ({
+      currentUserId: currentUser?.id,
+      users: (usersQuery.data ?? []).map((u) => ({
+        id: u.id,
+        name: u.name,
+        email: u.email,
+      })),
+      customFieldDefs,
+      now: new Date(),
+    }),
+    [currentUser?.id, usersQuery.data, customFieldDefs],
+  );
 
   // ── Grouped issues ────────────────────────────────────────────────────────
 
@@ -523,6 +550,8 @@ export function BoardPage() {
             selectedBoardId={selectedBoardId}
             onSelectBoard={handleSelectBoard}
             onBoardDeleted={handleBoardDeleted}
+            openColorsTab={openColorsTab}
+            onColorsTabOpened={() => setOpenColorsTab(false)}
           />
 
           {/* Search */}
@@ -590,8 +619,39 @@ export function BoardPage() {
           />
         </div>
 
+        {/* Card color legend — only when there are labeled rules */}
+        {colorRules.length > 0 && (
+          <div className="flex items-center gap-2">
+            <CardColorLegend rules={colorRules} />
+          </div>
+        )}
+
         <div className="ml-auto flex items-center gap-3 sm:ml-auto">
           <PresenceAvatars viewers={presenceViewers} />
+
+          {/* Card colors button */}
+          {editable && (
+            <button
+              type="button"
+              data-testid="card-colors-open"
+              aria-label="Manage card colors"
+              title="Card colors"
+              onClick={() => setOpenColorsTab(true)}
+              className={cn(
+                'inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-sm transition-colors',
+                'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200',
+                colorRules.length > 0
+                  ? 'border-brand-300 bg-brand-50 text-brand-700 hover:bg-brand-100'
+                  : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50',
+              )}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                <circle cx="12" cy="12" r="4" />
+                <path strokeLinecap="round" d="M12 2v2M12 20v2M2 12h2M20 12h2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+              </svg>
+              {colorRules.length > 0 ? `Colors (${colorRules.length})` : 'Colors'}
+            </button>
+          )}
 
           {board?.issuesTruncated && (
             <span
@@ -660,6 +720,8 @@ export function BoardPage() {
                 onAdd={(id) => setCreateForStatus(id)}
                 onOpenIssue={openIssue}
                 onStatusChange={handleCardStatusChange}
+                colorRules={colorRules}
+                colorCtx={colorCtx}
               />
             ))}
           </div>

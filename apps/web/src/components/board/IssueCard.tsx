@@ -39,6 +39,13 @@ export interface IssueCardProps extends HTMLAttributes<HTMLDivElement> {
    * renders the card without the picker rather than crashing.
    */
   editable?: boolean;
+  /**
+   * When set, renders a left accent stripe in this hex color and sets
+   * data-color-rule-id for e2e assertions.
+   */
+  accentColor?: string;
+  /** The color rule id that produced accentColor (for data-color-rule-id). */
+  accentRuleId?: string;
 }
 
 /** Presentational card. Drag wiring lives in SortableIssueCard. */
@@ -51,6 +58,8 @@ export const IssueCard = forwardRef<HTMLDivElement, IssueCardProps>(
       statuses,
       onStatusChange,
       editable = true,
+      accentColor,
+      accentRuleId,
       className,
       ...rest
     },
@@ -62,16 +71,30 @@ export const IssueCard = forwardRef<HTMLDivElement, IssueCardProps>(
       <div
         ref={ref}
         data-testid="issue-card"
+        data-color-rule-id={accentRuleId ?? undefined}
         className={cn(
-          'group rounded-md border border-slate-200 bg-white p-3 shadow-card',
+          'group relative rounded-md border border-slate-200 bg-white shadow-card',
           'transition-all duration-150',
           'hover:border-slate-300 hover:shadow-cardHover hover:-translate-y-px',
           dragging && 'opacity-40',
           overlay && 'rotate-1 cursor-grabbing shadow-cardHover scale-105',
+          // When we have an accent color we use flex layout to accommodate the stripe
+          accentColor ? 'flex overflow-hidden p-0' : 'p-3',
           className,
         )}
         {...rest}
       >
+        {/* Left accent stripe — rendered when a color rule matches */}
+        {accentColor && (
+          <div
+            aria-hidden="true"
+            className="w-1 shrink-0 motion-safe:transition-colors motion-safe:duration-150"
+            style={{ backgroundColor: accentColor }}
+          />
+        )}
+
+        {/* Card body — identical content, wrapped in a padding div when stripe present */}
+        <div className={cn('min-w-0 flex-1', accentColor ? 'p-3' : undefined)}>
         {/* Title */}
         <p className="mb-2 line-clamp-3 text-sm font-medium leading-snug text-slate-800">
           {issue.title}
@@ -167,6 +190,7 @@ export const IssueCard = forwardRef<HTMLDivElement, IssueCardProps>(
               )}
             <Avatar user={issue.assignee} size="sm" />
           </div>
+        </div>
         </div>
       </div>
     );
