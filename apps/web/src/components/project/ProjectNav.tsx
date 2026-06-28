@@ -20,14 +20,14 @@ export function ProjectNav({ projectId }: { projectId: string }) {
     { to: `/projects/${projectId}/settings`, label: 'Settings' },
   ];
   return (
-    <nav className="flex items-center gap-1 border-b border-ink-200 bg-white px-4">
+    <nav className="flex items-center gap-1 overflow-x-auto border-b border-ink-200 bg-white px-4">
       {tabs.map((tab) => (
         <NavLink
           key={tab.to}
           to={tab.to}
           className={({ isActive }) =>
             cn(
-              'relative -mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors duration-[120ms]',
+              'relative -mb-px shrink-0 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium transition-colors duration-[120ms]',
               isActive
                 ? 'border-signal-600 text-signal-700 font-semibold'
                 : 'border-transparent text-ink-500 hover:text-ink-800',
