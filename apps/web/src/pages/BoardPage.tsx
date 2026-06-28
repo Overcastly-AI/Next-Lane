@@ -16,15 +16,25 @@ import {
   SprintState,
   IssueType,
   Priority,
+  filterIssues,
+  validateQuery,
   type IssueDto,
   type LabelDto,
   type SprintDto,
   type StatusDto,
+  type SavedFilterDto,
 } from '@next-lane/shared';
 import { useBoards, useBoardDefault, useBoardView } from '@/api/boards';
 import { useMoveIssue } from '@/api/issues';
 import { useLabels, useSprints, useUsers } from '@/api/meta';
 import { useMyRole } from '@/api/workspaces';
+import { useCustomFields } from '@/api/custom-fields';
+import {
+  useSavedFilters,
+  useCreateSavedFilter,
+  useUpdateSavedFilter,
+  useDeleteSavedFilter,
+} from '@/api/saved-filters';
 import { canEdit } from '@/lib/permissions';
 import { endDateStatus } from '@/lib/sprintDates';
 import { useBoardRealtime, usePresence } from '@/api/socket';
@@ -35,6 +45,8 @@ import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Avatar } from '@/components/ui/Avatar';
 import { Badge } from '@/components/ui/Badge';
+import { Modal } from '@/components/ui/Modal';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { ErrorState, LoadingState, EmptyState } from '@/components/ui/States';
 import { ProjectNav } from '@/components/project/ProjectNav';
 import { BoardColumn } from '@/components/board/BoardColumn';
@@ -143,6 +155,8 @@ export function BoardPage() {
   const usersQuery = useUsers();
   const labelsQuery = useLabels(projectId);
   const sprintsQuery = useSprints(projectId);
+  const customFieldsQuery = useCustomFields(projectId);
+  const savedFiltersQuery = useSavedFilters(projectId);
 
   // Realtime — pass boardId so socket events invalidate the right cache entry.
   useBoardRealtime(projectId, undefined, selectedBoardId ?? undefined);
@@ -178,6 +192,9 @@ export function BoardPage() {
   const [typeFilter, setTypeFilter] = useState<IssueType[]>([]);
   const [priorityFilter, setPriorityFilter] = useState<Priority[]>([]);
 
+  // NLQL query bar state
+  const [nlqlQuery, setNlqlQuery] = useState('');
+
   // ── Modals ────────────────────────────────────────────────────────────────
 
   const [createForStatus, setCreateForStatus] = useState<string | null>(null);
@@ -201,6 +218,25 @@ export function BoardPage() {
     );
   }, [wantsNewIssue, statuses, editable, setSearchParams]);
 
+  // ── NLQL validation ───────────────────────────────────────────────────────
+
+  const customFieldDefs = useMemo(
+    () =>
+      (customFieldsQuery.data ?? []).map((d) => ({
+        id: d.id,
+        key: d.key,
+        name: d.name,
+        type: d.type,
+      })),
+    [customFieldsQuery.data],
+  );
+
+  const nlqlValidation = useMemo(() => {
+    const q = nlqlQuery.trim();
+    if (!q) return null; // empty = no filter, no error
+    return validateQuery(q, { customFieldDefs });
+  }, [nlqlQuery, customFieldDefs]);
+
   // ── Grouped issues ────────────────────────────────────────────────────────
 
   const issuesByStatus = useMemo(() => {
@@ -208,20 +244,50 @@ export function BoardPage() {
     if (!board) return map;
     for (const s of statuses) map.set(s.id, []);
     const term = search.trim().toLowerCase();
-    for (const issue of board.issues) {
-      if (term && !issue.title.toLowerCase().includes(term)) continue;
+
+    // Pill-filtered issues first.
+    const pillFiltered = board.issues.filter((issue) => {
+      if (term && !issue.title.toLowerCase().includes(term)) return false;
       if (assigneeFilter) {
-        if (assigneeFilter === 'unassigned' && issue.assigneeId) continue;
+        if (assigneeFilter === 'unassigned' && issue.assigneeId) return false;
         if (assigneeFilter !== 'unassigned' && issue.assigneeId !== assigneeFilter)
-          continue;
+          return false;
       }
       if (labelFilter.length > 0) {
         const ids = new Set((issue.labels ?? []).map((l) => l.id));
-        if (!labelFilter.every((id) => ids.has(id))) continue;
+        if (!labelFilter.every((id) => ids.has(id))) return false;
       }
-      if (typeFilter.length > 0 && !typeFilter.includes(issue.type)) continue;
+      if (typeFilter.length > 0 && !typeFilter.includes(issue.type)) return false;
       if (priorityFilter.length > 0 && !priorityFilter.includes(issue.priority))
-        continue;
+        return false;
+      return true;
+    });
+
+    // Apply NLQL on top of pill-filtered set when query is valid and non-empty.
+    const trimmedQuery = nlqlQuery.trim();
+    let finalIssues: IssueDto[];
+    if (trimmedQuery && nlqlValidation?.ok) {
+      const users = (usersQuery.data ?? []).map((u) => ({
+        id: u.id,
+        name: u.name,
+        email: u.email,
+      }));
+      try {
+        finalIssues = filterIssues(pillFiltered, trimmedQuery, {
+          currentUserId: currentUser?.id,
+          users,
+          customFieldDefs,
+          now: new Date(),
+        });
+      } catch {
+        // Evaluation error — fall back to pill-filtered set (do not crash).
+        finalIssues = pillFiltered;
+      }
+    } else {
+      finalIssues = pillFiltered;
+    }
+
+    for (const issue of finalIssues) {
       const arr = map.get(issue.statusId);
       if (arr) arr.push(issue);
     }
@@ -229,7 +295,20 @@ export function BoardPage() {
       arr.sort((a, b) => (a.rank < b.rank ? -1 : a.rank > b.rank ? 1 : 0));
     }
     return map;
-  }, [board, statuses, search, assigneeFilter, labelFilter, typeFilter, priorityFilter]);
+  }, [
+    board,
+    statuses,
+    search,
+    assigneeFilter,
+    labelFilter,
+    typeFilter,
+    priorityFilter,
+    nlqlQuery,
+    nlqlValidation,
+    customFieldDefs,
+    usersQuery.data,
+    currentUser?.id,
+  ]);
 
   // ── Drag and drop ─────────────────────────────────────────────────────────
 
@@ -497,6 +576,18 @@ export function BoardPage() {
           />
           <TypeFilter selected={typeFilter} onChange={setTypeFilter} />
           <PriorityFilter selected={priorityFilter} onChange={setPriorityFilter} />
+        </div>
+
+        {/* Row 3: NLQL query bar + saved filters */}
+        <div className="flex w-full flex-col gap-1 sm:w-auto sm:flex-row sm:items-center sm:gap-2">
+          <NlqlQueryBar
+            value={nlqlQuery}
+            onChange={setNlqlQuery}
+            validation={nlqlValidation}
+            projectId={projectId}
+            savedFilters={savedFiltersQuery.data ?? []}
+            currentUserId={currentUser?.id ?? ''}
+          />
         </div>
 
         <div className="ml-auto flex items-center gap-3 sm:ml-auto">
@@ -1015,6 +1106,457 @@ function ActiveSprintBadge({ sprint }: { sprint: SprintDto | null }) {
       <span className="opacity-70">· active</span>
       {end && <span className="opacity-90">· {end.label}</span>}
     </span>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// NlqlQueryBar + SavedFilters UI
+// ---------------------------------------------------------------------------
+
+type NlqlValidation = { ok: boolean; error?: { message: string; position: number } } | null;
+
+interface NlqlQueryBarProps {
+  value: string;
+  onChange: (v: string) => void;
+  validation: NlqlValidation;
+  projectId: string;
+  savedFilters: SavedFilterDto[];
+  currentUserId: string;
+}
+
+function NlqlQueryBar({
+  value,
+  onChange,
+  validation,
+  projectId,
+  savedFilters,
+  currentUserId,
+}: NlqlQueryBarProps) {
+  const toast = useToast();
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [filterMenuOpen, setFilterMenuOpen] = useState(false);
+  const [saveModalOpen, setSaveModalOpen] = useState(false);
+  const [saveName, setSaveName] = useState('');
+  const [saveShared, setSaveShared] = useState(false);
+  const [editFilter, setEditFilter] = useState<SavedFilterDto | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editShared, setEditShared] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<SavedFilterDto | null>(null);
+
+  const filterMenuRef = useRef<HTMLDivElement>(null);
+  const helpRef = useRef<HTMLDivElement>(null);
+
+  const createMutation = useCreateSavedFilter(projectId);
+  const updateMutation = useUpdateSavedFilter(projectId);
+  const deleteMutation = useDeleteSavedFilter(projectId);
+
+  // Close filter menu on outside click / Escape
+  useEffect(() => {
+    if (!filterMenuOpen) return;
+    function onDown(e: MouseEvent) {
+      if (!filterMenuRef.current?.contains(e.target as Node)) setFilterMenuOpen(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setFilterMenuOpen(false);
+    }
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [filterMenuOpen]);
+
+  // Close help on outside click / Escape
+  useEffect(() => {
+    if (!helpOpen) return;
+    function onDown(e: MouseEvent) {
+      if (!helpRef.current?.contains(e.target as Node)) setHelpOpen(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setHelpOpen(false);
+    }
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [helpOpen]);
+
+  const hasQuery = value.trim().length > 0;
+  const isInvalid = hasQuery && validation !== null && !validation.ok;
+  const canSave = hasQuery && (validation === null || validation.ok);
+
+  function handleSelectFilter(sf: SavedFilterDto) {
+    onChange(sf.query);
+    setFilterMenuOpen(false);
+  }
+
+  function openSaveModal() {
+    setSaveName('');
+    setSaveShared(false);
+    setSaveModalOpen(true);
+  }
+
+  async function handleSave() {
+    if (!saveName.trim()) return;
+    try {
+      await createMutation.mutateAsync({
+        name: saveName.trim(),
+        query: value.trim(),
+        shared: saveShared,
+      });
+      setSaveModalOpen(false);
+      toast.success('Filter saved.');
+    } catch (err) {
+      toast.error(errorMessage(err, 'Failed to save filter.'));
+    }
+  }
+
+  function openEditModal(sf: SavedFilterDto) {
+    setEditFilter(sf);
+    setEditName(sf.name);
+    setEditShared(sf.shared);
+  }
+
+  async function handleUpdate() {
+    if (!editFilter || !editName.trim()) return;
+    try {
+      await updateMutation.mutateAsync({
+        id: editFilter.id,
+        input: { name: editName.trim(), shared: editShared },
+      });
+      setEditFilter(null);
+      toast.success('Filter updated.');
+    } catch (err) {
+      toast.error(errorMessage(err, 'Failed to update filter.'));
+    }
+  }
+
+  async function handleDelete() {
+    if (!deleteTarget) return;
+    try {
+      await deleteMutation.mutateAsync(deleteTarget.id);
+      setDeleteTarget(null);
+      toast.success('Filter deleted.');
+    } catch (err) {
+      toast.error(errorMessage(err, 'Failed to delete filter.'));
+    }
+  }
+
+  return (
+    <>
+      <div className="flex flex-col gap-1">
+        {/* Bar row */}
+        <div className="flex items-center gap-1.5">
+          {/* Saved-filter selector */}
+          <div ref={filterMenuRef} className="relative">
+            <button
+              type="button"
+              data-testid="saved-filter-select"
+              aria-label="Saved filters"
+              aria-expanded={filterMenuOpen}
+              aria-haspopup="menu"
+              onClick={() => setFilterMenuOpen((v) => !v)}
+              className={cn(
+                'inline-flex h-9 items-center gap-1.5 rounded-lg border px-2.5 text-sm transition-colors',
+                'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200',
+                savedFilters.length > 0
+                  ? 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
+                  : 'border-slate-200 bg-slate-50 text-slate-400',
+              )}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+              </svg>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 9l6 6 6-6" />
+              </svg>
+            </button>
+
+            {filterMenuOpen && (
+              <div
+                role="menu"
+                aria-label="Saved filters menu"
+                className="absolute left-0 z-30 mt-1.5 w-64 rounded-lg border border-slate-200 bg-white shadow-cardHover"
+              >
+                <div className="border-b border-slate-100 px-3 py-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                    Saved filters
+                  </p>
+                </div>
+                {savedFilters.length === 0 ? (
+                  <p className="px-3 py-3 text-xs text-slate-400">
+                    No saved filters yet. Type a query and click Save.
+                  </p>
+                ) : (
+                  <ul className="max-h-56 overflow-y-auto py-1">
+                    {savedFilters.map((sf) => (
+                      <li key={sf.id} className="flex items-center gap-1 px-1">
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={() => handleSelectFilter(sf)}
+                          className="flex flex-1 min-w-0 items-center gap-1.5 rounded px-2 py-1.5 text-left text-sm text-slate-700 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+                        >
+                          <span className="truncate">{sf.name}</span>
+                          {sf.shared && (
+                            <span className="shrink-0 rounded bg-brand-50 px-1 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-brand-600">
+                              shared
+                            </span>
+                          )}
+                        </button>
+                        {sf.ownerId === currentUserId && (
+                          <div className="flex shrink-0 items-center gap-0.5">
+                            <button
+                              type="button"
+                              aria-label={`Edit filter ${sf.name}`}
+                              onClick={() => { openEditModal(sf); setFilterMenuOpen(false); }}
+                              className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+                            >
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
+                              </svg>
+                            </button>
+                            <button
+                              type="button"
+                              aria-label={`Delete filter ${sf.name}`}
+                              onClick={() => { setDeleteTarget(sf); setFilterMenuOpen(false); }}
+                              className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-300"
+                            >
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7h6m-6 0V5a1 1 0 011-1h4a1 1 0 011 1v2M9 7H4m16 0h-5" />
+                              </svg>
+                            </button>
+                          </div>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Query input */}
+          <div className="relative flex-1 sm:min-w-[18rem]">
+            <Input
+              data-testid="nlql-query-input"
+              value={value}
+              onChange={(e) => onChange(e.target.value)}
+              placeholder='Filter: priority = HIGH AND assignee = me()'
+              className={cn(
+                'pr-7 font-mono text-xs',
+                isInvalid && 'border-red-400 focus:border-red-500 focus:ring-red-200',
+              )}
+              aria-label="NLQL filter query"
+              aria-describedby={isInvalid ? 'nlql-error-msg' : undefined}
+              aria-invalid={isInvalid}
+              spellCheck={false}
+              autoComplete="off"
+            />
+            {hasQuery && (
+              <button
+                type="button"
+                aria-label="Clear query"
+                onClick={() => onChange('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
+                  <path strokeLinecap="round" d="M6 6l12 12M6 18L18 6" />
+                </svg>
+              </button>
+            )}
+          </div>
+
+          {/* Help button */}
+          <div ref={helpRef} className="relative">
+            <button
+              type="button"
+              aria-label="NLQL query help"
+              aria-expanded={helpOpen}
+              onClick={() => setHelpOpen((v) => !v)}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200"
+            >
+              <span className="text-xs font-bold leading-none">?</span>
+            </button>
+
+            {helpOpen && (
+              <div
+                role="dialog"
+                aria-label="NLQL help"
+                className="absolute right-0 z-30 mt-1.5 w-72 rounded-lg border border-slate-200 bg-white p-3 shadow-cardHover"
+              >
+                <p className="mb-2 text-xs font-semibold text-slate-700">Query language reference</p>
+                <div className="space-y-1.5 text-xs text-slate-600">
+                  <p className="font-medium text-slate-500">Fields</p>
+                  <code className="block text-[11px] text-slate-700">priority, type, status, assignee, labels, dueDate, storyPoints, title, text, key</code>
+                  <p className="mt-1.5 font-medium text-slate-500">Operators</p>
+                  <code className="block text-[11px] text-slate-700">= != &gt; &lt; &gt;= &lt;= ~ !~ IN NOT IN IS EMPTY</code>
+                  <p className="mt-1.5 font-medium text-slate-500">Examples</p>
+                  <ul className="space-y-1 font-mono text-[11px] text-slate-700">
+                    <li><code>priority = HIGH</code></li>
+                    <li><code>type IN (BUG, TASK)</code></li>
+                    <li><code>assignee = me()</code></li>
+                    <li><code>dueDate &lt; today()</code></li>
+                    <li><code>title ~ "login"</code></li>
+                    <li><code>labels = "critical"</code></li>
+                    <li><code>priority &gt; MEDIUM AND assignee IS EMPTY</code></li>
+                  </ul>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Save button */}
+          <button
+            type="button"
+            data-testid="saved-filter-save"
+            aria-label="Save current filter"
+            disabled={!canSave}
+            onClick={openSaveModal}
+            className={cn(
+              'inline-flex h-9 items-center gap-1 rounded-lg border px-2.5 text-xs font-medium transition-colors',
+              'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200',
+              canSave
+                ? 'border-brand-300 bg-brand-50 text-brand-700 hover:bg-brand-100'
+                : 'cursor-not-allowed border-slate-200 bg-slate-50 text-slate-300',
+            )}
+          >
+            Save
+          </button>
+        </div>
+
+        {/* Inline error */}
+        {isInvalid && validation?.error && (
+          <p
+            id="nlql-error-msg"
+            data-testid="nlql-error"
+            role="alert"
+            className="text-xs text-red-600"
+          >
+            {validation.error.message}
+          </p>
+        )}
+      </div>
+
+      {/* Save filter modal */}
+      <Modal
+        open={saveModalOpen}
+        onClose={() => setSaveModalOpen(false)}
+        title="Save filter"
+        size="max-w-sm"
+        footer={
+          <>
+            <Button variant="secondary" type="button" onClick={() => setSaveModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              loading={createMutation.isPending}
+              disabled={!saveName.trim()}
+              onClick={() => void handleSave()}
+            >
+              Save
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-700" htmlFor="sf-name">
+              Filter name
+            </label>
+            <Input
+              id="sf-name"
+              value={saveName}
+              onChange={(e) => setSaveName(e.target.value)}
+              placeholder="e.g. My HIGH priority bugs"
+              onKeyDown={(e) => { if (e.key === 'Enter') void handleSave(); }}
+              autoFocus
+            />
+          </div>
+          <label className="flex cursor-pointer items-center gap-2">
+            <input
+              type="checkbox"
+              checked={saveShared}
+              onChange={(e) => setSaveShared(e.target.checked)}
+              className="rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+            />
+            <span className="text-sm text-slate-700">Share with project members</span>
+          </label>
+          <p className="text-xs text-slate-500 font-mono truncate" title={value.trim()}>
+            Query: {value.trim()}
+          </p>
+        </div>
+      </Modal>
+
+      {/* Edit filter modal */}
+      <Modal
+        open={editFilter !== null}
+        onClose={() => setEditFilter(null)}
+        title="Edit filter"
+        size="max-w-sm"
+        footer={
+          <>
+            <Button variant="secondary" type="button" onClick={() => setEditFilter(null)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              loading={updateMutation.isPending}
+              disabled={!editName.trim()}
+              onClick={() => void handleUpdate()}
+            >
+              Save changes
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-700" htmlFor="sf-edit-name">
+              Filter name
+            </label>
+            <Input
+              id="sf-edit-name"
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') void handleUpdate(); }}
+              autoFocus
+            />
+          </div>
+          <label className="flex cursor-pointer items-center gap-2">
+            <input
+              type="checkbox"
+              checked={editShared}
+              onChange={(e) => setEditShared(e.target.checked)}
+              className="rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+            />
+            <span className="text-sm text-slate-700">Share with project members</span>
+          </label>
+        </div>
+      </Modal>
+
+      {/* Delete confirm */}
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title="Delete saved filter"
+        message={
+          <>
+            Are you sure you want to delete{' '}
+            <strong>{deleteTarget?.name}</strong>? This cannot be undone.
+          </>
+        }
+        confirmLabel="Delete"
+        variant="danger"
+        loading={deleteMutation.isPending}
+        onConfirm={() => void handleDelete()}
+        onCancel={() => setDeleteTarget(null)}
+      />
+    </>
   );
 }
 
