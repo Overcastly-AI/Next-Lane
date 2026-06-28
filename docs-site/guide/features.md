@@ -142,11 +142,14 @@ Votes sync in real time via Socket.io — no page refresh needed.
 
 Lightweight asynchronous standups that work across time zones.
 
-- A team admin configures a standup cadence (daily, weekly, etc.).
 - Each team member answers: what did you do? what are you doing next? any
-  blockers?
-- The team digest is available in the Standups tab.
-- Personal and team analytics surfaces standup participation.
+  blockers? — submitted via the Standups tab in any project.
+- A date picker lets you navigate to any past date to review previous entries.
+- Blockers can be linked to real issues (resolved to issue key + title).
+- The "Prefill from my activity" button pre-populates the form from yesterday's
+  ActivityLog and today's in-progress assignments.
+- The team digest shows all members' entries for the selected date with blocker
+  emphasis.
 
 ---
 
@@ -154,7 +157,8 @@ Lightweight asynchronous standups that work across time zones.
 
 Every user has a private personal board — a Kanban for todos, personal tasks,
 and scratch work that is separate from project boards. Cards are visible only to
-you (or to anyone you share a read-only link with via the Share Board feature).
+you. You can promote a personal card to a real project issue (Task) with one
+click via the "Promote to issue" action.
 
 ---
 

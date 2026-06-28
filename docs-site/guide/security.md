@@ -1,5 +1,7 @@
 # Security
 
+Next Lane is maintained by [Overcastly AI](https://overcastly.com).
+
 ## Reporting a vulnerability
 
 **Please do not open a public GitHub issue for security vulnerabilities.**

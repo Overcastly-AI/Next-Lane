@@ -1,5 +1,7 @@
 # Getting support
 
+Next Lane is maintained by [Overcastly AI](https://overcastly.com).
+
 ## Where to ask questions
 
 **GitHub Discussions** is the right place for how-to questions, configuration
@@ -29,13 +31,12 @@ See [SECURITY.md](../SECURITY.md) for our full disclosure process and scope.
 Common setup and troubleshooting questions are covered in the docs:
 
 - [Quick Start (Docker Compose)](../README.md#-quickstart)
+- [Documentation site](https://overcastly-ai.github.io/Next-Lane/) — configuration, feature guides, FAQ, and troubleshooting
 - [Kubernetes deployment](../docs/DEPLOY-KUBERNETES.md)
 - [Architecture overview](../docs/ARCHITECTURE.md)
-- [GitHub Wiki](https://github.com/Overcastly-AI/Next-Lane/wiki) — detailed
-  configuration, feature guides, FAQ, and troubleshooting.
 
 ## Before you ask
 
-1. Check the [README](../README.md) quickstart and the [wiki](https://github.com/Overcastly-AI/Next-Lane/wiki/Troubleshooting).
+1. Check the [README](../README.md) quickstart and the [docs site troubleshooting guide](https://overcastly-ai.github.io/Next-Lane/guide/troubleshooting).
 2. Search [existing issues](https://github.com/Overcastly-AI/Next-Lane/issues) and [discussions](https://github.com/Overcastly-AI/Next-Lane/discussions).
 3. Make sure you are running a recent version (`git pull` + rebuild, or pull the latest image).

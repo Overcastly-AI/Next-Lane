@@ -4,6 +4,15 @@ Single prioritized board maintained by the **backlog-groomer**, fed by the two i
 
 Format: `- [ ] (P1, M) title — description [src]` · P0 critical / P1 now / P2 next / P3 later · size S/M/L. Checked `[x]` = done.
 
+> Groom state (2026-06-28): All Phase 3 items complete. Phase 5 major slice shipped — custom
+> fields, NLQL + saved filters, planning poker, issue links, bulk edit, personal boards,
+> personal/team analytics, CSV export, workspace branding, Glass Box automation engine, async
+> standups all confirmed shipped. Remaining open P2s: swimlanes, workflow transitions, filter-URL
+> persistence, email notifications for all event types, CSV import + importer, PAT scopes, inline
+> card status transition. Phase 10 (Team rituals) complete. Phase 4 (Kubernetes) functionally
+> complete pending first real docker compose validation. Phase 6 (Autopilot) and Phase 7
+> data-ownership layer are the next moonshots.
+>
 > Grooming note (2026-06-27, Pass 5): Pass 5 closes the rapid-shipping wave (attachments,
 > PATs, CFD, triage mode, audit log, pino, BullMQ/Redis adapter, Helm/Kustomize, GHCR CI).
 > The product has crossed the threshold from "impressive OSS project" to "credible daily-driver
@@ -189,8 +198,8 @@ _Product P1s — queue after security batch:_
 - [x] (P3, L) Automation rules engine backend (trigger → action: status/assignment/label) — `AutomationsModule` at `apps/api/src/automations/`: `AutomationEngineService` (@OnEvent for ISSUE_CREATED/UPDATED/TRANSITIONED/COMMENTED; loop guard automated=true; NLQL parse+evaluate; AutomationRun Glass Box logging for every rule run: SUCCESS/SKIPPED/FAILED); `AutomationsService` (CRUD + NLQL validation + action param validation); 7 project-scoped REST endpoints; EventEmitter2 seams on IssuesService + CommentsService mutation paths; 37 new unit tests (668 total); tsc clean ✅ shipped 2026-06-28 [product-auditor, roadmap]
 - [x] (P3, L) Saved filters backend + NLQL query validation — `SavedFiltersModule` (`GET/POST /projects/:projectId/saved-filters`, `PATCH/DELETE /saved-filters/:id`); NLQL query validated with `validateQuery` (custom-field-aware); owner-only update/delete (403 for non-owner); list returns caller's own + shared filters ordered by name asc; `toSavedFilterDto` mapper (isShared→shared, dates→ISO); board `updateBoard` now validates `filterQuery` and each `colorRules[].query` via NLQL before persisting; 27 new unit tests (441 total); `tsc --noEmit` clean. ✅ shipped 2026-06-28 [roadmap Phase 5]
 - [x] (P3, L) NLQL query bar + saved filters frontend — inline query bar on BoardPage (data-testid="nlql-query-input") with live `validateQuery` + inline error (data-testid="nlql-error"); `filterIssues` applied on top of pill filters (AND composition) using currentUser/users/customFieldDefs context; saved filters dropdown (data-testid="saved-filter-select") shows personal + shared (shared badge), selecting loads query; Save button (data-testid="saved-filter-save") opens Modal (name + share toggle); owner rename (edit modal) + delete (ConfirmDialog); `apps/web/src/api/saved-filters.ts` hooks (useSavedFilters/useCreateSavedFilter/useUpdateSavedFilter/useDeleteSavedFilter + savedFilterKeys); `apps/web/e2e/nlql-filter.spec.ts` (desktop + mobile: valid/invalid query, save+reload+select, shared badge, delete); build green. ✅ shipped 2026-06-28 [roadmap Phase 5]
-- [ ] (P3, M) Custom fields (typed, JSONB-backed) [roadmap]
-- [ ] (P3, M) SMTP email notification delivery for all notifications (opt-in per user; sendgrid/SMTP env config) — in-app only today; async notifications for users not logged in; password reset SMTP is the first slice [product-auditor Pass 4, Pass 5]
+- [x] (P3, M) Custom fields (typed, JSONB-backed) — shipped 2026-06-28 [roadmap]
+- [ ] (P3, M) SMTP email notification delivery for all notification types (opt-in per user; nodemailer/SMTP env config) — in-app only today; SMTP for password reset shipped; full async email delivery (assignment, @mention, watcher events) for users not currently logged in remains unshipped [product-auditor Pass 4, Pass 5]
 - [ ] (P3, L) JWT migration to httpOnly cookie + POST /auth/refresh (short-lived access tokens) — token in localStorage is XSS-extractable; cookie migration + short-lived access tokens is the durable fix; helmet CSP mitigates the XSS vector adequately for now; revisit when a rich-text editor lands [engineering-auditor Pass 4]
 - [ ] (P3, M) Sprint retrospective panel (What went well / improve / actions — JSONB on Sprint, retro badge on velocity chart) — keeps sprint story in one place; natural extension of sprint lifecycle [product-auditor Pass 5]
 - [ ] (P3, M) Issue templates per project (JSONB on Project; template picker in create-issue modal) — reduces create-issue friction; improves data quality [product-auditor Pass 5]

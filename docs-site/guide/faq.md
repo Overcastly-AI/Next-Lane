@@ -32,8 +32,8 @@ own projects, boards, members, and settings.
 
 **Does Next Lane support multiple teams within a workspace?**
 
-Yes. A workspace can have Teams (sub-groups of members) used for standups,
-planning poker sessions, and team analytics.
+Yes. All workspace members can participate in standups, planning poker, and
+analytics per project. Dedicated sub-team grouping is on the roadmap.
 
 ---
 

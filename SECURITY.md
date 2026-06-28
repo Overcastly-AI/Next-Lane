@@ -1,6 +1,7 @@
 # Security Policy
 
-Next Lane is a self-hosted application that holds your team's project data, so we
+Next Lane is a self-hosted application built and maintained by
+[Overcastly AI](https://overcastly.com). It holds your team's project data, so we
 take security seriously and welcome responsible disclosure.
 
 ## Supported versions

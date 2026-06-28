@@ -49,6 +49,8 @@ features:
       that build this very product.
 ---
 
+> Built by [Overcastly AI](https://overcastly.com) — open-source, MIT licensed, yours to self-host.
+
 ## One command to run it
 
 ```bash

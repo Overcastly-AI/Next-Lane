@@ -6,6 +6,26 @@
 > the founder dreams, the steward formalizes ideas into this doc + the roadmap +
 > the backlog and hands them to the build loop.
 
+## Brand hierarchy
+
+Three layers. They must never collapse into each other:
+
+1. **Overcastly AI** (https://overcastly.com) — the **maker and company**. Overcastly
+   AI designs, builds, and maintains Next Lane. Attribution belongs here.
+2. **Next Lane** — the **product**, with its own "Dispatch" design identity and
+   persona. Next Lane is an open-source, MIT-licensed, self-hosted issue and project
+   tracker. It has its own brand name, logo, and design system; it is not
+   white-labelled to Overcastly's visual language.
+3. **Self-hoster workspace branding** — the per-workspace **end-user override** layer.
+   Any self-hosted instance's admin can upload their own logo and accent color; this
+   third layer sits on top of and replaces Next Lane's defaults within that workspace.
+   This is an architectural feature, not a marketing concept.
+
+Attribution rule: every external surface (README, docs site, SECURITY.md) carries a
+lightweight "Built by Overcastly AI · overcastly.com" credit. It does not drive visual
+or token decisions — Overcastly's own brand tokens are deferred until the founder
+supplies them. Do not invent Overcastly colors or logos.
+
 ## The thesis
 
 **Build the best issue & project tracker in the world — open-source, MIT, and
@@ -32,27 +52,28 @@ we ship to be credible — not where we differentiate.
 
 ## The pillars (what "better than the incumbent" means here)
 
-1. **Core PM parity** *(Phase 5)* — be a credible daily driver first: multiple
-   boards + board types, custom fields, a real query language (NLQL) + saved
-   filters, conditional card colors, planning poker, issue links/dependencies,
-   components, versions, bulk edit, swimlanes, workflow transitions.
+1. **Core PM parity** *(Phase 5 — largely shipped)* — be a credible daily driver
+   first: multiple boards + board types, custom fields, a real query language (NLQL)
+   + saved filters, conditional card colors, planning poker, issue
+   links/dependencies, bulk edit, CSV export, workspace branding. Remaining gaps:
+   swimlanes, workflow transitions, components/versions.
 2. **Autopilot — a self-hosted AI teammate** *(Phase 6)* — private, unlimited,
    $0 AI: natural-language→NLQL, auto-triage + semantic dedupe (pgvector),
    sprint risk radar & summaries, and **MCP-native** so agents read/write issues
    from the IDE.
 3. **Glass Box — unlimited automation + data ownership** *(Phase 7)* — a
    trigger→condition→action engine (conditions reuse NLQL) with **unlimited
-   runs** and a full audit, plus true data ownership (SQL/warehouse export,
-   Grafana dashboards).
-4. **The Unbundle** *(Phase 8)* — bundle, free, what the incumbent sells as
+   runs** and a full audit (shipped). Remaining: rule library/templates, true
+   data ownership (SQL/warehouse export, Grafana dashboards).
+4. **The Unbundle** *(Phase 8)* — bundle, free, what comparable trackers sell as
    separate paid products: docs/wiki, whiteboard/story-mapping, a public
    roadmap + feature-voting portal, and intake forms.
 5. **Developer Graph** *(Phase 9)* — the tracker that knows your code: two-way
    GitHub + GitLab + Gitea links, live PR/CI status on cards, auto-transition on
    merge, smart-commits.
-6. **Team rituals & personal workspace** *(Phase 10)* — async standups, private
-   personal boards/scratchpads, and personal + team analytics. Make it the place
-   people start their day, not just where tickets live.
+6. **Team rituals & personal workspace** *(Phase 10 — shipped)* — async
+   standups, private personal boards/scratchpads, and personal + team analytics.
+   Make it the place people start their day, not just where tickets live.
 
 ## Operating principles
 

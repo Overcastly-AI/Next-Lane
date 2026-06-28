@@ -1,6 +1,7 @@
 # Changelog
 
 All notable changes to Next Lane are documented here.
+Next Lane is built and maintained by [Overcastly AI](https://overcastly.com).
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Next Lane uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -23,7 +24,6 @@ development phase. A versioned release will be tagged once the v1 criteria in
   right now).
 - **Backlog view** with keyboard triage mode (j/k/s/p/a/l shortcuts).
 - **Sprints** — create, start, complete; sprint goals and date ranges.
-- **Swimlanes** and sprint/backlog filtering on the board view.
 
 ### Added — Issues
 
@@ -37,7 +37,6 @@ development phase. A versioned release will be tagged once the v1 criteria in
 - **Issue links** — directed relationships: BLOCKS, RELATES_TO, DUPLICATES, and
   more.
 - **Watchers** — watch any issue and receive in-app notifications on changes.
-- Components and Versions (Releases) for project-level organisation.
 
 ### Added — NLQL query language + saved filters
 
@@ -81,7 +80,10 @@ development phase. A versioned release will be tagged once the v1 criteria in
 
 - **Personal board** — a private Kanban for todos and personal tasks, separate
   from project boards.
-- Shared board link (public read-only snapshot of a personal board).
+- "Promote to issue" — convert a personal card into a real project issue with
+  one click; the card shows a promoted badge with the new issue key.
+- **Public read-only project share link** — mint a `ShareToken` for a project
+  board and share a read-only view with anyone (no login required).
 
 ### Added — Bulk edit & export
 

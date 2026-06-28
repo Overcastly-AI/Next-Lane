@@ -41,7 +41,7 @@ Status legend: ✅ done · 🚧 in progress · ⬜ planned
 - ✅ Markdown rendering in descriptions/comments — `marked` + `DOMPurify` (XSS-safe); view/edit toggle in IssueDetailDrawer; sanitized `MarkdownRenderer` component; `@mention` tokens survive; links open `target=_blank rel=noopener`; admin-delete UX for attachments fixed (ADMIN sees delete button on any attachment, matching API rule); 20 e2e tests (desktop + mobile) all green (2026-06-27)
 - ⬜ Remaining: custom workflow *transitions*
 
-## Phase 3 — Power features 🚧 (in progress)
+## Phase 3 — Power features ✅ (complete)
 - ✅ Roadmap / timeline (epics + sprints as bars, progress, today marker)
 - ✅ Webhooks (HMAC-signed outbound on issue/sprint events + delivery log + Settings UI + SSRF guard + BullMQ queue)
 - ✅ Command palette (Cmd-K) + cross-project search
@@ -71,11 +71,11 @@ Status legend: ✅ done · 🚧 in progress · ⬜ planned
 - ✅ Multiple boards per project (frontend slice 1) — `useBoards`/`useBoardView`/`useCreateBoard`/`useUpdateBoard`/`useDeleteBoard` hooks in `apps/web/src/api/boards.ts`; `BoardSwitcher` dropdown with type badges (Kanban/Scrum), create-board modal, per-board settings (rename/type/delete, default-board guard); `BoardPage` boardId-driven with localStorage persistence per project; all optimistic-update mutations (`useMoveIssue`, `useCreateIssue`, `useDeleteIssue`, `useCreateStatus`, `useUpdateStatus`, `useDeleteStatus`, `useUpdateLabel`, `useDeleteLabel`, `useToggleIssueLabel`) extended with `boardId` to keep drag-and-drop keyed to `qk.boardView(boardId)`; `useBoardRealtime` extended with `boardId`; 8 Playwright e2e tests (desktop + mobile); build + typecheck green (2026-06-27)
 - ✅ Issue links / dependencies backend — `IssueLinksModule` (`apps/api/src/issue-links/`): `POST /issues/:id/links` (MEMBER+; inverse-type normalization: BLOCKED_BY→BLOCKS swapped, DUPLICATED_BY→DUPLICATES swapped; self-link 400; duplicate+inverse-duplicate 409; cross-project 404; target resolved by key or id within project); `GET /issues/:id/links` (VIEWER+; perspective-resolved type/label for both source and target sides); `DELETE /issue-links/:linkId` (MEMBER+); `toIssueLinkDto(link, viewerIssueId)` mapper; 32 unit tests (505 total) — links exposed via separate `GET /issues/:id/links` (not embedded in IssueDto to avoid modifying shared package); tsc clean (2026-06-28)
 - ✅ Export CSV — `GET /projects/:id/issues.csv?q=<NLQL>` frontend affordance (2026-06-28): `useExportCsv` hook in `src/api/export.ts`; Bearer-auth blob fetch + synthetic anchor download (auth via localStorage JWT, not cookie); "Export CSV" secondary Button with download icon + spinner on BacklogPage toolbar and BoardPage toolbar (near filters); BoardPage passes current `nlqlQuery` as `?q=`; `data-testid="export-csv"` on both; error toast via `useToast`; Dispatch `secondary` Button token; build clean.
-- ⬜ Query DSL / saved views (filter builder → text query)
-- ⬜ Custom fields (typed, JSONB-backed)
+- ✅ Query DSL / saved views — shipped as NLQL + saved filters in Phase 5 (2026-06-28)
+- ✅ Custom fields (typed, JSONB-backed) — shipped Phase 5 (2026-06-28)
 - ✅ Workflow automation rules (trigger → action) — frontend UI shipped 2026-06-28; backend engine shipped 2026-06-28: AutomationEngineService (@OnEvent listeners, NLQL condition evaluation, loop guard, Glass Box AutomationRun logging), AutomationsService CRUD (7 REST endpoints), EventEmitter2 seams on IssuesService.create/update/move + CommentsService.create; 37 unit tests (668 total)
 - ⬜ Time tracking / worklogs
-- ⬜ Email (SMTP) notifications + email-to-issue
+- ⬜ Email (SMTP) notifications for all event types (beyond password reset) + email-to-issue
 - ✅ "Team pulse" home dashboard (sprint snapshot, assigned issues, recent activity, projects grid — first-run onboarding preserved; 20 e2e tests desktop+mobile)
 - ✅ REST API tokens (PATs: `nlp_` prefix, SHA-256 hash stored, create/list/revoke endpoints, JWT guard extension, profile settings UI, 14 e2e + 22 unit tests)
 - ✅ PAT authentication at WebSocket handshake — `nlp_` PATs accepted in `RealtimeGateway.handleConnection` via `ApiTokensService.validateRawToken()`; revoked/expired PATs disconnected; JWT path unchanged; `ApiTokensModule` imported into `RealtimeModule`; 11 new unit tests (252 total) (2026-06-27)
@@ -137,7 +137,7 @@ delivered as QA'd vertical slices.
 - ✅ **CSV export of project issues** (backend, 2026-06-28) — `GET /projects/:projectId/issues.csv?q=<NLQL>`; `text/csv; charset=utf-8`; `Content-Disposition: attachment; filename="<projectKey>-issues.csv"`; 13 columns: Key, Title, Type, Status, Priority, Assignee, Reporter, Story Points, Sprint, Labels (joined by `; `), Due Date, Created, Updated; RFC-4180 `csvCell()` helper: comma/quote/newline quoting + formula-injection guard (leading `=`/`+`/`-`/`@` prefixed with apostrophe); optional NLQL `q` filter — validated via `validateQuery` (400 on invalid), applied with `filterIssues` (same evaluator as the board); auth: project member (VIEWER+); rows ordered by issue number ascending; `IssuesCsvController` + `csv.util.ts` added to `IssuesModule`; 39 unit tests green; build clean.
 - ✅ **Workspace branding backend** (2026-06-28) — `PATCH /workspaces/:id` (name + `brandColor` #RRGGBB hex or null, Admin-only); `POST /workspaces/:id/logo` (multipart, png/jpeg/webp, 2 MB cap, SVG explicitly rejected, Admin-only, replaces previous file); `DELETE /workspaces/:id/logo` (Admin-only, best-effort unlink); `GET /workspaces/:id/logo` (public, no JWT via `@Public()` decorator, streams image with sensible `Cache-Control`); centralized `toWorkspaceDto` mapper (single source of truth for `brandColor` passthrough + `logoUrl` derivation); `UpdateWorkspaceDto` with `@Matches(/^#[0-9a-fA-F]{6}$/)` + null-allowed brandColor; 30 unit tests (745 total); build clean.
 - ✅ **Workspace branding frontend** (2026-06-28) — Token refactor: `signal` + `brand` Tailwind scales now resolve to CSS vars (`--nl-signal-50…900`) so runtime theming can swap the full palette; `:root` defaults in `index.css` set the exact original electric-cobalt hex values (zero visual change when no brand color is set); `--nl-accent*` vars derived from signal vars (DRY). Runtime theming: `applyBrandColor.ts` generates a full 50–900 scale from a single hex (600=anchor, lighter toward white for 50–500, darker toward black for 700–900) and writes CSS variables on `documentElement`; `WorkspaceContext` provider mounted in `App.tsx` applies/removes the override on workspace switch. Logo in AppHeader: `WorkspaceLogo` component renders `<img data-testid="workspace-logo">` from `API_URL/api/logoUrl` when set, falls back to the default Next Lane mark. Branding settings page at `/workspaces/:workspaceId/branding` (ADMIN-only; non-admins see access-denied): logo section (file picker `data-testid="logo-upload-input"`, live preview, Upload, `data-testid="logo-remove"`), accent-color section (`data-testid="brand-color-input"`, 10 preset swatches, live preview of primary button + active nav + status chip, `data-testid="brand-color-save"`, Reset to default); all three workspace pages (Members, Audit log, Branding) share a unified sub-nav using `signal-*` tokens; `useUpdateWorkspaceBranding`/`useUploadWorkspaceLogo`/`useDeleteWorkspaceLogo` hooks in `workspaces.ts`; `WorkspaceProvider` context in `src/contexts/WorkspaceContext.tsx`; build + tsc clean.
-- ⬜ **Parity-gap backlog** (from the Pass-6 audit): swimlanes, workflow transitions + validators, components, versions/releases, CSV import, configurable dashboards, project-level role overrides.
+- ⬜ **Remaining parity gaps**: swimlanes / group-by, workflow transitions + validators, components, versions/releases, CSV import + tracker importers, configurable dashboards, project-level role overrides, filter-state URL persistence.
 
 ## Phase 6 — Autopilot: a self-hosted AI teammate 🔭 (vision)
 
@@ -152,7 +152,7 @@ is the headline differentiator the cloud-first incumbents structurally can't mat
 - ⬜ **MCP-native** — ship Next Lane as an **MCP server** so AI coding agents (Claude Code, etc.) read & write issues directly from the IDE (file bugs, move cards, close tickets as they code). Dogfooded by this project's own agent build loop. No paid tracker is MCP-native today.
 - ⬜ **Privacy posture** — all inference local by default; a hard "no external calls" switch for regulated installs; per-workspace model/endpoint config.
 
-## Phase 7 — Glass Box: unlimited automation + data ownership 🔭 (vision)
+## Phase 7 — Glass Box: unlimited automation + data ownership 🚧 (in progress)
 
 Everything the incumbents meter or lock away, given freely because it's self-hosted.
 
@@ -180,7 +180,7 @@ forges, not just the big clouds.
 - ⬜ **Gitea / self-hosted forges** — first-class support for fully self-hosted Git, the combo the cloud incumbents can't credibly serve.
 - ⬜ **Pairs with Autopilot/MCP** — agents that open a PR can auto-link and close their own ticket on merge, completing the dogfooded build loop.
 
-## Phase 10 — Team rituals & personal workspace 🔭 (vision)
+## Phase 10 — Team rituals & personal workspace ✅ (complete)
 
 Make Next Lane the place people actually start their day — not just where tickets
 live.
@@ -203,7 +203,7 @@ live.
 
 Engineering-auditor Pass 5 (2026-06-27) identified a fresh security hardening cluster now being fixed: password reset token logged in plaintext to production logs (P1, S); SVG attachment served as `image/svg+xml` allowing direct-navigate XSS (P1, S); CFD/burndown unbounded queries that will OOM for any active project (P1, M — rewriting as Postgres `generate_series` aggregation); null-file upload returning 500 instead of 400 (P2, S); webhook HMAC secret stored in plaintext BullMQ job body (P2, S); PAT `expiresAt` accepting past dates (P2, S); nginx container missing Content-Security-Policy header (P2, S); Helm bundled-Postgres default password lacking a fail-fast guard (P2, S). All being addressed in the current build batch.
 
-Product-auditor Pass 5 (2026-06-27) confirms the product has crossed the "credible daily-driver" threshold. Two product P1s remain: SMTP email delivery for password reset (current fallback is dev-log only — unacceptable for production self-hosters), and `WATCHED_UPDATED` notification emission (watcher model inert for notifications despite enum being defined). Due date on issues is now shipped (2026-06-27).
+Product-auditor Pass 5 (2026-06-27) confirmed the product crossed the "credible daily-driver" threshold. The two Pass-5 P1s — SMTP email delivery for password reset and `WATCHED_UPDATED` notification emission — are both shipped (2026-06-27). Due date on issues is shipped (2026-06-27).
 
 SMTP email delivery for password reset shipped 2026-06-27: `MailModule`/`MailService` (nodemailer); real SMTP when `SMTP_HOST` set; dev-log fallback when absent; production-safe.
 Due dates shipped 2026-06-27: `dueDate DateTime?` on Issue model (migration `20260627220000_add_issue_due_date`); create/update DTOs; `IssueDto.dueDate` + `MyWorkIssueDto.dueDate`; drawer date picker with clear button + overdue amber styling; card chip; My Work overdue badge + sort; 5 unit tests + 8 e2e (desktop + mobile).
@@ -211,7 +211,7 @@ PAT auth at the WebSocket handshake shipped 2026-06-27: `nlp_` tokens authentica
 
 Markdown rendering + attachment admin-delete shipped 2026-06-27: `marked` + `DOMPurify` for sanitized markdown in issue descriptions (view/edit toggle) and comments; `MarkdownRenderer` component; `@mention` tokens preserved; links open `target=_blank rel=noopener noreferrer`; `AttachmentsPanel` now respects `viewerRole` — ADMIN sees delete button on any attachment (matching API rule); `IssueDetailDrawer`/`BoardPage`/`BacklogPage`/`TriagePage` all pass `viewerRole`; 20 new e2e tests (10 desktop + 10 mobile) all green.
 
-Next build order: public read-only share link (M, P2) → inline card status transition (S, P2) → PAT scopes (M, P2) → remaining perf (batch inserts, slim planning endpoint, board-overview prefetch) + P3 ideas (sprint retros, issue templates).
+Next build order: inline card status transition (S, P2) → PAT scopes (M, P2) → swimlanes/group-by (L, P1) → remaining perf (slim planning endpoint, board-overview prefetch) + P3 ideas (sprint retros, issue templates).
 
 PATs shipped 2026-06-27: `nlp_`-prefixed (SHA-256 hashed) with create/list/revoke + JWT-guard extension + profile-settings UI.
 PAT-at-WS-handshake shipped 2026-06-27: `RealtimeGateway.handleConnection` now detects `nlp_` prefix and validates via `ApiTokensService.validateRawToken()`; revoked/expired/unknown PATs disconnect the socket immediately; JWT path unchanged; 11 new unit tests.
@@ -221,7 +221,7 @@ Label rename shipped 2026-06-27: PATCH /labels/:id + inline edit in Settings + L
 Team Pulse dashboard shipped 2026-06-27: sprint snapshot, assigned-issues, recent activity, projects grid.
 Keyboard triage mode shipped 2026-06-27: j/k/s/p/a/l/Enter/f/? keyboard model, ARIA listbox, command palette entry.
 
-**v1 is feature-complete and green.** The single remaining gate is the real `docker compose up -d --build` first-run validation on a host with container-registry access. Remaining work is post-v1: query DSL/saved views, custom fields, automation rules, time tracking, email notifications (beyond password reset), bulk edit frontend, importers, SSO.
+**v1 is feature-complete and green.** The single remaining gate is the real `docker compose up -d --build` first-run validation on a host with container-registry access. The following shipped during the v1 push and are no longer post-v1: NLQL query language + saved filters, custom fields, automation rules (Glass Box engine), bulk edit, planning poker, async standups, personal boards, personal/team analytics, CSV export, workspace branding. Genuinely post-v1 remaining work: swimlanes, workflow transitions, time tracking, email notifications for all event types (beyond password reset), CSV import + tracker importers, SSO/OIDC, SQL/warehouse export, rule library/templates.
 
 ## v1.0 release criteria — definition of "a good product"
 

@@ -47,6 +47,10 @@ export default defineConfig({
         text: 'GitHub',
         link: 'https://github.com/Overcastly-AI/Next-Lane',
       },
+      {
+        text: 'Overcastly AI',
+        link: 'https://overcastly.com',
+      },
     ],
 
     sidebar: [
@@ -102,9 +106,9 @@ export default defineConfig({
     },
 
     footer: {
-      message: 'Released under the <a href="https://opensource.org/licenses/MIT">MIT License</a>.',
+      message: 'Released under the <a href="https://opensource.org/licenses/MIT">MIT License</a>. Built by <a href="https://overcastly.com">Overcastly AI</a>.',
       copyright:
-        'Copyright &copy; 2024–present <a href="https://github.com/Overcastly-AI">Overcastly AI</a>',
+        'Copyright &copy; 2024–present <a href="https://overcastly.com">Overcastly AI</a>',
     },
 
     lastUpdated: {

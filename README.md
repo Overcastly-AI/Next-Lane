@@ -1,8 +1,8 @@
 <div align="center">
 
-# 🛣️ Next Lane
+# Next Lane
 
-### The open-source, self-hosted issue & project tracker that's **free and unlimited** — where the incumbents charge per seat.
+### The open-source, self-hosted issue & project tracker that's **free and unlimited** — where comparable cloud trackers charge per seat.
 
 Plan work, run sprints, and drag cards across boards on **your** hardware, with **your** data, under an MIT license. One command to run. Zero seats to buy.
 
@@ -15,7 +15,9 @@ Plan work, run sprints, and drag cards across boards on **your** hardware, with 
 [![Self-hosted](https://img.shields.io/badge/self--hosted-your%20data-success.svg)](#why-next-lane)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING.md)
 
-[Quick Start](#-quickstart) · [Why Next Lane](#why-next-lane) · [Features](#-whats-shipped) · [Architecture](#-architecture-at-a-glance) · [Roadmap](#-on-the-roadmap) · [Contributing](#-contributing) · [Wiki](https://github.com/Overcastly-AI/Next-Lane/wiki) · [Changelog](./CHANGELOG.md)
+Built by [Overcastly AI](https://overcastly.com)
+
+[Quick Start](#-quickstart) · [Why Next Lane](#why-next-lane) · [Features](#-whats-shipped) · [Architecture](#-architecture-at-a-glance) · [Roadmap](#-on-the-roadmap) · [Contributing](#-contributing) · [Docs](https://overcastly-ai.github.io/Next-Lane/) · [Changelog](./CHANGELOG.md)
 
 </div>
 
@@ -76,7 +78,7 @@ advantages** a cloud-first, per-seat, closed product can't match (full thesis in
 
 |  | Advantage | What it means for you |
 |---|---|---|
-| 💸 | **Free & unlimited** | No per-seat pricing. Unlimited users, projects, and (on the roadmap) automation + AI — because it's your hardware. |
+| 💸 | **Free & unlimited** | No per-seat pricing. Unlimited users, projects, automation runs, and (on the roadmap) AI — because it's your hardware. |
 | 🔒 | **Your data, your compute** | Fully self-hosted. No egress, direct SQL access to your own data, private by default — the one thing regulated teams can't buy from any cloud. |
 | 🧩 | **Open & extensible** | MIT licensed. No marketplace tax, code-level extensibility, and a path to self-hosted forges (Gitea/GitLab), not just the big clouds. |
 | 🤖 | **AI-native & agent-native** | Built for the agent era — and dogfooded by a team of AI agents that build this very repo. |
@@ -90,7 +92,7 @@ current build** (see [`docs/ROADMAP.md`](./docs/ROADMAP.md) for status and what'
 |------|-------------|
 | **Boards** | Multiple boards per project · Kanban **and** Scrum board types · drag-and-drop with fractional ranking · custom statuses/columns · live presence indicators · conditional card colors |
 | **Issues** | Task / Bug / Story / Epic / Sub-task · parent/child hierarchy · labels · story points · due dates · **custom fields** (typed) · markdown descriptions & comments · file attachments · **issue links** (BLOCKS, RELATES_TO, DUPLICATES…) · watchers |
-| **Agile** | Backlog view · sprints (create / start / complete, goals, dates) · keyboard **triage mode** (j/k/s/p/a/l) · components · versions/releases |
+| **Agile** | Backlog view · sprints (create / start / complete, goals, dates) · keyboard **triage mode** (j/k/s/p/a/l) |
 | **NLQL** | **NLQL query language** — `assignee = me() AND priority in (High, Highest)` · **saved filters** shared across a project · boards pinned to a saved filter |
 | **Reports** | Burndown · velocity · cumulative-flow diagram (CFD) · roadmap / timeline view · personal analytics · team pulse analytics |
 | **Find** | **Full-text search** (Postgres `tsvector`) · ⌘K command palette · cross-project search · multi-field filtering |
@@ -206,12 +208,12 @@ Full plan with phase status markers: [`docs/ROADMAP.md`](./docs/ROADMAP.md) · v
 Contributions are welcome and appreciated! Start with [`CONTRIBUTING.md`](./CONTRIBUTING.md)
 for setup, conventions, and the PR workflow. Good first steps:
 
-- 🐛 Found a bug? [Open a bug report](https://github.com/Overcastly-AI/Next-Lane/issues/new?template=bug_report.yml).
-- 💡 Have an idea? [Request a feature](https://github.com/Overcastly-AI/Next-Lane/issues/new?template=feature_request.yml).
-- 💬 Have a question? Start a [Discussion](https://github.com/Overcastly-AI/Next-Lane/discussions).
-- 🔐 Found a vulnerability? Please follow our [Security Policy](./SECURITY.md) — don't open a public issue.
+- Found a bug? [Open a bug report](https://github.com/Overcastly-AI/Next-Lane/issues/new?template=bug_report.yml).
+- Have an idea? [Request a feature](https://github.com/Overcastly-AI/Next-Lane/issues/new?template=feature_request.yml).
+- Have a question? Start a [Discussion](https://github.com/Overcastly-AI/Next-Lane/discussions).
+- Found a vulnerability? Please follow our [Security Policy](./SECURITY.md) — don't open a public issue.
 
-The [GitHub Wiki](https://github.com/Overcastly-AI/Next-Lane/wiki) has detailed guides for configuration, self-hosting, features, and troubleshooting. The wiki source lives under [`wiki/`](./wiki/) in this repo.
+The [documentation site](https://overcastly-ai.github.io/Next-Lane/) has detailed guides for configuration, self-hosting, features, and troubleshooting.
 
 This project follows the [Contributor Covenant Code of Conduct](./CODE_OF_CONDUCT.md).
 
@@ -223,6 +225,10 @@ This project follows the [Contributor Covenant Code of Conduct](./CODE_OF_CONDUC
 > **AGPL-3.0** to keep network-deployed modifications open. Next Lane currently ships
 > under MIT for maximum adoption; this may be revisited early in the project's life.
 > See [`docs/RESEARCH.md`](./docs/RESEARCH.md#6-licensing).
+
+## Built by Overcastly AI
+
+Next Lane is designed and maintained by [Overcastly AI](https://overcastly.com).
 
 ## Trademarks & disclaimer
 
