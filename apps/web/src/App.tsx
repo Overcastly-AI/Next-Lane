@@ -29,6 +29,7 @@ import { WorkspaceMembersPage } from '@/pages/WorkspaceMembersPage';
 import { PokerStartPage } from '@/pages/PokerStartPage';
 import { PokerSessionPage } from '@/pages/PokerSessionPage';
 import { StandupsPage } from '@/pages/StandupsPage';
+import { PersonalBoardPage } from '@/pages/PersonalBoardPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -71,6 +72,14 @@ export default function App() {
               element={
                 <RequireAuth>
                   <MyWorkPage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/my-board"
+              element={
+                <RequireAuth>
+                  <PersonalBoardPage />
                 </RequireAuth>
               }
             />
