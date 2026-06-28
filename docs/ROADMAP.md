@@ -163,6 +163,15 @@ forges, not just the big clouds.
 - ⬜ **Gitea / self-hosted forges** — first-class support for fully self-hosted Git, the combo the cloud incumbents can't credibly serve.
 - ⬜ **Pairs with Autopilot/MCP** — agents that open a PR can auto-link and close their own ticket on merge, completing the dogfooded build loop.
 
+## Phase 10 — Team rituals & personal workspace 🔭 (vision)
+
+Make Next Lane the place people actually start their day — not just where tickets
+live.
+
+- ⬜ **Async standups** — per-team daily standup: each member posts *yesterday / today / blockers* (auto-prefilled from their recent activity + assigned issues); a digest is generated and optionally posted to chat/email. Blockers link to issues and surface on the board. Autopilot (Phase 6) auto-drafts each person's update and a team summary.
+- ⬜ **Personal boards** — a private, per-user space to jot down work and todos that *aren't* formal issues (a personal kanban / scratchpad). Cards can stay personal or be promoted into a real project issue; a "My focus" board pulls in everything assigned to you across projects. Not workspace-visible unless shared.
+- ⬜ **Personal & team analytics** — insights on top of the above: your throughput and focus over time, what you actually worked on, standup-trend/blocker-frequency analysis, and per-person/per-team workload & cycle-time. Builds on the Glass Box (Phase 7) analytics layer and the per-assignee workload report.
+
 ---
 
 ### Current focus
