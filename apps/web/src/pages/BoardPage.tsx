@@ -28,6 +28,7 @@ import {
 } from '@next-lane/shared';
 import { useBoards, useBoardDefault, useBoardView } from '@/api/boards';
 import { useMoveIssue } from '@/api/issues';
+import { useExportCsv } from '@/api/export';
 import { useLabels, useSprints, useUsers } from '@/api/meta';
 import { useMyRole } from '@/api/workspaces';
 import { useCustomFields } from '@/api/custom-fields';
@@ -219,6 +220,13 @@ export function BoardPage() {
 
   // Controls opening the Card Colors tab inside the BoardSettingsModal via the toolbar button.
   const [openColorsTab, setOpenColorsTab] = useState(false);
+
+  const { exportCsv, isExporting } = useExportCsv({
+    projectId,
+    nlqlQuery,
+    projectKey: board?.project.key,
+    onError: () => toast.error("Couldn't export issues."),
+  });
 
   // ── Modals ────────────────────────────────────────────────────────────────
 
@@ -736,6 +744,32 @@ export function BoardPage() {
               View only
             </span>
           )}
+          <Button
+            variant="secondary"
+            size="md"
+            data-testid="export-csv"
+            aria-label="Export issues as CSV"
+            loading={isExporting}
+            disabled={isExporting}
+            onClick={exportCsv}
+          >
+            {!isExporting && (
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                aria-hidden="true"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+                <polyline strokeLinecap="round" strokeLinejoin="round" points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" strokeLinecap="round" />
+              </svg>
+            )}
+            Export CSV
+          </Button>
           {editable && (
             <Button onClick={() => setCreateForStatus(statuses[0]?.id ?? null)}>
               + Create issue

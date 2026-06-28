@@ -45,6 +45,7 @@ import {
   BulkSelectCheckbox,
   BulkSelectAll,
 } from '@/components/issue/BulkActionBar';
+import { useExportCsv } from '@/api/export';
 import { errorMessage } from '@/lib/errorMessage';
 import { cn } from '@/lib/cn';
 
@@ -63,6 +64,14 @@ export function BacklogPage() {
   const updateSprint = useUpdateSprint(projectId);
   const createIssue = useCreateIssue(projectId);
   const bulkUpdate = useBulkUpdateIssues();
+
+  const { exportCsv, isExporting } = useExportCsv({
+    projectId,
+    // boardQuery (declared above) — `board` is derived further down; reading it
+    // here would be a temporal-dead-zone error that crashes the page.
+    projectKey: boardQuery.data?.project.key,
+    onError: () => toast.error("Couldn't export issues."),
+  });
 
   const [createOpen, setCreateOpen] = useState(false);
   const [openIssueId, setOpenIssueId] = useState<string | null>(null);
@@ -255,29 +264,58 @@ export function BacklogPage() {
               Plan sprints and order your backlog.
             </p>
           </div>
-          {editable ? (
-            <div className="flex items-center gap-2">
-              <Link
-                to={`/projects/${projectId}/poker`}
-                className="inline-flex h-9 items-center gap-1.5 rounded-md border border-ink-200 bg-white px-3.5 text-sm font-semibold text-ink-700 shadow-xs transition-all duration-[120ms] hover:bg-ink-50 hover:border-ink-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-500"
-              >
-                ♠ Estimate / Poker
-              </Link>
-              <Button onClick={() => setCreateOpen(true)}>+ Create sprint</Button>
-            </div>
-          ) : (
-            <span
-              data-testid="readonly-hint"
-              className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-500"
-              title="You have view-only access to this workspace."
+          <div className="flex items-center gap-2">
+            {/* Export is a read operation — available to viewers too. */}
+            <Button
+              variant="secondary"
+              size="md"
+              data-testid="export-csv"
+              aria-label="Export issues as CSV"
+              loading={isExporting}
+              disabled={isExporting}
+              onClick={exportCsv}
             >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" />
-                <circle cx="12" cy="12" r="3" />
-              </svg>
-              View only
-            </span>
-          )}
+              {!isExporting && (
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  aria-hidden="true"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+                  <polyline strokeLinecap="round" strokeLinejoin="round" points="7 10 12 15 17 10" />
+                  <line x1="12" y1="15" x2="12" y2="3" strokeLinecap="round" />
+                </svg>
+              )}
+              Export CSV
+            </Button>
+            {editable ? (
+              <>
+                <Link
+                  to={`/projects/${projectId}/poker`}
+                  className="inline-flex h-9 items-center gap-1.5 rounded-md border border-ink-200 bg-white px-3.5 text-sm font-semibold text-ink-700 shadow-xs transition-all duration-[120ms] hover:bg-ink-50 hover:border-ink-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-500"
+                >
+                  ♠ Estimate / Poker
+                </Link>
+                <Button onClick={() => setCreateOpen(true)}>+ Create sprint</Button>
+              </>
+            ) : (
+              <span
+                data-testid="readonly-hint"
+                className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-500"
+                title="You have view-only access to this workspace."
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                  <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+                View only
+              </span>
+            )}
+          </div>
         </div>
 
         {planningSprints.map((sprint) => {
