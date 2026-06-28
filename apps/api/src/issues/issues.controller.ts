@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { IssuesService } from './issues.service';
+import { WatchersService } from './watchers.service';
 import { CreateIssueDto } from './dto/create-issue.dto';
 import { UpdateIssueDto } from './dto/update-issue.dto';
 import { MoveIssueDto, ListIssuesQueryDto } from './dto/move-issue.dto';
@@ -20,7 +21,10 @@ import { RequireScope } from '../auth/require-scope.decorator';
 @ApiBearerAuth()
 @Controller('issues')
 export class IssuesController {
-  constructor(private readonly issues: IssuesService) {}
+  constructor(
+    private readonly issues: IssuesService,
+    private readonly watchers: WatchersService,
+  ) {}
 
   @Post()
   @RequireScope('issues:write')
@@ -70,5 +74,37 @@ export class IssuesController {
   @RequireScope('issues:write')
   remove(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.issues.remove(user.id, id);
+  }
+
+  // ── Watch toggle ──────────────────────────────────────────────────────────
+
+  /**
+   * Subscribe the caller to this issue. Idempotent — calling when already
+   * watching returns { watching: true } without error.
+   */
+  @Post(':id/watch')
+  @RequireScope('issues:write')
+  watch(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.watchers.watch(id, user.id);
+  }
+
+  /**
+   * Unsubscribe the caller from this issue. Idempotent — calling when not
+   * watching returns { watching: false } without error.
+   */
+  @Delete(':id/watch')
+  @RequireScope('issues:write')
+  unwatch(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.watchers.unwatch(id, user.id);
+  }
+
+  /**
+   * Return the total watcher count and whether the caller is currently
+   * watching this issue. Useful for rendering a watch button with its badge.
+   */
+  @Get(':id/watchers')
+  @RequireScope('issues:read')
+  watcherInfo(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.watchers.getWatcherInfo(id, user.id);
   }
 }
