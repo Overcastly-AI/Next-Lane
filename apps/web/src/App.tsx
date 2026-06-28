@@ -32,6 +32,7 @@ import { StandupsPage } from '@/pages/StandupsPage';
 import { PersonalBoardPage } from '@/pages/PersonalBoardPage';
 import { PersonalAnalyticsPage } from '@/pages/PersonalAnalyticsPage';
 import { ProjectAnalyticsPage } from '@/pages/ProjectAnalyticsPage';
+import { AutomationsPage } from '@/pages/AutomationsPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -138,6 +139,14 @@ export default function App() {
               element={
                 <RequireAuth>
                   <TriagePage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/projects/:projectId/automations"
+              element={
+                <RequireAuth>
+                  <AutomationsPage />
                 </RequireAuth>
               }
             />
