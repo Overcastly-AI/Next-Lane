@@ -30,6 +30,8 @@ import { PokerStartPage } from '@/pages/PokerStartPage';
 import { PokerSessionPage } from '@/pages/PokerSessionPage';
 import { StandupsPage } from '@/pages/StandupsPage';
 import { PersonalBoardPage } from '@/pages/PersonalBoardPage';
+import { PersonalAnalyticsPage } from '@/pages/PersonalAnalyticsPage';
+import { ProjectAnalyticsPage } from '@/pages/ProjectAnalyticsPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -84,6 +86,14 @@ export default function App() {
               }
             />
             <Route
+              path="/me/analytics"
+              element={
+                <RequireAuth>
+                  <PersonalAnalyticsPage />
+                </RequireAuth>
+              }
+            />
+            <Route
               path="/projects/:projectId/board"
               element={
                 <RequireAuth>
@@ -104,6 +114,14 @@ export default function App() {
               element={
                 <RequireAuth>
                   <ReportsPage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/projects/:projectId/analytics"
+              element={
+                <RequireAuth>
+                  <ProjectAnalyticsPage />
                 </RequireAuth>
               }
             />

@@ -42,6 +42,19 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
       >
         My Board
       </NavLink>
+      <NavLink
+        to="/me/analytics"
+        className={({ isActive }) =>
+          `shrink-0 rounded px-2.5 py-1.5 text-sm font-medium transition-colors duration-[120ms] ${
+            isActive
+              ? 'bg-signal-50 text-signal-700 font-semibold'
+              : 'text-ink-600 hover:bg-ink-100 hover:text-ink-900'
+          }`
+        }
+        data-testid="nav-my-analytics"
+      >
+        Insights
+      </NavLink>
       {/* Search / command palette trigger — desktop */}
       <button
         type="button"
