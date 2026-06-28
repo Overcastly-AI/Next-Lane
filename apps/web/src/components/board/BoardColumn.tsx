@@ -71,6 +71,11 @@ export function BoardColumn({
   const dotClass    = CATEGORY_DOT[status.category]    ?? 'bg-ink-400';
   const countClass  = CATEGORY_COUNT[status.category]  ?? 'bg-ink-100 text-ink-600';
 
+  // WIP limit indicator state
+  const wipLimit = status.wipLimit ?? null;
+  const count = issues.length;
+  const isOverLimit = wipLimit !== null && count > wipLimit;
+
   return (
     <div
       className={cn(
@@ -100,14 +105,45 @@ export function BoardColumn({
           <span className="font-display truncate text-[10px] font-bold uppercase tracking-[0.1em] text-ink-500">
             {status.name}
           </span>
-          <span
-            className={cn(
-              'nl-data-chip rounded-sm px-1.5 py-0.5 leading-none',
-              countClass,
-            )}
-          >
-            {issues.length}
-          </span>
+          {wipLimit !== null ? (
+            /*
+             * WIP limit active — render "count / limit".
+             * When over limit: red danger tokens (bg-red-50 text-red-700) so the
+             * operator sees it immediately. Colour-blind safe: aria-label spells
+             * out the state in words.
+             */
+            <span
+              data-testid="column-wip-indicator"
+              className={cn(
+                'nl-data-chip rounded-sm px-1.5 py-0.5 leading-none',
+                isOverLimit
+                  ? 'bg-red-50 text-red-700 ring-1 ring-red-200'
+                  : countClass,
+              )}
+              aria-label={
+                isOverLimit
+                  ? `${count} of ${wipLimit}, over limit`
+                  : `${count} of ${wipLimit}`
+              }
+              title={
+                isOverLimit
+                  ? `${count} issues — over the WIP limit of ${wipLimit}`
+                  : `${count} of ${wipLimit} WIP slots used`
+              }
+            >
+              {count} / {wipLimit}
+            </span>
+          ) : (
+            /* No WIP limit — render exactly as before (no regression). */
+            <span
+              className={cn(
+                'nl-data-chip rounded-sm px-1.5 py-0.5 leading-none',
+                countClass,
+              )}
+            >
+              {count}
+            </span>
+          )}
         </div>
         {editable && (
           <button

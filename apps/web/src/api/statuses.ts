@@ -8,6 +8,8 @@ export interface CreateStatusInput {
   category: StatusCategory;
   /** Optional explicit order; the server appends to the end when omitted. */
   order?: number;
+  /** WIP cap for this column; null means no limit. Must be >= 1 when set. */
+  wipLimit?: number | null;
 }
 
 export interface UpdateStatusInput {
@@ -15,6 +17,8 @@ export interface UpdateStatusInput {
   name?: string;
   category?: StatusCategory;
   order?: number;
+  /** WIP cap for this column; null clears the limit. Must be >= 1 when set. */
+  wipLimit?: number | null;
 }
 
 /** Refresh both the standalone status list and the board (which renders columns). */
@@ -73,6 +77,7 @@ export function useCreateStatus(projectId: string, boardId?: string) {
           category: input.category,
           order: input.order ?? nextOrder,
           projectId,
+          wipLimit: input.wipLimit ?? null,
         };
         return { ...existing, statuses: [...existing.statuses, optimistic] };
       };

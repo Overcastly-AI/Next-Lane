@@ -45,6 +45,8 @@ export function ColumnFormModal({
 
   const [name, setName] = useState('');
   const [category, setCategory] = useState<StatusCategory>(StatusCategory.TODO);
+  /** Raw string for the WIP limit input — empty means no limit. */
+  const [wipLimitRaw, setWipLimitRaw] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   // Seed the form whenever it opens (or the target column changes).
@@ -52,6 +54,7 @@ export function ColumnFormModal({
     if (!open) return;
     setName(status?.name ?? '');
     setCategory(status?.category ?? StatusCategory.TODO);
+    setWipLimitRaw(status?.wipLimit != null ? String(status.wipLimit) : '');
     setError(null);
   }, [open, status]);
 
@@ -67,12 +70,27 @@ export function ColumnFormModal({
     const trimmed = name.trim();
     if (!trimmed) return;
     setError(null);
+
+    // Parse WIP limit: empty → null (no limit), positive integer → number.
+    const rawTrimmed = wipLimitRaw.trim();
+    let wipLimit: number | null = null;
+    if (rawTrimmed !== '') {
+      const parsed = parseInt(rawTrimmed, 10);
+      if (!Number.isFinite(parsed) || parsed < 1) {
+        const msg = 'WIP limit must be a positive integer (1 or more).';
+        setError(msg);
+        toast.error(msg);
+        return;
+      }
+      wipLimit = parsed;
+    }
+
     try {
       if (isEdit && status) {
-        await updateStatus.mutateAsync({ id: status.id, name: trimmed, category });
+        await updateStatus.mutateAsync({ id: status.id, name: trimmed, category, wipLimit });
         toast.success(`Updated "${trimmed}".`);
       } else {
-        await createStatus.mutateAsync({ name: trimmed, category });
+        await createStatus.mutateAsync({ name: trimmed, category, wipLimit });
         toast.success(`Added column "${trimmed}".`);
       }
       handleClose();
@@ -135,6 +153,22 @@ export function ColumnFormModal({
               </option>
             ))}
           </Select>
+        </Field>
+        <Field
+          label="WIP limit (optional)"
+          htmlFor="column-wip-limit"
+          hint="Maximum number of issues allowed in this column. Leave blank for no limit."
+        >
+          <Input
+            id="column-wip-limit"
+            data-testid="column-wip-limit-input"
+            type="number"
+            min={1}
+            step={1}
+            value={wipLimitRaw}
+            onChange={(e) => setWipLimitRaw(e.target.value)}
+            placeholder="e.g. 5"
+          />
         </Field>
         {error && (
           <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
