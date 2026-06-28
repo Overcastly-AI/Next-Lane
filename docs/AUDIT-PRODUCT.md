@@ -1016,3 +1016,177 @@ The product has cleared the "basic agile tracker" bar decisively. The parity aud
 - GitHub/GitLab PR/branch linking (webhook-driven; issue drawer shows linked PRs + status; auto-transition on merge) · P3 · M · SCM-native feel; PATs + webhooks already shipped; key differentiator for developer-led teams
 - Per-user "Workday" calendar view (due-date issues as calendar blocks; drag to reschedule) · P3 · M · dueDate field now wired; personal task-management skin; differentiates personal productivity use case
 - AI-assisted issue triage (priority/assignee/label suggestions in create modal; configurable local-LLM endpoint) · P3 · L · self-hosted teams can point at Ollama; FTS GIN index is already in place; high differentiation
+
+---
+
+## Pass 7 — 2026-06-28
+
+**Auditor:** Product / UX (independent)
+**Scope:** Full product audit with focus on verifying recently shipped features (personal boards, personal/team analytics, automation engine with Glass Box run log, design cohesion). Evidence-based ratings from code reading across ~30 source files.
+
+---
+
+### Ratings Table
+
+| Area | Score | Note |
+|---|---|---|
+| Auth | 4/5 | JWT + email/password + PATs (`nlp_`-prefixed, SHA-256 hashed, REST + WebSocket). No SSO/OIDC. JWT stored in localStorage (XSS exposure vs httpOnly cookie). Magic-link or social login absent. |
+| Projects | 4/5 | Full CRUD; multi-project workspace; member invite/manage. No project-level role overrides (workspace role only). Component and Version models exist in schema but have zero API controllers and zero UI — schema-only placeholders. |
+| Board (Kanban) | 5/5 | Multi-board per project; BoardSwitcher; board type support; NLQL query bar; 4 quick-filter presets (myIssues/highPriority/unresolved/recent) composable via OR logic; CardStatusPicker (inline status transition — keyboard-accessible, confirmed implemented); card color accent stripe; presence avatars; dnd-kit PointerSensor (distance:5) + KeyboardSensor. Best-in-class area. |
+| Issues (CRUD) | 4/5 | Comprehensive drawer: title, description (rich text), status, priority, assignee, labels, due date, story points, custom fields (appliesToTypes-scoped), issue links (blocks/relates-to/duplicates), watch toggle. Missing: time tracking (logged/estimated hours), configurable workflow transitions. |
+| Comments / Activity | 4/5 | Markdown rendering; @mentions; edit/delete; real-time via Socket.io; full activity log. No threaded replies; no comment reactions; no draft persistence across page loads. |
+| Search / Filter | 4/5 | NLQL (tokenizer+parser+evaluator in `packages/shared`) with `me()`, `today()`, `AND`/`OR`, `IN`, `IS EMPTY`, field operators; saved filter CRUD with share toggle; full-text search fallback; quick-filter presets. Critical gap: filter state resets on navigation — not persisted to URL or localStorage. |
+| Sprints / Backlog | 4/5 | Full sprint lifecycle (plan/start/complete); backlog rank (fractional indexing); sprint goal, date, capacity display; planning poker (VOTING→REVEALED→CLOSED state machine with vote masking). Missing: bulk edit on backlog (must open each issue individually), sprint retrospective UI, velocity vs. capacity comparison in sprint planning view. |
+| Labels | 5/5 | Create/rename/delete/assign/multi-assign; colored chips on cards and drawer; used in board filters, NLQL conditions, card color rules, automation conditions. Fully integrated across all surfaces. |
+| Reports | 3/5 | Velocity chart, burndown chart, CFD (cumulative flow diagram), team analytics (throughput, open/closed counts, by-type bars). Fixed chart set only. No configurable dashboards, no custom metric gadgets, no sprint comparison view, no team-vs-capacity report. |
+| Notifications | 3/5 | In-app real-time dropdown (unread badge via Socket.io push); mark individual or all read; watch/mention-triggered. Email delivery exists only for password-reset (SMTP wired). No email fan-out for issue/comment/assignment notifications. No dedicated notifications page — all deep-link to `board?issue=`. |
+| Roles / Permissions | 3/5 | Workspace roles (ADMIN/MEMBER/VIEWER) enforced at service layer via `assertProjectRole`. No per-project role overrides. All workspace members share the same role across all projects. No team-level role grouping in UI. |
+| Mobile Experience | 3/5 | Responsive breakpoints; ProjectNav "More" dropdown collapses secondary tabs gracefully. Board horizontal scroll works on touch. NLQL bar with multi-field filter toolbar becomes dense/cramped on viewport <768px. Drag-and-drop on mobile limited (PointerSensor works but small card targets). |
+| Onboarding / Empty States | 3/5 | `OnboardingPanel.tsx` shows "Welcome to Next Lane" with feature highlights grid and "Create your first project" CTA. Highlights only 3 features (Kanban board, Sprints & backlog, Reports). Automation, NLQL search, planning poker — the differentiating features — are not mentioned. Empty board state shows create-issue prompt. |
+| Automation | 3/5 | Real engine: `@OnEvent` listeners for 4 triggers (ISSUE_CREATED/UPDATED/TRANSITIONED/COMMENTED); NLQL condition evaluation; 6 action types (ASSIGN, SET_PRIORITY, TRANSITION, ADD_LABEL, ADD_COMMENT, SET_CUSTOM_FIELD); loop guard (`if (event.automated) return`); Glass Box AutomationRun log (SUCCESS/SKIPPED/FAILED per rule). Missing: scheduled/time-based triggers; sprint event triggers; "issue becomes overdue" trigger; no bulk-apply-to-existing-issues action. Run log will grow noisy because every SKIPPED evaluation (all rules against every event) is recorded verbosely. |
+| Personal Boards | 4/5 | Private personal kanban (userId-scoped, no workspace membership check); custom columns; card CRUD; "Promote to issue" action (creates a real project issue from personal card). Confirmed in `PersonalBoardPage.tsx`. Missing: labels, due dates, and assignee on personal cards. |
+| Personal / Team Analytics | 3/5 | `PersonalAnalyticsPage.tsx`: 4 StatCards (open/completed/overdue/avg cycle time), throughput area chart (SVG), by-type and by-priority category bars, personal board mini-stats. WindowSelector (14/30/90 days). Accessible (role="img", aria-label, sr-only summaries). Missing: comparison context — numbers are shown without "vs. previous period" or "vs. team average," making them hard to interpret. Team analytics: same fixed chart set. No per-member breakdown within project analytics. |
+
+---
+
+### Parity Scorecard
+
+Category-leading issue trackers (open-source and commercial) in this space are the benchmark for depth ratings.
+
+| Capability | Our Depth (1-5) | Leader Baseline (1-5) | Gap Size | Parity Gap? |
+|---|---|---|---|---|
+| Multiple boards per project | 5 | 5 | None | No |
+| Board types (Kanban / Scrum) | 4 | 5 | Small | No |
+| Configurable columns | 4 | 5 | Small | No |
+| Swimlanes (group-by assignee/epic/priority) | 1 | 5 | Large | YES |
+| Quick filters on board | 5 | 5 | None | No |
+| NLQL / query language | 5 | 4 | None (ahead) | No |
+| Saved filters | 5 | 5 | None | No |
+| Filter state URL persistence | 1 | 5 | Large | YES |
+| Custom fields (text/number/select/date/checkbox) | 4 | 5 | Small | No |
+| Custom fields on cards / configurable card fields | 1 | 4 | Large | YES |
+| Conditional card colors / rules | 5 | 4 | None (ahead) | No |
+| Cover images on cards | 1 | 3 | Medium | YES |
+| Configurable workflow transitions | 1 | 5 | Large | YES |
+| Workflow rules / validators | 1 | 4 | Large | YES |
+| Automation rule engine | 3 | 5 | Medium | YES |
+| Scheduled / time-based automation triggers | 1 | 4 | Large | YES |
+| Configurable dashboards / gadgets | 1 | 5 | Large | YES |
+| Fixed report set (velocity/burndown/CFD) | 3 | 3 | None | No |
+| Bulk edit (backlog/triage) | 1 | 5 | Large | YES |
+| Issue links / dependencies | 5 | 5 | None | No |
+| Watchers / watch toggle | 5 | 5 | None | No |
+| Time tracking (logged/estimated hours) | 1 | 5 | Large | YES |
+| Components (sub-system grouping) | 1 | 4 | Large | YES |
+| Versions / releases | 1 | 5 | Large | YES |
+| Import / export (CSV/JSON) | 1 | 5 | Large | YES |
+| Email notifications (mentions/assignment/watch) | 1 | 5 | Large | YES |
+| Per-project role overrides | 1 | 5 | Large | YES |
+| Planning poker | 5 | 3 | None (ahead) | No |
+| Async standups | 5 | 2 | None (ahead) | No |
+| Keyboard power-user flows | 4 | 5 | Small | No |
+| SSO / OIDC | 1 | 4 | Large | YES |
+
+**Parity gaps (score <= 3, outranking infra/polish):** Swimlanes, filter URL persistence, configurable card fields, configurable workflow transitions, workflow validators, automation scheduled triggers, configurable dashboards, bulk edit, time tracking, Components UI, Versions UI, import/export, email notifications, per-project role overrides, SSO/OIDC.
+
+---
+
+### Top Gaps — Prioritized Backlog Candidates
+
+**Gap 1: Swimlanes on board**
+- What: Group board columns by a second dimension — assignee, epic, priority, or label — so each group gets its own horizontal row of status columns. Cards can be dragged between swimlanes. Rows can be collapsed.
+- Why it matters: A team board with more than 3 active members becomes unreadable as cards pile up in a single column. Grouping by assignee is the single most-requested feature in any growing team tracker. Without it, users resort to "one board per person" workarounds, fragmenting the shared view.
+- Rough size: L (dnd-kit row dimension, new droppable contexts, backend groupBy query param, swimlane header UI)
+- Evidence: No `swimlane` reference in any source file. `BoardPage.tsx` has no groupBy state.
+
+**Gap 2: Bulk edit on backlog / triage**
+- What: Select-N issues via checkbox; apply batch PATCH (status, assignee, priority, label, sprint) from a sticky action bar at the bottom of the list. Keyboard shortcut to select all visible.
+- Why it matters: Sprint planning today requires opening each issue drawer individually to update estimates or assignments. A 30-issue sprint planning session involves 30 drawer open/close cycles. This is the highest-friction daily workflow for any scrum team.
+- Rough size: L (checkbox column in BacklogPage/TriagePage, multi-select state, batch PATCH endpoint, sticky toolbar)
+- Evidence: No `selectedIssues`, `bulkEdit`, or `batch` reference in any page file. `BacklogPage.tsx` renders each issue as individual row with no selection mechanism.
+
+**Gap 3: Email notifications for all notification types**
+- What: Send email for ISSUE_ASSIGNED, ISSUE_COMMENTED (mention), ISSUE_WATCHED_UPDATED, and custom per-user preferences. Digest option (immediate / hourly / daily). SMTP already configured for password reset.
+- Why it matters: Teams do not live in the tracker — they check email. Without email delivery, the "watch" and "@mention" features lose half their value. Users miss updates when they are not actively looking at the board. Self-hosted teams especially rely on email since they cannot push to mobile.
+- Rough size: M (NotificationEmailService, BullMQ email job, per-user preference model, email templates)
+- Evidence: `apps/api/src/auth/auth.service.ts` already has `MailerService` for password reset. `Notification` model in schema has all required fields. The delivery fan-out is the missing piece.
+
+**Gap 4: Configurable workflow transitions**
+- What: Per-project ADMIN-defined allowed-transition map (e.g., "In Progress → Done" allowed; "Backlog → Done" blocked). Validator called on every PATCH /issues/:id status change and TRANSITION event. UI in project settings: drag-and-drop transition builder.
+- Why it matters: Today any status can move to any other status. This means workflow rules in automations are meaningless (an automation can't say "reject if skipping QA") and a VIEWER can accidentally close an issue that was never reviewed. Transition guards are the foundation that makes automation conditions useful.
+- Rough size: L (WorkflowTransition schema model, API validator middleware, settings UI, update automation engine to fire BEFORE transition)
+- Evidence: `AutomationTrigger` enum has ISSUE_TRANSITIONED but no guard rails stop illegal transitions. `schema.prisma` has no `WorkflowTransition` model.
+
+**Gap 5: Import / export (CSV at minimum)**
+- What: Export all project issues to CSV (title, description, status, assignee, priority, labels, custom fields, dates). Import CSV with column mapping wizard. JSON export for full-fidelity backup.
+- Why it matters: "Your data, your compute" is the central brand promise of this self-hosted product. Without a data export, that promise is hollow — users cannot migrate away if they need to, which is exactly the vendor lock-in they chose self-hosted to avoid. CSV export is also the fastest path for teams evaluating the product to bring their existing issue backlog in.
+- Rough size: M (export: streaming CSV endpoint; import: multipart upload + column-mapping UI + upsert service)
+- Evidence: No `import`, `export`, `csv`, or `xlsx` reference in any backend module or frontend page.
+
+---
+
+### Ideation — 3 Ambitious New Features / UX Improvements
+
+**Idea 1: AI-powered triage assistant ("Smart Triage")**
+The issue create modal gains a "Triage suggestions" panel that appears 0.5 s after the user finishes typing a title. It shows inferred priority (High/Medium/Low), a suggested assignee based on past routing patterns for similar issues, and up to 3 label suggestions. Suggestions are rendered as one-click accept chips. The backend calls a configurable LLM endpoint (pointing at a local Ollama instance by default — consistent with the self-hosted, privacy-first brand). The full-text search GIN index already in place provides the "similar past issues" context. This is directly achievable today: endpoint config in project settings, embeddings generated at issue create/update, nearest-neighbor lookup against open issues. Estimated size: L. Differentiation: no category-leading tracker (open-source tier) ships this out of the box for self-hosted deployments.
+
+**Idea 2: Keyboard command palette (Cmd+K)**
+A floating search/action palette invoked by Cmd+K (Mac) / Ctrl+K (Windows). Top results include: recent issues (fuzzy title match), jump-to-project, jump-to-board, create issue (opens modal pre-focused), run saved filter, toggle theme. Implemented as a modal with a single input, a virtualized result list, and a keyboard navigation loop. This is a well-understood pattern with minimal backend work (client-side fuzzy search over cached TanStack Query data + a few server calls for cross-project results). Estimated size: M. Differentiation: power users currently must navigate by clicking; a command palette would cut 3-5 navigation clicks to 1. It also makes the automation, standup, and poker features discoverable without requiring users to find the "More" dropdown.
+
+**Idea 3: Roadmap / timeline view with dependency arrows**
+The existing `RoadmapPage.tsx` shows epics and sprints as horizontal bars. Extend it with: (a) dependency arrows between issues that have "blocks" links, rendered as SVG bezier curves connecting bar endpoints; (b) a "critical path" highlight mode that colors the longest dependency chain red; (c) drag-to-reschedule that updates the issue due date. This surface transforms the existing issue link and due date data (both already in schema) into a planning artifact that managers and product owners actually use. Estimated size: L. Differentiation: timeline views with dependency rendering are typically enterprise-tier features in comparable trackers. Shipping it here would be a genuine differentiator for self-hosted teams.
+
+---
+
+### UX Issues Detectable from Code
+
+1. **Filter state resets on navigation** (`BoardPage.tsx`, `NlqlQueryBar` state is local component state — not URL-synced, not localStorage-persisted). Every board navigation discards the user's active query. Workaround is saved filters, but ad-hoc exploration is always lost.
+
+2. **"More" menu buries Automation** (`ProjectNav.tsx` line ~60-90: `MORE_TABS` array contains Analytics, Roadmap, Poker, Standup, Automation). Automation is the most powerful differentiating feature and is invisible to new users unless they click "More". Consider promoting Automation to primary navigation or adding a first-run tooltip.
+
+3. **Personal analytics lacks comparison context** (`PersonalAnalyticsPage.tsx`): StatCards show raw numbers (e.g., "12 completed") with no "vs. last 30 days" delta or "vs. team average" comparison. Without a baseline, the numbers are hard to act on.
+
+4. **Automation run log verbosity** (`automation-engine.service.ts`): Every SKIPPED evaluation is written as an `AutomationRun` record. For a project with 10 rules and 100 issue events per day, that's ~1,000 SKIPPED rows/day before any SUCCESS. The run log UI will become unusable noise. A filter "show failures only" or "show successes only" is needed immediately.
+
+5. **Custom field values invisible on cards** (`IssueCard.tsx`): Custom fields are rendered only in the issue drawer sidebar (`CustomFieldsDrawerSection.tsx`). A card on the board shows no custom field values, meaning field data (e.g., a "Customer" select or "Story points (custom)" number) cannot be used as a visual signal without opening the drawer. Comparable trackers let users configure which fields appear on the card face.
+
+6. **OnboardingPanel highlights only 3 of 12+ features** (`OnboardingPanel.tsx`): The welcome panel names "Kanban board", "Sprints & backlog", "Reports" — three features that are table stakes for any tracker. NLQL search, automation, planning poker, and personal boards are not mentioned. A new user has no signal that these differentiating features exist.
+
+7. **RoadmapPage uses stale token set** (`RoadmapPage.tsx` uses `slate-900`, `slate-500`, `slate-200`). All other recently-updated pages use `ink-*` / `signal-*` / `brand-*` Dispatch tokens. The Roadmap page is visually inconsistent with the rest of the product.
+
+8. **No dedicated notifications page** (`NotificationBell.tsx`): The notification dropdown deep-links directly to `board?issue=`. Users cannot review their notification history without the board view loading. A full-page `/notifications` route would let users triage updates without context-switching to a board they don't need.
+
+---
+
+### Direction — Next Quarter
+
+The product has crossed a significant threshold: the board, NLQL, automation engine, planning poker, personal boards, and analytics are all real and substantive. The differentiators the product was designed around (free, self-hosted, AI-native) are now plausible to a technical audience.
+
+The next quarter must address the **trust and depth gap**. Two things will determine whether teams commit to this tool over established alternatives: (1) **data ownership evidence** — CSV export is non-negotiable for a product whose central claim is "your data, your compute"; (2) **sprint-planning usability** — bulk edit on the backlog eliminates the single highest-friction daily workflow. Both are medium-to-large features but neither requires new infrastructure.
+
+Beyond those two anchors, the parity scorecard reveals a cluster of large gaps (swimlanes, workflow transitions, time tracking, email notifications, per-project roles) that collectively define the gap between "promising prototype" and "production team tracker." Swimlanes and email notifications have the widest reach — they affect every user on every active team. Workflow transitions are the prerequisite for making automations genuinely powerful. These three should follow bulk edit and export as the Q3 focus.
+
+Design cohesion is 80% there. The one concrete remaining task is migrating `RoadmapPage.tsx` from `slate-*` tokens to `ink-*` / `signal-*` / `brand-*`. The new `OnboardingPanel` copy should be updated to surface the differentiating features (NLQL, automation, planning poker) so first-run users understand what makes this tracker different.
+
+---
+
+### Backlog-Groomer Ingest — Pass 7
+
+- Swimlanes on board (group-by assignee/epic/priority; collapsible rows; dnd-kit row dimension) · P1 · L · critical for multi-person teams; board becomes unreadable beyond 3 active members without grouping; no competing feature conflict
+- Bulk edit on backlog / triage (checkbox multi-select; batch PATCH status/assignee/priority/label/sprint; sticky action bar) · P1 · L · highest-friction daily workflow; sprint planning requires N drawer opens for N issues; no new infrastructure needed
+- Export issues to CSV (streaming endpoint; all fields including custom fields; download trigger from project settings) · P1 · M · data ownership trust signal; central brand promise of self-hosted is hollow without it; builds user confidence before commit
+- Email notifications for all notification types (ISSUE_ASSIGNED/MENTIONED/WATCHED_UPDATED; per-user prefs; digest option; BullMQ job; SMTP already wired) · P1 · M · watch and @mention features lose half their value without email delivery; teams do not live in the tracker
+- Filter state URL persistence (sync NlqlQueryBar + quick-filter state to URL query params on change) · P1 · S · filter state resets on every navigation; saved filters work around it but ad-hoc exploration is always lost; S-sized win
+- Configurable workflow transitions (per-project allowed-transition map; ADMIN-defined in settings; validator on every PATCH status; UI: drag-and-drop transition builder) · P2 · L · prerequisite for meaningful automation; enables guard rails on status changes; WorkflowTransition model needed in schema
+- Automation run log filter ("failures only" / "successes only" toggle in AutomationRunsPanel) · P2 · S · 10 rules × 100 events/day = 1,000 SKIPPED rows/day; log becomes unusable noise without filter; trivial frontend change
+- Custom field values on board cards (configurable per-board field badges on IssueCard; project settings: select up to 3 fields to show on card) · P2 · M · field data invisible on board today; comparable trackers let users configure card face; no new API needed
+- Per-project role overrides (ProjectMembership role field; checked before workspace role in assertProjectRole; project settings members tab) · P2 · M · all workspace members share same role across all projects; multi-team orgs blocked without per-project admin
+- Roadmap page token migration (replace slate-* with ink-*/signal-*/brand-* in RoadmapPage.tsx) · P2 · S · visual inconsistency with rest of product; only page not migrated to Dispatch tokens
+- OnboardingPanel copy update (add NLQL search, automation, planning poker, personal boards to feature highlights; replace generic 3-feature list) · P2 · S · new users get no signal that differentiating features exist; 30-minute copy change; high discovery value
+- Keyboard command palette Cmd+K (floating modal; fuzzy title search across cached issues; jump-to-project; create issue; run saved filter) · P2 · M · power-user navigation; reduces 3-5 click flows to 1; makes More-menu features discoverable; well-understood pattern
+- Notifications page (/notifications route; full history; filter by type; mark read) · P2 · S · dropdown-only today; users cannot review history without board context; straightforward route addition
+- Import issues from CSV (multipart upload; column-mapping wizard; upsert service; error report) · P3 · M · completes the import/export story; teams with existing backlog in other tools need a migration path
+- Time tracking (TimeLog model; log work modal on issue; logged vs. estimated bar; reports integration) · P3 · L · large parity gap; every comparable tracker ships this; prerequisite for capacity planning
+- Components UI (Component API controller; drawer picker; board filter by component; default assignee wiring) · P3 · M · schema exists; just needs API + UI surface; routes issues to the right sub-team by default
+- Versions / releases (Version API controller; drawer picker; release view; changelog generation) · P3 · L · sprint != release; product teams need a release abstraction; schema exists
+- AI-assisted triage suggestions (LLM endpoint config; inferred priority/assignee/labels in create modal; Ollama-compatible) · P3 · L · genuine differentiator for self-hosted; full-text GIN index provides similar-issue context; configurable to local model
