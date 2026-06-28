@@ -16,6 +16,7 @@ import { UpdateIssueDto } from './dto/update-issue.dto';
 import { MoveIssueDto, ListIssuesQueryDto } from './dto/move-issue.dto';
 import { CurrentUser, AuthUser } from '../auth/current-user.decorator';
 import { RequireScope } from '../auth/require-scope.decorator';
+import { BulkUpdateIssuesDto } from './dto/bulk-update-issues.dto';
 
 @ApiTags('issues')
 @ApiBearerAuth()
@@ -30,6 +31,23 @@ export class IssuesController {
   @RequireScope('issues:write')
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateIssueDto) {
     return this.issues.create(user.id, dto);
+  }
+
+  /**
+   * Bulk-edit up to 100 issues in a single request. Each issue is updated
+   * independently via the same `update()` path as a single PATCH, so per-issue
+   * authorization (MEMBER+), ActivityLog, realtime, webhooks, and automation
+   * events all fire. Issues the caller cannot access appear in `failed` — the
+   * batch never throws a whole-request 403.
+   *
+   * Route is `POST /issues/bulk` — the static segment `bulk` is unambiguous
+   * from the root `POST /issues` (create) and from param routes like
+   * `POST /issues/:id/move` (NestJS resolves static > param).
+   */
+  @Post('bulk')
+  @RequireScope('issues:write')
+  bulkUpdate(@CurrentUser() user: AuthUser, @Body() dto: BulkUpdateIssuesDto) {
+    return this.issues.bulkUpdate(user.id, dto);
   }
 
   @Get()

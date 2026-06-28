@@ -82,7 +82,7 @@ Status legend: ✅ done · 🚧 in progress · ⬜ planned
 - ✅ Audit log (workspace-scoped, ADMIN-only, cursor-paginated; AuditEvent model + migration; AuditService.record() best-effort fire-and-forget; events on membership add/remove/role-change, project create/archive, webhook CRUD, API-token create/revoke; GET /workspaces/:id/audit-log; WorkspaceAuditLogPage with paginated table + load-more; 11 unit tests + shared AuditEventDto/PaginatedAuditEventsDto types — 2026-06-27)
 - ✅ Workspace member management UI — `WorkspaceMembersPage` at `/workspaces/:id/members`; `useRemoveMember` mutation (DELETE /workspaces/:id/members/:membershipId, invalidates members query); ADMIN-only Remove button (hidden for self; hidden entirely for MEMBER/VIEWER); ConfirmDialog guard; server error → toast; workspace sub-nav (Members / Audit log tabs); Members nav button on dashboard (ADMIN-only); 11 desktop + 11 mobile e2e — 2026-06-27
 - ✅ Audit log e2e — `audit-log.spec.ts`: ADMIN performs audited actions (API token create, member add, member remove via UI) and confirms events appear in table; non-admin (VIEWER + MEMBER) nav buttons hidden; direct-navigate to audit-log shows access-denied; member management UI guards (Remove visible for ADMIN-on-others, hidden for self + non-ADMIN); 11 desktop + 11 mobile tests — 2026-06-27
-- ⬜ Bulk edit, CSV import (and importers for other trackers), SSO/OIDC
+- ✅ Bulk edit backend — `POST /issues/bulk` (2026-06-28); CSV import, importers for other trackers, SSO/OIDC ⬜
 
 ## Phase 4 — Cloud-native deployment (post-v1) 🚧
 
@@ -130,7 +130,8 @@ delivered as QA'd vertical slices.
 - ✅ **Quick-filter preset chips on the board toolbar** (2026-06-28) — "My issues" / "High priority" / "Unresolved" / "Recently updated" one-click chips that layer on top of the existing pill filters and NLQL bar; mutually composable; active state reflected as cobalt-filled chip + `aria-pressed`; client-side predicate logic (no backend change); `data-testid`: `quick-filter-my-issues`, `quick-filter-high-priority`, `quick-filter-unresolved`, `quick-filter-recent`; Playwright e2e `quick-filters.spec.ts` (desktop + mobile); build green.
 - ✅ **Watch toggle in the issue drawer** (2026-06-28) — `useToggleWatch` hook (`POST/DELETE /issues/:id/watch`) with optimistic toggle + rollback; "Watch"/"Watching" button (eye icon, watcher count) in `IssueDetailDrawer` header; any role can watch; `data-testid="issue-watch-toggle"`; Playwright e2e `watch.spec.ts` (desktop + mobile); build green.
 - ✅ **Personal & team analytics** (2026-06-28) — `GET /me/analytics?days=N` → `PersonalAnalyticsDto`; `GET /projects/:projectId/analytics?days=N` → `ProjectAnalyticsDto`; `apps/web/src/api/analytics.ts` (`usePersonalAnalytics`, `useProjectAnalytics`); `PersonalAnalyticsPage` at `/me/analytics` (14/30/90-day window selector, headline stat cards, hand-rolled SVG throughput chart, type/priority horizontal bar breakdowns, personal board mini-stats); `ProjectAnalyticsPage` at `/projects/:projectId/analytics` (window selector, headline stats, hand-rolled SVG flow chart, cycle-time distribution bars, workload bars by assignee); "Analytics" tab in `ProjectNav`; "Insights" link in `AppHeader`; `data-testid` hooks on all major surfaces; WCAG-AA, accessible charts with visually-hidden summaries; build green.
-- ⬜ **Parity-gap backlog** (from the Pass-6 audit): swimlanes, bulk edit, workflow transitions + validators, components, versions/releases, import/export, configurable dashboards, project-level role overrides.
+- ✅ **Bulk edit (backend)** — `POST /issues/bulk`; `BulkUpdateIssuesDto`/`BulkIssueChangesDto`/`BulkUpdateResultDto`; per-issue `update()` delegation preserving authz, ActivityLog, realtime, webhooks, automation events; `addLabelIds` label-attach per id; partial-success semantics (failed ids captured, batch continues); 11 unit tests; 646 total green. (2026-06-28)
+- ⬜ **Parity-gap backlog** (from the Pass-6 audit): swimlanes, bulk edit frontend, workflow transitions + validators, components, versions/releases, import/export, configurable dashboards, project-level role overrides.
 
 ## Phase 6 — Autopilot: a self-hosted AI teammate 🔭 (vision)
 
@@ -214,7 +215,7 @@ Label rename shipped 2026-06-27: PATCH /labels/:id + inline edit in Settings + L
 Team Pulse dashboard shipped 2026-06-27: sprint snapshot, assigned-issues, recent activity, projects grid.
 Keyboard triage mode shipped 2026-06-27: j/k/s/p/a/l/Enter/f/? keyboard model, ARIA listbox, command palette entry.
 
-**v1 is feature-complete and green.** The single remaining gate is the real `docker compose up -d --build` first-run validation on a host with container-registry access. Remaining work is post-v1: query DSL/saved views, custom fields, automation rules, time tracking, email notifications (beyond password reset), bulk edit, importers, SSO.
+**v1 is feature-complete and green.** The single remaining gate is the real `docker compose up -d --build` first-run validation on a host with container-registry access. Remaining work is post-v1: query DSL/saved views, custom fields, automation rules, time tracking, email notifications (beyond password reset), bulk edit frontend, importers, SSO.
 
 ## v1.0 release criteria — definition of "a good product"
 

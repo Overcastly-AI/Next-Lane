@@ -86,6 +86,8 @@ _Product P1s — queue after security batch:_
 
 ## Already Done (recent shipments — ticked for reference)
 
+- [x] (P2, M) Bulk edit backend (2026-06-28) — `POST /issues/bulk`; `BulkUpdateIssuesDto` (ids: non-empty string[], max 100 via `@ArrayMaxSize`; `BulkIssueChangesDto` with statusId, assigneeId|null, priority, sprintId|null, type, addLabelIds) + `BulkUpdateResultDto ({ updated: number; failed: { id, reason }[] }`); `IssuesService.bulkUpdate` delegates per-issue to existing `update()` so authz (MEMBER+), same-project validation, assignee-in-workspace check, ActivityLog, realtime, webhooks, and automation events all fire; `addLabelIds` calls private `attachLabel()` (prisma.issueLabel.upsert) per id per label after the field update; each issue wrapped in try/catch — one bad id (NotFound/Forbidden/Bad) is appended to `failed[]`, batch continues (partial success); empty `changes` and >100 ids throw `BadRequestException`; `@Post('bulk')` static route registered before param routes in `IssuesController`; 11 new unit tests (3 suites: all-succeed, partial-success, guards); 646 total green; build clean. [product-auditor parity gap]
+
 - [x] (P0, M) Authenticate realtime gateway + membership-check subscribe [engineering-auditor]
 - [x] (P0, M) Validate tenant ownership of statusId/sprintId/parentId/beforeId/afterId [engineering-auditor]
 - [x] (P0, M) Enforce roles (VIEWER read-only; ADMIN-only member mgmt & deletes) [engineering-auditor, product-auditor]

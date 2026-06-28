@@ -1216,3 +1216,344 @@ describe('IssuesService.update watcher fan-out', () => {
     expect(NotificationType.WATCHED_UPDATED).toBe('WATCHED_UPDATED');
   });
 });
+
+// ---------------------------------------------------------------------------
+// IssuesService.bulkUpdate tests
+// ---------------------------------------------------------------------------
+
+/**
+ * Helpers shared across bulkUpdate test suites.
+ */
+
+const BULK_PROJECT = 'proj-bulk';
+const BULK_WORKSPACE = 'ws-bulk';
+const BULK_USER = 'user-bulk';
+const BULK_STATUS = 'status-bulk';
+
+function makeBulkUpdatePrisma() {
+  const txClient = {
+    $queryRaw: jest.fn().mockResolvedValue([{ cycle_detected: false }]),
+    issue: { findUnique: jest.fn(), update: jest.fn() },
+    activityLog: { createMany: jest.fn() },
+  };
+  const prisma = {
+    issue: { findUnique: jest.fn() },
+    project: { findUnique: jest.fn() },
+    membership: { findUnique: jest.fn() },
+    status: { findUnique: jest.fn() },
+    sprint: { findUnique: jest.fn() },
+    user: { findUnique: jest.fn().mockResolvedValue({ name: 'Bulk Actor' }) },
+    issueLabel: { upsert: jest.fn().mockResolvedValue({}) },
+    $transaction: jest.fn((cb: (tx: typeof txClient) => unknown) => cb(txClient)),
+    _tx: txClient,
+  };
+  return { prisma, tx: txClient };
+}
+
+function makeBulkIssueRow(id: string) {
+  return {
+    id,
+    number: 1,
+    projectId: BULK_PROJECT,
+    type: 'TASK',
+    title: `Issue ${id}`,
+    description: null,
+    statusId: BULK_STATUS,
+    assigneeId: null,
+    reporterId: null,
+    priority: 'MEDIUM',
+    storyPoints: null,
+    parentId: null,
+    sprintId: null,
+    dueDate: null,
+    rank: 'a0',
+    createdAt: new Date('2026-01-01T00:00:00.000Z'),
+    updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+    status: { id: BULK_STATUS, name: 'To Do', category: 'TODO', order: 0, projectId: BULK_PROJECT },
+    assignee: null,
+    reporter: null,
+    labels: [],
+    project: { key: 'BL' },
+    _count: { comments: 0 },
+  };
+}
+
+/**
+ * Happy-path suite: all ids succeed, returned updated=N with empty failed.
+ */
+describe('IssuesService.bulkUpdate — all succeed', () => {
+  let mocks: ReturnType<typeof makeBulkUpdatePrisma>;
+  let service: IssuesService;
+
+  beforeEach(() => {
+    mocks = makeBulkUpdatePrisma();
+    // assertProjectRole: project + MEMBER access.
+    mocks.prisma.project.findUnique.mockResolvedValue({
+      id: BULK_PROJECT,
+      workspaceId: BULK_WORKSPACE,
+    });
+    mocks.prisma.membership.findUnique.mockResolvedValue({ role: Role.MEMBER });
+    // assertSameProject: statusId belongs to project.
+    mocks.prisma.status.findUnique.mockResolvedValue({ projectId: BULK_PROJECT });
+
+    service = new IssuesService(
+      mocks.prisma as unknown as PrismaService,
+      { emitToProject: jest.fn() } as unknown as RealtimeService,
+      { notifyWatchersUpdated: jest.fn().mockResolvedValue(undefined) } as unknown as NotificationsService,
+      webhooksMock,
+      noOpCustomFields,
+      noOpEventEmitter,
+    );
+  });
+
+  it('applies changes to all ids and returns updated=N when all succeed', async () => {
+    const ids = ['i1', 'i2', 'i3'];
+    // Each issue.findUnique (via update()) returns the row.
+    mocks.prisma.issue.findUnique.mockImplementation(
+      ({ where }: { where: { id: string } }) =>
+        Promise.resolve(makeBulkIssueRow(where.id)),
+    );
+    // tx.issue.update returns the updated row.
+    mocks.tx.issue.update.mockImplementation(
+      ({ where }: { where: { id: string } }) =>
+        Promise.resolve(makeBulkIssueRow(where.id)),
+    );
+
+    const result = await service.bulkUpdate(BULK_USER, {
+      ids,
+      changes: { priority: Priority.HIGH },
+    });
+
+    expect(result.updated).toBe(3);
+    expect(result.failed).toHaveLength(0);
+    // update() called once per id.
+    expect(mocks.tx.issue.update).toHaveBeenCalledTimes(3);
+  });
+
+  it('passes statusId through to update() correctly', async () => {
+    mocks.prisma.issue.findUnique.mockResolvedValue(makeBulkIssueRow('i1'));
+    mocks.tx.issue.update.mockResolvedValue(makeBulkIssueRow('i1'));
+
+    await service.bulkUpdate(BULK_USER, {
+      ids: ['i1'],
+      changes: { statusId: 'new-status' },
+    });
+
+    expect(mocks.tx.issue.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ statusId: 'new-status' }),
+      }),
+    );
+  });
+
+  it('passes assigneeId=null through to update() (clear assignee)', async () => {
+    mocks.prisma.issue.findUnique.mockResolvedValue(
+      makeBulkIssueRow('i1'),
+    );
+    mocks.tx.issue.update.mockResolvedValue(makeBulkIssueRow('i1'));
+
+    await service.bulkUpdate(BULK_USER, {
+      ids: ['i1'],
+      changes: { assigneeId: null },
+    });
+
+    expect(mocks.tx.issue.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ assigneeId: null }),
+      }),
+    );
+  });
+
+  it('passes sprintId=null through to update() (remove from sprint)', async () => {
+    mocks.prisma.issue.findUnique.mockResolvedValue(makeBulkIssueRow('i1'));
+    mocks.tx.issue.update.mockResolvedValue(makeBulkIssueRow('i1'));
+
+    await service.bulkUpdate(BULK_USER, {
+      ids: ['i1'],
+      changes: { sprintId: null },
+    });
+
+    expect(mocks.tx.issue.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ sprintId: null }),
+      }),
+    );
+  });
+
+  it('calls attachLabel per id per labelId when addLabelIds is provided', async () => {
+    const ids = ['i1', 'i2'];
+    mocks.prisma.issue.findUnique.mockImplementation(
+      ({ where }: { where: { id: string } }) =>
+        Promise.resolve(makeBulkIssueRow(where.id)),
+    );
+    mocks.tx.issue.update.mockImplementation(
+      ({ where }: { where: { id: string } }) =>
+        Promise.resolve(makeBulkIssueRow(where.id)),
+    );
+
+    await service.bulkUpdate(BULK_USER, {
+      ids,
+      changes: { addLabelIds: ['label-a', 'label-b'] },
+    });
+
+    // 2 ids × 2 labels = 4 upsert calls.
+    expect(mocks.prisma.issueLabel.upsert).toHaveBeenCalledTimes(4);
+    expect(mocks.prisma.issueLabel.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { issueId_labelId: { issueId: 'i1', labelId: 'label-a' } },
+      }),
+    );
+    expect(mocks.prisma.issueLabel.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { issueId_labelId: { issueId: 'i2', labelId: 'label-b' } },
+      }),
+    );
+  });
+});
+
+/**
+ * Partial-success suite: one bad id must not abort the batch.
+ */
+describe('IssuesService.bulkUpdate — partial success', () => {
+  let mocks: ReturnType<typeof makeBulkUpdatePrisma>;
+  let service: IssuesService;
+
+  beforeEach(() => {
+    mocks = makeBulkUpdatePrisma();
+    mocks.prisma.project.findUnique.mockResolvedValue({
+      id: BULK_PROJECT,
+      workspaceId: BULK_WORKSPACE,
+    });
+    mocks.prisma.membership.findUnique.mockResolvedValue({ role: Role.MEMBER });
+    mocks.prisma.status.findUnique.mockResolvedValue({ projectId: BULK_PROJECT });
+
+    service = new IssuesService(
+      mocks.prisma as unknown as PrismaService,
+      { emitToProject: jest.fn() } as unknown as RealtimeService,
+      { notifyWatchersUpdated: jest.fn().mockResolvedValue(undefined) } as unknown as NotificationsService,
+      webhooksMock,
+      noOpCustomFields,
+      noOpEventEmitter,
+    );
+  });
+
+  it('captures a failing id in failed[] and still succeeds for the rest', async () => {
+    const ids = ['i-good', 'i-bad', 'i-also-good'];
+
+    mocks.prisma.issue.findUnique.mockImplementation(
+      ({ where }: { where: { id: string } }) => {
+        if (where.id === 'i-bad') {
+          return Promise.resolve(null); // triggers NotFoundException in update()
+        }
+        return Promise.resolve(makeBulkIssueRow(where.id));
+      },
+    );
+    mocks.tx.issue.update.mockImplementation(
+      ({ where }: { where: { id: string } }) =>
+        Promise.resolve(makeBulkIssueRow(where.id)),
+    );
+
+    const result = await service.bulkUpdate(BULK_USER, {
+      ids,
+      changes: { priority: Priority.LOW },
+    });
+
+    expect(result.updated).toBe(2);
+    expect(result.failed).toHaveLength(1);
+    expect(result.failed[0].id).toBe('i-bad');
+    expect(result.failed[0].reason).toContain('Issue not found');
+  });
+
+  it('captures a forbidden id in failed[] when update() throws for that id', async () => {
+    // Simulate the case where the second issue's update throws a ForbiddenException.
+    // We mock prisma.issue.findUnique so 'i-bad' returns null → NotFoundException.
+    const ids = ['i-good', 'i-bad'];
+
+    mocks.prisma.issue.findUnique.mockImplementation(
+      ({ where }: { where: { id: string } }) => {
+        if (where.id === 'i-bad') return Promise.resolve(null);
+        return Promise.resolve(makeBulkIssueRow(where.id));
+      },
+    );
+    mocks.tx.issue.update.mockImplementation(
+      ({ where }: { where: { id: string } }) =>
+        Promise.resolve(makeBulkIssueRow(where.id)),
+    );
+
+    const result = await service.bulkUpdate(BULK_USER, {
+      ids,
+      changes: { priority: Priority.HIGH },
+    });
+
+    expect(result.updated).toBe(1);
+    expect(result.failed).toHaveLength(1);
+    expect(result.failed[0].id).toBe('i-bad');
+    // update() throws NotFoundException('Issue not found') when the row is null.
+    expect(result.failed[0].reason).toMatch(/not found/i);
+  });
+
+  it('a label-attach error does not prevent the field change from being counted', async () => {
+    // The update() call succeeds but issueLabel.upsert throws for one label.
+    mocks.prisma.issue.findUnique.mockResolvedValue(makeBulkIssueRow('i1'));
+    mocks.tx.issue.update.mockResolvedValue(makeBulkIssueRow('i1'));
+    mocks.prisma.issueLabel.upsert.mockRejectedValue(new Error('DB constraint'));
+
+    const result = await service.bulkUpdate(BULK_USER, {
+      ids: ['i1'],
+      changes: { addLabelIds: ['label-fail'] },
+    });
+
+    // The label attach error is caught; the issue counts as failed (entire id fails).
+    expect(result.updated).toBe(0);
+    expect(result.failed).toHaveLength(1);
+    expect(result.failed[0].id).toBe('i1');
+    expect(result.failed[0].reason).toContain('DB constraint');
+  });
+});
+
+/**
+ * Guard tests: empty changes and >100 ids are rejected by the service.
+ */
+describe('IssuesService.bulkUpdate — input guards', () => {
+  let service: IssuesService;
+
+  beforeEach(() => {
+    const { prisma } = makeBulkUpdatePrisma();
+    service = new IssuesService(
+      prisma as unknown as PrismaService,
+      {} as RealtimeService,
+      {} as NotificationsService,
+      webhooksMock,
+      noOpCustomFields,
+      noOpEventEmitter,
+    );
+  });
+
+  it('rejects when changes has no fields set', async () => {
+    await expect(
+      service.bulkUpdate(BULK_USER, {
+        ids: ['i1'],
+        changes: {},
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('rejects when changes.addLabelIds is an empty array (no effective change)', async () => {
+    await expect(
+      service.bulkUpdate(BULK_USER, {
+        ids: ['i1'],
+        changes: { addLabelIds: [] },
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('rejects when ids length exceeds 100', async () => {
+    const ids = Array.from({ length: 101 }, (_, i) => `issue-${i}`);
+    await expect(
+      service.bulkUpdate(BULK_USER, {
+        ids,
+        changes: { priority: Priority.HIGH },
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+});

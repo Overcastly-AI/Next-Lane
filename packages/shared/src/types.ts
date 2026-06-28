@@ -295,6 +295,33 @@ export interface CfdDto {
 }
 
 /**
+ * The field changes a bulk-edit applies to every selected issue. All fields
+ * optional — only the provided ones change. `assigneeId`/`sprintId` accept null
+ * to clear (unassign / remove from sprint); `addLabelIds` adds labels without
+ * removing existing ones.
+ */
+export interface BulkIssueChangesDto {
+  statusId?: string;
+  assigneeId?: string | null;
+  priority?: Priority;
+  sprintId?: string | null;
+  type?: IssueType;
+  addLabelIds?: string[];
+}
+
+/** Request body for a bulk issue update. `ids` is capped server-side. */
+export interface BulkUpdateIssuesDto {
+  ids: string[];
+  changes: BulkIssueChangesDto;
+}
+
+/** Result of a bulk update: how many succeeded, and per-id failures. */
+export interface BulkUpdateResultDto {
+  updated: number;
+  failed: { id: string; reason: string }[];
+}
+
+/**
  * One day in a flow series: how many issues were created versus how many
  * reached a DONE-category status on that calendar day. `date` is an ISO date
  * (YYYY-MM-DD). Suitable for a created-vs-resolved line or area chart.

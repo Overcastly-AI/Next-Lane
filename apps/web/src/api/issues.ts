@@ -2,6 +2,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   rankBetween,
   type BoardDto,
+  type BulkIssueChangesDto,
+  type BulkUpdateResultDto,
   type CustomFieldValue,
   type IssueDto,
   type IssueType,
@@ -176,6 +178,40 @@ export function useDeleteIssue(projectId: string, boardId?: string) {
       void qc.invalidateQueries({ queryKey: qk.board(projectId) });
       if (boardId) {
         void qc.invalidateQueries({ queryKey: qk.boardView(boardId) });
+      }
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Bulk update
+// ---------------------------------------------------------------------------
+
+export interface BulkUpdateInput {
+  projectId: string;
+  ids: string[];
+  changes: BulkIssueChangesDto;
+}
+
+/**
+ * Batch-update multiple issues via POST /issues/bulk.
+ * Invalidates the board, project-issues, and each touched issue on success.
+ * The `failed` array is returned to the caller for per-item error surfacing.
+ */
+export function useBulkUpdateIssues() {
+  const qc = useQueryClient();
+  return useMutation<BulkUpdateResultDto, Error, BulkUpdateInput>({
+    mutationFn: ({ ids, changes }) =>
+      request<BulkUpdateResultDto>('/issues/bulk', {
+        method: 'POST',
+        body: { ids, changes },
+      }),
+    onSuccess: (_result, vars) => {
+      void qc.invalidateQueries({ queryKey: qk.projectIssues(vars.projectId) });
+      void qc.invalidateQueries({ queryKey: qk.board(vars.projectId) });
+      // Invalidate individual issue caches for touched ids
+      for (const id of vars.ids) {
+        void qc.invalidateQueries({ queryKey: qk.issue(id) });
       }
     },
   });

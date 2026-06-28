@@ -20,6 +20,10 @@ import { toUserDto } from '../auth/auth.service';
 import { CreateIssueDto } from './dto/create-issue.dto';
 import { UpdateIssueDto } from './dto/update-issue.dto';
 import { MoveIssueDto, ListIssuesQueryDto } from './dto/move-issue.dto';
+import type {
+  BulkUpdateIssuesDto,
+  BulkUpdateResultDto,
+} from './dto/bulk-update-issues.dto';
 import {
   SocketEvents,
   WebhookEventTypes,
@@ -1054,5 +1058,100 @@ export class IssuesService {
       issueId: id,
     });
     return { id };
+  }
+
+  /**
+   * Attach a label to an issue. Uses an upsert so calling it twice is safe.
+   * Validates that both the issue and the label exist and belong to the same
+   * project. Does NOT re-check project membership — the caller (`bulkUpdate`)
+   * has already confirmed MEMBER access via `update()`.
+   */
+  private async attachLabel(issueId: string, labelId: string): Promise<void> {
+    await this.prisma.issueLabel.upsert({
+      where: { issueId_labelId: { issueId, labelId } },
+      update: {},
+      create: { issueId, labelId },
+    });
+  }
+
+  /**
+   * Apply a set of field changes to multiple issues in one API call.
+   *
+   * Each issue is processed independently:
+   *  - Authorization is delegated to `update()` / `attachLabel()` — if the
+   *    caller lacks MEMBER on a particular issue's project, that issue ends up
+   *    in `failed` and the rest continue (partial success, no whole-batch 403).
+   *  - `changes` must have at least one field set (enforced here after DTO
+   *    validation has already confirmed individual field types/enums).
+   *  - The `ids` array is capped at 100 by the DTO; the guard here provides a
+   *    second-layer defence in case the DTO validation is bypassed.
+   *
+   * Label attachment (`addLabelIds`) is applied per-label per-issue after the
+   * core field update so a label-attach failure does not roll back the field
+   * changes for that issue.
+   */
+  async bulkUpdate(
+    userId: string,
+    dto: BulkUpdateIssuesDto,
+  ): Promise<BulkUpdateResultDto> {
+    const { ids, changes } = dto;
+
+    // Guard: ids cap (second layer — DTO already enforces @ArrayMaxSize(100)).
+    if (ids.length > 100) {
+      throw new BadRequestException('ids must contain at most 100 entries');
+    }
+
+    // Guard: changes must have at least one field set.
+    const hasChange =
+      changes.statusId !== undefined ||
+      changes.assigneeId !== undefined ||
+      changes.priority !== undefined ||
+      changes.sprintId !== undefined ||
+      changes.type !== undefined ||
+      (changes.addLabelIds !== undefined && changes.addLabelIds.length > 0);
+
+    if (!hasChange) {
+      throw new BadRequestException(
+        'changes must contain at least one field to update',
+      );
+    }
+
+    // Build the UpdateIssueDto from the BulkIssueChangesDto.
+    // Only include defined keys so `update()` treats undefined as "no-op".
+    const updateDto: UpdateIssueDto = {};
+    if (changes.statusId !== undefined) updateDto.statusId = changes.statusId;
+    if (changes.assigneeId !== undefined) updateDto.assigneeId = changes.assigneeId;
+    if (changes.priority !== undefined) updateDto.priority = changes.priority;
+    if (changes.sprintId !== undefined) updateDto.sprintId = changes.sprintId;
+    if (changes.type !== undefined) updateDto.type = changes.type;
+
+    let updated = 0;
+    const failed: Array<{ id: string; reason: string }> = [];
+
+    for (const id of ids) {
+      try {
+        // Delegate to the full single-update path: authz (assertProjectRole
+        // MEMBER), same-project validation, assignee-in-workspace check,
+        // ActivityLog, realtime, webhooks, watcher notifications, and
+        // automation events all fire exactly as for a single PATCH.
+        await this.update(userId, id, updateDto);
+
+        // Apply label additions after the core update succeeds.
+        if (changes.addLabelIds && changes.addLabelIds.length > 0) {
+          for (const labelId of changes.addLabelIds) {
+            await this.attachLabel(id, labelId);
+          }
+        }
+
+        updated += 1;
+      } catch (err: unknown) {
+        const reason =
+          err instanceof Error ? err.message : 'Unknown error';
+        failed.push({ id, reason });
+        // Continue: one bad id must not abort the batch.
+      }
+    }
+
+    return { updated, failed };
   }
 }

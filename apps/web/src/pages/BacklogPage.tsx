@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
   IssueType,
@@ -15,8 +15,9 @@ import {
   useAssignIssueToSprint,
   useBoard,
   useCreateIssue,
+  useBulkUpdateIssues,
 } from '@/api/issues';
-import { useSprints, useUsers } from '@/api/meta';
+import { useSprints, useUsers, useLabels } from '@/api/meta';
 import {
   useCreateSprint,
   useUpdateSprint,
@@ -39,6 +40,11 @@ import { ErrorState, LoadingState, EmptyState } from '@/components/ui/States';
 import { useToast } from '@/components/ui/Toast';
 import { IssueTypeIcon, PriorityIcon } from '@/components/issue/issueMeta';
 import { IssueDetailDrawer } from '@/components/issue/IssueDetailDrawer';
+import {
+  BulkActionBar,
+  BulkSelectCheckbox,
+  BulkSelectAll,
+} from '@/components/issue/BulkActionBar';
 import { errorMessage } from '@/lib/errorMessage';
 import { cn } from '@/lib/cn';
 
@@ -50,22 +56,60 @@ export function BacklogPage() {
   const sprintsQuery = useSprints(projectId);
   const boardQuery = useBoard(projectId);
   const usersQuery = useUsers();
+  const labelsQuery = useLabels(projectId);
   const toast = useToast();
 
   const assign = useAssignIssueToSprint(projectId);
   const updateSprint = useUpdateSprint(projectId);
   const createIssue = useCreateIssue(projectId);
+  const bulkUpdate = useBulkUpdateIssues();
 
   const [createOpen, setCreateOpen] = useState(false);
   const [openIssueId, setOpenIssueId] = useState<string | null>(null);
   const [completeTarget, setCompleteTarget] = useState<SprintDto | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<SprintDto | null>(null);
 
+  // Multi-select state
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  const toggleSelect = useCallback((id: string, checked: boolean) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }, []);
+
+  function clearSelection() {
+    setSelectedIds(new Set());
+  }
+
   const issues = issuesQuery.data ?? [];
   const users = usersQuery.data ?? [];
+  const labels = labelsQuery.data ?? [];
   const board = boardQuery.data;
   const myRole = useMyRole(board?.project.workspaceId);
   const editable = canEdit(myRole);
+
+  function handleBulkApply(changes: Parameters<typeof bulkUpdate.mutate>[0]['changes']) {
+    const ids = Array.from(selectedIds);
+    bulkUpdate.mutate(
+      { projectId, ids, changes },
+      {
+        onSuccess: (result) => {
+          toast.success(`Updated ${result.updated} ${result.updated === 1 ? 'issue' : 'issues'}.`);
+          if (result.failed.length > 0) {
+            toast.error(
+              `${result.failed.length} ${result.failed.length === 1 ? 'issue' : 'issues'} could not be updated.`,
+            );
+          }
+          clearSelection();
+        },
+        onError: (err) => toast.error(errorMessage(err, 'Bulk update failed.')),
+      },
+    );
+  }
 
   // Statuses + which are DONE-category, to compute "incomplete on complete".
   const statuses = useMemo<StatusDto[]>(
