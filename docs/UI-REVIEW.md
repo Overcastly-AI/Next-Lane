@@ -755,3 +755,100 @@ Recommended fix: `<nav aria-label="Project navigation">`.
 - `ActionParamsEditor.tsx` DATE: raw `<input>` → `ui/Input`; CHECKBOX: `focus-visible:ring` added (RESOLVED 2026-06-28)
 - `ProjectNav.tsx` `<nav>` gets `aria-label="Project navigation"` (RESOLVED 2026-06-28)
 
+
+---
+
+## Docs site QA — 2026-06-28
+
+Scope: VitePress documentation site served at `http://localhost:4173/Next-Lane/`. All 10 pages checked at desktop (1320x900) and mobile (390x844) via Playwright/chromium. Source at `docs-site/`.
+
+---
+
+### P1 — Broken / Actively Wrong
+
+**P1-A: Markdown task lists render as literal `[ ]` text — Quick Start page**
+- Page/viewport: `/guide/quick-start.html`, both desktop and mobile
+- Symptom: The "First-run checklist" section (section 4, `docs-site/guide/quick-start.md` lines 72–78) contains five `- [ ] ...` items. VitePress renders them as plain `<li>` elements with the literal characters `[ ]` prepended to the text — no checkbox `<input>`, no `task-list-item` class. Screenshot confirms: bullets read "[ ] The board loads with seeded cards…" etc.
+- Root cause: VitePress's bundled `markdown-it` instance does not enable the `markdown-it-task-lists` (GitHub Flavored Markdown checkbox) extension by default. The config at `docs-site/.vitepress/config.ts` does not configure `markdown.config` to add it, and the `package.json` does not install a task-list plugin.
+- Recommended fix: Either (a) install `markdown-it-task-lists` and add `markdown: { config: md => { md.use(require('markdown-it-task-lists')) } }` to `config.ts`, or (b) rewrite the five checklist items as plain numbered or bulleted list items so they still read correctly without checkboxes. Option (b) is zero-dependency and safer given VitePress version constraints.
+
+**P1-B: Hero image shows the login/auth screen, not the board view — Home page**
+- Page/viewport: `/`, both desktop and mobile
+- Symptom: The hero image (`/Next-Lane/screenshots/home-desktop.png`, 35 KB) renders a white login page with an email/password form and "Sign In" button. The `alt` attribute in `docs-site/index.md` line 13 reads "Next Lane board view showing issues in Kanban columns" — which is factually wrong. The file `home-desktop.png` appears to be a screenshot of the welcome/auth screen, not the Kanban board.
+- Impact: First-time visitors see a login form in the hero, not the product's flagship board UI. This actively undermines the marketing goal of the home page.
+- Root cause: `docs-site/public/screenshots/home-desktop.png` was captured from the login/registration page, not the board. `board-desktop.png` (84 KB, the actual board view) exists but is only used in the Screenshots section below the fold.
+- Recommended fix: Replace `home-desktop.png` with a screenshot captured from the authenticated board view, or change the hero `src` to `/screenshots/board-desktop.png` and update the `alt` text accordingly.
+
+**P1-C: Tables break mobile layout on configuration and self-hosting pages (horizontal page overflow)**
+- Page/viewport: `/guide/configuration.html` and `/guide/self-hosting.html`, mobile 390px
+- Symptom: `document.documentElement.scrollWidth` exceeds `clientWidth` — 705px vs 390px on configuration, 408px vs 390px on self-hosting. This means the page scrolls horizontally; any content to the right of the viewport is cut off or forces the user to scroll the entire page sideways.
+- Root cause: The custom CSS at `docs-site/.vitepress/theme/custom.css` lines 356–361 overrides VitePress's default table rule with `display: table; width: 100%` and no `overflow-x`. VitePress's own default at `node_modules/vitepress/dist/client/theme-default/styles/components/vp-doc.css` uses `display: block; overflow-x: auto` which self-contains the horizontal scroll within the table element. The custom override removes both `display: block` and `overflow-x: auto`, so wide tables (configuration has a 3-column 680px-wide table) push the page body wider than the viewport instead of scrolling internally.
+- Confirmed: The browser's `getComputedStyle` on the table in configuration mobile returns `display: table; overflow-x: visible` — no scroll container.
+- Recommended fix: In `custom.css`, either remove the `display: table` override (let VitePress keep `display: block`) or add `overflow-x: auto` to the `.vp-doc table` rule. The simplest correct fix is to change the rule to: `.vp-doc table { display: block; overflow-x: auto; width: 100%; border-collapse: collapse; font-size: 0.9rem; }`.
+
+---
+
+### P2 — Polish / Incorrect-but-not-broken
+
+**P2-A: Code blocks overflow their container on mobile — all pages with code**
+- Page/viewport: All pages containing code blocks, mobile 390px
+- Symptom: Code blocks have `overflow-x: auto` set (correctly), so they scroll internally and do not widen the page. However, on every page that has code blocks, at least one block's `scrollWidth` is significantly wider than `clientWidth` (e.g., troubleshooting page has a `scrollWidth=1115` vs `clientWidth=388` block). While the overflow is technically contained and does not break page layout, the code text runs off the right edge and requires horizontal scrolling inside the block. Many blocks show only the first 40–50 characters visible on screen.
+- Note: This is the expected/correct behavior for code blocks (scrollable is correct; the alternative, wrapping, would break command syntax). However, for the worst offender on `troubleshooting.md`, the `kubectl` command at `scrollWidth=1115` might be worth splitting into multi-line form for readability on mobile.
+- Recommended fix: No CSS change needed (the scrolling mechanism is correct). Consider reformatting the longest commands in `docs-site/guide/troubleshooting.md` and `docs-site/guide/contributing.md` to use line continuations (`\`) to reduce horizontal extent.
+
+**P2-B: Hero image on mobile is very small and shows a login screen**
+- Page/viewport: `/`, mobile 390px
+- Symptom: The hero image renders at 192x120px display size (natural: 1440x900). The login screen shown at that size is nearly unreadable — the form fields, "Sign In" label, and email/password inputs are illegible thumbnails. Combined with P1-B (wrong image), the mobile hero is doubly ineffective.
+- Recommended fix: Resolve P1-B first (use board-desktop.png). Then consider adding a VitePress `image.srcset` or using `board-mobile.png` (52 KB, exists at `public/screenshots/board-mobile.png`) as the mobile image source via the hero `image` config.
+
+**P2-C: Light mode — hero heading becomes fully blue, loses monochrome discipline**
+- Page/viewport: `/`, desktop 1320px, light mode (after toggle)
+- Symptom: In dark mode the hero heading "Next Lane" has a tasteful gradient from white to accent-blue (dark-mode-only rule in `custom.css` lines 263–268). In light mode, the heading falls back to VitePress's default which applies `--vp-c-brand-1` (#4F8BFF) as the text color for the `.name` element, rendering "Next Lane" as solid blue on the light off-white background. The feature cards also lose their dark `border-color` treatment and fall back to a very faint border that blends into the light background.
+- The light mode is declared the non-canonical mode (the config sets `appearance: 'dark'`) but it remains accessible via the toggle, and the fully-blue H1 contrasts with the design system's stated goal of "monochrome discipline, accent used sparingly."
+- Recommended fix: Add an explicit `:root:not(.dark) .VPHero .name { color: var(--vp-c-text-1); background: none; -webkit-text-fill-color: currentColor; }` rule to `custom.css` to restore black ink in light mode and keep the gradient confined to dark mode only.
+
+**P2-D: Mobile hamburger button `aria-label` is "extra navigation" — unhelpful for screen readers**
+- Page/viewport: All pages, mobile 390px
+- Symptom: The hamburger/menu button has `aria-label="extra navigation"` (this is VitePress's default string for the mobile top-bar menu toggle that opens the sidebar). It is not a custom label from the project's config. "Extra navigation" is semantically odd; "Open navigation menu" or "Toggle navigation" would be clearer.
+- Root cause: This is the VitePress default `VPNavBarHamburger` component aria-label. It cannot be overridden via `themeConfig` alone and would require a custom layout override.
+- Recommended fix: Low-priority change. If the team wants to address it, create a `docs-site/.vitepress/theme/index.ts` (or extend the existing theme if one exists) that overrides the `VPNavBarHamburger` slot with a corrected `aria-label`. Alternatively, accept the VitePress default since it is still technically functional.
+
+**P2-E: Screenshots section on home page uses `./public/screenshots/` path convention — fragile**
+- Page/viewport: `/`, source only (runtime renders correctly)
+- Symptom: `docs-site/index.md` lines 95, 99, 103 reference images as `./public/screenshots/board-desktop.png`. This works because VitePress resolves the path relative to the markdown file and `docs-site/index.md` sits next to `docs-site/public/`, making the path valid at build time. However, it is non-idiomatic and misleading — the standard VitePress convention is to use a root-relative path `/screenshots/board-desktop.png` (which maps to `public/screenshots/`). Any future relocation of the index.md or restructuring of the public folder would silently break these references.
+- `features.md` correctly uses `../public/screenshots/` (relative from `guide/`), which resolves correctly but is equally non-idiomatic.
+- Recommended fix: Change all image references in `index.md` to `/screenshots/board-desktop.png` format, and all references in `guide/*.md` to `/screenshots/board-desktop.png`. This is the canonical VitePress asset reference style and will survive any page restructuring.
+
+**P2-F: "What's included" table on home is not horizontally scrollable on mobile (home page is OK but check)**
+- Page/viewport: `/`, mobile 390px
+- Symptom: The home page "What's included" table (`display: table; overflow-x: visible`) at 390px measures `scrollWidth=342` vs `clientWidth=342` — it fits. The table only has two narrow columns ("Feature" and "Status") so it happens to fit at 390px. However, the same broken CSS rule applies and is one long feature name away from overflowing. Already filed as P1-C for the failing pages; noting here that home page is currently fine but fragile.
+
+---
+
+### What Looks Good
+
+- All images load with HTTP 200 and positive `naturalWidth` — no broken image placeholders on any of the 10 pages in either viewport. The build-time hashed asset pipeline for the screenshots section images works correctly.
+- No JavaScript console errors on any page at either viewport.
+- No internal navigation links return 404. All sidebar links, "On this page" TOC anchors, edit-link, and in-content cross-references resolve correctly.
+- Dark mode design system (the canonical mode) is visually cohesive — dotted-grid background, accent-blue brand bar on H2s, mono uppercase sidebar section headers, hairline borders, and pill-radius buttons all render correctly and consistently across all 10 pages.
+- Mobile hamburger nav opens and closes correctly (opens a drawer, closes on the X button). `aria-expanded` is correctly toggled.
+- Tables that fit within the mobile viewport (home page "What's included", security page) render without horizontal page overflow.
+- The "On this page" sidebar on desktop renders correctly for all pages, including the long features page TOC (14 entries, all functional).
+- Footer links (MIT License, Overcastly AI) and social links (GitHub) are present and correctly formatted.
+- "Edit this page on GitHub" and "Updated at" footers render on every guide page.
+- Code blocks render with correct dark-mode contrast: `background: #1c1d22`, text `rgb(184, 185, 182)` — readable and consistent with the Overcastly token system.
+- Light mode is functional with readable text contrast (body `rgb(24, 25, 29)` on `rgb(248, 248, 246)` background passes WCAG AA).
+
+---
+
+### Top 5 for the dev team (prioritized)
+
+1. **P1-B — Fix the hero image.** `docs-site/public/screenshots/home-desktop.png` shows the login screen. Replace with the board view screenshot (use `board-desktop.png` or capture a new board screenshot). Also fix the alt text on `index.md` line 13. Single file swap, highest impact.
+
+2. **P1-C — Fix table mobile overflow.** In `docs-site/.vitepress/theme/custom.css` line 357, change `display: table` to `display: block` and add `overflow-x: auto`. This un-breaks `/guide/configuration.html` and `/guide/self-hosting.html` on mobile where tables currently force horizontal page scrolling.
+
+3. **P1-A — Fix task list rendering.** Five `- [ ] ...` items on `/guide/quick-start.html` render as literal `[ ]` text. Either install `markdown-it-task-lists` (add to `docs-site/package.json` + configure in `config.ts`), or rewrite as plain `1. ... 2. ...` numbered steps (simpler, no new dependency).
+
+4. **P2-C — Light-mode hero heading.** Add one CSS rule to keep the "Next Lane" heading black in light mode instead of inheriting solid brand-blue from VitePress defaults. One line in `custom.css`.
+
+5. **P2-E — Canonicalize image paths.** Change `./public/screenshots/` and `../public/screenshots/` references in `index.md` and `guide/features.md` to root-relative `/screenshots/` paths. Prevents future breakage and aligns with VitePress conventions.
