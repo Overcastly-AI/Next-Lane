@@ -13,8 +13,8 @@ import {
 import { toProjectDto } from '../projects/projects.service';
 import { toStatusDto } from '../statuses/statuses.service';
 import { toIssueDto } from '../issues/issue.mapper';
-import { BoardType, Role, SprintState } from '@next-lane/shared';
-import type { BoardDto, BoardSummaryDto, BoardColorRule } from '@next-lane/shared';
+import { BoardType, Role, SprintState, validateQuery } from '@next-lane/shared';
+import type { BoardDto, BoardSummaryDto, BoardColorRule, ValidateCustomFieldDef } from '@next-lane/shared';
 import type { CreateBoardDto } from './dto/create-board.dto';
 import type { UpdateBoardDto } from './dto/update-board.dto';
 
@@ -213,6 +213,36 @@ export class BoardService {
     };
   }
 
+  // ── Private: load custom field defs for NLQL validation ─────────────────────
+
+  private async loadCustomFieldDefs(
+    projectId: string,
+  ): Promise<ValidateCustomFieldDef[]> {
+    const rows = await this.prisma.customFieldDefinition.findMany({
+      where: { projectId },
+      select: { id: true, key: true, name: true, type: true },
+    });
+    return rows.map((r) => ({
+      id: r.id,
+      key: r.key,
+      name: r.name,
+      type: r.type as ValidateCustomFieldDef['type'],
+    }));
+  }
+
+  private assertValidNlqlQuery(
+    query: string,
+    customFieldDefs: ValidateCustomFieldDef[],
+    label: string,
+  ): void {
+    const result = validateQuery(query, { customFieldDefs });
+    if (!result.ok) {
+      throw new BadRequestException(
+        `${label}: ${result.error?.message ?? 'parse error'}`,
+      );
+    }
+  }
+
   // ── Update board ─────────────────────────────────────────────────────────────
 
   async updateBoard(
@@ -226,6 +256,27 @@ export class BoardService {
     if (!existing) throw new NotFoundException('Board not found');
 
     await assertProjectRole(this.prisma, userId, existing.projectId, Role.MEMBER);
+
+    // ── NLQL validation ──────────────────────────────────────────────────────
+    // Only load custom field defs when we actually need to validate something.
+    const needsValidation =
+      (dto.filterQuery !== undefined && dto.filterQuery !== null) ||
+      (dto.colorRules !== undefined && dto.colorRules.length > 0);
+
+    const customFieldDefs = needsValidation
+      ? await this.loadCustomFieldDefs(existing.projectId)
+      : [];
+
+    if (dto.filterQuery !== undefined && dto.filterQuery !== null) {
+      this.assertValidNlqlQuery(dto.filterQuery, customFieldDefs, 'Invalid board filterQuery');
+    }
+
+    if (dto.colorRules !== undefined) {
+      for (const rule of dto.colorRules) {
+        this.assertValidNlqlQuery(rule.query, customFieldDefs, `Invalid color rule query (id=${rule.id})`);
+      }
+    }
+    // ── End NLQL validation ──────────────────────────────────────────────────
 
     const data: Prisma.BoardUpdateInput = {};
     if (dto.name !== undefined) data.name = dto.name;

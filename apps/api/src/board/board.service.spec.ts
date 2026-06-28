@@ -6,6 +6,7 @@ import {
   BoardType,
   Role,
 } from '@next-lane/shared';
+import * as shared from '@next-lane/shared';
 import * as membership from '../common/membership.util';
 import { BoardService, BOARD_ISSUES_CAP, toBoardSummaryDto } from './board.service';
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
@@ -19,6 +20,7 @@ function makePrisma() {
   return {
     status: { findMany: jest.fn() },
     issue: { findMany: jest.fn() },
+    customFieldDefinition: { findMany: jest.fn().mockResolvedValue([]) },
     board: {
       findMany: jest.fn(),
       findUnique: jest.fn(),
@@ -31,6 +33,7 @@ function makePrisma() {
   } as unknown as PrismaService & {
     status: { findMany: jest.Mock };
     issue: { findMany: jest.Mock };
+    customFieldDefinition: { findMany: jest.Mock };
     board: {
       findMany: jest.Mock;
       findUnique: jest.Mock;
@@ -533,6 +536,122 @@ describe('BoardService', () => {
         'user-1',
         PROJECT_ID,
         Role.MEMBER,
+      );
+    });
+  });
+
+  // ── updateBoard NLQL validation ─────────────────────────────────────────────
+
+  describe('updateBoard NLQL validation', () => {
+    it('rejects an invalid filterQuery with BadRequestException', async () => {
+      const existing = makeBoardRow({ isDefault: false });
+      prisma.board.findUnique.mockResolvedValue(existing);
+      jest.spyOn(shared, 'validateQuery').mockReturnValue({
+        ok: false,
+        error: { message: 'Unknown field', position: 0 },
+      });
+
+      await expect(
+        service.updateBoard('user-1', BOARD_ID, {
+          filterQuery: 'notafield = foo',
+        }),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(prisma.board.update).not.toHaveBeenCalled();
+    });
+
+    it('accepts a valid filterQuery and persists it', async () => {
+      const existing = makeBoardRow({ isDefault: false });
+      prisma.board.findUnique.mockResolvedValue(existing);
+      prisma.board.update.mockResolvedValue(
+        makeBoardRow({ isDefault: false, filterQuery: 'priority = HIGH' }),
+      );
+      jest.spyOn(shared, 'validateQuery').mockReturnValue({ ok: true });
+
+      await service.updateBoard('user-1', BOARD_ID, {
+        filterQuery: 'priority = HIGH',
+      });
+
+      expect(prisma.board.update).toHaveBeenCalled();
+    });
+
+    it('does NOT call validateQuery when filterQuery is null (clear)', async () => {
+      const existing = makeBoardRow({ isDefault: false });
+      prisma.board.findUnique.mockResolvedValue(existing);
+      prisma.board.update.mockResolvedValue(makeBoardRow({ isDefault: false }));
+      const validateSpy = jest.spyOn(shared, 'validateQuery');
+
+      await service.updateBoard('user-1', BOARD_ID, { filterQuery: null });
+
+      // null means "clear" — no validation needed
+      expect(validateSpy).not.toHaveBeenCalled();
+    });
+
+    it('does NOT call validateQuery when filterQuery is omitted', async () => {
+      const existing = makeBoardRow({ isDefault: false });
+      prisma.board.findUnique.mockResolvedValue(existing);
+      prisma.board.update.mockResolvedValue(makeBoardRow({ isDefault: false }));
+      const validateSpy = jest.spyOn(shared, 'validateQuery');
+
+      await service.updateBoard('user-1', BOARD_ID, { name: 'Renamed' });
+
+      expect(validateSpy).not.toHaveBeenCalled();
+    });
+
+    it('rejects a color rule with invalid query with BadRequestException', async () => {
+      const existing = makeBoardRow({ isDefault: false });
+      prisma.board.findUnique.mockResolvedValue(existing);
+      jest.spyOn(shared, 'validateQuery').mockReturnValue({
+        ok: false,
+        error: { message: 'bad field', position: 0 },
+      });
+
+      await expect(
+        service.updateBoard('user-1', BOARD_ID, {
+          colorRules: [
+            { id: 'r1', query: 'badfield = foo', color: '#ef4444' },
+          ],
+        }),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(prisma.board.update).not.toHaveBeenCalled();
+    });
+
+    it('accepts valid color rules and persists them', async () => {
+      const existing = makeBoardRow({ isDefault: false });
+      prisma.board.findUnique.mockResolvedValue(existing);
+      prisma.board.update.mockResolvedValue(makeBoardRow({ isDefault: false }));
+      jest.spyOn(shared, 'validateQuery').mockReturnValue({ ok: true });
+
+      await service.updateBoard('user-1', BOARD_ID, {
+        colorRules: [
+          { id: 'r1', query: 'priority = HIGH', color: '#ef4444' },
+        ],
+      });
+
+      expect(prisma.board.update).toHaveBeenCalled();
+    });
+
+    it('loads custom field defs and passes them to validateQuery', async () => {
+      const existing = makeBoardRow({ isDefault: false });
+      prisma.board.findUnique.mockResolvedValue(existing);
+      prisma.board.update.mockResolvedValue(makeBoardRow({ isDefault: false }));
+      prisma.customFieldDefinition.findMany.mockResolvedValue([
+        { id: 'cf-1', key: 'severity', name: 'Severity', type: 'SELECT' },
+      ]);
+      const validateSpy = jest.spyOn(shared, 'validateQuery').mockReturnValue({ ok: true });
+
+      await service.updateBoard('user-1', BOARD_ID, {
+        filterQuery: 'severity = High',
+      });
+
+      expect(validateSpy).toHaveBeenCalledWith(
+        'severity = High',
+        expect.objectContaining({
+          customFieldDefs: expect.arrayContaining([
+            expect.objectContaining({ key: 'severity' }),
+          ]),
+        }),
       );
     });
   });
