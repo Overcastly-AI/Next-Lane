@@ -7,12 +7,15 @@ import {
   Priority,
   Role,
   StatusCategory,
+  VersionState,
+  VERSION_STATE_LABELS,
   type IssueDto,
   type StatusDto,
   type UserDto,
 } from '@next-lane/shared';
 import { useIssue, useUpdateIssue, useDeleteIssue, useToggleWatch, useWatcherInfo } from '@/api/issues';
 import { useComponents } from '@/api/components';
+import { useVersions, useSetIssueVersions } from '@/api/versions';
 import { Button } from '@/components/ui/Button';
 import { Select } from '@/components/ui/Select';
 import { Textarea } from '@/components/ui/Textarea';
@@ -500,6 +503,14 @@ function DrawerBody({
               onPatch={onPatch}
             />
 
+            <VersionsField
+              issueId={issue.id}
+              projectId={projectId}
+              boardId={boardId}
+              currentVersions={issue.versions ?? []}
+              editable={editable}
+            />
+
             <DueDateField
               dueDate={issue.dueDate ?? null}
               statusCategory={issue.status?.category}
@@ -594,6 +605,207 @@ function ComponentField({
       ) : (
         <span className="text-sm text-ink-400">None</span>
       )}
+    </Field>
+  );
+}
+
+/**
+ * Versions multi-select sidebar field.
+ * Lets users assign the issue to one or more project versions.
+ * On toggle, calls PUT /issues/:id/versions with the complete updated set.
+ */
+function VersionsField({
+  issueId,
+  projectId,
+  boardId,
+  currentVersions,
+  editable,
+}: {
+  issueId: string;
+  projectId: string;
+  boardId?: string;
+  currentVersions: { id: string; name: string; state: VersionState }[];
+  editable: boolean;
+}) {
+  const versionsQuery = useVersions(projectId);
+  const setIssueVersions = useSetIssueVersions(issueId, projectId, boardId);
+  const toast = useToast();
+  const [open, setOpen] = useState(false);
+  const versions = versionsQuery.data ?? [];
+
+  const currentIds = new Set(currentVersions.map((v) => v.id));
+
+  function toggleVersion(versionId: string) {
+    const nextIds = new Set(currentIds);
+    if (nextIds.has(versionId)) {
+      nextIds.delete(versionId);
+    } else {
+      nextIds.add(versionId);
+    }
+    setIssueVersions.mutate(Array.from(nextIds), {
+      onError: (err) => {
+        toast.error(errorMessage(err, 'Could not update versions.'));
+      },
+    });
+  }
+
+  // Badge colour by state — mirrors VersionsSection
+  function stateBadgeClass(state: VersionState): string {
+    if (state === VersionState.RELEASED)
+      return 'bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-200';
+    if (state === VersionState.ARCHIVED)
+      return 'bg-ink-100 text-ink-400 ring-1 ring-inset ring-ink-200';
+    return 'bg-slate-50 text-slate-500 ring-1 ring-inset ring-slate-200';
+  }
+
+  return (
+    <Field label="Versions" htmlFor="d-versions">
+      <div className="space-y-1.5" data-testid="issue-versions-picker">
+        {/* Current version chips */}
+        {currentVersions.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {currentVersions.map((v) => (
+              <span
+                key={v.id}
+                className={[
+                  'inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-[10px] font-semibold leading-none tracking-wide',
+                  stateBadgeClass(v.state),
+                ].join(' ')}
+              >
+                {v.name}
+                {editable && (
+                  <button
+                    type="button"
+                    aria-label={`Remove version ${v.name}`}
+                    onClick={() => toggleVersion(v.id)}
+                    className="ml-0.5 rounded-sm focus:outline-none focus-visible:ring-1 focus-visible:ring-signal-400"
+                    disabled={setIssueVersions.isPending}
+                  >
+                    <svg
+                      width="10"
+                      height="10"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="3"
+                      aria-hidden="true"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        d="M6 6l12 12M6 18L18 6"
+                      />
+                    </svg>
+                  </button>
+                )}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {currentVersions.length === 0 && !editable && (
+          <span className="text-sm text-ink-400">None</span>
+        )}
+
+        {/* Dropdown to add versions */}
+        {editable && versions.length > 0 && (
+          <div className="relative">
+            <button
+              type="button"
+              aria-expanded={open}
+              aria-haspopup="listbox"
+              onClick={() => setOpen((o) => !o)}
+              className="flex items-center gap-1 rounded border border-dashed border-ink-200 px-2 py-1 text-xs text-ink-400 transition-colors hover:border-signal-300 hover:bg-signal-50/30 hover:text-ink-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-400"
+            >
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                aria-hidden="true"
+              >
+                <path strokeLinecap="round" d="M12 5v14M5 12h14" />
+              </svg>
+              Add version
+            </button>
+
+            {open && (
+              <>
+                {/* backdrop */}
+                <div
+                  className="fixed inset-0 z-10"
+                  aria-hidden="true"
+                  onClick={() => setOpen(false)}
+                />
+                <ul
+                  role="listbox"
+                  aria-multiselectable="true"
+                  aria-label="Select versions"
+                  className="absolute left-0 top-full z-20 mt-1 max-h-48 min-w-[180px] overflow-y-auto rounded-md border border-ink-200 bg-white py-1 shadow-md"
+                >
+                  {versions.map((v) => {
+                    const selected = currentIds.has(v.id);
+                    return (
+                      <li
+                        key={v.id}
+                        role="option"
+                        aria-selected={selected}
+                        onClick={() => {
+                          toggleVersion(v.id);
+                        }}
+                        className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm hover:bg-ink-50"
+                      >
+                        <span
+                          className={[
+                            'flex h-4 w-4 shrink-0 items-center justify-center rounded border',
+                            selected
+                              ? 'border-signal-500 bg-signal-500 text-white'
+                              : 'border-ink-300 bg-white',
+                          ].join(' ')}
+                          aria-hidden="true"
+                        >
+                          {selected && (
+                            <svg
+                              width="10"
+                              height="10"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="3"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="M5 13l4 4L19 7"
+                              />
+                            </svg>
+                          )}
+                        </span>
+                        <span className="flex-1 truncate">{v.name}</span>
+                        <span
+                          className={[
+                            'shrink-0 rounded-sm px-1 py-0.5 text-[10px] font-semibold leading-none tracking-wide ring-1 ring-inset',
+                            stateBadgeClass(v.state),
+                          ].join(' ')}
+                        >
+                          {VERSION_STATE_LABELS[v.state]}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </>
+            )}
+          </div>
+        )}
+
+        {editable && versions.length === 0 && (
+          <span className="text-xs text-ink-400">
+            No versions yet — add them in Settings.
+          </span>
+        )}
+      </div>
     </Field>
   );
 }
