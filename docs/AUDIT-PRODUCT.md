@@ -1190,3 +1190,293 @@ Design cohesion is 80% there. The one concrete remaining task is migrating `Road
 - Components UI (Component API controller; drawer picker; board filter by component; default assignee wiring) · P3 · M · schema exists; just needs API + UI surface; routes issues to the right sub-team by default
 - Versions / releases (Version API controller; drawer picker; release view; changelog generation) · P3 · L · sprint != release; product teams need a release abstraction; schema exists
 - AI-assisted triage suggestions (LLM endpoint config; inferred priority/assignee/labels in create modal; Ollama-compatible) · P3 · L · genuine differentiator for self-hosted; full-text GIN index provides similar-issue context; configurable to local model
+
+---
+
+## Pass 8 — Missing-Items Audit (2026-06-28)
+
+**Auditor:** Product / UX (independent)
+
+**Mandate:** Hunt for the highest-value MISSING capabilities a discerning user of a
+category-leading tracker would still notice. The following are confirmed as SHIPPED and
+not re-listed as gaps (verified below before exclusion): multiple boards + Kanban/Scrum,
+board filters + NLQL + saved filters, custom fields, conditional card colors, planning
+poker, async standups, issue links, watch + quick-filters, personal boards, personal/team
+analytics, automation engine (Glass Box), bulk edit (BulkActionBar in Triage and Backlog),
+CSV export, workspace branding, configurable workflows (WorkflowSection.tsx + workflow.service.ts
+— transitions + gates fully wired), board swimlanes (`BoardSwimlanesView.tsx` — group-by
+assignee/priority/type/epic confirmed shipped), filter-state URL persistence (BoardPage.tsx
+reads every filter dimension from `useSearchParams`; confirmed lines 198–308), VitePress docs site.
+
+**Method.** Read `apps/api/prisma/schema.prisma` end-to-end; `App.tsx` routing table;
+`apps/api/src/` module directory listing; `apps/web/src/pages/` and
+`apps/web/src/components/issue/` for absence confirmation; `notifications.module.ts` and
+`mail.service.ts` for email delivery evidence; `comments.service.ts` for email fan-out;
+`issues-csv.controller.ts` for import vs. export; `WorkflowSection.tsx` and
+`BoardSwimlanesView.tsx` to confirm those items are actually shipped.
+
+---
+
+### Ratings Update (Pass 8 — current state)
+
+| Area | Score | Note |
+|---|---|---|
+| Auth | 4/5 | Email/password + PATs + password reset (SMTP wired via nodemailer). No SSO/OIDC. No refresh tokens. JWT in localStorage. |
+| Projects | 4/5 | Full CRUD; archive. Component and Version models exist in schema but have zero REST controllers and zero UI — confirmed by searching every controller file; no component/version routes exist anywhere in `apps/api/src/`. |
+| Board | 5/5 | Multi-board, swimlanes, NLQL, saved filters, card colors, quick-filter presets, URL persistence, presence avatars. Best surface in the product. |
+| Issues (CRUD) | 4/5 | Drawer is comprehensive. Time tracking (logged/estimated) absent — no schema field, no UI, no API. Issue templates absent — no schema model, no API, no UI. Checklist items absent from schema. |
+| Comments / Activity | 4/5 | Markdown, @mention autocomplete, edit/delete (own only), realtime. No comment reactions (no schema model). No threaded replies. No draft persistence. |
+| Search / Filter | 4/5 | NLQL + FTS GIN index + saved filters + URL persistence + quick-filter presets. Backlog has no NLQL bar. No cross-backlog keyword search. |
+| Sprints / Backlog | 4/5 | Full sprint lifecycle; bulk edit; planning poker. No sprint retrospective UI. No velocity-vs-capacity comparison. |
+| Labels | 5/5 | Complete. No gaps. |
+| Reports | 3/5 | Burndown, velocity, CFD, team analytics. No configurable dashboards or gadgets. No assignee-capacity comparison. No per-version burndown. |
+| Notifications | 3/5 | In-app real-time inbox confirmed. Email delivery: MailService exists with nodemailer and SMTP env config — but notifications.module.ts does NOT import MailModule, and the NotificationsService has zero calls to MailService. Password-reset is the only flow that actually sends email. All issue/comment/mention/watch notifications are in-app only. No dedicated /notifications page (dropdown-only). No per-user email preferences. |
+| Roles / Permissions | 3/5 | Workspace roles enforced. No per-project role overrides. No SSO/OIDC. |
+| Mobile Experience | 3/5 | Board, backlog, triage responsive. Dense filter toolbar on small viewports. No native-style bottom navigation. |
+| Onboarding / Empty States | 3/5 | OnboardingPanel at zero-projects. No interactive tour. Differentiating features (NLQL, automation, poker) not mentioned in panel. |
+
+---
+
+### Confirmed-Absent Capabilities (evidence for each)
+
+**1. Email notifications for issue events (mentions, assignments, watch updates)**
+NotificationsService (`apps/api/src/notifications/notifications.service.ts`) never imports
+MailService. `notifications.module.ts` does not import MailModule. `comments.service.ts`
+calls `this.notifications.notifyComment(...)` but no mail call follows. MailService.send()
+is called only from `password-reset.service.ts`. Result: every in-app notification fires
+correctly over Socket.io but nothing reaches a user's email inbox for issue events.
+
+**2. Time tracking (logged hours / original estimate / worklog)**
+Schema has no `timeSpent`, `originalEstimate`, `remainingTime`, or worklog model. No
+`TimeLog` table. No time-tracking field in `CreateIssueDto` or `UpdateIssueDto`. No log-work
+UI in `IssueDetailDrawer.tsx`. Not mentioned in any controller under `apps/api/src/issues/`.
+
+**3. Components and Versions — schema exists, zero API or UI**
+`Component` and `Version` models are in `schema.prisma` (lines 502–536). `componentId` is
+on the `Issue` model. However: no `components` or `versions` directory under `apps/api/src/`
+(only: analytics, api-tokens, attachments, audit, auth, automations, board, comments,
+custom-fields, issue-links, issues, labels, mail, me, notifications, personal-boards,
+poker, prisma, projects, public, realtime, redis, reports, roadmap, saved-filters, search,
+share-tokens, sprints, standups, statuses, users, webhooks, workflows, workspaces). No
+`ComponentsController`, no `VersionsController`. No `useComponents` or `useVersions` hook
+in `apps/web/src/api/`. No component picker in `IssueDetailDrawer.tsx`. No version picker.
+`SettingsPage.tsx` imports only `WebhooksSection`, `ShareSection`, `CustomFieldsSection`,
+`WorkflowSection` — no ComponentsSection, no VersionsSection.
+
+**4. CSV import (bulk ingest)**
+`apps/api/src/issues/issues-csv.controller.ts` has a single GET endpoint that streams a CSV
+download. There is no POST/multipart upload endpoint for import. No `multer` setup in this
+controller. No import-specific service method. No column-mapping logic anywhere in
+`apps/api/src/issues/`. Export only; import is entirely absent.
+
+**5. Issue templates**
+No `IssueTemplate` model in `schema.prisma`. No `templates` field on `Project`. No
+`/projects/:id/templates` route. No template picker in `CreateIssueModal.tsx`. No
+`useIssueTemplates` hook. Completely absent.
+
+**6. In-issue checklists / sub-checklist items**
+`ParentSubtasks.tsx` renders the parent/child hierarchy (Epic→Story→Subtask). However, this
+is full-issue children — not lightweight checklist items within a single issue. No
+`ChecklistItem` or `TodoItem` model in schema. No checklist section in `IssueDetailDrawer.tsx`.
+Teams using issues for PRDs or bug reports routinely want an inline checklist (e.g.,
+"- [ ] Unit tests written") without creating a separate sub-issue for each step.
+
+**7. WIP limits per board column**
+`Status` model has no `wipLimit` field. `Board` model has no per-column limit. No WIP-limit
+validation in `issues.service.ts` move logic. No column-limit display in `BoardColumn.tsx`
+or `ColumnFormModal.tsx`. Kanban methodology typically enforces WIP limits as a first-class
+concept to surface bottlenecks.
+
+**8. Dedicated notifications page (/notifications full-page route)**
+`App.tsx` routing table has no `/notifications` route (confirmed: routes include /, /my-work,
+/projects/:id/* paths, /workspaces/:id/*, /me/settings, /share/:token, /personal-board,
+/me/analytics). All notification interaction is via the `NotificationBell` dropdown in the
+header — a 28rem wide popover capped at 50 items. No full-page notification history,
+no filter-by-type, no "notification center" concept.
+
+**9. Sprint retrospective UI**
+`Sprint` model in schema has no `retrospective` or `notes` field. No `RetroPanel` or
+`SprintRetrospectivePage` component. The completed-sprint row in `BacklogPage.tsx` shows
+no retro entry point. Confirmed entirely absent.
+
+**10. SSO / OIDC**
+No passport-oidc, no oauth2 strategy, no SAML configuration anywhere in `apps/api/src/auth/`.
+Auth is email/password + PATs only. Self-hosted teams with Google Workspace or GitHub
+org membership cannot use SSO.
+
+---
+
+### Top 8 Gaps — Ranked by User Impact
+
+**Rank 1: Email notifications for all notification types** — M
+Every in-app notification (mention, assignment, watch update) is invisible to users who are
+not actively looking at the app. The SMTP infrastructure is wired for password reset
+(nodemailer, env vars documented). The fan-out logic in NotificationsService is already
+correct for Socket.io delivery. What is missing is: (a) MailModule imported into
+NotificationsModule, (b) `this.mail.send(...)` calls inserted into `notify()`,
+`notifyAssigned()`, `notifyComment()`, and `notifyWatchersUpdated()`, and (c) per-user
+email preference (immediate / digest / off). Teams do not live in the tracker; email is
+how they learn about updates when offline. Without email delivery, the watch and @mention
+features are half-functional. This is a daily-workflow gap for every user on every team.
+
+**Rank 2: CSV import (bulk issue ingest)** — M
+Export exists. Import does not. "Your data, your compute" is the product's central brand
+promise — teams will not commit to a self-hosted tracker without a data escape hatch, and
+they cannot migrate from an existing tool without an import path. A minimum viable import
+is: multipart CSV upload endpoint, column-mapping UI step (title/status/priority/assignee/
+labels), upsert service, and a post-import error report. This directly gates the
+"switching from an established tracker" story that will drive the majority of self-hosted
+adoption decisions.
+
+**Rank 3: Time tracking (original estimate vs. logged hours, worklog)** — L
+No schema support, no API, no UI. This is a large parity gap: every category-leading
+tracker (open-source and commercial) ships time tracking as a standard issue field. Teams
+doing billable work or capacity planning cannot use Next Lane as their primary tracker
+without it. The minimum viable form is: `originalEstimate` (minutes) on Issue + a
+`WorkLog` join table (userId, issueId, minutes, date, comment) + a log-work modal on the
+drawer + a logged/estimated progress bar on the card. Reports integration (per-sprint time
+spent vs. estimated) follows. The schema gap is the blocker — this cannot be added without
+a migration.
+
+**Rank 4: Components and Versions — API and UI** — M (Components) + L (Versions)
+Both models exist in `schema.prisma` with all required fields. Zero REST controllers exist
+for either. Zero frontend hooks or UI surfaces exist for either. Components route issues to
+the right sub-team by default assignee; they also make board filtering by sub-system
+possible. Versions let product teams say "these issues ship in v2.1" independently of
+sprint cadence — a release abstraction that sprints do not provide. The schema investment
+has already been made; the API and UI are the remaining work. Because the schema is done,
+the risk of this work is lower than a net-new feature.
+
+**Rank 5: Issue templates per project** — M
+No schema support, no API, no UI. Teams with recurring work patterns (bug reports,
+feature requests, on-call incidents) manually re-enter the same fields on every new issue.
+Templates pre-fill title prefix, description skeleton, default type, default labels, and
+default priority. This reduces the friction of correct issue logging and improves data
+quality for automation rules (which depend on consistent field values). Storage model is
+simple: a `templates Json?` field on `Project` (no join table needed for a list of
+<10 templates per project). The create-issue modal gains a template picker dropdown.
+
+**Rank 6: In-issue checklists** — S
+No schema support, no UI. Distinct from sub-issues (which are full tracked issues with
+their own sprint and priority). Checklists are lightweight inline items: "- [ ] Write unit
+tests" "- [ ] Update docs". They are the most common way teams track the definition of done
+for a single issue without inflating the issue count. Storage: a `checklist Json?`
+(array of `{id, text, done}`) on `Issue` — one migration. UI: a checklist section in the
+drawer with add/check/delete. Card shows a `N/M done` progress badge when checklist is non-empty.
+
+**Rank 7: WIP limits per board column** — S
+No schema support, no enforcement. Kanban methodology's core discipline is limiting
+work-in-progress per status column to surface bottlenecks. Without WIP limits, a board
+with 30 issues in "In Progress" gives no visual or enforcement signal that the team is
+overloaded. Implementation: add `wipLimit Int?` to the `Status` model (migration); render
+a limit indicator in `BoardColumn.tsx` ("12 / 5 WIP") with red styling when over limit;
+optionally enforce via a warning modal on move. This is a small schema addition with a
+high workflow value for Kanban-focused teams.
+
+**Rank 8: Dedicated notifications page** — S
+The notification dropdown is a 28rem wide popover capped at 50 items with no filtering.
+Users who are away from the app for a day cannot review the full notification history
+without paginating through the dropdown one-at-a-time. A `/notifications` page with:
+full paginated history, filter by type (ASSIGNED / MENTIONED / COMMENTED / WATCHED),
+filter by project, bulk mark-read, and clickable deep-links — is a straightforward addition.
+`NotificationsController` already has `list()` and `markAllRead()` endpoints. This
+closes the "notification center" gap that teams migrating from other trackers will notice
+immediately.
+
+---
+
+### Parity Scorecard Update (Pass 8)
+
+Capabilities confirmed shipped since Pass 7 are updated below. All others carry forward
+from the Pass 7 scorecard.
+
+| Capability | Our Depth (1–5) | Leader Baseline | Gap | Parity Gap? | Evidence |
+|---|---|---|---|---|---|
+| Swimlanes (group-by assignee/epic/priority) | 5 | 5 | None | No | `BoardSwimlanesView.tsx` fully implemented: group-by assignee, priority, type, epic; per-lane DndContext; collapse/expand |
+| Configurable workflow transitions | 5 | 5 | None | No | `WorkflowSection.tsx` + `workflow.service.ts` + `WorkflowTransition` model in schema fully wired with transition gates |
+| Bulk edit | 5 | 5 | None | No | `BulkActionBar.tsx` used in both `BacklogPage.tsx` and `TriagePage.tsx`; batch PATCH endpoint confirmed |
+| Filter state URL persistence | 5 | 5 | None | No | `BoardPage.tsx` reads all filter dimensions from `useSearchParams` |
+| Email notifications (issue events) | 1 | 5 | Large | YES | MailModule not imported by NotificationsModule; no mail.send() call in notifications.service.ts |
+| Time tracking / worklogs | 1 | 5 | Large | YES | No schema field; no API; no UI |
+| Components UI | 1 | 4 | Large | YES | Schema exists; zero API controllers; zero UI |
+| Versions / releases UI | 1 | 5 | Large | YES | Schema exists; zero API controllers; zero UI |
+| Issue templates | 1 | 4 | Large | YES | Absent from schema, API, and UI |
+| In-issue checklists | 1 | 4 | Large | YES | No schema model; no drawer section |
+| WIP limits per column | 1 | 4 | Large | YES | No schema field on Status; no enforcement in move logic |
+| Dedicated notifications page | 1 | 4 | Large | YES | No /notifications route in App.tsx; dropdown-only (50-item cap) |
+| Sprint retrospective UI | 1 | 3 | Medium | YES | No schema field; no UI surface on completed sprint |
+| SSO / OIDC | 1 | 4 | Large | YES | Email/password + PATs only; no OAuth2 strategy |
+| CSV import | 1 | 4 | Large | YES | Export-only controller; no multipart upload; no import service |
+
+---
+
+### Ideation — 3 Ambitious New Features (Pass 8)
+
+**U. Issue scoring / priority matrix view.**
+A 2x2 matrix view accessible from the backlog: X-axis = effort (story points), Y-axis =
+business value (a new numeric field, or derived from custom fields). Issues appear as
+bubbles sized by points. Drag a bubble to update its value. The top-right quadrant ("high
+value, low effort") surfaces the obvious "do first" candidates. No comparable self-hosted
+tracker ships this built-in — it's usually a workshop exercise done in a slide deck. The
+data model for it (storyPoints already exists; a `businessValue Int?` field is a trivial
+migration) is nearly all in place. Size: M.
+
+**V. Recurring issues (schedule-driven auto-create).**
+A project setting to configure recurring issue templates: "every Monday at 09:00, create
+an issue titled 'Weekly sync notes' with type TASK, assignee = team lead, sprint = active."
+Uses a cron-style schedule (`node-cron` or NestJS `@Cron`). Stored as a
+`RecurringIssueTemplate` model with `cronExpression`, `templateData JSON`, `lastFiredAt`.
+Operations teams running Next Lane for incident management or compliance workflows will
+adopt a tracker specifically for this feature. No comparable feature exists in self-hosted
+alternatives of this tier. Size: M.
+
+**W. Public changelog / release notes page.**
+When a `Version` is marked RELEASED, generate a public-facing changelog page at
+`/changelog/:token` (analogous to the existing share-board token pattern). The page lists
+all issues in that version, grouped by label (Bug / Feature / Improvement), with optional
+short descriptions. An ADMIN can curate the wording via a simple edit modal. This gives
+product teams a way to share release notes with customers without requiring a separate
+changelog tool. The `Version` and `ShareToken` models together provide most of the
+foundation. Size: M.
+
+---
+
+### Direction — Next Quarter (Pass 8 view)
+
+The product's core is strong. The board, NLQL, automation, swimlanes, workflow transitions,
+bulk edit, and planning poker represent a genuinely differentiated feature set. The honest
+remaining gaps fall into two tiers.
+
+**Tier 1 — Daily-workflow blockers for real teams.** Email notification delivery and
+CSV import are the two gaps that will prevent teams from committing to Next Lane as their
+primary tracker. Email because teams do not live in the app; import because teams cannot
+migrate their existing backlog. Both should be in the next sprint.
+
+**Tier 2 — Depth gaps that signal maturity.** Time tracking, Components UI, Versions UI,
+and issue templates are all gaps that a user arriving from an established tracker will
+notice within the first week. The schema work for Components and Versions is already done —
+adding the API and UI layers is lower-risk than any net-new feature. Time tracking requires
+a schema migration but follows a well-understood pattern. Issue templates are a pure
+application-layer addition (JSON field on Project, picker in create modal).
+
+**Quick wins (S-sized, high visibility).** WIP limits per column and in-issue checklists
+are each one migration + a small UI addition. A dedicated notifications page is a route
+addition with no new API. All three should ship in the same sprint as any of the Tier 1
+items to maintain shipping momentum and address the most visible UX gaps.
+
+---
+
+### Backlog-Groomer Ingest — Pass 8 (title · priority · size · rationale)
+
+- Email notifications for all issue events (MailModule into NotificationsModule; mail.send() in notify/notifyAssigned/notifyComment/notifyWatchersUpdated; per-user pref model) · P1 · M · SMTP wired for password-reset; fan-out logic exists for Socket.io; email delivery gap makes watch and @mention half-functional for offline users
+- CSV import with column mapping (multipart POST endpoint; column-map wizard UI; upsert service; error report) · P1 · M · export exists; import does not; self-hosted adoption is gated on data portability and migration from existing tools
+- Time tracking — originalEstimate + WorkLog model (schema migration; log-work modal on drawer; logged/estimated bar on card; sprint time report) · P1 · L · absent from schema; every comparable tracker ships this; prerequisite for capacity planning and billable-work teams
+- Components API + UI (REST controller; drawer picker; board filter by component; default assignee wiring) · P2 · M · Component model in schema since baseline; zero API controllers; zero UI; schema investment already made
+- Versions/releases API + UI (REST controller; drawer picker; release view; issue list per version) · P2 · L · Version model in schema; zero API/UI; sprint != release; product teams need a release abstraction
+- Issue templates per project (templates JSON field on Project; template picker in create-issue modal; ADMIN-managed per project) · P2 · M · fully absent from schema and API; reduces issue-logging friction; improves data quality for automation
+- In-issue checklists (checklist JSON on Issue; add/check/delete in drawer; card progress badge N/M done) · P2 · S · lightweight alternative to creating sub-issues; teams track definition-of-done items without inflating issue count
+- WIP limits per board column (wipLimit Int? on Status; column limit indicator in BoardColumn; warn-on-exceed) · P2 · S · core Kanban discipline; no schema field today; signals bottlenecks visually without enforcement overhead
+- Dedicated notifications page (/notifications route; paginated history; filter by type/project; bulk mark-read) · P2 · S · dropdown is 50-item cap; users returning from absence cannot review full history; NotificationsController endpoints already exist
+- Sprint retrospective UI (retro JSON field on Sprint; modal from completed sprint row; What went well / improve / actions) · P3 · M · closes the sprint lifecycle; teams currently use external docs; no schema support today
+- SSO / OIDC (passport-oidc strategy; provider config in workspace settings; Google/GitHub at minimum) · P3 · L · self-hosted teams with managed identity providers cannot adopt without SSO; table-stakes for enterprise evaluation
+- Issue scoring / priority matrix view (business-value field on Issue; 2x2 matrix page; drag to update) · P3 · M · no comparable self-hosted tracker ships this; surfaces obvious "do first" candidates from the backlog
