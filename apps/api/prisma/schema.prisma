@@ -8,9 +8,9 @@
 // add_automation_engine — applied 2026-06-28.
 // add_activitylog_status_index — applied 2026-06-28.
 // add_workspace_branding — applied 2026-06-28.
+// add_configurable_workflows — applied 2026-06-28.
 // Deferred to feature slices (do not add here without a feature branch):
 //   - ScmConnection / IssueExternalLink / pgvector embedding column (Phase 9 / Phase 6)
-//   - WorkflowTransition (Phase 2 remaining / Phase 5)
 
 generator client {
   provider = "prisma-client-js"
@@ -277,6 +277,10 @@ model Project {
   workspaceId String
   archived    Boolean  @default(false)
   issueSeq    Int      @default(0) // last issue number assigned for this project
+  /// When false (default) all status transitions are permitted — existing behavior.
+  /// When true, only transitions defined in WorkflowTransition are legal; the
+  /// service layer enforces this before updating an issue's statusId.
+  workflowEnforced Boolean @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -305,6 +309,9 @@ model Project {
 
   // Automation engine
   automationRules        AutomationRule[]
+
+  // Configurable workflows
+  workflowTransitions    WorkflowTransition[]
 
   @@unique([workspaceId, key])
   @@index([workspaceId])
@@ -391,8 +398,12 @@ model Status {
   createdAt DateTime       @default(now())
   updatedAt DateTime       @updatedAt
 
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  issues  Issue[]
+  project         Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  issues          Issue[]
+  /// Workflow transitions that originate FROM this status.
+  transitionsFrom WorkflowTransition[] @relation("transitionFromStatus")
+  /// Workflow transitions that lead INTO this status.
+  transitionsInto WorkflowTransition[] @relation("transitionToStatus")
 
   @@index([projectId])
 }
@@ -1104,5 +1115,83 @@ model AutomationRun {
   // Run-history viewers: filter by rule or issue, sorted most-recent-first.
   @@index([ruleId, createdAt])
   @@index([issueId, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Configurable Workflows (Phase 2 / Phase 5)
+// ---------------------------------------------------------------------------
+
+/// A single allowed status transition in a project's configurable workflow.
+///
+/// Opt-in via Project.workflowEnforced (default false). When false, the
+/// application ignores this table and permits all transitions (backward-compat).
+/// When true, every status change must match at least one row here.
+///
+/// `fromStatusId` — null means "from any status / initial creation". This
+///   models two cases: (a) an issue can be moved INTO `toStatus` from anywhere,
+///   and (b) the implicit create→initial transition (issue is created directly
+///   into `toStatus` without a prior status). Application code treats NULL as a
+///   wildcard match on the source side.
+///
+/// `issueType` — null = applies to all issue types; non-null = only that type.
+///   Lets teams define type-specific SDLC graphs (e.g. BUG has a "Won't Fix"
+///   path that TASK does not).
+///
+/// `name` — optional human label shown in the UI transition button
+///   (e.g. "Start Work", "Send for Review", "Resolve"). Null = derive from
+///   toStatus.name in the UI.
+///
+/// `gates` — ordered JSONB array of pre-transition validator rules. The service
+///   layer evaluates them in array order; all must pass for the transition to
+///   proceed. Stored as opaque JSONB so the gate vocabulary can grow without a
+///   schema migration. Initial supported gate types:
+///     REQUIRE_ASSIGNEE        — issue must have an assignee
+///     REQUIRE_DESCRIPTION     — issue.description must be non-empty
+///     REQUIRE_FIELD           — a specific custom field must be set
+///                               { type: "REQUIRE_FIELD", field: "<cfKey>" }
+///     REQUIRE_LINK            — issue must have at least one link of linkType
+///                               { type: "REQUIRE_LINK", linkType: "BLOCKS_PR" }
+///     REQUIRE_NO_OPEN_BLOCKERS — issue must have no open BLOCKS links pointing to it
+///   Example: [{"type":"REQUIRE_ASSIGNEE"},{"type":"REQUIRE_FIELD","field":"resolution"}]
+///
+/// Unique constraint decision: @@unique([projectId, fromStatusId, toStatusId, issueType])
+///   This project targets Postgres 16, which supports NULLS NOT DISTINCT on
+///   unique indexes (confirmed by StandupEntry precedent in this schema).
+///   The constraint is therefore safe and correct — two rows with identical
+///   (projectId, NULL fromStatusId, toStatusId, NULL issueType) will collide
+///   as intended, preventing accidental duplicate wildcard transitions.
+///   This also enables clean upsert semantics (findUnique + update/create) in
+///   the service layer. Without it we would need app-layer dedupe + a
+///   findFirst scan, which is error-prone under concurrent requests.
+model WorkflowTransition {
+  id           String     @id @default(cuid())
+  projectId    String
+  /// Null = "from any status" (wildcard source / initial creation).
+  fromStatusId String?
+  toStatusId   String
+  /// Null = transition applies to all issue types.
+  issueType    IssueType?
+  /// Optional human label for this transition (e.g. "Start Work", "Resolve").
+  name         String?
+  /// Ordered array of gate/validator rules evaluated before the transition is
+  /// allowed. Empty array = no gates (transition is always permitted when selected).
+  /// See model-level comment for the supported gate type vocabulary.
+  gates        Json       @default("[]")
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  project    Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  /// The status this transition originates FROM. Null = any/initial.
+  fromStatus Status? @relation("transitionFromStatus", fields: [fromStatusId], references: [id], onDelete: Cascade)
+  /// The status this transition leads INTO. Always required.
+  toStatus   Status  @relation("transitionToStatus", fields: [toStatusId], references: [id], onDelete: Cascade)
+
+  /// Fast "what transitions are legal for this issue type in this project?" query.
+  @@index([projectId, issueType])
+  /// Fast "what transitions can leave this specific status?" query.
+  @@index([projectId, fromStatusId])
+  /// Prevents exact duplicate transitions. Postgres 16 NULLS NOT DISTINCT
+  /// ensures NULL fromStatusId / NULL issueType rows collide correctly.
+  @@unique([projectId, fromStatusId, toStatusId, issueType])
 }
 
