@@ -11,7 +11,7 @@ import {
   type StatusDto,
   type UserDto,
 } from '@next-lane/shared';
-import { useIssue, useUpdateIssue, useDeleteIssue } from '@/api/issues';
+import { useIssue, useUpdateIssue, useDeleteIssue, useToggleWatch, useWatcherInfo } from '@/api/issues';
 import { Button } from '@/components/ui/Button';
 import { Select } from '@/components/ui/Select';
 import { Textarea } from '@/components/ui/Textarea';
@@ -151,6 +151,12 @@ export function IssueDetailDrawer({
   );
 }
 
+// Extend IssueDto locally to carry the watch fields the backend attaches.
+type IssueWithWatch = IssueDto & {
+  isWatching?: boolean;
+  watcherCount?: number;
+};
+
 function DrawerBody({
   issue,
   projectId,
@@ -166,7 +172,7 @@ function DrawerBody({
   onDelete,
   deleting,
 }: {
-  issue: IssueDto;
+  issue: IssueWithWatch;
   projectId: string;
   boardId?: string;
   statuses: StatusDto[];
@@ -181,6 +187,10 @@ function DrawerBody({
   deleting: boolean;
 }) {
   const [title, setTitle] = useState(issue.title);
+  const toggleWatch = useToggleWatch(issue.id);
+  const watcherInfo = useWatcherInfo(issue.id);
+  const isWatching = watcherInfo.data?.isWatching ?? false;
+  const watcherCount = watcherInfo.data?.count ?? 0;
   const [description, setDescription] = useState(issue.description ?? '');
   const [descriptionEditing, setDescriptionEditing] = useState(false);
   const descriptionCancelled = useRef(false);
@@ -210,6 +220,50 @@ function DrawerBody({
           )}
         </div>
         <div className="flex items-center gap-1">
+          {/* Watch toggle — any role can watch */}
+          <button
+            type="button"
+            data-testid="issue-watch-toggle"
+            aria-label={isWatching ? 'Stop watching this issue' : 'Watch this issue'}
+            aria-pressed={isWatching}
+            disabled={toggleWatch.isPending}
+            onClick={() => toggleWatch.mutate(isWatching)}
+            className={[
+              'inline-flex items-center gap-1.5 rounded px-2.5 py-1.5 text-xs font-medium transition-colors duration-[120ms]',
+              'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300',
+              isWatching
+                ? 'bg-brand-50 text-brand-700 hover:bg-brand-100'
+                : 'text-ink-500 hover:bg-ink-100 hover:text-ink-700',
+              toggleWatch.isPending ? 'opacity-60 cursor-not-allowed' : '',
+            ].join(' ')}
+          >
+            {/* Eye icon */}
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill={isWatching ? 'currentColor' : 'none'}
+              stroke="currentColor"
+              strokeWidth="2"
+              aria-hidden="true"
+            >
+              <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" />
+              <circle cx="12" cy="12" r="3" fill={isWatching ? 'white' : 'none'} />
+            </svg>
+            <span>{isWatching ? 'Watching' : 'Watch'}</span>
+            {watcherCount > 0 && (
+              <span
+                className={[
+                  'rounded-full px-1.5 py-0.5 text-[10px] font-semibold tabular-nums',
+                  isWatching ? 'bg-brand-100 text-brand-700' : 'bg-ink-100 text-ink-500',
+                ].join(' ')}
+                aria-label={`${watcherCount} watcher${watcherCount !== 1 ? 's' : ''}`}
+              >
+                {watcherCount}
+              </span>
+            )}
+          </button>
+
           {editable && (
             <Button
               variant="ghost"

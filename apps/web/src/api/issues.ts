@@ -240,6 +240,69 @@ export function useAssignIssueToSprint(projectId: string) {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Watch / Unwatch
+// ---------------------------------------------------------------------------
+
+export interface WatchResponse {
+  watching: boolean;
+}
+
+/** Caller's watch state + total watcher count for an issue. */
+export interface WatcherInfo {
+  count: number;
+  isWatching: boolean;
+}
+
+/**
+ * Fetch the caller's watch state + watcher count for an issue from the dedicated
+ * `GET /issues/:id/watchers` endpoint (the watch fields are NOT on IssueDto).
+ */
+export function useWatcherInfo(issueId: string | undefined) {
+  return useQuery({
+    queryKey: qk.watchers(issueId ?? ''),
+    queryFn: () => request<WatcherInfo>(`/issues/${issueId}/watchers`),
+    enabled: !!issueId,
+  });
+}
+
+/**
+ * Optimistically toggle the watch state for an issue, operating on the
+ * `watchers` query cache (GET /issues/:id/watchers). The arg is the CURRENT
+ * watching state; the hook POSTs to watch / DELETEs to unwatch.
+ */
+export function useToggleWatch(issueId: string) {
+  const qc = useQueryClient();
+  const watchersKey = qk.watchers(issueId);
+
+  interface WatchContext {
+    previous?: WatcherInfo;
+  }
+
+  return useMutation<WatchResponse, Error, boolean, WatchContext>({
+    mutationFn: (currentlyWatching: boolean) =>
+      request<WatchResponse>(`/issues/${issueId}/watch`, {
+        method: currentlyWatching ? 'DELETE' : 'POST',
+      }),
+    onMutate: async (currentlyWatching) => {
+      await qc.cancelQueries({ queryKey: watchersKey });
+      const previous = qc.getQueryData<WatcherInfo>(watchersKey);
+      const prevCount = previous?.count ?? 0;
+      qc.setQueryData<WatcherInfo>(watchersKey, {
+        isWatching: !currentlyWatching,
+        count: currentlyWatching ? Math.max(0, prevCount - 1) : prevCount + 1,
+      });
+      return { previous };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.previous) qc.setQueryData(watchersKey, ctx.previous);
+    },
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: watchersKey });
+    },
+  });
+}
+
 export interface MoveIssueInput {
   id: string;
   statusId: string;

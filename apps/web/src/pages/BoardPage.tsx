@@ -16,6 +16,7 @@ import {
   SprintState,
   IssueType,
   Priority,
+  StatusCategory,
   filterIssues,
   validateQuery,
   type EvalContext,
@@ -197,6 +198,25 @@ export function BoardPage() {
   // NLQL query bar state
   const [nlqlQuery, setNlqlQuery] = useState('');
 
+  // ── Quick-filter presets ──────────────────────────────────────────────────
+  // Each preset key maps to a boolean (on/off). Active presets layer on top of
+  // the manual pill filters and are mutually composable with them.
+  const [activePresets, setActivePresets] = useState<Set<QuickFilterKey>>(
+    () => new Set(),
+  );
+
+  function togglePreset(key: QuickFilterKey) {
+    setActivePresets((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  }
+
   // Controls opening the Card Colors tab inside the BoardSettingsModal via the toolbar button.
   const [openColorsTab, setOpenColorsTab] = useState(false);
 
@@ -314,7 +334,41 @@ export function BoardPage() {
       finalIssues = pillFiltered;
     }
 
-    for (const issue of finalIssues) {
+    // Apply quick-filter presets on top of the NLQL-filtered set.
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    let presetIssues = finalIssues;
+    if (activePresets.size > 0) {
+      presetIssues = finalIssues.filter((issue) => {
+        // "My issues": must be assigned to the current user.
+        if (
+          activePresets.has('myIssues') &&
+          issue.assigneeId !== currentUser?.id
+        )
+          return false;
+        // "High priority": must be HIGH or HIGHEST.
+        if (
+          activePresets.has('highPriority') &&
+          issue.priority !== Priority.HIGH &&
+          issue.priority !== Priority.HIGHEST
+        )
+          return false;
+        // "Unresolved": status category must NOT be DONE.
+        if (
+          activePresets.has('unresolved') &&
+          issue.status?.category === StatusCategory.DONE
+        )
+          return false;
+        // "Recently updated": updatedAt within the last 7 days.
+        if (
+          activePresets.has('recent') &&
+          new Date(issue.updatedAt) < sevenDaysAgo
+        )
+          return false;
+        return true;
+      });
+    }
+
+    for (const issue of presetIssues) {
       const arr = map.get(issue.statusId);
       if (arr) arr.push(issue);
     }
@@ -335,6 +389,7 @@ export function BoardPage() {
     customFieldDefs,
     usersQuery.data,
     currentUser?.id,
+    activePresets,
   ]);
 
   // ── Drag and drop ─────────────────────────────────────────────────────────
@@ -606,6 +661,12 @@ export function BoardPage() {
           <TypeFilter selected={typeFilter} onChange={setTypeFilter} />
           <PriorityFilter selected={priorityFilter} onChange={setPriorityFilter} />
         </div>
+
+        {/* Quick-filter preset chips */}
+        <QuickFilterBar
+          activePresets={activePresets}
+          onToggle={togglePreset}
+        />
 
         {/* Row 3: NLQL query bar + saved filters */}
         <div className="flex w-full flex-col gap-1 sm:w-auto sm:flex-row sm:items-center sm:gap-2">
@@ -1141,6 +1202,104 @@ function PriorityFilter({
       ariaLabel="Filter by priority"
       clearLabel="Clear priority filter"
     />
+  );
+}
+
+// ---------------------------------------------------------------------------
+// QuickFilterBar
+// ---------------------------------------------------------------------------
+
+type QuickFilterKey = 'myIssues' | 'highPriority' | 'unresolved' | 'recent';
+
+interface QuickFilterPreset {
+  key: QuickFilterKey;
+  label: string;
+  testId: string;
+  icon: React.ReactNode;
+}
+
+const QUICK_FILTER_PRESETS: QuickFilterPreset[] = [
+  {
+    key: 'myIssues',
+    label: 'My issues',
+    testId: 'quick-filter-my-issues',
+    icon: (
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+        <circle cx="12" cy="8" r="4" />
+        <path strokeLinecap="round" d="M4 20c0-4 3.6-7 8-7s8 3 8 7" />
+      </svg>
+    ),
+  },
+  {
+    key: 'highPriority',
+    label: 'High priority',
+    testId: 'quick-filter-high-priority',
+    icon: (
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
+      </svg>
+    ),
+  },
+  {
+    key: 'unresolved',
+    label: 'Unresolved',
+    testId: 'quick-filter-unresolved',
+    icon: (
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+        <circle cx="12" cy="12" r="9" />
+        <path strokeLinecap="round" d="M12 8v4M12 16h.01" />
+      </svg>
+    ),
+  },
+  {
+    key: 'recent',
+    label: 'Recently updated',
+    testId: 'quick-filter-recent',
+    icon: (
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+        <circle cx="12" cy="12" r="9" />
+        <path strokeLinecap="round" d="M12 7v5l3 3" />
+      </svg>
+    ),
+  },
+];
+
+function QuickFilterBar({
+  activePresets,
+  onToggle,
+}: {
+  activePresets: Set<QuickFilterKey>;
+  onToggle: (key: QuickFilterKey) => void;
+}) {
+  return (
+    <div
+      className="flex items-center gap-1.5 overflow-x-auto pb-0.5 sm:overflow-x-visible sm:pb-0"
+      role="group"
+      aria-label="Quick filters"
+    >
+      {QUICK_FILTER_PRESETS.map((preset) => {
+        const active = activePresets.has(preset.key);
+        return (
+          <button
+            key={preset.key}
+            type="button"
+            data-testid={preset.testId}
+            aria-pressed={active}
+            onClick={() => onToggle(preset.key)}
+            className={cn(
+              'inline-flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors duration-[120ms]',
+              'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200',
+              active
+                ? 'border-brand-600 bg-brand-600 text-white hover:bg-brand-700'
+                : 'border-ink-200 bg-white text-ink-600 hover:border-ink-300 hover:bg-ink-50',
+            )}
+          >
+            {preset.icon}
+            {preset.label}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
