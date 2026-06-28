@@ -237,11 +237,46 @@ body {
   margin-left: -2px;
 }
 
+/* ─── Spacing scale tokens ───────────────────────────────────────────────────
+ *
+ * A deliberate 8-point scale so every spacing decision references a token:
+ *   --sp-1  =  8px   (tight insets, micro gaps)
+ *   --sp-2  = 16px   (standard paragraph/item gap)
+ *   --sp-3  = 24px   (card inner padding)
+ *   --sp-4  = 32px   (section sub-gap, footer padding)
+ *   --sp-5  = 40px   (h2 margin-top in doc)
+ *   --sp-6  = 48px   (VPDoc top padding, section padding-block)
+ *   --sp-7  = 64px   (hero padding-bottom, features section padding)
+ *   --sp-8  = 80px   (between major home sections)
+ *   --sp-9  = 96px   (hero padding-top after nav)
+ */
+:root {
+  --sp-1: 8px;
+  --sp-2: 16px;
+  --sp-3: 24px;
+  --sp-4: 32px;
+  --sp-5: 40px;
+  --sp-6: 48px;
+  --sp-7: 64px;
+  --sp-8: 80px;
+  --sp-9: 96px;
+}
+
 /* ─── Hero section ──────────────────────────────────────────────────────────── */
+/*
+ * VitePress calculates hero padding-top as:
+ *   calc(var(--vp-nav-height) + var(--vp-layout-top-height, 0px) + Npx)
+ * where N is 48px (mobile) / 80px (≥640) / 80px (≥960).
+ * We override only the additive offset (N) by adding extra padding-bottom
+ * and using the same formula so the nav offset is preserved.
+ * The "extra breathing room" token we inject is --sp-extra-hero which
+ * adds vertical clearance below the heading group on desktop.
+ */
 .VPHome .VPHero {
   background: var(--nl-hero-gradient);
   border-bottom: 1px solid var(--vp-c-divider);
-  padding-bottom: 56px;
+  /* More generous bottom spacing — matches features section padding-top */
+  padding-bottom: var(--sp-7) !important;
 }
 
 /*
@@ -255,8 +290,9 @@ body {
   letter-spacing: -0.04em;
   line-height: 1.04;
   color: var(--vp-c-text-1);
-  /* Subtle accent underline as signature — single line rule */
   text-decoration: none;
+  /* Push name down from tagline-less top */
+  margin-bottom: var(--sp-1) !important;
 }
 
 /* Accent the brand mark in the name via the clip gradient only in dark mode */
@@ -267,9 +303,7 @@ body {
   background-clip: text;
 }
 
-/* Light mode — reset any VitePress default that colours .name in brand-1 blue.
- * Keep the heading in the canonical dark ink colour so the gradient stays
- * confined to dark mode only. */
+/* Light mode — reset any VitePress default that colours .name in brand-1 blue. */
 :root:not(.dark) .VPHero .name {
   background: none;
   -webkit-text-fill-color: currentColor;
@@ -281,6 +315,9 @@ body {
   font-weight: 700;
   letter-spacing: -0.03em;
   color: var(--vp-c-text-1);
+  /* Breathing gap between name and subtitle */
+  margin-top: var(--sp-1) !important;
+  margin-bottom: var(--sp-1) !important;
 }
 
 .VPHero .tagline {
@@ -288,12 +325,36 @@ body {
   color: var(--vp-c-text-2);
   font-weight: 400;
   line-height: 1.65;
-  max-width: 580px;
+  max-width: 540px;
+  /* Clear gap above the action buttons */
+  margin-top: var(--sp-2) !important;
+  margin-bottom: 0 !important;
 }
 
+/*
+ * Hero action buttons: VitePress uses margin: -6px on .actions and
+ * padding: 6px on each .action button — same gutter trick as the feature grid.
+ * Do NOT set gap (it stacks on the negative margin and pushes buttons outside
+ * the gutter). Just ensure padding-top gives enough room above the buttons.
+ * VitePress sets padding-top: 24px (mobile) / 32px (≥640px) on .actions.
+ * We leave gap alone and only adjust the overall hero vertical padding instead.
+ */
+/* (No gap override needed — VitePress's built-in padding-top on .actions is correct) */
+
 /* ─── Home features grid ────────────────────────────────────────────────────── */
+/*
+ * VPFeatures sits directly under the hero border with 0 padding.
+ * Give it vertical breathing room that matches the hero's bottom padding.
+ *
+ * NOTE: VitePress implements the card gutter via margin: -8px on .items and
+ * padding: 8px on each .item (scoped Vue styles). Do NOT set gap on .items —
+ * it stacks on top of the margin system and causes the 4th card to wrap.
+ * Vertical section breathing is enough; card gaps come from VitePress's system.
+ */
 .VPFeatures {
   border-top: 1px solid var(--vp-c-divider);
+  padding-top: var(--sp-7) !important;
+  padding-bottom: var(--sp-7) !important;
 }
 
 .VPFeature {
@@ -319,10 +380,18 @@ body {
   background: #20212a;
 }
 
+/* Feature card inner box — comfortable internal padding.
+ * The card gutter is handled by .item's 8px padding (VitePress scoped style).
+ * We only control the inside of the card surface itself. */
+.VPFeature .box {
+  padding: var(--sp-4) var(--sp-3) var(--sp-3) !important;
+}
+
 .VPFeature .title {
   font-weight: 700;
   letter-spacing: -0.01em;
   color: var(--vp-c-text-1);
+  margin-bottom: var(--sp-1) !important;
 }
 
 .VPFeature .details {
@@ -331,15 +400,79 @@ body {
   line-height: 1.6;
 }
 
+/* ─── Home below-hero content (.vp-doc on home layout) ──────────────────────
+ *
+ * The home page renders its markdown body (One command / What's included /
+ * Screenshots sections) inside a .VPHomeContent wrapper. VitePress gives it
+ * no horizontal gutter constraints by default so it spans full width.
+ * Cap it and add symmetric side padding to match the doc page prose width.
+ */
+.VPHomeContent {
+  max-width: 768px !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+  padding-left: var(--sp-4) !important;
+  padding-right: var(--sp-4) !important;
+  /* Top padding separates this section from the feature grid */
+  padding-top: var(--sp-8) !important;
+  padding-bottom: var(--sp-8) !important;
+}
+
+/* Home page section dividers (---) need more breathing room */
+.VPHome .vp-doc hr {
+  margin-top: var(--sp-8) !important;
+  margin-bottom: var(--sp-8) !important;
+  border-color: var(--vp-c-divider);
+}
+
+/* Home h2 sections: align vertical rhythm with the doc page h2 treatment */
+.VPHome .vp-doc h2 {
+  margin-top: var(--sp-7) !important;
+  padding-top: var(--sp-4) !important;
+  margin-bottom: var(--sp-3) !important;
+}
+
+/* Images inside home doc (Screenshots section) */
+.VPHome .vp-doc img {
+  margin-top: var(--sp-4);
+  margin-bottom: var(--sp-2);
+}
+
+/* Caption italics under screenshots */
+.VPHome .vp-doc p em {
+  display: block;
+  margin-top: calc(-1 * var(--sp-1));
+  margin-bottom: var(--sp-4);
+  color: var(--vp-c-text-3);
+  font-size: 0.875rem;
+}
+
 /* ─── Code blocks ───────────────────────────────────────────────────────────── */
+/*
+ * Vertical margin: use sp-4 (32px) so code blocks breathe vs surrounding prose.
+ * Horizontal inner padding: VitePress sets pre padding-left/right to 0 in some
+ * contexts; enforce a comfortable 20px gutter so code is never flush to edge.
+ */
 div[class*='language-'] {
   border-radius: 8px;
   border: 1px solid var(--vp-c-border);
+  margin-top: var(--sp-4) !important;
+  margin-bottom: var(--sp-4) !important;
+  /* Ensure the block never bleeds on mobile — clip content, don't overflow */
+  overflow: hidden;
 }
 
 .dark div[class*='language-'] {
   background: #1c1d22;
   border-color: var(--oc-line);
+}
+
+/* Inner <pre> — always give it horizontal padding so code has a gutter */
+div[class*='language-'] pre {
+  padding-left: var(--sp-3) !important;
+  padding-right: var(--sp-3) !important;
+  padding-top: var(--sp-3) !important;
+  padding-bottom: var(--sp-3) !important;
 }
 
 /* Code block filename/lang label — eyebrow mono treatment */
@@ -350,6 +483,11 @@ div[class*='language-'] .lang {
   letter-spacing: var(--oc-tracking-wide);
   text-transform: uppercase;
   color: var(--oc-ink-3);
+  /* Ensure label stays in the top-right and doesn't overlap code text */
+  top: var(--sp-1) !important;
+  right: var(--sp-2) !important;
+  padding: 0 !important;
+  line-height: 1;
 }
 
 /* ─── Inline code ───────────────────────────────────────────────────────────── */
@@ -365,8 +503,6 @@ div[class*='language-'] .lang {
 /*
  * display:block + overflow-x:auto keeps wide tables scrollable within the table
  * element itself — the page body never scrolls horizontally on mobile.
- * (VitePress's own default is also display:block; our earlier override of
- * display:table removed the overflow-x containment.)
  */
 .vp-doc table {
   display: block;
@@ -374,6 +510,9 @@ div[class*='language-'] .lang {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.9rem;
+  /* Balanced vertical margin matching code block spacing */
+  margin-top: var(--sp-4) !important;
+  margin-bottom: var(--sp-4) !important;
 }
 
 .vp-doc table th {
@@ -385,10 +524,17 @@ div[class*='language-'] .lang {
   text-transform: uppercase;
   color: var(--vp-c-text-3);
   border-bottom: 1px solid var(--vp-c-border);
+  /* More comfortable header cell padding */
+  padding: var(--sp-2) var(--sp-3) !important;
+  white-space: nowrap;
 }
 
 .vp-doc table td {
   border-bottom: 1px solid var(--vp-c-divider);
+  /* Match header horizontal padding; give data rows a bit more vertical room */
+  padding: 10px var(--sp-3) !important;
+  vertical-align: top;
+  line-height: 1.5;
 }
 
 .vp-doc table tr:hover td {
@@ -398,8 +544,10 @@ div[class*='language-'] .lang {
 /* ─── H2 divider with hairline ──────────────────────────────────────────────── */
 .vp-doc h2 {
   border-top: 1px solid var(--vp-c-divider);
-  padding-top: 1.5rem;
-  margin-top: 2.5rem;
+  /* More generous top margin and top padding for better section breathing */
+  margin-top: var(--sp-8) !important;
+  padding-top: var(--sp-4) !important;
+  margin-bottom: var(--sp-3) !important;
 }
 
 /* Accent bar — one signature mark per section */
@@ -422,6 +570,8 @@ div[class*='language-'] .lang {
   font-weight: 700;
   letter-spacing: 0.04em;
   color: var(--vp-c-text-2);
+  margin-top: var(--sp-5) !important;
+  margin-bottom: var(--sp-2) !important;
 }
 
 /* ─── Custom blocks (tip/warning/danger) ────────────────────────────────────── */
@@ -448,11 +598,21 @@ div[class*='language-'] .lang {
   border-radius: 10px;
   border: 1px solid var(--vp-c-border);
   max-width: 100%;
+  /* Consistent vertical margin matching the code block / table rhythm */
+  margin-top: var(--sp-4);
+  margin-bottom: var(--sp-4);
 }
 
 .dark .vp-doc img {
   border-color: var(--oc-line);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+}
+
+/* ─── Doc page bottom padding ────────────────────────────────────────────────
+ * VPDoc paddingBottom was 0 — content ran to the footer divider with no gap.
+ */
+.VPDoc {
+  padding-bottom: var(--sp-8) !important;
 }
 
 /* ─── Last Updated footer ───────────────────────────────────────────────────── */
@@ -467,6 +627,9 @@ div[class*='language-'] .lang {
 .VPFooter {
   border-top: 1px solid var(--vp-c-divider);
   background: var(--vp-c-bg-alt);
+  /* More generous footer padding (was 32px all-round) */
+  padding-top: var(--sp-6) !important;
+  padding-bottom: var(--sp-6) !important;
 }
 
 .dark .VPFooter {
@@ -481,7 +644,31 @@ div[class*='language-'] .lang {
 }
 
 /* ─── Responsive ────────────────────────────────────────────────────────────── */
+
+/*
+ * Hero vertical padding notes:
+ *   VitePress calculates padding-top as calc(--vp-nav-height + N).
+ *   We only override padding-bottom (safe, no nav-height dependency).
+ *   Padding-top overrides are deliberately avoided — they would strip out the
+ *   nav-height offset and cause hero content to slide under the sticky nav.
+ *
+ * Actions / feature grid gap notes:
+ *   Both use VitePress's negative-margin + child-padding gutter pattern.
+ *   Setting `gap` on the flex container stacks on top of the negative margin
+ *   and pushes items outside their intended bounds. We only adjust section
+ *   padding and individual card box padding — not gap on these containers.
+ */
+
+@media (max-width: 960px) {
+  /* Tablet features: slightly tighter vertical breathing */
+  .VPFeatures {
+    padding-top: var(--sp-6) !important;
+    padding-bottom: var(--sp-6) !important;
+  }
+}
+
 @media (max-width: 640px) {
+  /* Mobile hero typography */
   .VPHero .name {
     font-size: 2.2rem;
   }
@@ -492,6 +679,62 @@ div[class*='language-'] .lang {
 
   .VPHero .tagline {
     font-size: 0.975rem;
+    max-width: 100%;
+  }
+
+  /*
+   * Mobile hero: on small screens VitePress stacks the image above the text
+   * (order: image=1, main=2 in column flex). The image uses margin: -76px -24px
+   * to bleed into the nav area intentionally. We allow this — it's the
+   * designed behavior. We only add bottom breathing room to the hero section.
+   */
+  .VPHome .VPHero {
+    padding-bottom: var(--sp-5) !important;
+  }
+
+  /* Mobile features section */
+  .VPFeatures {
+    padding-top: var(--sp-5) !important;
+    padding-bottom: var(--sp-5) !important;
+  }
+
+  /* Feature card inner padding on mobile — slightly more compact */
+  .VPFeature .box {
+    padding: var(--sp-3) !important;
+  }
+
+  /* Home below-hero content — consistent 24px gutters on mobile */
+  .VPHomeContent {
+    padding-left: var(--sp-3) !important;
+    padding-right: var(--sp-3) !important;
+    padding-top: var(--sp-5) !important;
+    padding-bottom: var(--sp-5) !important;
+  }
+
+  /* Code blocks on mobile: keep contained, never bleed to viewport edge */
+  div[class*='language-'] {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    border-radius: 6px;
+  }
+
+  div[class*='language-'] pre {
+    padding-left: var(--sp-2) !important;
+    padding-right: var(--sp-2) !important;
+    padding-top: var(--sp-2) !important;
+    padding-bottom: var(--sp-2) !important;
+  }
+
+  /* Tables: ensure no extra bleed on mobile */
+  .vp-doc table {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+  }
+
+  /* Footer — slightly tighter on mobile */
+  .VPFooter {
+    padding-top: var(--sp-4) !important;
+    padding-bottom: var(--sp-4) !important;
   }
 }
 
