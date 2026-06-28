@@ -212,7 +212,15 @@ export function BacklogPage() {
             </p>
           </div>
           {editable ? (
-            <Button onClick={() => setCreateOpen(true)}>+ Create sprint</Button>
+            <div className="flex items-center gap-2">
+              <Link
+                to={`/projects/${projectId}/poker`}
+                className="inline-flex h-9 items-center gap-1.5 rounded-md border border-ink-200 bg-white px-3.5 text-sm font-semibold text-ink-700 shadow-xs transition-all duration-[120ms] hover:bg-ink-50 hover:border-ink-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-500"
+              >
+                ♠ Estimate / Poker
+              </Link>
+              <Button onClick={() => setCreateOpen(true)}>+ Create sprint</Button>
+            </div>
           ) : (
             <span
               data-testid="readonly-hint"

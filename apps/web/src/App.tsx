@@ -26,6 +26,8 @@ import { ProfileSettingsPage } from '@/pages/ProfileSettingsPage';
 import { WorkspaceAuditLogPage } from '@/pages/WorkspaceAuditLogPage';
 import { SharedBoardPage } from '@/pages/SharedBoardPage';
 import { WorkspaceMembersPage } from '@/pages/WorkspaceMembersPage';
+import { PokerStartPage } from '@/pages/PokerStartPage';
+import { PokerSessionPage } from '@/pages/PokerSessionPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -132,6 +134,22 @@ export default function App() {
               element={
                 <RequireAuth>
                   <WorkspaceAuditLogPage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/projects/:projectId/poker"
+              element={
+                <RequireAuth>
+                  <PokerStartPage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/projects/:projectId/poker/:sessionId"
+              element={
+                <RequireAuth>
+                  <PokerSessionPage />
                 </RequireAuth>
               }
             />

@@ -36,4 +36,6 @@ export const qk = {
   labels: (projectId: string) => ['labels', projectId] as const,
   attachments: (issueId: string) => ['attachments', issueId] as const,
   customFields: (projectId: string) => ['customFields', projectId] as const,
+  pokerSessions: (projectId: string) => ['pokerSessions', projectId] as const,
+  pokerSession: (sessionId: string) => ['pokerSession', sessionId] as const,
 };
