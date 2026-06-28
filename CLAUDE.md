@@ -121,16 +121,18 @@ This project is built by a **team of specialized AI agents**, not one generalist
 - Project-specific: `add-domain-module`, `add-board-feature`, `run-stack`, `playwright-qa`, `ui-consistency-review`.
 - Debugging: `systematic-debugging`. Parallel work: `dispatching-parallel-agents`.
 
-**Direction-setting roles** (read-only, they steer the backlog):
+**Direction-setting roles** (read-only on app code, they steer the project):
 - `product-auditor` & `engineering-auditor` — **two independent** deep auditors. They rate features (product value / engineering health) from different lenses and recommend priorities, writing `docs/AUDIT-PRODUCT.md` / `docs/AUDIT-ENGINEERING.md`. They deliberately don't coordinate.
 - `backlog-groomer` — product owner who keeps the dev board `docs/BACKLOG.md` current from the auditors + QA reviews, maintaining a "Ready" queue the build loop pulls from.
+- `vision-steward` — turns the founder's plain-language ideas into VISION/ROADMAP/BACKLOG entries (writes docs only). See `docs/VISION.md`.
+- `oss-curator` — open-source credibility & DX advocate: owns the first-impression surface (`README.md`, CONTRIBUTING/SECURITY/issue templates, badges, screenshots gallery) and keeps it credible + compelling as features ship. Truth-only (every badge/claim/quickstart verified); writes meta/docs only, never app code.
 
 **Workflows** (`.claude/workflows/`) — orchestrate multi-phase work:
 - `build-vertical-slice` — feature → schema → backend → frontend → review → QA, in coordinated phases.
 - `nightly-build-loop` — work down the ROADMAP MVP items autonomously until done.
 - `autonomous-dev-loop` — the full org loop: independent audits → groom the board → build the top backlog items (each fully QA'd) → **loop again on completion** (event-driven, not time-based).
 
-**The loop for every feature:** plan → implement (specialist agent) → review (`code-reviewer`) → **functional QA with `qa-tester` on desktop AND mobile** → **UI/UX QA with `frontend-qa`** (consistency, a11y, responsive) feeding `docs/UI-REVIEW.md` back to the dev team → **update `docs/ROADMAP.md` + `docs/BACKLOG.md` (mandatory)** → commit. Never mark work done without the `verification-before-completion` evidence, and never leave the roadmap stale.
+**The loop for every feature:** plan → implement (specialist agent) → review (`code-reviewer`) → **functional QA with `qa-tester` on desktop AND mobile** → **UI/UX QA with `frontend-qa`** (consistency, a11y, responsive) feeding `docs/UI-REVIEW.md` back to the dev team → **update `docs/ROADMAP.md` + `docs/BACKLOG.md` (mandatory)** → **`oss-curator` refreshes the README/first-impression surface when shipped features change what we can credibly claim** → commit. Never mark work done without the `verification-before-completion` evidence, and never leave the roadmap or the README stale.
 
 ## Working style for autonomous build
 
