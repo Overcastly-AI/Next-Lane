@@ -35,6 +35,7 @@ import { PersonalAnalyticsPage } from '@/pages/PersonalAnalyticsPage';
 import { ProjectAnalyticsPage } from '@/pages/ProjectAnalyticsPage';
 import { AutomationsPage } from '@/pages/AutomationsPage';
 import { WorkspaceBrandingPage } from '@/pages/WorkspaceBrandingPage';
+import { NotificationsPage } from '@/pages/NotificationsPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -216,6 +217,14 @@ export default function App() {
               element={
                 <RequireAuth>
                   <WorkspaceBrandingPage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/notifications"
+              element={
+                <RequireAuth>
+                  <NotificationsPage />
                 </RequireAuth>
               }
             />

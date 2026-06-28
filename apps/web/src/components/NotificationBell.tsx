@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { NotificationType, type NotificationDto } from '@next-lane/shared';
 import { Avatar } from './ui/Avatar';
 import { relativeTime } from '@/lib/relativeTime';
@@ -178,6 +178,18 @@ export function NotificationBell() {
                   </li>
                 ))}
               </ul>
+            </div>
+
+            {/* See all footer — links to the full /notifications page */}
+            <div className="border-t border-ink-100">
+              <Link
+                to="/notifications"
+                data-testid="notification-bell-see-all"
+                onClick={() => setOpen(false)}
+                className="block w-full px-3 py-2.5 text-center text-xs font-medium text-signal-700 transition-colors duration-[120ms] hover:bg-ink-50 hover:text-signal-800"
+              >
+                See all notifications
+              </Link>
             </div>
           </div>
         </>
