@@ -8,6 +8,7 @@ import type {
   BoardType,
   CustomFieldType,
   PokerState,
+  IssueLinkType,
 } from './enums';
 
 /** API DTO shapes shared between server and client. These mirror Prisma models
@@ -113,6 +114,20 @@ export interface IssueDto {
 
 /** A single custom field value. Shape depends on the field's type. */
 export type CustomFieldValue = string | number | boolean | string[] | null;
+
+/**
+ * A typed link between two issues, resolved from the perspective of the issue
+ * being viewed. `type`/`label` describe how the viewed issue relates to
+ * `relatedIssue` (e.g. type=BLOCKS, label="blocks", relatedIssue=NL-5).
+ */
+export interface IssueLinkDto {
+  id: string;
+  type: IssueLinkType;
+  /** Human label from the viewer's perspective (e.g. "is blocked by"). */
+  label: string;
+  relatedIssue: IssueRefDto;
+  createdAt: string;
+}
 
 /** A project-defined custom field. Mirrors the CustomFieldDefinition model. */
 export interface CustomFieldDefinitionDto {

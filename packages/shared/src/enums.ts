@@ -40,6 +40,38 @@ export enum BoardType {
   SCRUM = 'SCRUM',
 }
 
+/** Typed relationship between two issues. Keep in sync with the Prisma enum. */
+export enum IssueLinkType {
+  BLOCKS = 'BLOCKS',
+  BLOCKED_BY = 'BLOCKED_BY',
+  RELATES_TO = 'RELATES_TO',
+  DUPLICATES = 'DUPLICATES',
+  DUPLICATED_BY = 'DUPLICATED_BY',
+  CLONES = 'CLONES',
+}
+
+export const ISSUE_LINK_TYPES = Object.values(IssueLinkType);
+
+/** Human label for each link type, from the perspective of the source issue. */
+export const ISSUE_LINK_TYPE_LABELS: Record<IssueLinkType, string> = {
+  [IssueLinkType.BLOCKS]: 'blocks',
+  [IssueLinkType.BLOCKED_BY]: 'is blocked by',
+  [IssueLinkType.RELATES_TO]: 'relates to',
+  [IssueLinkType.DUPLICATES]: 'duplicates',
+  [IssueLinkType.DUPLICATED_BY]: 'is duplicated by',
+  [IssueLinkType.CLONES]: 'clones',
+};
+
+/** The inverse relationship (how the target sees a link). RELATES_TO is symmetric. */
+export const ISSUE_LINK_INVERSE: Record<IssueLinkType, IssueLinkType> = {
+  [IssueLinkType.BLOCKS]: IssueLinkType.BLOCKED_BY,
+  [IssueLinkType.BLOCKED_BY]: IssueLinkType.BLOCKS,
+  [IssueLinkType.RELATES_TO]: IssueLinkType.RELATES_TO,
+  [IssueLinkType.DUPLICATES]: IssueLinkType.DUPLICATED_BY,
+  [IssueLinkType.DUPLICATED_BY]: IssueLinkType.DUPLICATES,
+  [IssueLinkType.CLONES]: IssueLinkType.CLONES,
+};
+
 /** Custom field data types. Keep in sync with the Prisma CustomFieldType enum. */
 export enum CustomFieldType {
   TEXT = 'TEXT',
