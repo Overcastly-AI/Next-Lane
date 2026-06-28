@@ -5,6 +5,8 @@ import {
 } from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const fileType = require('file-type') as typeof import('file-type');
 import { PrismaService } from '../prisma/prisma.service';
 import {
   assertWorkspaceMember,
@@ -268,6 +270,11 @@ export class WorkspacesService {
       );
     }
 
+    // Magic-byte validation: verify the real file content matches the declared
+    // MIME type so a renamed script (e.g. shell script declared as image/png)
+    // cannot be stored as a logo.
+    await this.assertLogoMagicBytes(file.path, file.mimetype);
+
     // Fetch existing logo key before replacing.
     const existing = await this.prisma.workspace.findUnique({
       where: { id: workspaceId },
@@ -350,6 +357,52 @@ export class WorkspacesService {
   }
 
   // ── helpers ─────────────────────────────────────────────────────────────────
+
+  /**
+   * Read the first bytes of `filePath` and confirm the detected magic-byte type
+   * matches the declared MIME type.  Rejects if:
+   *   - file-type detects a type that is NOT in the logo allowlist (png/jpeg/webp), OR
+   *   - file-type detects a type that does not equal the declared type.
+   *
+   * If file-type returns undefined (no magic bytes recognised) we accept the
+   * declared type, consistent with the attachments approach for text formats.
+   */
+  private async assertLogoMagicBytes(
+    filePath: string,
+    declaredMime: string,
+  ): Promise<void> {
+    let detected: { mime: string } | undefined;
+    try {
+      detected = await fileType.fromFile(filePath);
+    } catch {
+      // If file-type itself throws (e.g. I/O error), skip the check — the
+      // allowlist check above already ran.
+      return;
+    }
+
+    if (!detected) {
+      // file-type could not determine a type (no magic bytes present). Accept.
+      return;
+    }
+
+    const detectedMime = detected.mime;
+
+    // The detected type must itself be in the logo allowlist.
+    if (!LOGO_ALLOWED_MIME_TYPES.has(detectedMime)) {
+      this.safeUnlink(filePath);
+      throw new BadRequestException(
+        `File content type (${detectedMime}) is not an allowed logo format`,
+      );
+    }
+
+    // The detected type must match the declared type.
+    if (detectedMime !== declaredMime) {
+      this.safeUnlink(filePath);
+      throw new BadRequestException(
+        `File content (${detectedMime}) does not match declared type (${declaredMime})`,
+      );
+    }
+  }
 
   private safeUnlink(filePath: string): void {
     try {

@@ -59,6 +59,17 @@ export interface MutationOpts {
    * can skip it and prevent infinite chaining (v1).
    */
   automated?: boolean;
+
+  /**
+   * Pre-loaded workflow enforcement context from the caller (e.g. bulkUpdate).
+   * When provided, `enforceTransition` skips the per-call project lookup and
+   * uses this value directly, saving one DB round-trip per issue in bulk paths.
+   *
+   * - `undefined`: no hint; `enforceTransition` will load the project itself.
+   * - `false`: the caller already determined enforcement is off; skip entirely.
+   * - `true`: enforcement is on; proceed with the full transition check.
+   */
+  workflowEnforced?: boolean;
 }
 
 /** Default number of issues returned by {@link IssuesService.findAll} per page. */
@@ -709,8 +720,13 @@ export class IssuesService {
 
     // Enforce workflow gate BEFORE applying the status change.
     // Automation-applied moves bypass enforcement (opts.automated === true).
+    // Bulk callers may pass workflowEnforced=false to skip the per-issue project
+    // lookup when they have already pre-loaded the enforcement flag.
     if (dto.statusId !== undefined && dto.statusId !== existing.statusId) {
-      await this.workflowSvc.enforceTransition(id, dto.statusId, { automated: opts?.automated });
+      await this.workflowSvc.enforceTransition(id, dto.statusId, {
+        automated: opts?.automated,
+        workflowEnforced: opts?.workflowEnforced,
+      });
     }
 
     const activities: Prisma.ActivityLogCreateManyInput[] = [];
@@ -1298,6 +1314,29 @@ export class IssuesService {
     if (changes.sprintId !== undefined) updateDto.sprintId = changes.sprintId;
     if (changes.type !== undefined) updateDto.type = changes.type;
 
+    // ── Workflow context preload (performance) ────────────────────────────────
+    // When a status change is requested, all issues in the batch share the same
+    // project (enforced by assertSameProject inside update()). Pre-load the
+    // workflow enforcement flag ONCE for the project rather than letting each
+    // per-issue enforceTransition() make its own project lookup (saves
+    // up to N × 1 DB queries for N issues in the batch).
+    //
+    // We derive the projectId from the first issue in the batch. If the first
+    // issue cannot be loaded (deleted / wrong tenant) we fall back to
+    // workflowEnforced=undefined so each update() handles it individually.
+    let bulkWorkflowEnforced: boolean | undefined;
+    if (changes.statusId !== undefined && ids.length > 0) {
+      const firstIssue = await this.prisma.issue.findUnique({
+        where: { id: ids[0] },
+        select: { projectId: true },
+      });
+      if (firstIssue) {
+        bulkWorkflowEnforced = await this.workflowSvc.isEnforcementEnabled(
+          firstIssue.projectId,
+        );
+      }
+    }
+
     let updated = 0;
     const failed: Array<{ id: string; reason: string }> = [];
 
@@ -1307,7 +1346,12 @@ export class IssuesService {
         // MEMBER), same-project validation, assignee-in-workspace check,
         // ActivityLog, realtime, webhooks, watcher notifications, and
         // automation events all fire exactly as for a single PATCH.
-        await this.update(userId, id, updateDto);
+        //
+        // Pass the pre-loaded workflowEnforced hint so enforceTransition() can
+        // skip its own per-issue project lookup (saves 1 query per issue).
+        await this.update(userId, id, updateDto, {
+          workflowEnforced: bulkWorkflowEnforced,
+        });
 
         // Apply label additions after the core update succeeds.
         if (changes.addLabelIds && changes.addLabelIds.length > 0) {

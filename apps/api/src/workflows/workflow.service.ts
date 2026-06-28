@@ -359,10 +359,15 @@ export class WorkflowService {
   async enforceTransition(
     issueId: string,
     targetStatusId: string,
-    opts?: { automated?: boolean },
+    opts?: { automated?: boolean; workflowEnforced?: boolean },
   ): Promise<void> {
     // Automation-applied moves bypass enforcement.
     if (opts?.automated) return;
+
+    // If the caller has already determined enforcement is off (e.g. bulk update
+    // preloaded the flag once for all issues), skip immediately — saves the
+    // per-issue project lookup.
+    if (opts?.workflowEnforced === false) return;
 
     // Load the issue with its current status, assignee, description, type,
     // custom fields, and all links.
@@ -392,12 +397,19 @@ export class WorkflowService {
     });
     if (!issue) return; // If the issue can't be found the update path will 404.
 
-    // Load the project's enforcement flag.
-    const project = await this.prisma.project.findUnique({
-      where: { id: issue.projectId },
-      select: { workflowEnforced: true },
-    });
-    if (!project?.workflowEnforced) return;
+    // Load the project's enforcement flag — skipped when the caller preloaded it
+    // as true (workflowEnforced === true means "enforcement is on; proceed").
+    let workflowEnforced: boolean;
+    if (opts?.workflowEnforced === true) {
+      workflowEnforced = true;
+    } else {
+      const project = await this.prisma.project.findUnique({
+        where: { id: issue.projectId },
+        select: { workflowEnforced: true },
+      });
+      workflowEnforced = project?.workflowEnforced ?? false;
+    }
+    if (!workflowEnforced) return;
 
     // Same-status → allow (no transition happening).
     if (targetStatusId === issue.statusId) return;
@@ -580,6 +592,23 @@ export class WorkflowService {
         // Unknown gate type — skip silently to allow forward-compat.
         break;
     }
+  }
+
+  // ── Bulk-update optimisation helpers ─────────────────────────────────────
+
+  /**
+   * Returns true if workflow enforcement is currently enabled for the project.
+   *
+   * Callers that process many issues in a loop (e.g. bulkUpdate) can call this
+   * once and skip per-issue enforcement entirely when it returns false — saving
+   * N × (issue-lookup + project-lookup) DB round-trips.
+   */
+  async isEnforcementEnabled(projectId: string): Promise<boolean> {
+    const project = await this.prisma.project.findUnique({
+      where: { id: projectId },
+      select: { workflowEnforced: true },
+    });
+    return project?.workflowEnforced ?? false;
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────

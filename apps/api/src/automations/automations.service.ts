@@ -179,6 +179,53 @@ export function validateActionParams(action: AutomationActionInputDto): void {
 }
 
 // ---------------------------------------------------------------------------
+// Cross-project action deep validation (DB-backed)
+// ---------------------------------------------------------------------------
+
+/**
+ * Validates that referenced entity IDs in action params belong to `projectId`.
+ * Called at create/update time so cross-project references are caught before
+ * they produce a silent FAILED run at execution time.
+ *
+ * Currently validates:
+ *  - TRANSITION: statusId must belong to the rule's project
+ *  - ADD_LABEL:  labelId must belong to the rule's project
+ */
+async function validateActionParamsDeep(
+  prisma: PrismaService,
+  action: AutomationActionInputDto,
+  projectId: string,
+): Promise<void> {
+  const { type, params } = action;
+
+  if (type === AutomationActionType.TRANSITION) {
+    const statusId = params.statusId as string;
+    const status = await prisma.status.findUnique({
+      where: { id: statusId },
+      select: { projectId: true },
+    });
+    if (!status || status.projectId !== projectId) {
+      throw new BadRequestException(
+        `TRANSITION action: statusId "${statusId}" does not belong to this project`,
+      );
+    }
+  }
+
+  if (type === AutomationActionType.ADD_LABEL) {
+    const labelId = params.labelId as string;
+    const label = await prisma.label.findUnique({
+      where: { id: labelId },
+      select: { projectId: true },
+    });
+    if (!label || label.projectId !== projectId) {
+      throw new BadRequestException(
+        `ADD_LABEL action: labelId "${labelId}" does not belong to this project`,
+      );
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Service
 // ---------------------------------------------------------------------------
 
@@ -244,7 +291,9 @@ export class AutomationsService {
     projectId: string,
     dto: CreateAutomationRuleDto,
   ): Promise<AutomationRuleDto> {
-    await assertProjectRole(this.prisma, userId, projectId, Role.MEMBER);
+    // Write operations (create/update/delete) require ADMIN — aligned with webhooks.
+    // Read operations (findAll, findOne, findRuns) remain at MEMBER.
+    await assertProjectRole(this.prisma, userId, projectId, Role.ADMIN);
 
     if (dto.condition) {
       const customFieldDefs = await this.loadCustomFieldDefs(projectId);
@@ -256,6 +305,7 @@ export class AutomationsService {
     }
     for (const action of dto.actions) {
       validateActionParams(action);
+      await validateActionParamsDeep(this.prisma, action, projectId);
     }
 
     const rule = await this.prisma.automationRule.create({
@@ -283,7 +333,7 @@ export class AutomationsService {
     dto: UpdateAutomationRuleDto,
   ): Promise<AutomationRuleDto> {
     const existing = await this.loadRule(ruleId);
-    await assertProjectRole(this.prisma, userId, existing.projectId, Role.MEMBER);
+    await assertProjectRole(this.prisma, userId, existing.projectId, Role.ADMIN);
 
     if (dto.condition !== undefined && dto.condition !== null) {
       const customFieldDefs = await this.loadCustomFieldDefs(existing.projectId);
@@ -296,6 +346,7 @@ export class AutomationsService {
       }
       for (const action of dto.actions) {
         validateActionParams(action);
+        await validateActionParamsDeep(this.prisma, action, existing.projectId);
       }
     }
 
@@ -321,7 +372,7 @@ export class AutomationsService {
 
   async remove(userId: string, ruleId: string): Promise<{ id: string }> {
     const existing = await this.loadRule(ruleId);
-    await assertProjectRole(this.prisma, userId, existing.projectId, Role.MEMBER);
+    await assertProjectRole(this.prisma, userId, existing.projectId, Role.ADMIN);
     await this.prisma.automationRule.delete({ where: { id: ruleId } });
     return { id: ruleId };
   }

@@ -2,6 +2,7 @@ import { Controller, Get, Param, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { AnalyticsService } from './analytics.service';
 import { CurrentUser, AuthUser } from '../auth/current-user.decorator';
+import { AnalyticsQueryDto } from './dto/analytics-query.dto';
 
 @ApiTags('analytics')
 @ApiBearerAuth()
@@ -13,34 +14,34 @@ export class AnalyticsController {
    * GET /me/analytics?days=N
    *
    * Personal analytics for the signed-in user over a rolling day window.
-   * `days` defaults to 30; clamped to [1, 366].
+   * `days` defaults to 30 when omitted; must be an integer in [1, 366] — the
+   * global ValidationPipe enforces these bounds and returns 400 on violation.
    */
   @Get('me/analytics')
   personalAnalytics(
     @CurrentUser() user: AuthUser,
-    @Query('days') daysStr?: string,
+    @Query() query: AnalyticsQueryDto,
   ) {
-    const days = daysStr ? Number(daysStr) : 30;
-    return this.analytics.personalAnalytics(user.id, isNaN(days) ? 30 : days);
+    return this.analytics.personalAnalytics(user.id, query.days ?? 30);
   }
 
   /**
    * GET /projects/:projectId/analytics?days=N
    *
    * Team analytics for a single project over a rolling day window.
-   * Requires project membership. `days` defaults to 30; clamped to [1, 366].
+   * Requires project membership. `days` defaults to 30 when omitted; must be
+   * an integer in [1, 366] — the global ValidationPipe returns 400 on violation.
    */
   @Get('projects/:projectId/analytics')
   projectAnalytics(
     @CurrentUser() user: AuthUser,
     @Param('projectId') projectId: string,
-    @Query('days') daysStr?: string,
+    @Query() query: AnalyticsQueryDto,
   ) {
-    const days = daysStr ? Number(daysStr) : 30;
     return this.analytics.projectAnalytics(
       user.id,
       projectId,
-      isNaN(days) ? 30 : days,
+      query.days ?? 30,
     );
   }
 }

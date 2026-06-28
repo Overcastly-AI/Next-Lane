@@ -25,6 +25,7 @@ const noOpCustomFields = {
  */
 const noOpWorkflow = {
   enforceTransition: jest.fn().mockResolvedValue(undefined),
+  isEnforcementEnabled: jest.fn().mockResolvedValue(false),
 } as unknown as WorkflowService;
 
 const webhooksMock = { dispatch: jest.fn() } as unknown as WebhooksService;
@@ -1526,6 +1527,135 @@ describe('IssuesService.bulkUpdate — partial success', () => {
     expect(result.failed).toHaveLength(1);
     expect(result.failed[0].id).toBe('i1');
     expect(result.failed[0].reason).toContain('DB constraint');
+  });
+});
+
+/**
+ * Workflow enforcement in bulkUpdate (item 6).
+ *
+ * Verifies that:
+ *  - When enforcement is OFF: the per-issue workflow check is skipped (preload
+ *    returns false → enforceTransition returns immediately without the project lookup).
+ *  - When enforcement is ON: illegal transitions are still caught per-issue,
+ *    landing in failed[] while other issues in the batch continue.
+ */
+describe('IssuesService.bulkUpdate — workflow enforcement (item 6)', () => {
+  let mocks: ReturnType<typeof makeBulkUpdatePrisma>;
+  let workflowSvc: { enforceTransition: jest.Mock; isEnforcementEnabled: jest.Mock };
+  let service: IssuesService;
+
+  beforeEach(() => {
+    mocks = makeBulkUpdatePrisma();
+    mocks.prisma.project.findUnique.mockResolvedValue({
+      id: BULK_PROJECT,
+      workspaceId: BULK_WORKSPACE,
+      workflowEnforced: false,
+    });
+    mocks.prisma.membership.findUnique.mockResolvedValue({ role: Role.MEMBER });
+    mocks.prisma.status.findUnique.mockResolvedValue({ projectId: BULK_PROJECT });
+
+    workflowSvc = {
+      enforceTransition: jest.fn().mockResolvedValue(undefined),
+      isEnforcementEnabled: jest.fn().mockResolvedValue(false),
+    };
+
+    service = new IssuesService(
+      mocks.prisma as unknown as PrismaService,
+      { emitToProject: jest.fn() } as unknown as RealtimeService,
+      { notifyWatchersUpdated: jest.fn().mockResolvedValue(undefined) } as unknown as NotificationsService,
+      webhooksMock,
+      noOpCustomFields,
+      noOpEventEmitter,
+      workflowSvc as unknown as WorkflowService,
+    );
+  });
+
+  it('passes workflowEnforced=false to enforceTransition when enforcement is off (skips per-issue project lookup)', async () => {
+    workflowSvc.isEnforcementEnabled.mockResolvedValue(false);
+
+    mocks.prisma.issue.findUnique.mockResolvedValue(makeBulkIssueRow('i1'));
+    mocks.tx.issue.update.mockResolvedValue(makeBulkIssueRow('i1'));
+
+    await service.bulkUpdate(BULK_USER, {
+      ids: ['i1'],
+      changes: { statusId: 'new-status' },
+    });
+
+    // enforceTransition must have been called with workflowEnforced: false
+    expect(workflowSvc.enforceTransition).toHaveBeenCalledWith(
+      'i1',
+      'new-status',
+      expect.objectContaining({ workflowEnforced: false }),
+    );
+  });
+
+  it('passes workflowEnforced=true to enforceTransition when enforcement is on', async () => {
+    workflowSvc.isEnforcementEnabled.mockResolvedValue(true);
+
+    mocks.prisma.issue.findUnique.mockResolvedValue(makeBulkIssueRow('i1'));
+    mocks.tx.issue.update.mockResolvedValue(makeBulkIssueRow('i1'));
+
+    await service.bulkUpdate(BULK_USER, {
+      ids: ['i1'],
+      changes: { statusId: 'new-status' },
+    });
+
+    expect(workflowSvc.enforceTransition).toHaveBeenCalledWith(
+      'i1',
+      'new-status',
+      expect.objectContaining({ workflowEnforced: true }),
+    );
+  });
+
+  it('still blocks an illegal transition when enforcement is on (partial success)', async () => {
+    const { UnprocessableEntityException } = require('@nestjs/common');
+    workflowSvc.isEnforcementEnabled.mockResolvedValue(true);
+    // First issue passes; second fails enforcement.
+    workflowSvc.enforceTransition
+      .mockResolvedValueOnce(undefined) // i1: allowed
+      .mockRejectedValueOnce(new UnprocessableEntityException('Transition not allowed')); // i2: blocked
+
+    mocks.prisma.issue.findUnique.mockImplementation(
+      ({ where }: { where: { id: string } }) =>
+        Promise.resolve(makeBulkIssueRow(where.id)),
+    );
+    mocks.tx.issue.update.mockImplementation(
+      ({ where }: { where: { id: string } }) =>
+        Promise.resolve(makeBulkIssueRow(where.id)),
+    );
+
+    const result = await service.bulkUpdate(BULK_USER, {
+      ids: ['i1', 'i2'],
+      changes: { statusId: 'new-status' },
+    });
+
+    // i1 succeeded, i2 failed due to enforcement.
+    expect(result.updated).toBe(1);
+    expect(result.failed).toHaveLength(1);
+    expect(result.failed[0].id).toBe('i2');
+    expect(result.failed[0].reason).toMatch(/Transition not allowed/);
+  });
+
+  it('calls isEnforcementEnabled only once regardless of batch size', async () => {
+    workflowSvc.isEnforcementEnabled.mockResolvedValue(false);
+
+    const ids = ['i1', 'i2', 'i3'];
+    mocks.prisma.issue.findUnique.mockImplementation(
+      ({ where }: { where: { id: string } }) =>
+        Promise.resolve(makeBulkIssueRow(where.id)),
+    );
+    mocks.tx.issue.update.mockImplementation(
+      ({ where }: { where: { id: string } }) =>
+        Promise.resolve(makeBulkIssueRow(where.id)),
+    );
+
+    await service.bulkUpdate(BULK_USER, {
+      ids,
+      changes: { statusId: 'new-status' },
+    });
+
+    // isEnforcementEnabled is called once (preload) not N times.
+    expect(workflowSvc.isEnforcementEnabled).toHaveBeenCalledTimes(1);
   });
 });
 

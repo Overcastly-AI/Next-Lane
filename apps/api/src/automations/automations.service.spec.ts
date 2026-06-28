@@ -43,6 +43,13 @@ function makePrisma() {
     customFieldDefinition: {
       findMany: jest.fn().mockResolvedValue([]),
     },
+    // Used by validateActionParamsDeep cross-project checks.
+    status: {
+      findUnique: jest.fn().mockResolvedValue({ projectId: PROJECT_ID }),
+    },
+    label: {
+      findUnique: jest.fn().mockResolvedValue({ projectId: PROJECT_ID }),
+    },
   };
 }
 
@@ -169,6 +176,94 @@ describe('validateActionParams', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Cross-project action validation (item 4)
+// ---------------------------------------------------------------------------
+
+describe('AutomationsService — cross-project action validation', () => {
+  let prisma: ReturnType<typeof makePrisma>;
+  let service: AutomationsService;
+
+  beforeEach(() => {
+    prisma = makePrisma();
+    service = makeService(prisma);
+    prisma.automationRule.create.mockResolvedValue(BASE_RULE_ROW);
+  });
+
+  it('rejects TRANSITION action with a statusId from a different project', async () => {
+    // status.findUnique returns a row from a different project.
+    prisma.status.findUnique.mockResolvedValue({ projectId: 'other-project' });
+
+    await expect(
+      service.create(USER_ID, PROJECT_ID, {
+        ...BASE_CREATE_DTO,
+        actions: [{ type: AutomationActionType.TRANSITION, params: { statusId: 'foreign-status' } }],
+      }),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('rejects TRANSITION action with a statusId not found in DB', async () => {
+    prisma.status.findUnique.mockResolvedValue(null);
+
+    await expect(
+      service.create(USER_ID, PROJECT_ID, {
+        ...BASE_CREATE_DTO,
+        actions: [{ type: AutomationActionType.TRANSITION, params: { statusId: 'ghost-status' } }],
+      }),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('accepts TRANSITION action with a statusId that belongs to the rule project', async () => {
+    prisma.status.findUnique.mockResolvedValue({ projectId: PROJECT_ID });
+    prisma.automationRule.create.mockResolvedValue({
+      ...BASE_RULE_ROW,
+      actions: [{ type: AutomationActionType.TRANSITION, params: { statusId: 'status-1' } }],
+    });
+
+    const result = await service.create(USER_ID, PROJECT_ID, {
+      ...BASE_CREATE_DTO,
+      actions: [{ type: AutomationActionType.TRANSITION, params: { statusId: 'status-1' } }],
+    });
+    expect(result).toBeDefined();
+  });
+
+  it('rejects ADD_LABEL action with a labelId from a different project', async () => {
+    prisma.label.findUnique.mockResolvedValue({ projectId: 'other-project' });
+
+    await expect(
+      service.create(USER_ID, PROJECT_ID, {
+        ...BASE_CREATE_DTO,
+        actions: [{ type: AutomationActionType.ADD_LABEL, params: { labelId: 'foreign-label' } }],
+      }),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('accepts ADD_LABEL action with a labelId that belongs to the rule project', async () => {
+    prisma.label.findUnique.mockResolvedValue({ projectId: PROJECT_ID });
+    prisma.automationRule.create.mockResolvedValue({
+      ...BASE_RULE_ROW,
+      actions: [{ type: AutomationActionType.ADD_LABEL, params: { labelId: 'label-1' } }],
+    });
+
+    const result = await service.create(USER_ID, PROJECT_ID, {
+      ...BASE_CREATE_DTO,
+      actions: [{ type: AutomationActionType.ADD_LABEL, params: { labelId: 'label-1' } }],
+    });
+    expect(result).toBeDefined();
+  });
+
+  it('also validates cross-project refs on update', async () => {
+    prisma.automationRule.findUnique.mockResolvedValue(BASE_RULE_ROW);
+    prisma.status.findUnique.mockResolvedValue({ projectId: 'other-project' });
+
+    await expect(
+      service.update(USER_ID, RULE_ID, {
+        actions: [{ type: AutomationActionType.TRANSITION, params: { statusId: 'foreign-status' } }],
+      }),
+    ).rejects.toThrow(BadRequestException);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // AutomationsService CRUD
 // ---------------------------------------------------------------------------
 
@@ -208,13 +303,21 @@ describe('AutomationsService', () => {
   // ── create ─────────────────────────────────────────────────────────────────
 
   describe('create', () => {
-    it('creates a rule and returns its DTO', async () => {
+    it('creates a rule and returns its DTO (ADMIN)', async () => {
       prisma.automationRule.create.mockResolvedValue(BASE_RULE_ROW);
 
       const result = await service.create(USER_ID, PROJECT_ID, BASE_CREATE_DTO);
       expect(result.id).toBe(RULE_ID);
       expect(result.trigger).toBe(AutomationTrigger.ISSUE_CREATED);
       expect(prisma.automationRule.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects MEMBER from creating a rule (requires ADMIN)', async () => {
+      // Simulate a MEMBER membership (role < ADMIN)
+      prisma.membership.findUnique.mockResolvedValue({ role: Role.MEMBER });
+      await expect(
+        service.create(USER_ID, PROJECT_ID, BASE_CREATE_DTO),
+      ).rejects.toThrow(ForbiddenException);
     });
 
     it('rejects invalid NLQL condition with 400', async () => {
@@ -262,10 +365,17 @@ describe('AutomationsService', () => {
       prisma.automationRule.update.mockResolvedValue(BASE_RULE_ROW);
     });
 
-    it('updates and returns the rule DTO', async () => {
+    it('updates and returns the rule DTO (ADMIN)', async () => {
       const result = await service.update(USER_ID, RULE_ID, { name: 'Updated' });
       expect(prisma.automationRule.update).toHaveBeenCalledTimes(1);
       expect(result.id).toBe(RULE_ID);
+    });
+
+    it('rejects MEMBER from updating a rule (requires ADMIN)', async () => {
+      prisma.membership.findUnique.mockResolvedValue({ role: Role.MEMBER });
+      await expect(
+        service.update(USER_ID, RULE_ID, { name: 'Hack' }),
+      ).rejects.toThrow(ForbiddenException);
     });
 
     it('rejects invalid NLQL condition with 400', async () => {
@@ -289,7 +399,7 @@ describe('AutomationsService', () => {
   // ── remove ─────────────────────────────────────────────────────────────────
 
   describe('remove', () => {
-    it('deletes the rule', async () => {
+    it('deletes the rule (ADMIN)', async () => {
       prisma.automationRule.findUnique.mockResolvedValue(BASE_RULE_ROW);
       prisma.automationRule.delete.mockResolvedValue(BASE_RULE_ROW);
 
@@ -301,6 +411,24 @@ describe('AutomationsService', () => {
     it('throws 404 when rule not found', async () => {
       prisma.automationRule.findUnique.mockResolvedValue(null);
       await expect(service.remove(USER_ID, RULE_ID)).rejects.toThrow(NotFoundException);
+    });
+
+    it('rejects MEMBER from deleting a rule (requires ADMIN)', async () => {
+      prisma.automationRule.findUnique.mockResolvedValue(BASE_RULE_ROW);
+      prisma.membership.findUnique.mockResolvedValue({ role: Role.MEMBER });
+      await expect(service.remove(USER_ID, RULE_ID)).rejects.toThrow(ForbiddenException);
+    });
+  });
+
+  // ── findAll reads remain accessible to MEMBER ─────────────────────────────
+
+  describe('findAll (read — MEMBER is sufficient)', () => {
+    it('allows MEMBER to list rules', async () => {
+      prisma.membership.findUnique.mockResolvedValue({ role: Role.MEMBER });
+      prisma.automationRule.findMany.mockResolvedValue([BASE_RULE_ROW]);
+
+      const result = await service.findAll(USER_ID, PROJECT_ID);
+      expect(result).toHaveLength(1);
     });
   });
 

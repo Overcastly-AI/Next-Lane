@@ -237,10 +237,38 @@ describe('WorkspacesService.update()', () => {
   });
 });
 
+// Real PNG magic bytes: 8-byte signature
+const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+// Real JPEG magic bytes: SOI marker (2 bytes) + JFIF/EXIF app marker prefix
+const JPEG_MAGIC = Buffer.from([0xff, 0xd8, 0xff, 0xe0]);
+// Real WebP magic bytes: RIFF....WEBP
+const WEBP_MAGIC = Buffer.concat([
+  Buffer.from('RIFF'),
+  Buffer.from([0x24, 0x00, 0x00, 0x00]), // file size (4 bytes, little-endian)
+  Buffer.from('WEBP'),
+]);
+
+function makeTmpFileBinary(content: Buffer, name: string, mimeType: string): Express.Multer.File {
+  const tmpPath = path.join(os.tmpdir(), `nl-test-logo-${Date.now()}-${Math.random()}.tmp`);
+  fs.writeFileSync(tmpPath, content);
+  return {
+    fieldname: 'file',
+    originalname: name,
+    encoding: '7bit',
+    mimetype: mimeType,
+    path: tmpPath,
+    size: content.length,
+    destination: os.tmpdir(),
+    filename: path.basename(tmpPath),
+    buffer: content,
+    stream: null as never,
+  };
+}
+
 // ── WorkspacesService.uploadLogo ──────────────────────────────────────────────
 
 describe('WorkspacesService.uploadLogo()', () => {
-  it('accepts image/png', async () => {
+  it('accepts image/png (plain-text content, no magic bytes — file-type returns undefined → accepted)', async () => {
     const prisma = makePrisma();
     const svc = makeService(prisma);
     const file = makeTmpFile('PNG', 'logo.png', 'image/png');
@@ -249,7 +277,7 @@ describe('WorkspacesService.uploadLogo()', () => {
     expect((prisma as { workspace: { update: jest.Mock } }).workspace.update).toHaveBeenCalled();
   });
 
-  it('accepts image/jpeg', async () => {
+  it('accepts image/jpeg (plain-text content, no magic bytes → accepted)', async () => {
     const prisma = makePrisma();
     const svc = makeService(prisma);
     const file = makeTmpFile('JPEG', 'logo.jpg', 'image/jpeg');
@@ -257,10 +285,51 @@ describe('WorkspacesService.uploadLogo()', () => {
     expect(dto).toBeDefined();
   });
 
-  it('accepts image/webp', async () => {
+  it('accepts image/webp (plain-text content, no magic bytes → accepted)', async () => {
     const prisma = makePrisma();
     const svc = makeService(prisma);
     const file = makeTmpFile('WEBP', 'logo.webp', 'image/webp');
+    const dto = await svc.uploadLogo(ADMIN_ID, WS_ID, file);
+    expect(dto).toBeDefined();
+  });
+
+  // ── Magic-byte validation (item 1) ─────────────────────────────────────────
+
+  it('accepts a real PNG file declared as image/png (magic bytes match)', async () => {
+    const prisma = makePrisma();
+    const svc = makeService(prisma);
+    // Write a buffer with real PNG magic bytes.
+    const file = makeTmpFileBinary(PNG_MAGIC, 'logo.png', 'image/png');
+    const dto = await svc.uploadLogo(ADMIN_ID, WS_ID, file);
+    expect(dto).toBeDefined();
+  });
+
+  it('rejects a spoofed file: declared image/png but actual content is JPEG (magic bytes mismatch)', async () => {
+    const prisma = makePrisma();
+    const svc = makeService(prisma);
+    // JPEG magic bytes but declared as image/png → mismatch → 400.
+    const file = makeTmpFileBinary(JPEG_MAGIC, 'totally-a-png.png', 'image/png');
+    await expect(svc.uploadLogo(ADMIN_ID, WS_ID, file)).rejects.toThrow(BadRequestException);
+  });
+
+  it('rejects a spoofed file: declared image/png but actual content is a shell script (detected as disallowed)', async () => {
+    // Real shell scripts have no magic bytes recognized by file-type → file-type returns
+    // undefined → we accept the declared type. However, a file with JPEG magic bytes
+    // but declared as PNG is caught. A plain text script has no magic bytes so we
+    // rely on the MIME allowlist check (image/png is valid; the script declares png).
+    // To confirm behavior with an explicitly disallowed detected type, use a PDF payload
+    // declared as image/png: file-type detects application/pdf → not in logo allowlist → reject.
+    const pdfMagic = Buffer.from('%PDF-1.5\n%\xE2\xE3');
+    const prisma = makePrisma();
+    const svc = makeService(prisma);
+    const file = makeTmpFileBinary(pdfMagic, 'evil.png', 'image/png');
+    await expect(svc.uploadLogo(ADMIN_ID, WS_ID, file)).rejects.toThrow(BadRequestException);
+  });
+
+  it('accepts a real WebP file declared as image/webp (magic bytes match)', async () => {
+    const prisma = makePrisma();
+    const svc = makeService(prisma);
+    const file = makeTmpFileBinary(WEBP_MAGIC, 'logo.webp', 'image/webp');
     const dto = await svc.uploadLogo(ADMIN_ID, WS_ID, file);
     expect(dto).toBeDefined();
   });

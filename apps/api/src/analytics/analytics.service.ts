@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { assertProjectMember } from '../common/membership.util';
 import { StatusCategory } from '@next-lane/shared';
@@ -402,27 +403,20 @@ export class AnalyticsService {
     // ── 1. DONE status IDs for this project ───────────────────────────────────
     const doneIds = await this.doneStatusIds(projectId);
 
-    // ── 2. Issue queries: separate concerns for workload vs. flow series ──────
+    // ── 2. Issue queries: separate concerns for IDs (completion) vs flow series
     //
-    // Workload needs ALL open issues in the project regardless of creation date
-    // (open-ended inventory). The flow/completion series only cares about issues
-    // created OR completed within the rolling window.
-    //
-    // Splitting into two targeted queries avoids scanning the full issue table in
-    // JS just to discard out-of-window rows for the flow chart:
-    //
-    //   (a) allProjectIssues — full project scan: ids for completionMap + open
-    //       status+assignee for workload. createdAt NOT loaded (not needed here).
+    //   (a) allIssueIds — minimal full-project scan: ids only, for completionMap.
     //   (b) windowCreatedIssues — window-scoped: only issues created inside the
     //       window, for the "created" side of the flow series.
-    const [allProjectIssues, windowCreatedIssues] = await Promise.all([
+    //   (c) workload — SQL GROUP BY aggregation (no materialisation into JS).
+    //
+    // The previous approach loaded all project issues with status+assignee into
+    // JS memory and then grouped them. Replaced by a single SQL aggregation so
+    // large projects don't materialize the full issue table.
+    const [allProjectIssueIds, windowCreatedIssues] = await Promise.all([
       this.prisma.issue.findMany({
         where: { projectId },
-        select: {
-          id: true,
-          assigneeId: true,
-          status: { select: { category: true } },
-        },
+        select: { id: true },
       }),
       this.prisma.issue.findMany({
         where: { projectId, createdAt: { gte: wStart, lte: new Date(wEnd.getTime() + 86400000 - 1) } },
@@ -430,7 +424,7 @@ export class AnalyticsService {
       }),
     ]);
 
-    const allIssueIds = allProjectIssues.map((i) => i.id);
+    const allIssueIds = allProjectIssueIds.map((i) => i.id);
 
     // ── 3. Completion dates within the window (ActivityLog reconstruction) ────
     const completions = await this.completionMap(allIssueIds, doneIds, wStart, wEnd);
@@ -457,48 +451,46 @@ export class AnalyticsService {
     const { avgCycleTimeDays, buckets: cycleTime } = this.computeCycleTimeStats(completions);
 
     // ── 6. Workload (open issues by assignee, busiest first) ──────────────────
-    // Uses allProjectIssues (full scan) — workload is window-agnostic; it counts
-    // all currently open issues regardless of when they were created.
-    const openIssues = allProjectIssues.filter(
-      (i) => i.status.category !== StatusCategory.DONE,
-    );
-
-    // Group by assigneeId (null = unassigned).
-    const workloadMap = new Map<string | null, number>();
-    for (const issue of openIssues) {
-      const key = issue.assigneeId ?? null;
-      workloadMap.set(key, (workloadMap.get(key) ?? 0) + 1);
-    }
-
-    // Resolve user names for non-null assignees.
-    const assigneeIds = [...workloadMap.keys()].filter((id): id is string => id !== null);
-    const users =
-      assigneeIds.length > 0
-        ? await this.prisma.user.findMany({
-            where: { id: { in: assigneeIds } },
-            select: { id: true, name: true, email: true },
-          })
-        : [];
-    const userMap = new Map(users.map((u) => [u.id, u]));
+    // SQL GROUP BY aggregation: avoids loading the full issue table into memory.
+    // Only open issues (status category != DONE) are counted; DONE statuses are
+    // excluded via a sub-select on the Status table.
+    //
+    // Result shape: { assignee_id, assignee_name, assignee_email, open_count }.
+    // Unassigned issues have assignee_id = NULL.
+    const doneIdList = doneIds.size > 0 ? [...doneIds] : ['__no_match__'];
+    const workloadRows = await this.prisma.$queryRaw<WorkloadRawRow[]>`
+      SELECT
+        i."assigneeId"     AS assignee_id,
+        u.name             AS assignee_name,
+        u.email            AS assignee_email,
+        COUNT(*)::bigint   AS open_count
+      FROM "Issue" i
+      LEFT JOIN "User" u ON u.id = i."assigneeId"
+      WHERE i."projectId" = ${projectId}
+        AND i."statusId" NOT IN (${Prisma.join(doneIdList)})
+      GROUP BY i."assigneeId", u.name, u.email
+      ORDER BY COUNT(*) DESC
+    `;
 
     const workload: WorkloadRowDto[] = [];
+    let unassignedCount = 0;
 
-    for (const [assigneeId, openCount] of workloadMap.entries()) {
-      if (assigneeId === null) continue; // handle unassigned last
-      const user = userMap.get(assigneeId);
-      workload.push({
-        userId: assigneeId,
-        name: user?.name || user?.email || assigneeId,
-        open: openCount,
-      });
+    for (const row of workloadRows) {
+      const count = Number(row.open_count);
+      if (row.assignee_id === null) {
+        unassignedCount += count;
+      } else {
+        workload.push({
+          userId: row.assignee_id,
+          name: row.assignee_name || row.assignee_email || row.assignee_id,
+          open: count,
+        });
+      }
     }
 
-    // Sort by open count descending (busiest first).
-    workload.sort((a, b) => b.open - a.open);
-
-    // Append the unassigned row if there are any unassigned open issues.
-    const unassignedCount = workloadMap.get(null);
-    if (unassignedCount !== undefined && unassignedCount > 0) {
+    // workload is already sorted busiest-first by SQL ORDER BY.
+    // Append the unassigned row last (always after named assignees).
+    if (unassignedCount > 0) {
       workload.push({ userId: null, name: 'Unassigned', open: unassignedCount });
     }
 

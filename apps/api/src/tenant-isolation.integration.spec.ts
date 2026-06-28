@@ -67,6 +67,8 @@ interface Tenant {
   statusId: string;
   webhookId: string;
   apiTokenId: string; // personal API token record id (NOT the raw token)
+  automationRuleId: string;
+  workflowTransitionId: string;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -275,6 +277,40 @@ async function setupTenant(
   expect(apiTokenResp.status).toBe(201);
   const apiTokenId = (JSON.parse(apiTokenResp.body) as { id: string }).id;
 
+  // ── Automation Rule ───────────────────────────────────────────────────────
+  const automationRuleResp = await req(
+    server,
+    'POST',
+    `/projects/${projectId}/automation-rules`,
+    token,
+    {
+      name: `rule-${suffix}`,
+      trigger: 'ISSUE_CREATED',
+      actions: [{ type: 'SET_PRIORITY', params: { priority: 'HIGH' } }],
+    },
+  );
+  const automationRuleId =
+    automationRuleResp.status === 201
+      ? (JSON.parse(automationRuleResp.body) as { id: string }).id
+      : 'nonexistent-rule-id';
+
+  // ── Workflow Transition ───────────────────────────────────────────────────
+  // Enable enforcement first so we can create a transition.
+  await req(server, 'PATCH', `/projects/${projectId}/workflow`, token, {
+    enforced: true,
+  });
+  const transitionsResp = await req(
+    server,
+    'GET',
+    `/projects/${projectId}/workflow`,
+    token,
+  );
+  const workflowTransitionId =
+    transitionsResp.status === 200
+      ? ((JSON.parse(transitionsResp.body) as { transitions: Array<{ id: string }> })
+          .transitions[0]?.id ?? 'nonexistent-transition-id')
+      : 'nonexistent-transition-id';
+
   return {
     token,
     userId,
@@ -287,6 +323,8 @@ async function setupTenant(
     statusId,
     webhookId,
     apiTokenId,
+    automationRuleId,
+    workflowTransitionId,
   };
 }
 
@@ -564,6 +602,102 @@ function buildMatrix(a: Tenant): Array<MatrixRow & { resolvedPath: string; resol
       method: 'DELETE',
       path: (t) => `/me/tokens/${t.apiTokenId}`,
     },
+
+    // ── Workflow ────────────────────────────────────────────────────────────
+    {
+      label: 'GET workflow for project A',
+      method: 'GET',
+      path: (t) => `/projects/${t.projectId}/workflow`,
+    },
+    {
+      label: 'PATCH workflow enforcement for project A',
+      method: 'PATCH',
+      path: (t) => `/projects/${t.projectId}/workflow`,
+      body: () => ({ enforced: false }),
+    },
+    {
+      label: 'POST workflow transition for project A',
+      method: 'POST',
+      path: (t) => `/projects/${t.projectId}/workflow/transitions`,
+      body: (t) => ({ toStatusId: t.statusId }),
+    },
+    {
+      label: 'PATCH workflow transition A',
+      method: 'PATCH',
+      path: (t) => `/workflow/transitions/${t.workflowTransitionId}`,
+      body: () => ({ name: 'hijacked' }),
+    },
+    {
+      label: 'DELETE workflow transition A',
+      method: 'DELETE',
+      path: (t) => `/workflow/transitions/${t.workflowTransitionId}`,
+    },
+
+    // ── Automations ─────────────────────────────────────────────────────────
+    {
+      label: 'GET automation rules for project A',
+      method: 'GET',
+      path: (t) => `/projects/${t.projectId}/automation-rules`,
+    },
+    {
+      label: 'POST automation rule for project A',
+      method: 'POST',
+      path: (t) => `/projects/${t.projectId}/automation-rules`,
+      body: () => ({
+        name: 'injected-rule',
+        trigger: 'ISSUE_CREATED',
+        actions: [{ type: 'SET_PRIORITY', params: { priority: 'HIGH' } }],
+      }),
+    },
+    {
+      label: 'GET automation rule A',
+      method: 'GET',
+      path: (t) => `/automation-rules/${t.automationRuleId}`,
+    },
+    {
+      label: 'PATCH automation rule A',
+      method: 'PATCH',
+      path: (t) => `/automation-rules/${t.automationRuleId}`,
+      body: () => ({ name: 'hijacked-rule' }),
+    },
+    {
+      label: 'DELETE automation rule A',
+      method: 'DELETE',
+      path: (t) => `/automation-rules/${t.automationRuleId}`,
+    },
+    {
+      label: 'GET automation runs for project A',
+      method: 'GET',
+      path: (t) => `/projects/${t.projectId}/automation-runs`,
+    },
+    {
+      label: 'GET automation runs for rule A',
+      method: 'GET',
+      path: (t) => `/automation-rules/${t.automationRuleId}/runs`,
+    },
+
+    // ── Analytics ───────────────────────────────────────────────────────────
+    {
+      label: 'GET project analytics for project A',
+      method: 'GET',
+      path: (t) => `/projects/${t.projectId}/analytics`,
+    },
+
+    // ── CSV export ──────────────────────────────────────────────────────────
+    {
+      label: 'GET CSV export for project A',
+      method: 'GET',
+      path: (t) => `/projects/${t.projectId}/issues.csv`,
+    },
+
+    // ── Workspace logo mutations ─────────────────────────────────────────────
+    // POST (upload) and DELETE (remove) must be admin-gated; B should get 403.
+    // GET logo is intentionally public (no auth required) — NOT listed here.
+    {
+      label: 'DELETE workspace A logo (cross-tenant mutation)',
+      method: 'DELETE',
+      path: (t) => `/workspaces/${t.workspaceId}/logo`,
+    },
   ];
 
   return rows.map((row) => ({
@@ -634,7 +768,7 @@ function buildMatrix(a: Tenant): Array<MatrixRow & { resolvedPath: string; resol
       });
 
       it('matrix is populated (sanity check)', () => {
-        expect(matrix.length).toBeGreaterThan(30);
+        expect(matrix.length).toBeGreaterThan(45);
       });
 
       /**

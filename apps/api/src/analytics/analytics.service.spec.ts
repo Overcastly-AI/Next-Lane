@@ -409,11 +409,44 @@ describe('AnalyticsService', () => {
   // ── projectAnalytics ───────────────────────────────────────────────────────
 
   describe('projectAnalytics', () => {
+    /**
+     * Helper: set up an "empty project" scenario.
+     *
+     * $queryRaw is called twice in projectAnalytics:
+     *   1st call: completionMap (returns CompletionRow[])
+     *   2nd call: workload GROUP BY aggregation (returns WorkloadRawRow[])
+     *
+     * For an empty project both return [].
+     */
     function setupEmpty() {
       prisma.issue.findMany.mockResolvedValue([]);
       prisma.status.findMany.mockResolvedValue([]);
+      // Two $queryRaw calls: completionMap + workload aggregation
       prisma.$queryRaw.mockResolvedValue([]);
       prisma.user.findMany.mockResolvedValue([]);
+    }
+
+    /**
+     * Helper: mock $queryRaw for the completionMap call AND the workload
+     * aggregation call in sequence.
+     *
+     * IMPORTANT: completionMap only calls $queryRaw when BOTH issueIds.length > 0
+     * AND doneIds.size > 0. When either is empty, completionMap returns early and
+     * $queryRaw is called only once (for the workload aggregation).
+     *
+     * Pass `completionRows=null` to indicate that completionMap will be skipped
+     * (common when there are no issues or no DONE statuses).
+     */
+    function mockQueryRaw(completionRows: unknown[] | null, workloadRows: unknown[]) {
+      if (completionRows !== null) {
+        // completionMap WILL call $queryRaw (has issues + doneIds)
+        prisma.$queryRaw
+          .mockResolvedValueOnce(completionRows)  // 1st call: completionMap
+          .mockResolvedValueOnce(workloadRows);   // 2nd call: workload GROUP BY
+      } else {
+        // completionMap will skip $queryRaw; only workload calls it.
+        prisma.$queryRaw.mockResolvedValueOnce(workloadRows);
+      }
     }
 
     it('calls assertProjectMember to enforce authorization', async () => {
@@ -424,6 +457,18 @@ describe('AnalyticsService', () => {
         USER_ID,
         PROJECT_ID,
       );
+    });
+
+    it('uses a SQL GROUP BY aggregation for workload (no in-memory materialisation)', async () => {
+      // Verify that $queryRaw is called for the workload rather than a JS-side
+      // issue.findMany + in-memory grouping. When there are no issues and no
+      // DONE statuses, completionMap skips its own $queryRaw, so at minimum ONE
+      // $queryRaw call is made (the workload aggregation).
+      setupEmpty();
+      await service.projectAnalytics(USER_ID, PROJECT_ID, 30);
+
+      // At least one $queryRaw call — the workload GROUP BY aggregation.
+      expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
     });
 
     it('returns zeroed payload when the project has no issues', async () => {
@@ -492,13 +537,16 @@ describe('AnalyticsService', () => {
         new Date(base.getTime() + hours * 3600000);
 
       const today = todayKey();
-      prisma.$queryRaw.mockResolvedValue([
-        { issue_id: 'i1', completed_day: today, completed_ts: mkTs(12),   created_at: base },
-        { issue_id: 'i2', completed_day: today, completed_ts: mkTs(48),   created_at: base },
-        { issue_id: 'i3', completed_day: today, completed_ts: mkTs(120),  created_at: base },
-        { issue_id: 'i4', completed_day: today, completed_ts: mkTs(240),  created_at: base },
-        { issue_id: 'i5', completed_day: today, completed_ts: mkTs(480),  created_at: base },
-      ]);
+      mockQueryRaw(
+        [
+          { issue_id: 'i1', completed_day: today, completed_ts: mkTs(12),   created_at: base },
+          { issue_id: 'i2', completed_day: today, completed_ts: mkTs(48),   created_at: base },
+          { issue_id: 'i3', completed_day: today, completed_ts: mkTs(120),  created_at: base },
+          { issue_id: 'i4', completed_day: today, completed_ts: mkTs(240),  created_at: base },
+          { issue_id: 'i5', completed_day: today, completed_ts: mkTs(480),  created_at: base },
+        ],
+        [], // workload: no open issues
+      );
 
       prisma.user.findMany.mockResolvedValue([]);
 
@@ -520,7 +568,7 @@ describe('AnalyticsService', () => {
         makeIssue({ id: 'i1', statusCategory: 'TODO' }),
       ]);
       prisma.status.findMany.mockResolvedValue([]);
-      prisma.$queryRaw.mockResolvedValue([]);
+      mockQueryRaw([], []); // no completions; no workload
       prisma.user.findMany.mockResolvedValue([]);
 
       const result = await service.projectAnalytics(USER_ID, PROJECT_ID, 30);
@@ -528,18 +576,19 @@ describe('AnalyticsService', () => {
     });
 
     it('workload groups open issues by assignee, sorted busiest first', async () => {
-      const issues = [
-        makeIssue({ id: 'i1', assigneeId: 'user-a', statusCategory: 'TODO' }),
-        makeIssue({ id: 'i2', assigneeId: 'user-a', statusCategory: 'IN_PROGRESS' }),
-        makeIssue({ id: 'i3', assigneeId: 'user-b', statusCategory: 'TODO' }),
-      ];
-      prisma.issue.findMany.mockResolvedValue(issues);
+      // With SQL aggregation the workload comes from $queryRaw.
+      // No DONE statuses → completionMap skips its $queryRaw → only 1 call (workload).
+      prisma.issue.findMany.mockResolvedValue([]); // no issues created in window
       prisma.status.findMany.mockResolvedValue([]);
-      prisma.$queryRaw.mockResolvedValue([]);
-      prisma.user.findMany.mockResolvedValue([
-        { id: 'user-a', name: 'Alice', email: 'alice@example.com' },
-        { id: 'user-b', name: 'Bob', email: 'bob@example.com' },
-      ]);
+      mockQueryRaw(
+        null, // completionMap skipped (no doneIds)
+        [
+          // workload GROUP BY rows (SQL returns busiest first)
+          { assignee_id: 'user-a', assignee_name: 'Alice', assignee_email: 'alice@example.com', open_count: BigInt(2) },
+          { assignee_id: 'user-b', assignee_name: 'Bob',   assignee_email: 'bob@example.com',   open_count: BigInt(1) },
+        ],
+      );
+      prisma.user.findMany.mockResolvedValue([]); // not needed anymore
 
       const result = await service.projectAnalytics(USER_ID, PROJECT_ID, 30);
 
@@ -553,17 +602,16 @@ describe('AnalyticsService', () => {
     });
 
     it('workload includes unassigned row when there are unassigned open issues', async () => {
-      const issues = [
-        makeIssue({ id: 'i1', assigneeId: null, statusCategory: 'TODO' }),
-        makeIssue({ id: 'i2', assigneeId: null, statusCategory: 'IN_PROGRESS' }),
-        makeIssue({ id: 'i3', assigneeId: 'user-a', statusCategory: 'TODO' }),
-      ];
-      prisma.issue.findMany.mockResolvedValue(issues);
+      prisma.issue.findMany.mockResolvedValue([]);
       prisma.status.findMany.mockResolvedValue([]);
-      prisma.$queryRaw.mockResolvedValue([]);
-      prisma.user.findMany.mockResolvedValue([
-        { id: 'user-a', name: 'Alice', email: 'alice@example.com' },
-      ]);
+      mockQueryRaw(
+        null, // completionMap skipped
+        [
+          { assignee_id: 'user-a', assignee_name: 'Alice', assignee_email: 'alice@example.com', open_count: BigInt(1) },
+          { assignee_id: null,     assignee_name: null,    assignee_email: null,                open_count: BigInt(2) },
+        ],
+      );
+      prisma.user.findMany.mockResolvedValue([]);
 
       const result = await service.projectAnalytics(USER_ID, PROJECT_ID, 30);
 
@@ -574,55 +622,53 @@ describe('AnalyticsService', () => {
     });
 
     it('workload excludes unassigned row when all issues are assigned', async () => {
-      const issues = [
-        makeIssue({ id: 'i1', assigneeId: 'user-a', statusCategory: 'TODO' }),
-      ];
-      prisma.issue.findMany.mockResolvedValue(issues);
+      prisma.issue.findMany.mockResolvedValue([]);
       prisma.status.findMany.mockResolvedValue([]);
-      prisma.$queryRaw.mockResolvedValue([]);
-      prisma.user.findMany.mockResolvedValue([
-        { id: 'user-a', name: 'Alice', email: 'alice@example.com' },
-      ]);
+      mockQueryRaw(
+        null,
+        [{ assignee_id: 'user-a', assignee_name: 'Alice', assignee_email: 'alice@example.com', open_count: BigInt(1) }],
+      );
+      prisma.user.findMany.mockResolvedValue([]);
 
       const result = await service.projectAnalytics(USER_ID, PROJECT_ID, 30);
       const unassignedRow = result.workload.find((r) => r.userId === null);
       expect(unassignedRow).toBeUndefined();
     });
 
-    it('workload excludes DONE issues from counts', async () => {
-      const issues = [
-        makeIssue({ id: 'i1', assigneeId: 'user-a', statusCategory: 'DONE' }),
-        makeIssue({ id: 'i2', assigneeId: 'user-a', statusCategory: 'TODO' }),
-      ];
-      prisma.issue.findMany.mockResolvedValue(issues);
+    it('workload excludes DONE issues from counts (SQL WHERE excludes DONE status IDs)', async () => {
+      // The SQL GROUP BY excludes DONE statuses at the DB level.
+      // We have a DONE status, so doneIds.size > 0. But issue.findMany returns []
+      // (no issues) → allIssueIds is empty → completionMap skips $queryRaw.
+      // The workload $queryRaw is still called once.
+      prisma.issue.findMany.mockResolvedValue([]);
       prisma.status.findMany.mockResolvedValue([
         makeStatus({ id: 'status-done', category: 'DONE' }),
       ]);
-      prisma.$queryRaw.mockResolvedValue([]);
-      prisma.user.findMany.mockResolvedValue([
-        { id: 'user-a', name: 'Alice', email: 'alice@example.com' },
-      ]);
+      mockQueryRaw(
+        null, // completionMap skipped (no issueIds even though doneIds exist)
+        // SQL already excluded DONE issues; only 1 open issue for user-a.
+        [{ assignee_id: 'user-a', assignee_name: 'Alice', assignee_email: 'alice@example.com', open_count: BigInt(1) }],
+      );
+      prisma.user.findMany.mockResolvedValue([]);
 
       const result = await service.projectAnalytics(USER_ID, PROJECT_ID, 30);
       const aliceRow = result.workload.find((r) => r.userId === 'user-a');
       expect(aliceRow).toBeDefined();
-      expect(aliceRow!.open).toBe(1); // only the TODO issue
+      expect(aliceRow!.open).toBe(1);
     });
 
     it('unassigned row appears AFTER sorted assignees (busiest first overall)', async () => {
-      const issues = [
-        makeIssue({ id: 'i1', assigneeId: 'user-a', statusCategory: 'TODO' }),
-        makeIssue({ id: 'i2', assigneeId: 'user-a', statusCategory: 'TODO' }),
-        makeIssue({ id: 'i3', assigneeId: 'user-a', statusCategory: 'TODO' }),
-        makeIssue({ id: 'i4', assigneeId: null, statusCategory: 'TODO' }),
-        makeIssue({ id: 'i5', assigneeId: null, statusCategory: 'TODO' }),
-      ];
-      prisma.issue.findMany.mockResolvedValue(issues);
+      prisma.issue.findMany.mockResolvedValue([]);
       prisma.status.findMany.mockResolvedValue([]);
-      prisma.$queryRaw.mockResolvedValue([]);
-      prisma.user.findMany.mockResolvedValue([
-        { id: 'user-a', name: 'Alice', email: 'alice@example.com' },
-      ]);
+      mockQueryRaw(
+        null, // completionMap skipped
+        [
+          // SQL returns busiest (user-a, 3) first, then unassigned (2).
+          { assignee_id: 'user-a', assignee_name: 'Alice', assignee_email: 'alice@example.com', open_count: BigInt(3) },
+          { assignee_id: null,     assignee_name: null,    assignee_email: null,                open_count: BigInt(2) },
+        ],
+      );
+      prisma.user.findMany.mockResolvedValue([]);
 
       const result = await service.projectAnalytics(USER_ID, PROJECT_ID, 30);
       // user-a has 3 open (busiest), Unassigned has 2.
@@ -648,14 +694,19 @@ describe('AnalyticsService', () => {
       ]);
 
       // One completion today.
-      prisma.$queryRaw.mockResolvedValue([
-        {
-          issue_id: 'i1',
-          completed_day: todayKey(),
-          completed_ts: new Date(),
-          created_at: todayUtc,
-        },
-      ]);
+      // issues exist + doneStatus exists → completionMap calls $queryRaw (1st).
+      // Workload aggregation is 2nd call → return [] (no open issues).
+      mockQueryRaw(
+        [
+          {
+            issue_id: 'i1',
+            completed_day: todayKey(),
+            completed_ts: new Date(),
+            created_at: todayUtc,
+          },
+        ],
+        [], // workload: empty (all issues are DONE per the SQL WHERE, mocked as [])
+      );
 
       prisma.user.findMany.mockResolvedValue([]);
 
