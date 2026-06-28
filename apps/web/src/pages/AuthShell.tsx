@@ -33,6 +33,20 @@ export function AuthShell({
           {children}
         </div>
         {footer && <div className="mt-5 text-center">{footer}</div>}
+        {/* Overcastly attribution — understated, ink-400, never competes with content */}
+        <p className="mt-6 text-center text-xs text-ink-400">
+          Built by{' '}
+          <a
+            href="https://overcastly.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Overcastly AI — opens in a new tab"
+            data-testid="overcastly-credit"
+            className="text-ink-400 underline decoration-ink-300 underline-offset-2 transition-colors duration-120 hover:text-ink-600 hover:decoration-ink-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal-500 rounded-sm"
+          >
+            Overcastly AI
+          </a>
+        </p>
       </div>
     </div>
   );
