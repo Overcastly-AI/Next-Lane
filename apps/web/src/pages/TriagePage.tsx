@@ -27,14 +27,15 @@ import { Link, NavLink, useNavigate, useParams } from 'react-router-dom';
 import {
   PRIORITIES,
   Priority,
+  SprintState,
   StatusCategory,
   type IssueDto,
   type LabelDto,
   type StatusDto,
   type UserDto,
 } from '@next-lane/shared';
-import { useProjectIssues, useUpdateIssue, useBoard } from '@/api/issues';
-import { useUsers, useLabels } from '@/api/meta';
+import { useProjectIssues, useUpdateIssue, useBoard, useBulkUpdateIssues } from '@/api/issues';
+import { useUsers, useLabels, useSprints } from '@/api/meta';
 import { useMyRole } from '@/api/workspaces';
 import { useToggleIssueLabel } from '@/api/labels';
 import { canEdit } from '@/lib/permissions';
@@ -50,6 +51,11 @@ import {
   PriorityIcon,
   titleCase,
 } from '@/components/issue/issueMeta';
+import {
+  BulkActionBar,
+  BulkSelectCheckbox,
+  BulkSelectAll,
+} from '@/components/issue/BulkActionBar';
 import { useToast } from '@/components/ui/Toast';
 
 // ---------------------------------------------------------------------------
@@ -78,9 +84,11 @@ export function TriagePage() {
   const boardQuery = useBoard(projectId);
   const usersQuery = useUsers();
   const labelsQuery = useLabels(projectId);
+  const sprintsQuery = useSprints(projectId);
 
   const update = useUpdateIssue();
   const toggleLabel = useToggleIssueLabel(projectId);
+  const bulkUpdate = useBulkUpdateIssues();
 
   const myRole = useMyRole(boardQuery.data?.project.workspaceId);
   const editable = canEdit(myRole);
@@ -103,6 +111,12 @@ export function TriagePage() {
 
   const users: UserDto[] = usersQuery.data ?? [];
   const labels: LabelDto[] = labelsQuery.data ?? [];
+  // Planning sprints for the bulk sprint picker (PLANNED + ACTIVE only)
+  const planningSprints = useMemo(
+    () =>
+      (sprintsQuery.data ?? []).filter((s) => s.state !== SprintState.COMPLETED),
+    [sprintsQuery.data],
+  );
 
   // ---------------------------------------------------------------------------
   // UI state
@@ -113,8 +127,43 @@ export function TriagePage() {
   const [activePicker, setActivePicker] = useState<ActivePicker>(null);
   const [showHelp, setShowHelp] = useState(false);
 
+  // Multi-select state
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
   const filterInputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLOListElement>(null);
+
+  function toggleSelect(id: string, checked: boolean) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
+  function clearBulkSelection() {
+    setSelectedIds(new Set());
+  }
+
+  function handleBulkApply(changes: Parameters<typeof bulkUpdate.mutate>[0]['changes']) {
+    const ids = Array.from(selectedIds);
+    bulkUpdate.mutate(
+      { projectId, ids, changes },
+      {
+        onSuccess: (result) => {
+          toast.success(`Updated ${result.updated} ${result.updated === 1 ? 'issue' : 'issues'}.`);
+          if (result.failed.length > 0) {
+            toast.error(
+              `${result.failed.length} ${result.failed.length === 1 ? 'issue' : 'issues'} could not be updated.`,
+            );
+          }
+          clearBulkSelection();
+        },
+        onError: (err) => toast.error(errorMessage(err, 'Bulk update failed.')),
+      },
+    );
+  }
 
   // ---------------------------------------------------------------------------
   // Filtered list
@@ -342,7 +391,21 @@ export function TriagePage() {
       {/* Header toolbar                                                       */}
       {/* ----------------------------------------------------------------- */}
       <div className="sticky top-0 z-10 flex flex-wrap items-center gap-3 border-b border-slate-200 bg-white px-4 py-3 sm:px-6">
-        <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          {filteredIssues.length > 0 && (
+            <BulkSelectAll
+              total={filteredIssues.length}
+              selectedCount={
+                filteredIssues.filter((i) => selectedIds.has(i.id)).length
+              }
+              onChange={(selectAll) => {
+                setSelectedIds(() => {
+                  if (!selectAll) return new Set<string>();
+                  return new Set(filteredIssues.map((i) => i.id));
+                });
+              }}
+            />
+          )}
           <h1 className="text-base font-semibold text-slate-900">
             Triage
             <span className="ml-2 text-sm font-normal text-slate-400">
@@ -467,12 +530,14 @@ export function TriagePage() {
                   issue={issue}
                   idx={idx}
                   isSelected={isSelected}
+                  isChecked={selectedIds.has(issue.id)}
                   assignee={assignee}
                   status={status}
                   onSelect={() => {
                     setSelectedIndex(idx);
                     setActivePicker(null);
                   }}
+                  onToggleCheck={(checked) => toggleSelect(issue.id, checked)}
                   onOpen={() => setOpenIssueId(issue.id)}
                 />
               );
@@ -534,6 +599,18 @@ export function TriagePage() {
           onOpenIssue={setOpenIssueId}
         />
       )}
+
+      <BulkActionBar
+        selectedCount={selectedIds.size}
+        statuses={statuses}
+        users={users}
+        labels={labels}
+        sprints={planningSprints}
+        showSprint={false}
+        isPending={bulkUpdate.isPending}
+        onApply={handleBulkApply}
+        onClear={clearBulkSelection}
+      />
     </Shell>
   );
 }
@@ -546,17 +623,21 @@ function TriageRow({
   issue,
   idx,
   isSelected,
+  isChecked,
   assignee,
   status,
   onSelect,
+  onToggleCheck,
   onOpen,
 }: {
   issue: IssueDto;
   idx: number;
   isSelected: boolean;
+  isChecked: boolean;
   assignee: UserDto | null;
   status: StatusDto | undefined;
   onSelect: () => void;
+  onToggleCheck: (checked: boolean) => void;
   onOpen: () => void;
 }) {
   return (
@@ -571,16 +652,24 @@ function TriageRow({
       onDoubleClick={onOpen}
       className={cn(
         'flex cursor-pointer items-center gap-3 px-4 py-2.5 transition-colors sm:px-6',
-        isSelected
+        isChecked
+          ? 'bg-signal-50'
+          : isSelected
           ? 'bg-brand-50 ring-inset ring-1 ring-brand-200'
           : 'hover:bg-slate-50',
       )}
     >
-      {/* Selection indicator dot */}
+      {/* Bulk select checkbox — stops propagation so row selection isn't triggered */}
+      <BulkSelectCheckbox
+        issueId={issue.id}
+        checked={isChecked}
+        onChange={onToggleCheck}
+      />
+      {/* Selection indicator dot (hidden when checkbox is shown) */}
       <span
         className={cn(
           'hidden h-1.5 w-1.5 shrink-0 rounded-full sm:block',
-          isSelected ? 'bg-brand-600' : 'bg-transparent',
+          isSelected && !isChecked ? 'bg-brand-600' : 'bg-transparent',
         )}
         aria-hidden="true"
       />

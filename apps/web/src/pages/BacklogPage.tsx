@@ -294,6 +294,8 @@ export function BacklogPage() {
               statusById={statusById}
               sprintOptions={sprintOptions}
               editable={editable}
+              selectedIds={selectedIds}
+              onToggleSelect={toggleSelect}
               onOpenIssue={setOpenIssueId}
               onMove={moveIssue}
               onCreate={(title) => createInline(title, sprint.id)}
@@ -313,6 +315,29 @@ export function BacklogPage() {
           title="Backlog"
           testId="section-backlog"
           count={(issuesBySprint.get(BACKLOG) ?? []).length}
+          selectAll={
+            (issuesBySprint.get(BACKLOG) ?? []).length > 0 ? (
+              <BulkSelectAll
+                total={(issuesBySprint.get(BACKLOG) ?? []).length}
+                selectedCount={
+                  (issuesBySprint.get(BACKLOG) ?? []).filter((i) =>
+                    selectedIds.has(i.id),
+                  ).length
+                }
+                onChange={(selectAll) => {
+                  const backlogIssues = issuesBySprint.get(BACKLOG) ?? [];
+                  setSelectedIds((prev) => {
+                    const next = new Set(prev);
+                    for (const i of backlogIssues) {
+                      if (selectAll) next.add(i.id);
+                      else next.delete(i.id);
+                    }
+                    return next;
+                  });
+                }}
+              />
+            ) : undefined
+          }
         >
           {(issuesBySprint.get(BACKLOG) ?? []).length === 0 ? (
             <EmptyState
@@ -330,6 +355,8 @@ export function BacklogPage() {
                   sprintOptions={sprintOptions}
                   currentSprintId={null}
                   editable={editable}
+                  selected={selectedIds.has(issue.id)}
+                  onToggleSelect={(checked) => toggleSelect(issue.id, checked)}
                   onOpen={() => setOpenIssueId(issue.id)}
                   onMove={(sprintId) => moveIssue(issue, sprintId)}
                 />
@@ -381,6 +408,18 @@ export function BacklogPage() {
           onOpenIssue={setOpenIssueId}
         />
       )}
+
+      <BulkActionBar
+        selectedCount={selectedIds.size}
+        statuses={statuses}
+        users={users}
+        labels={labels}
+        sprints={planningSprints}
+        showSprint
+        isPending={bulkUpdate.isPending}
+        onApply={handleBulkApply}
+        onClear={clearSelection}
+      />
     </Shell>
   );
 }
@@ -392,6 +431,8 @@ function SprintSection({
   statusById,
   sprintOptions,
   editable,
+  selectedIds,
+  onToggleSelect,
   onOpenIssue,
   onMove,
   onCreate,
@@ -408,6 +449,8 @@ function SprintSection({
   statusById: Map<string, StatusDto>;
   sprintOptions: { id: string; name: string }[];
   editable: boolean;
+  selectedIds: Set<string>;
+  onToggleSelect: (id: string, checked: boolean) => void;
   onOpenIssue: (id: string) => void;
   onMove: (issue: IssueDto, sprintId: string | null) => void;
   onCreate: (title: string) => Promise<void>;
@@ -478,6 +521,17 @@ function SprintSection({
       testId="section-sprint"
       count={issues.length}
       meta={meta || undefined}
+      selectAll={
+        issues.length > 0 ? (
+          <BulkSelectAll
+            total={issues.length}
+            selectedCount={issues.filter((i) => selectedIds.has(i.id)).length}
+            onChange={(selectAll) => {
+              for (const i of issues) onToggleSelect(i.id, selectAll);
+            }}
+          />
+        ) : undefined
+      }
       actions={
         !editable ? undefined : (
         <div className="flex items-center gap-2">
@@ -536,6 +590,8 @@ function SprintSection({
               sprintOptions={sprintOptions}
               currentSprintId={sprint.id}
               editable={editable}
+              selected={selectedIds.has(issue.id)}
+              onToggleSelect={(checked) => onToggleSelect(issue.id, checked)}
               onOpen={() => onOpenIssue(issue.id)}
               onMove={(sprintId) => onMove(issue, sprintId)}
             />
@@ -558,6 +614,7 @@ function Section({
   count,
   meta,
   actions,
+  selectAll,
   children,
   testId,
 }: {
@@ -565,6 +622,7 @@ function Section({
   count: number;
   meta?: string;
   actions?: React.ReactNode;
+  selectAll?: React.ReactNode;
   children: React.ReactNode;
   testId?: string;
 }) {
@@ -574,6 +632,7 @@ function Section({
       className="rounded-xl border border-slate-200 bg-white shadow-card"
     >
       <header className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-4 py-3">
+        {selectAll && <div className="shrink-0">{selectAll}</div>}
         <h2 className="text-sm font-semibold text-slate-900">{title}</h2>
         <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-500">
           {count} {count === 1 ? 'issue' : 'issues'}
@@ -593,6 +652,8 @@ function IssueRow({
   sprintOptions,
   currentSprintId,
   editable,
+  selected,
+  onToggleSelect,
   onOpen,
   onMove,
 }: {
@@ -602,6 +663,8 @@ function IssueRow({
   sprintOptions: { id: string; name: string }[];
   currentSprintId: string | null;
   editable: boolean;
+  selected: boolean;
+  onToggleSelect: (checked: boolean) => void;
   onOpen: () => void;
   onMove: (sprintId: string | null) => void;
 }) {
@@ -610,8 +673,16 @@ function IssueRow({
     <li
       data-testid="backlog-issue"
       data-issue-key={issue.key}
-      className="flex items-center gap-3 px-2 py-2 hover:bg-slate-50"
+      className={cn(
+        'flex items-center gap-3 px-2 py-2 transition-colors duration-[120ms]',
+        selected ? 'bg-signal-50' : 'hover:bg-slate-50',
+      )}
     >
+      <BulkSelectCheckbox
+        issueId={issue.id}
+        checked={selected}
+        onChange={onToggleSelect}
+      />
       <IssueTypeIcon type={issue.type} className="h-4 w-4" />
       <button
         type="button"
