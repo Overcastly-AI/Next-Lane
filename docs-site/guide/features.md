@@ -31,7 +31,7 @@ configured.
   in red.
 - Pin a board to a **saved filter** so it always shows a filtered view.
 
-![Board view](../public/screenshots/board-desktop.png)
+![Board view](/screenshots/board-desktop.png)
 
 ---
 
@@ -54,7 +54,7 @@ Issues are the core unit of work. Every issue belongs to a project and has:
 
 The issue detail drawer opens in-panel without leaving the board.
 
-![Issue detail drawer](../public/screenshots/drawer-desktop.png)
+![Issue detail drawer](/screenshots/drawer-desktop.png)
 
 ---
 

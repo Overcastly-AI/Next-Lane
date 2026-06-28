@@ -267,6 +267,15 @@ body {
   background-clip: text;
 }
 
+/* Light mode — reset any VitePress default that colours .name in brand-1 blue.
+ * Keep the heading in the canonical dark ink colour so the gradient stays
+ * confined to dark mode only. */
+:root:not(.dark) .VPHero .name {
+  background: none;
+  -webkit-text-fill-color: currentColor;
+  color: var(--vp-c-text-1);
+}
+
 .VPHero .text {
   font-size: clamp(1.4rem, 3vw, 2rem);
   font-weight: 700;
@@ -353,8 +362,15 @@ div[class*='language-'] .lang {
 }
 
 /* ─── Tables ────────────────────────────────────────────────────────────────── */
+/*
+ * display:block + overflow-x:auto keeps wide tables scrollable within the table
+ * element itself — the page body never scrolls horizontally on mobile.
+ * (VitePress's own default is also display:block; our earlier override of
+ * display:table removed the overflow-x containment.)
+ */
 .vp-doc table {
-  display: table;
+  display: block;
+  overflow-x: auto;
   width: 100%;
   border-collapse: collapse;
   font-size: 0.9rem;

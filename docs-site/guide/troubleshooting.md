@@ -207,8 +207,14 @@ missing or DB connection errors.
 **Fix:** Verify the Secret exists and contains the right keys:
 
 ```bash
-kubectl -n next-lane get secret next-lane-secrets -o jsonpath='{.data}' | \
-  python3 -c "import sys,json,base64; d=json.load(sys.stdin); [print(k,'=',base64.b64decode(v).decode()) for k,v in d.items()]"
+kubectl -n next-lane get secret next-lane-secrets \
+  -o jsonpath='{.data}' | \
+  python3 -c "
+import sys, json, base64
+d = json.load(sys.stdin)
+for k, v in d.items():
+    print(k, '=', base64.b64decode(v).decode())
+"
 ```
 
 ---

@@ -241,6 +241,9 @@ importers:
 
   docs-site:
     devDependencies:
+      markdown-it-task-lists:
+        specifier: ^2.1.1
+        version: 2.1.1
       vitepress:
         specifier: ^1.6.3
         version: 1.6.4(@algolia/client-search@5.55.1)(@types/node@22.20.0)(@types/react@18.3.31)(postcss@8.5.15)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(search-insights@2.17.3)(terser@5.48.0)(typescript@5.9.3)
@@ -3319,6 +3322,9 @@ packages:
 
   mark.js@8.11.1:
     resolution: {integrity: sha512-1I+1qpDt4idfgLQG+BNWmrqku+7/2bi5nLf4YwF8y8zXvmfiTBY3PV3ZibfrjBueCByROpuBjLLFCajqkgYoLQ==}
+
+  markdown-it-task-lists@2.1.1:
+    resolution: {integrity: sha512-TxFAc76Jnhb2OUu+n3yz9RMu4CwGfaT788br6HhEDlvWfdeJcLUsxk1Hgw2yJio0OXsxv7pyIPmvECY7bMbluA==}
 
   marked@18.0.5:
     resolution: {integrity: sha512-S6GcvALHg6K4ohtu4E7x0a1AqhAjp6cV8KhLSyN9qVapnzJkusVBxZRcIU9AeYsbe6P1hKDusSbEOzGyyuce6w==}
@@ -8147,6 +8153,8 @@ snapshots:
       tmpl: 1.0.5
 
   mark.js@8.11.1: {}
+
+  markdown-it-task-lists@2.1.1: {}
 
   marked@18.0.5: {}
 

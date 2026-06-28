@@ -9,8 +9,8 @@ hero:
     real-time collaboration — running on your own hardware. Zero seats to buy.
     No data leaves your infrastructure.
   image:
-    src: /screenshots/home-desktop.png
-    alt: Next Lane board view showing issues in Kanban columns
+    src: /screenshots/board-desktop.png
+    alt: Next Lane Kanban board showing issues in To Do, In Progress, and Done columns
   actions:
     - theme: brand
       text: Get Started
@@ -92,14 +92,14 @@ See the full [Features](./guide/features) guide for details.
 
 ## Screenshots
 
-![Next Lane board view](./public/screenshots/board-desktop.png)
+![Next Lane board view](/screenshots/board-desktop.png)
 
 *Kanban board — drag cards between columns, see live presence avatars, apply conditional card colors.*
 
-![Issue detail drawer](./public/screenshots/drawer-desktop.png)
+![Issue detail drawer](/screenshots/drawer-desktop.png)
 
 *Issue detail drawer — Markdown description, comments, activity log, custom fields, all in-panel.*
 
-![Backlog view](./public/screenshots/backlog-desktop.png)
+![Backlog view](/screenshots/backlog-desktop.png)
 
 *Backlog — bulk-select issues, filter with NLQL, plan sprints.*

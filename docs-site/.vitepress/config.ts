@@ -1,4 +1,9 @@
 import { defineConfig } from 'vitepress'
+import { createRequire } from 'module'
+
+const require = createRequire(import.meta.url)
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const taskLists = require('markdown-it-task-lists')
 
 export default defineConfig({
   base: '/Next-Lane/',
@@ -15,6 +20,12 @@ export default defineConfig({
   // Ignore localhost links — these are valid for self-hosted deployments
   // but cannot be resolved at build time.
   ignoreDeadLinks: [/^http:\/\/localhost/],
+
+  markdown: {
+    config: (md) => {
+      md.use(taskLists, { enabled: true })
+    },
+  },
 
   head: [
     ['link', { rel: 'icon', type: 'image/svg+xml', href: '/Next-Lane/favicon.svg' }],
@@ -33,7 +44,7 @@ export default defineConfig({
       'meta',
       {
         property: 'og:image',
-        content: 'https://overcastly-ai.github.io/Next-Lane/screenshots/home-desktop.png',
+        content: 'https://overcastly-ai.github.io/Next-Lane/screenshots/board-desktop.png',
       },
     ],
   ],
