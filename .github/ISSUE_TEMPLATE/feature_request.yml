@@ -1,0 +1,75 @@
+name: Feature request
+description: Suggest an idea or improvement for Next Lane
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping shape Next Lane! Before filing, please check
+        [`docs/ROADMAP.md`](../../docs/ROADMAP.md) and
+        [`docs/VISION.md`](../../docs/VISION.md) — your idea may already be on
+        the roadmap. Open questions and general discussion belong in
+        [GitHub Discussions](https://github.com/Overcastly-AI/Next-Lane/discussions).
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / motivation
+      description: >
+        What problem are you trying to solve? What is your use case?
+        Concrete user stories are especially helpful.
+      placeholder: "As a team lead I cannot … because …"
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: A clear and concise description of what you would like to happen.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Any alternative approaches or workarounds you have considered.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: advantage
+    attributes:
+      label: Which structural advantage does this lean on?
+      description: >
+        Next Lane differentiates on four axes (see `docs/VISION.md`).
+        If your request relates to one of them, select it — it helps prioritization.
+      multiple: true
+      options:
+        - "Free & unlimited (no per-seat cost, no run limits)"
+        - "Your data, your compute (self-hosted, private AI, direct SQL access)"
+        - "Open & extensible (MIT, code-level extensibility, self-hosted forges)"
+        - "AI-native & agent-native (MCP, natural language, agent tooling)"
+        - "Table stakes / general improvement"
+
+  - type: input
+    id: roadmap_link
+    attributes:
+      label: Related roadmap item (if any)
+      description: >
+        If this is already in `docs/ROADMAP.md` or a prior issue, link it here.
+      placeholder: "#123 or Phase 6 — Autopilot"
+    validations:
+      required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: >
+        Mockups, screenshots, links to prior art, or anything else that
+        illustrates the request.
+    validations:
+      required: false

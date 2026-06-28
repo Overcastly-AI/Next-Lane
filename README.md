@@ -15,30 +15,53 @@ Plan work, run sprints, and drag cards across boards on **your** hardware, with 
 [![Self-hosted](https://img.shields.io/badge/self--hosted-your%20data-success.svg)](#why-next-lane)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING.md)
 
-[Quickstart](#-quickstart) · [Why Next Lane](#why-next-lane) · [Features](#-whats-shipped) · [Architecture](#-architecture-at-a-glance) · [Roadmap](#-on-the-roadmap) · [Contributing](#-contributing)
+[Quick Start](#-quickstart) · [Why Next Lane](#why-next-lane) · [Features](#-whats-shipped) · [Architecture](#-architecture-at-a-glance) · [Roadmap](#-on-the-roadmap) · [Contributing](#-contributing) · [Wiki](https://github.com/Overcastly-AI/Next-Lane/wiki) · [Changelog](./CHANGELOG.md)
 
 </div>
 
 ---
 
-<!--
-  SCREENSHOTS — PLACEHOLDER (not yet captured).
-  No curated product screenshots exist in the repo yet (the only PNGs under
-  apps/web are Playwright report artifacts, not marketing-quality captures).
-  TODO for a maintainer: capture board + issue drawer + reports, desktop AND
-  mobile, save them under docs/screenshots/, then replace the block below with:
+## Table of Contents
 
-  <div align="center">
-    <img src="docs/screenshots/board-desktop.png" alt="Next Lane kanban board (desktop)" width="100%" />
-    <br/>
-    <img src="docs/screenshots/issue-drawer-desktop.png" alt="Issue detail drawer" width="49%" />
-    <img src="docs/screenshots/reports-desktop.png" alt="Burndown & velocity reports" width="49%" />
-  </div>
--->
+- [Why Next Lane](#why-next-lane)
+- [Screenshots](#-screenshots)
+- [What's shipped](#-whats-shipped)
+- [Quick Start](#-quickstart)
+- [Local development](#-local-development-hot-reload-no-docker-for-app-code)
+- [Architecture at a glance](#-architecture-at-a-glance)
+- [On the roadmap](#-on-the-roadmap)
+- [Contributing](#-contributing)
+- [License](#-license)
 
-> 📸 **Screenshots coming soon.** The board, issue drawer, and reports captures
-> (desktop + mobile) live under [`docs/screenshots/`](./docs/screenshots/) once a
-> maintainer runs the app and captures them. See the comment above for the layout.
+---
+
+## Screenshots
+
+<div align="center">
+  <img src="docs/screenshots/home-desktop.png" alt="Next Lane home / dashboard (desktop)" width="100%" />
+</div>
+
+<br/>
+
+<div align="center">
+  <img src="docs/screenshots/board-desktop.png" alt="Kanban board (desktop)" width="49%" />
+  <img src="docs/screenshots/board-mobile.png" alt="Kanban board (mobile)" width="24%" />
+  <img src="docs/screenshots/home-mobile.png" alt="Dashboard (mobile)" width="24%" />
+</div>
+
+<br/>
+
+<div align="center">
+  <img src="docs/screenshots/drawer-desktop.png" alt="Issue detail drawer (desktop)" width="49%" />
+  <img src="docs/screenshots/backlog-desktop.png" alt="Backlog view (desktop)" width="49%" />
+</div>
+
+<br/>
+
+<div align="center">
+  <img src="docs/screenshots/login-desktop.png" alt="Login (desktop)" width="49%" />
+  <img src="docs/screenshots/login-mobile.png" alt="Login (mobile)" width="24%" />
+</div>
 
 ## Why Next Lane
 
@@ -65,17 +88,20 @@ current build** (see [`docs/ROADMAP.md`](./docs/ROADMAP.md) for status and what'
 
 | Area | Capabilities |
 |------|-------------|
-| **Boards** | Multiple boards per project · Kanban **and** Scrum board types · drag-and-drop with fractional ranking · custom statuses/columns · live presence indicators |
-| **Issues** | Task / Bug / Story · epics & sub-tasks (parent/child) · labels · story points · due dates · **custom fields** (typed) · markdown descriptions & comments |
-| **Agile** | Backlog view · sprints (create / start / complete, goals, dates) · keyboard **triage mode** (j/k/s/p/a/l) |
-| **Reports** | Burndown · velocity · cumulative-flow diagram (CFD) · roadmap / timeline view |
-| **Find** | **Full-text search** (Postgres `tsvector`) · filtering · ⌘K command palette · cross-project search |
-| **Collaboration** | Comments & activity history · realtime updates (Socket.io) · in-app notifications & @mentions · file attachments · "My Work" + Team Pulse dashboards |
-| **Admin & security** | Roles & permissions (Admin / Member / Viewer) · workspace audit log · member management · email/password auth (JWT) · personal API tokens (PATs) · password reset over SMTP · HMAC-signed outbound webhooks (with SSRF guard) |
+| **Boards** | Multiple boards per project · Kanban **and** Scrum board types · drag-and-drop with fractional ranking · custom statuses/columns · live presence indicators · conditional card colors |
+| **Issues** | Task / Bug / Story / Epic / Sub-task · parent/child hierarchy · labels · story points · due dates · **custom fields** (typed) · markdown descriptions & comments · file attachments · **issue links** (BLOCKS, RELATES_TO, DUPLICATES…) · watchers |
+| **Agile** | Backlog view · sprints (create / start / complete, goals, dates) · keyboard **triage mode** (j/k/s/p/a/l) · components · versions/releases |
+| **NLQL** | **NLQL query language** — `assignee = me() AND priority in (High, Highest)` · **saved filters** shared across a project · boards pinned to a saved filter |
+| **Reports** | Burndown · velocity · cumulative-flow diagram (CFD) · roadmap / timeline view · personal analytics · team pulse analytics |
+| **Find** | **Full-text search** (Postgres `tsvector`) · ⌘K command palette · cross-project search · multi-field filtering |
+| **Collaboration** | Comments & activity history · realtime updates (Socket.io) · in-app notifications & @mentions · "My Work" + Team Pulse dashboards |
+| **Automation** | **Glass Box engine** — trigger → condition → action rules · NLQL-based conditions · unlimited runs · full **run log** (audit trail per execution) |
+| **Rituals** | **Planning poker** (real-time estimation via Socket.io) · **async standups** (per-member responses + team digest) |
+| **Personal** | **Personal boards** (private Kanban) · personal analytics · shared board links |
+| **Bulk & export** | **Bulk edit** (multi-select in Backlog + Triage; update assignee/status/priority/labels/sprint) · **CSV export** |
+| **Workspace** | **Branding** — custom name, accent color, logo · workspace audit log |
+| **Admin & security** | Roles & permissions (Admin / Member / Viewer) · email/password auth (JWT) · personal API tokens (PATs) · password reset over SMTP · HMAC-signed outbound webhooks (with SSRF guard) |
 | **Ops & deploy** | One-command Docker Compose · **Helm chart + Kustomize** for Kubernetes · GHCR multi-arch image builds · structured JSON logs · health/readiness probes · CI (typecheck + build + unit tests) + e2e suite |
-
-> 🚧 **Landing now:** an **NLQL query language** + **saved filters** are in active
-> development — see the [Roadmap](#-on-the-roadmap).
 
 ## 🚀 Quickstart
 
@@ -167,21 +193,25 @@ Next Lane is built openly and incrementally. The shipped surface above is the
 foundation; here's where the structural advantages get spent (full plan, with status
 markers, in [`docs/ROADMAP.md`](./docs/ROADMAP.md) — driven by [`docs/VISION.md`](./docs/VISION.md)):
 
-- **NLQL query language + saved filters** — a real query language (`assignee = me() AND priority in (High, Highest)`) with shareable saved views. *(in progress)*
 - **🤖 Autopilot** — a self-hosted AI teammate: private, unlimited, $0 AI (natural-language → NLQL, auto-triage, semantic dedupe, sprint risk radar) and **MCP-native** so coding agents read/write issues from the IDE.
-- **⚙️ Automations (Glass Box)** — a trigger → condition → action engine with *unlimited* runs and a full audit trail, plus true data ownership (SQL / warehouse export).
+- **Data ownership (Glass Box Phase 2)** — SQL / warehouse export, Grafana dashboards, and OpenTelemetry traces.
 - **📚 The Unbundle** — free what others sell separately: docs/wiki, whiteboard, a public roadmap + voting portal, and intake forms.
 - **🔗 Developer Graph** — two-way **GitHub / GitLab / Gitea** links, live PR/CI status on cards, auto-transition on merge.
-- **🙋 Team rituals** — async standups, private personal boards, and personal + team analytics.
+- **Workflow transitions** — enforced status progressions with guard conditions.
+
+Full plan with phase status markers: [`docs/ROADMAP.md`](./docs/ROADMAP.md) · vision and thesis: [`docs/VISION.md`](./docs/VISION.md).
 
 ## 🤝 Contributing
 
 Contributions are welcome and appreciated! Start with [`CONTRIBUTING.md`](./CONTRIBUTING.md)
 for setup, conventions, and the PR workflow. Good first steps:
 
-- 🐛 Found a bug? [Open a bug report](./.github/ISSUE_TEMPLATE/bug_report.md).
-- 💡 Have an idea? [Request a feature](./.github/ISSUE_TEMPLATE/feature_request.md).
+- 🐛 Found a bug? [Open a bug report](https://github.com/Overcastly-AI/Next-Lane/issues/new?template=bug_report.yml).
+- 💡 Have an idea? [Request a feature](https://github.com/Overcastly-AI/Next-Lane/issues/new?template=feature_request.yml).
+- 💬 Have a question? Start a [Discussion](https://github.com/Overcastly-AI/Next-Lane/discussions).
 - 🔐 Found a vulnerability? Please follow our [Security Policy](./SECURITY.md) — don't open a public issue.
+
+The [GitHub Wiki](https://github.com/Overcastly-AI/Next-Lane/wiki) has detailed guides for configuration, self-hosting, features, and troubleshooting. The wiki source lives under [`wiki/`](./wiki/) in this repo.
 
 This project follows the [Contributor Covenant Code of Conduct](./CODE_OF_CONDUCT.md).
 

@@ -1,0 +1,29 @@
+# CODEOWNERS — default reviewers for Next Lane
+#
+# Syntax: <pattern> <owner> [<owner> ...]
+# See: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Global fallback — any file not matched below
+*                                   @Overcastly-AI/maintainers
+
+# Deployment manifests and infrastructure
+/deploy/                            @Overcastly-AI/maintainers
+/docker-compose.yml                 @Overcastly-AI/maintainers
+/docker-compose.dev.yml             @Overcastly-AI/maintainers
+/apps/api/Dockerfile                @Overcastly-AI/maintainers
+/apps/web/Dockerfile                @Overcastly-AI/maintainers
+/.github/workflows/                 @Overcastly-AI/maintainers
+
+# Data model — migrations require extra care
+/apps/api/prisma/                   @Overcastly-AI/maintainers
+
+# Community health files
+/README.md                          @Overcastly-AI/maintainers
+/CONTRIBUTING.md                    @Overcastly-AI/maintainers
+/SECURITY.md                        @Overcastly-AI/maintainers
+/CODE_OF_CONDUCT.md                 @Overcastly-AI/maintainers
+/CHANGELOG.md                       @Overcastly-AI/maintainers
+/.github/                           @Overcastly-AI/maintainers
+
+# Shared type contracts — changes here affect both API and web
+/packages/shared/                   @Overcastly-AI/maintainers

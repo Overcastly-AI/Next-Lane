@@ -1,0 +1,139 @@
+name: Bug report
+description: Report something that is not working as expected
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Please fill out the fields below
+        so we can reproduce and fix it quickly. **Do not include real secrets or
+        passwords** — redact anything sensitive.
+
+  - type: input
+    id: version
+    attributes:
+      label: Next Lane version / commit
+      description: >
+        The image tag, git SHA, or `package.json` version you are running.
+        (`docker inspect <image> | grep -i version` or `git rev-parse --short HEAD`)
+      placeholder: "e.g. 0.1.0 / abc1234"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: Deployment mode
+      description: How are you running Next Lane?
+      options:
+        - Docker Compose (docker compose up)
+        - Kubernetes — Helm chart
+        - Kubernetes — Kustomize
+        - Local dev (pnpm dev)
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which part of the application is affected?
+      multiple: true
+      options:
+        - Board / Kanban / Scrum
+        - Issue detail / drawer
+        - Backlog / triage
+        - Sprints
+        - Reports / analytics
+        - NLQL / saved filters
+        - Custom fields
+        - Automation engine
+        - Planning poker
+        - Standups
+        - Personal board
+        - Notifications / mentions
+        - Search / command palette
+        - Auth / login / password reset
+        - Workspace settings / branding
+        - Webhooks
+        - File attachments
+        - Realtime / live updates
+        - API / REST
+        - Docker / deployment
+        - Other
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the bug
+      description: A clear and concise description of what the bug is.
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Numbered steps that reliably trigger the issue.
+      placeholder: |
+        1. Log in as demo@nextlane.dev
+        2. Open project "Demo"
+        3. Drag card from "In Progress" to "Done"
+        4. See error …
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What you expected to happen.
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: >
+        What actually happened. Include error messages, browser console errors,
+        or the relevant lines from `docker compose logs api`.
+    validations:
+      required: true
+
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      description: Fill in as many fields as apply.
+      value: |
+        - OS:
+        - Docker version (`docker --version`):
+        - Browser & version (UI bugs):
+        - Desktop or mobile:
+        - Node version (`node --version`, local dev only):
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: >
+        Paste relevant lines from `docker compose logs api` or the browser console.
+        Redact passwords, JWT secrets, and other sensitive values.
+      render: text
+    validations:
+      required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: >
+        Screenshots (desktop and mobile for UI bugs), `.env` settings with secrets
+        redacted, or anything else that would help.
+    validations:
+      required: false
