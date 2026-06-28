@@ -721,6 +721,57 @@ export interface PokerItemDto {
   votes?: PokerVoteDto[];
 }
 
+// ── Async Standups ────────────────────────────────────────────────────────────
+
+/**
+ * Links a standup entry's blockers to a specific tracked issue.
+ * Embedded in `StandupEntryDto.blockerLinks` when loaded with relations.
+ */
+export interface StandupBlockerLinkDto {
+  id: string;
+  standupEntryId: string;
+  issueId: string;
+  /** The linked issue, present when loaded with the `issue` relation. */
+  issue?: IssueRefDto;
+  createdAt: string;
+}
+
+/**
+ * A daily async standup entry submitted by a user.
+ *
+ * Scope: scoped to a Team, a Project, or both. At least one of `teamId` /
+ * `projectId` is non-null (validated at the service layer).
+ *
+ * `date` is an ISO date string (YYYY-MM-DD) representing the standup calendar
+ * day. The server normalises to midnight UTC before persisting.
+ *
+ * `blockerIssueIds` is a flat list of issue IDs referenced as blockers — a
+ * convenience projection of `blockerLinks[].issueId` for callers that only
+ * need the IDs. `blockerLinks` carries full link objects including the
+ * resolved `IssueRefDto` when the server loads the relation.
+ */
+export interface StandupEntryDto {
+  id: string;
+  userId: string;
+  /** null when the entry is project-scoped only. */
+  teamId: string | null;
+  /** null when the entry is team-scoped only. */
+  projectId: string | null;
+  /** ISO date string YYYY-MM-DD for the standup calendar day. */
+  date: string;
+  yesterday: string | null;
+  today: string | null;
+  blockers: string | null;
+  /** Flat list of issue IDs linked as blockers (convenience projection). */
+  blockerIssueIds: string[];
+  /** Full blocker link objects; present when loaded with the `blockerLinks` relation. */
+  blockerLinks?: StandupBlockerLinkDto[];
+  /** Resolved author; present when loaded with the `user` relation. */
+  user?: UserDto;
+  createdAt: string;
+  updatedAt: string;
+}
+
 /**
  * A planning poker estimation session, scoped to a project and optionally a sprint.
  *

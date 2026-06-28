@@ -3,9 +3,9 @@
 //
 // Baseline v2 — applied 2026-06-28.
 // add_planning_poker — applied 2026-06-28.
+// add_standups — applied 2026-06-28.
 // Deferred to feature slices (do not add here without a feature branch):
 //   - AutomationRule / AutomationRun (Phase 7)
-//   - StandupEntry / StandupBlockerLink (Phase 10)
 //   - PersonalBoard / PersonalCard (Phase 10)
 //   - ScmConnection / IssueExternalLink / pgvector embedding column (Phase 9 / Phase 6)
 //   - WorkflowTransition (Phase 2 remaining / Phase 5)
@@ -151,6 +151,9 @@ model User {
   // Planning poker
   pokerSessionsCreated PokerSession[] @relation("pokerCreator")
   pokerVotes           PokerVote[]
+
+  // Async standups
+  standupEntries StandupEntry[]
 }
 
 // Personal API Token (PAT) for scripting / CI access to the REST API.
@@ -253,6 +256,9 @@ model Project {
   // Planning poker
   pokerSessions          PokerSession[]
 
+  // Async standups
+  standupEntries         StandupEntry[]
+
   @@unique([workspaceId, key])
   @@index([workspaceId])
   @@index([leadId])
@@ -273,8 +279,9 @@ model Team {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  workspace Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  members   TeamMember[]
+  workspace      Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  members        TeamMember[]
+  standupEntries StandupEntry[]
 
   @@unique([workspaceId, name])
   @@index([workspaceId])
@@ -526,6 +533,9 @@ model Issue {
 
   // Planning poker
   pokerItems PokerItem[]
+
+  // Async standups — issues referenced as blockers in a standup
+  standupBlockerLinks StandupBlockerLink[]
 
   @@unique([projectId, number])
   @@index([projectId, statusId])
@@ -844,5 +854,71 @@ model PokerVote {
 
   @@unique([itemId, userId])
   @@index([itemId])
+}
+
+// ---------------------------------------------------------------------------
+// Async Standups (Phase 10)
+// ---------------------------------------------------------------------------
+
+/// Daily async standup entry submitted by a user.
+///
+/// Scope: a standup is scoped to either a Team, a Project, or both. At least
+/// one of `teamId` / `projectId` must be non-null — enforced at the service
+/// layer (a DB constraint cannot express OR-not-null cleanly without a check
+/// constraint, so the application validates this invariant before insert).
+///
+/// Unique constraint: @@unique([userId, teamId, projectId, date]) prevents a
+/// user submitting more than one entry per scope per calendar day. Postgres 16
+/// uses NULLS NOT DISTINCT semantics for multi-column unique indexes, meaning
+/// two rows with the same (userId, NULL, projectId, date) values will correctly
+/// collide rather than being treated as distinct. This is the cleanest
+/// single-constraint expression of the business rule across all scope
+/// combinations without requiring partial indexes.
+///
+/// `date` stores the standup day as a midnight-UTC DateTime (application must
+/// normalise to date-only before writing). Full-precision DateTime is used
+/// because Prisma does not expose a bare Date scalar for Postgres.
+model StandupEntry {
+  id        String    @id @default(cuid())
+  userId    String
+  teamId    String?   // nullable — entry may be project-scoped only
+  projectId String?   // nullable — entry may be team-scoped only
+  /// The standup calendar day. Store as midnight UTC (YYYY-MM-DDT00:00:00Z).
+  date      DateTime
+  yesterday String?   // what the user did yesterday
+  today     String?   // what the user will do today
+  blockers  String?   // free-text description of blockers
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  team    Team?    @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  project Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  blockerLinks StandupBlockerLink[]
+
+  /// One entry per user per scope (team + project combination) per day.
+  /// Postgres 16 NULLS NOT DISTINCT ensures NULL teamId / NULL projectId
+  /// are treated as equal values within the unique index.
+  @@unique([userId, teamId, projectId, date])
+  @@index([teamId, date])
+  @@index([projectId, date])
+  @@index([userId, date])
+}
+
+/// Links a standup's free-text blockers field to specific tracked issues,
+/// enabling cross-referencing between standups and the issue tracker.
+model StandupBlockerLink {
+  id             String   @id @default(cuid())
+  standupEntryId String
+  issueId        String
+  createdAt      DateTime @default(now())
+
+  standupEntry StandupEntry @relation(fields: [standupEntryId], references: [id], onDelete: Cascade)
+  issue        Issue        @relation(fields: [issueId], references: [id], onDelete: Cascade)
+
+  @@unique([standupEntryId, issueId])
+  @@index([standupEntryId])
+  @@index([issueId])
 }
 
