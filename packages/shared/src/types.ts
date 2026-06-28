@@ -7,6 +7,7 @@ import type {
   NotificationType,
   BoardType,
   CustomFieldType,
+  PokerState,
 } from './enums';
 
 /** API DTO shapes shared between server and client. These mirror Prisma models
@@ -668,4 +669,63 @@ export interface CreateApiTokenResponse {
   createdAt: string;
   /** Granted scopes. Empty array = unrestricted. */
   scopes: string[];
+}
+
+// ── Planning Poker ────────────────────────────────────────────────────────────
+
+/**
+ * One participant's vote on a single PokerItem.
+ * Hidden from other participants until the item or session is revealed.
+ * `value` is a deck card label (see `POKER_DECK`).
+ */
+export interface PokerVoteDto {
+  id: string;
+  itemId: string;
+  userId: string;
+  /** Card label from the standard deck, e.g. "5", "13", "?", "☕". */
+  value: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * One issue being estimated within a PokerSession.
+ * `revealed` indicates whether the facilitator has flipped this item's cards.
+ * `finalEstimate` is null until the facilitator commits the agreed story-point value.
+ */
+export interface PokerItemDto {
+  id: string;
+  sessionId: string;
+  issueId: string;
+  order: number;
+  revealed: boolean;
+  /** Committed story points; null until the facilitator commits an estimate. */
+  finalEstimate: number | null;
+  createdAt: string;
+  /** Votes cast for this item. Present only when the item is loaded with votes. */
+  votes?: PokerVoteDto[];
+}
+
+/**
+ * A planning poker estimation session, scoped to a project and optionally a sprint.
+ *
+ * `activeItemId` — the PokerItem.id currently open for voting, or null when
+ * no item is active (e.g. between items or before the session starts).
+ * Application-managed; not enforced as a DB FK.
+ *
+ * `items` — present only when the session is loaded with its items.
+ */
+export interface PokerSessionDto {
+  id: string;
+  projectId: string;
+  sprintId: string | null;
+  name: string | null;
+  state: PokerState;
+  /** ID of the PokerItem currently being voted on, or null. */
+  activeItemId: string | null;
+  createdById: string | null;
+  createdAt: string;
+  updatedAt: string;
+  /** Items belonging to this session. Present only when loaded with items. */
+  items?: PokerItemDto[];
 }

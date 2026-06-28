@@ -73,3 +73,41 @@ export const PRIORITY_ORDER: Record<Priority, number> = {
   [Priority.LOW]: 2,
   [Priority.LOWEST]: 1,
 };
+
+/**
+ * Lifecycle state of a planning poker session.
+ * Keep in sync with the Prisma `PokerState` enum.
+ *
+ * VOTING   — cards are hidden; participants submit their estimates.
+ * REVEALED — facilitator has flipped cards; discussion phase.
+ * CLOSED   — session is over; final estimates have been committed.
+ */
+export enum PokerState {
+  VOTING = 'VOTING',
+  REVEALED = 'REVEALED',
+  CLOSED = 'CLOSED',
+}
+
+export const POKER_STATES = Object.values(PokerState);
+
+/**
+ * Standard planning poker deck. Matches the card labels stored in
+ * `PokerVote.value`. The "☕" card means "need a break / can't estimate".
+ */
+export const POKER_DECK = [
+  '0',
+  '1',
+  '2',
+  '3',
+  '5',
+  '8',
+  '13',
+  '21',
+  '34',
+  '55',
+  '89',
+  '?',
+  '☕',
+] as const;
+
+export type PokerCard = (typeof POKER_DECK)[number];

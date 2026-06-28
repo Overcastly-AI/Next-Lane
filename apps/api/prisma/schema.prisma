@@ -2,12 +2,12 @@
 // Changes go through `prisma migrate`. See docs/ARCHITECTURE.md.
 //
 // Baseline v2 — applied 2026-06-28.
+// add_planning_poker — applied 2026-06-28.
 // Deferred to feature slices (do not add here without a feature branch):
 //   - AutomationRule / AutomationRun (Phase 7)
 //   - StandupEntry / StandupBlockerLink (Phase 10)
 //   - PersonalBoard / PersonalCard (Phase 10)
 //   - ScmConnection / IssueExternalLink / pgvector embedding column (Phase 9 / Phase 6)
-//   - PokerSession / PokerItem / PokerVote (Phase 5 planning poker sub-feature)
 //   - WorkflowTransition (Phase 2 remaining / Phase 5)
 
 generator client {
@@ -94,6 +94,16 @@ enum VersionState {
   ARCHIVED
 }
 
+/// Lifecycle state of a planning poker session.
+/// VOTING   — cards are hidden; participants submit their estimates.
+/// REVEALED — facilitator flips all cards; discussion phase.
+/// CLOSED   — session is finished; final estimates have been committed.
+enum PokerState {
+  VOTING
+  REVEALED
+  CLOSED
+}
+
 // ---------------------------------------------------------------------------
 // Core entities
 // ---------------------------------------------------------------------------
@@ -137,6 +147,10 @@ model User {
 
   // SavedFilter ownership
   savedFilters        SavedFilter[]
+
+  // Planning poker
+  pokerSessionsCreated PokerSession[] @relation("pokerCreator")
+  pokerVotes           PokerVote[]
 }
 
 // Personal API Token (PAT) for scripting / CI access to the REST API.
@@ -235,6 +249,9 @@ model Project {
   components             Component[]
   versions               Version[]
   notifications          Notification[]
+
+  // Planning poker
+  pokerSessions          PokerSession[]
 
   @@unique([workspaceId, key])
   @@index([workspaceId])
@@ -338,8 +355,9 @@ model Sprint {
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
 
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  issues  Issue[]
+  project       Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  issues        Issue[]
+  pokerSessions PokerSession[]
 
   @@index([projectId])
 }
@@ -505,6 +523,9 @@ model Issue {
   linksFrom  IssueLink[]    @relation("linkSource")
   linksTo    IssueLink[]    @relation("linkTarget")
   versions   IssueVersion[]
+
+  // Planning poker
+  pokerItems PokerItem[]
 
   @@unique([projectId, number])
   @@index([projectId, statusId])
@@ -747,5 +768,81 @@ model WebhookDelivery {
   subscription WebhookSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
 
   @@index([subscriptionId, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Planning Poker (Phase 5)
+// ---------------------------------------------------------------------------
+
+/// A facilitated estimation session for a set of issues.
+///
+/// `activeItemId` — tracks which PokerItem is currently being voted on.
+/// Stored as a plain nullable string (not a Prisma FK relation) to avoid a
+/// circular dependency between PokerSession and PokerItem; the application
+/// layer validates that the value, when non-null, refers to a PokerItem that
+/// belongs to this session.
+///
+/// Session lifecycle: VOTING → REVEALED → CLOSED (managed by the facilitator
+/// via the API; transitions broadcast over Socket.io to all participants).
+model PokerSession {
+  id           String     @id @default(cuid())
+  projectId    String
+  sprintId     String? // optional sprint scope
+  name         String?
+  state        PokerState @default(VOTING)
+  /// ID of the PokerItem currently open for voting. Application-maintained;
+  /// not enforced as a DB FK to avoid a circular reference.
+  activeItemId String?
+  createdById  String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  project   Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sprint    Sprint?      @relation(fields: [sprintId], references: [id], onDelete: SetNull)
+  createdBy User?        @relation("pokerCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  items     PokerItem[]
+
+  @@index([projectId])
+  @@index([sprintId])
+}
+
+/// One issue being estimated within a PokerSession.
+/// `revealed` tracks whether the facilitator has flipped this item's cards
+/// independently of the session state (allows per-item reveal in a multi-item flow).
+/// `finalEstimate` is committed by the facilitator after discussion (story points).
+model PokerItem {
+  id            String   @id @default(cuid())
+  sessionId     String
+  issueId       String
+  order         Int
+  revealed      Boolean  @default(false)
+  finalEstimate Int? // committed story points; null until the facilitator commits
+  createdAt     DateTime @default(now())
+
+  session PokerSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  issue   Issue        @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  votes   PokerVote[]
+
+  @@unique([sessionId, issueId])
+  @@index([sessionId])
+}
+
+/// One participant's vote on a single PokerItem. Hidden from other participants
+/// until the item or session is revealed. One vote per user per item; submitting
+/// again overwrites the previous value (updatable via upsert on [itemId, userId]).
+/// `value` is a deck card label: "1","2","3","5","8","13","21","?","☕", etc.
+model PokerVote {
+  id        String   @id @default(cuid())
+  itemId    String
+  userId    String
+  value     String // card label from the deck; see POKER_DECK in packages/shared
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  item PokerItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  user User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([itemId, userId])
+  @@index([itemId])
 }
 
