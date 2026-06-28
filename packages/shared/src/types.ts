@@ -586,6 +586,26 @@ export interface PublicBoardDto {
   issues: IssueDto[];
 }
 
+// ── Saved Filters ─────────────────────────────────────────────────────────────
+
+/**
+ * A saved NLQL filter. Mirrors the SavedFilter table. `projectId` is null for a
+ * cross-project (global) filter; `shared` exposes the filter to other members of
+ * the owning scope (project/workspace) rather than just the owner.
+ */
+export interface SavedFilterDto {
+  id: string;
+  name: string;
+  /** NLQL query string. */
+  query: string;
+  ownerId: string;
+  /** null = the filter is not scoped to a single project. */
+  projectId: string | null;
+  shared: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ── Personal API Tokens (PATs) ───────────────────────────────────────────────
 
 /**
