@@ -6,7 +6,8 @@ import type { CustomFieldValue } from '@next-lane/shared';
 /**
  * Update accepts the same fields as create (minus projectId), but additionally
  * allows `null` on the optional relation/value fields so the client can clear
- * them (e.g. unparent an issue, remove story points, unassign, clear dueDate).
+ * them (e.g. unparent an issue, remove story points, unassign, clear dueDate,
+ * remove component assignment).
  * `ValidateIf` skips the type check when the value is explicitly `null`.
  */
 export class UpdateIssueDto extends PartialType(
@@ -17,6 +18,7 @@ export class UpdateIssueDto extends PartialType(
     'sprintId',
     'storyPoints',
     'dueDate',
+    'componentId',
   ] as const),
 ) {
   @IsOptional()
@@ -46,6 +48,12 @@ export class UpdateIssueDto extends PartialType(
   @ValidateIf((_o, v) => v !== null)
   @IsDateString()
   dueDate?: string | null;
+
+  /** Component id or null to clear the component assignment. */
+  @IsOptional()
+  @ValidateIf((_o, v) => v !== null)
+  @IsString()
+  componentId?: string | null;
 
   /**
    * Partial custom field update. Only the keys present in this object are

@@ -1706,3 +1706,232 @@ describe('IssuesService.bulkUpdate — input guards', () => {
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Component integration: componentId cross-project validation and
+// default-assignee auto-assignment on issue create.
+// ---------------------------------------------------------------------------
+
+const COMP_PROJECT = 'proj-comp';
+const COMP_WORKSPACE = 'ws-comp';
+const COMP_USER = 'user-comp';
+const COMP_COMPONENT_ID = 'comp-1';
+const COMP_OTHER_PROJECT = 'proj-other';
+const COMP_ASSIGNEE_ID = 'user-default-assignee';
+
+function makeCompIssueRow(overrides: Partial<{
+  id: string; assigneeId: string | null; componentId: string | null;
+}> = {}) {
+  return {
+    id: overrides.id ?? 'issue-new',
+    number: 1,
+    projectId: COMP_PROJECT,
+    type: 'TASK',
+    title: 'Test issue',
+    description: null,
+    statusId: 'status-1',
+    assigneeId: overrides.assigneeId ?? null,
+    reporterId: COMP_USER,
+    priority: 'MEDIUM',
+    storyPoints: null,
+    parentId: null,
+    sprintId: null,
+    dueDate: null,
+    rank: 'a0',
+    componentId: overrides.componentId ?? null,
+    createdAt: new Date('2026-01-01T00:00:00.000Z'),
+    updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+    status: { id: 'status-1', name: 'To Do', category: 'TODO', order: 0, projectId: COMP_PROJECT },
+    assignee: null,
+    reporter: null,
+    labels: [],
+    project: { key: 'NL' },
+    _count: { comments: 0 },
+    component: null,
+  };
+}
+
+interface CompTx {
+  project: { update: jest.Mock };
+  status: { findFirst: jest.Mock };
+  issue: { findFirst: jest.Mock; create: jest.Mock };
+  activityLog: { create: jest.Mock };
+}
+
+function makeCompCreatePrisma(opts: {
+  componentProjectId?: string;
+  defaultAssigneeId?: string | null;
+} = {}) {
+  const componentProjectId = opts.componentProjectId ?? COMP_PROJECT;
+  const defaultAssigneeId = opts.defaultAssigneeId ?? null;
+
+  const tx: CompTx = {
+    project: {
+      update: jest.fn().mockResolvedValue({ issueSeq: 1 }),
+    },
+    status: {
+      findFirst: jest.fn().mockResolvedValue({ id: 'status-1', category: 'TODO' }),
+    },
+    issue: {
+      findFirst: jest.fn().mockResolvedValue(null),
+      create: jest.fn().mockImplementation(({ data }: { data: Record<string, unknown> }) =>
+        Promise.resolve(makeCompIssueRow({
+          assigneeId: (data.assigneeId as string | null | undefined) ?? null,
+          componentId: (data.componentId as string | null | undefined) ?? null,
+        })),
+      ),
+    },
+    activityLog: {
+      create: jest.fn().mockResolvedValue({}),
+    },
+  };
+
+  const prisma = {
+    project: {
+      findUnique: jest.fn().mockResolvedValue({
+        id: COMP_PROJECT,
+        workspaceId: COMP_WORKSPACE,
+        workspace: { id: COMP_WORKSPACE },
+      }),
+    },
+    membership: {
+      findUnique: jest.fn().mockResolvedValue({ role: Role.MEMBER }),
+    },
+    component: {
+      findUnique: jest.fn().mockImplementation(({ where }: { where: { id: string } }) => {
+        if (where.id === COMP_COMPONENT_ID) {
+          return Promise.resolve({
+            id: COMP_COMPONENT_ID,
+            projectId: componentProjectId,
+            defaultAssigneeId,
+          });
+        }
+        return Promise.resolve(null);
+      }),
+    },
+    user: {
+      findUnique: jest.fn().mockResolvedValue({ name: 'Actor' }),
+    },
+    $transaction: jest.fn((cb: (t: CompTx) => unknown) => cb(tx)),
+    _tx: tx,
+  };
+
+  return { prisma, tx };
+}
+
+describe('IssuesService.create — componentId validation', () => {
+  it('rejects a componentId that belongs to a different project (BadRequestException)', async () => {
+    const { prisma } = makeCompCreatePrisma({
+      componentProjectId: COMP_OTHER_PROJECT,
+    });
+    const service = new IssuesService(
+      prisma as unknown as PrismaService,
+      { emitToProject: jest.fn() } as unknown as RealtimeService,
+      {} as NotificationsService,
+      webhooksMock,
+      noOpCustomFields,
+      noOpEventEmitter,
+      noOpWorkflow,
+    );
+
+    await expect(
+      service.create(COMP_USER, {
+        projectId: COMP_PROJECT,
+        title: 'Issue',
+        componentId: COMP_COMPONENT_ID,
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('auto-assigns the component defaultAssigneeId when no assigneeId is given', async () => {
+    const { prisma, tx } = makeCompCreatePrisma({
+      componentProjectId: COMP_PROJECT,
+      defaultAssigneeId: COMP_ASSIGNEE_ID,
+    });
+    const realtime = { emitToProject: jest.fn() } as unknown as RealtimeService;
+    const notifications = { notifyAssigned: jest.fn().mockResolvedValue(undefined) } as unknown as NotificationsService;
+    const service = new IssuesService(
+      prisma as unknown as PrismaService,
+      realtime,
+      notifications,
+      webhooksMock,
+      noOpCustomFields,
+      noOpEventEmitter,
+      noOpWorkflow,
+    );
+
+    await service.create(COMP_USER, {
+      projectId: COMP_PROJECT,
+      title: 'Issue',
+      componentId: COMP_COMPONENT_ID,
+      // No assigneeId supplied
+    });
+
+    // The create call should have received the component's defaultAssigneeId.
+    expect(tx.issue.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ assigneeId: COMP_ASSIGNEE_ID }),
+      }),
+    );
+  });
+
+  it('does NOT override an explicitly provided assigneeId with component default', async () => {
+    const EXPLICIT_ASSIGNEE = 'user-explicit';
+    const { prisma, tx } = makeCompCreatePrisma({
+      componentProjectId: COMP_PROJECT,
+      defaultAssigneeId: COMP_ASSIGNEE_ID,
+    });
+    const realtime = { emitToProject: jest.fn() } as unknown as RealtimeService;
+    const notifications = { notifyAssigned: jest.fn().mockResolvedValue(undefined) } as unknown as NotificationsService;
+    const service = new IssuesService(
+      prisma as unknown as PrismaService,
+      realtime,
+      notifications,
+      webhooksMock,
+      noOpCustomFields,
+      noOpEventEmitter,
+      noOpWorkflow,
+    );
+
+    await service.create(COMP_USER, {
+      projectId: COMP_PROJECT,
+      title: 'Issue',
+      componentId: COMP_COMPONENT_ID,
+      assigneeId: EXPLICIT_ASSIGNEE,
+    });
+
+    // The explicit assignee must win; the component default must NOT be used.
+    expect(tx.issue.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ assigneeId: EXPLICIT_ASSIGNEE }),
+      }),
+    );
+  });
+
+  it('does not auto-assign when component has no defaultAssigneeId', async () => {
+    const { prisma, tx } = makeCompCreatePrisma({
+      componentProjectId: COMP_PROJECT,
+      defaultAssigneeId: null,
+    });
+    const realtime = { emitToProject: jest.fn() } as unknown as RealtimeService;
+    const service = new IssuesService(
+      prisma as unknown as PrismaService,
+      realtime,
+      {} as NotificationsService,
+      webhooksMock,
+      noOpCustomFields,
+      noOpEventEmitter,
+      noOpWorkflow,
+    );
+
+    await service.create(COMP_USER, {
+      projectId: COMP_PROJECT,
+      title: 'Issue',
+      componentId: COMP_COMPONENT_ID,
+    });
+
+    // assigneeId should be undefined (not set) since component has no default.
+    const callData = tx.issue.create.mock.calls[0][0].data;
+    expect(callData.assigneeId).toBeUndefined();
+  });
+});

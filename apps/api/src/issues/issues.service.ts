@@ -114,6 +114,7 @@ const listInclude = {
   labels: { include: { label: true } },
   project: { select: { key: true } },
   _count: { select: { comments: true } },
+  component: { select: { id: true, name: true } },
 } satisfies Prisma.IssueInclude;
 
 @Injectable()
@@ -151,6 +152,21 @@ export class IssuesService {
       Role.MEMBER,
     );
     await this.assertAssigneeInWorkspace(project.workspaceId, dto.assigneeId);
+
+    // Validate componentId belongs to the same project (when provided).
+    await this.assertSameProject(dto.projectId, { componentId: dto.componentId });
+
+    // Resolve default assignee from the component when no explicit assignee given.
+    let effectiveAssigneeId = dto.assigneeId;
+    if (dto.componentId != null && effectiveAssigneeId === undefined) {
+      const component = await this.prisma.component.findUnique({
+        where: { id: dto.componentId },
+        select: { defaultAssigneeId: true },
+      });
+      if (component?.defaultAssigneeId) {
+        effectiveAssigneeId = component.defaultAssigneeId;
+      }
+    }
 
     // Validate and normalise custom field values before entering the transaction.
     const issueType = (dto.type ?? IssueType.TASK) as IssueType;
@@ -201,7 +217,7 @@ export class IssuesService {
           title: dto.title,
           description: dto.description,
           statusId,
-          assigneeId: dto.assigneeId,
+          assigneeId: effectiveAssigneeId,
           reporterId: userId,
           priority: dto.priority,
           parentId: dto.parentId,
@@ -209,6 +225,7 @@ export class IssuesService {
           storyPoints: dto.storyPoints,
           dueDate: dto.dueDate ? new Date(dto.dueDate) : undefined,
           rank,
+          componentId: dto.componentId ?? null,
           ...(normalizedCustomFields !== undefined
             ? { customFields: normalizedCustomFields as Prisma.InputJsonValue }
             : {}),
@@ -535,8 +552,8 @@ export class IssuesService {
   /**
    * Reject any referenced id that does not belong to `projectId`. Guards against
    * a member of one project attaching their issue to another project's
-   * status/sprint/parent (or reordering against a foreign issue), which would
-   * corrupt foreign boards and leak their rank ordering.
+   * status/sprint/parent/component (or reordering against a foreign issue), which
+   * would corrupt foreign boards and leak their rank ordering.
    */
   private async assertSameProject(
     projectId: string,
@@ -545,6 +562,7 @@ export class IssuesService {
       sprintId?: string | null;
       parentId?: string | null;
       issueId?: string | null;
+      componentId?: string | null;
     },
   ): Promise<void> {
     const checks: Array<Promise<void>> = [];
@@ -603,6 +621,21 @@ export class IssuesService {
             if (!neighbor || neighbor.projectId !== projectId) {
               throw new BadRequestException(
                 'neighbor issue does not belong to this project',
+              );
+            }
+          }),
+      );
+    }
+
+    if (refs.componentId != null) {
+      const componentId = refs.componentId;
+      checks.push(
+        this.prisma.component
+          .findUnique({ where: { id: componentId }, select: { projectId: true } })
+          .then((component) => {
+            if (!component || component.projectId !== projectId) {
+              throw new BadRequestException(
+                'componentId does not belong to this project',
               );
             }
           }),
@@ -687,6 +720,7 @@ export class IssuesService {
       statusId: dto.statusId,
       sprintId: dto.sprintId,
       parentId: dto.parentId,
+      componentId: dto.componentId,
     });
     await this.assertAssigneeInWorkspace(project.workspaceId, dto.assigneeId);
 
@@ -814,6 +848,10 @@ export class IssuesService {
               : dto.dueDate === null
                 ? null
                 : new Date(dto.dueDate),
+          // componentId: undefined = no-op; null = clear; string = set new component
+          ...(dto.componentId !== undefined
+            ? { componentId: dto.componentId }
+            : {}),
           // customFields: undefined = no-op; merged object = replace stored JSON
           ...(mergedCustomFields !== undefined
             ? { customFields: mergedCustomFields }

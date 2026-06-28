@@ -129,8 +129,40 @@ export interface IssueDto {
    * custom fields.
    */
   customFields?: Record<string, CustomFieldValue>;
+  /** Component this issue belongs to. Null means no component assigned. */
+  componentId: string | null;
+  /** Lightweight component summary for board cards and the drawer. */
+  component?: { id: string; name: string } | null;
   createdAt: string;
   updatedAt: string;
+}
+
+// ---------------------------------------------------------------------------
+// Components
+// ---------------------------------------------------------------------------
+
+/** A project-scoped component (area) grouping issues together. */
+export interface ComponentDto {
+  id: string;
+  projectId: string;
+  name: string;
+  description: string | null;
+  defaultAssignee: UserDto | null;
+  createdAt: string;
+}
+
+/** Body for POST /projects/:projectId/components */
+export interface CreateComponentDto {
+  name: string;
+  description?: string;
+  defaultAssigneeId?: string | null;
+}
+
+/** Body for PATCH /components/:id */
+export interface UpdateComponentDto {
+  name?: string;
+  description?: string | null;
+  defaultAssigneeId?: string | null;
 }
 
 /** A single custom field value. Shape depends on the field's type. */

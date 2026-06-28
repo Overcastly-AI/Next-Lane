@@ -30,6 +30,7 @@ export interface IssueWithRelations {
   sprintId: string | null;
   dueDate: Date | null;
   rank: string;
+  componentId: string | null;
   /** Raw JSONB from Prisma — typed as Prisma.JsonValue but we treat it as Record. */
   customFields?: Prisma.JsonValue | null;
   createdAt: Date;
@@ -69,6 +70,7 @@ export interface IssueWithRelations {
   _count?: { comments: number } | null;
   parent?: IssueRef | null;
   children?: IssueRef[];
+  component?: { id: string; name: string } | null;
 }
 
 /** Subset of an Issue row sufficient to build an IssueRefDto. */
@@ -127,6 +129,7 @@ export function toIssueDto(issue: IssueWithRelations): IssueDto {
     sprintId: issue.sprintId,
     dueDate: issue.dueDate ? issue.dueDate.toISOString() : null,
     rank: issue.rank,
+    componentId: issue.componentId,
     createdAt: issue.createdAt.toISOString(),
     updatedAt: issue.updatedAt.toISOString(),
   };
@@ -141,6 +144,10 @@ export function toIssueDto(issue: IssueWithRelations): IssueDto {
   if (issue.parent !== undefined)
     dto.parent = issue.parent ? toIssueRefDto(issue.parent) : null;
   if (issue.children) dto.children = issue.children.map(toIssueRefDto);
+  if (issue.component !== undefined)
+    dto.component = issue.component
+      ? { id: issue.component.id, name: issue.component.name }
+      : null;
 
   // Expose customFields when the column is present on the row. The stored JSON
   // is already keyed by CustomFieldDefinition.id with typed values. We cast

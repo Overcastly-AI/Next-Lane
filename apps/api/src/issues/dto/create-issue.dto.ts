@@ -62,6 +62,15 @@ export class CreateIssueDto {
   dueDate?: string;
 
   /**
+   * Component to assign this issue to. Must belong to the same project.
+   * When provided and no assigneeId is given, the component's defaultAssigneeId
+   * is used as the initial assignee (if set).
+   */
+  @IsOptional()
+  @IsString()
+  componentId?: string;
+
+  /**
    * Custom field values keyed by CustomFieldDefinition.id. Each value is
    * validated against the definition in the service layer (type, options,
    * appliesToTypes). Unknown keys are rejected.

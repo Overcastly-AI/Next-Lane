@@ -402,6 +402,7 @@ describe('PersonalBoardsService', () => {
       sprintId: null,
       dueDate: null,
       rank: 'a0',
+      componentId: null,
       createdAt: new Date('2026-01-01').toISOString(),
       updatedAt: new Date('2026-01-01').toISOString(),
     };
