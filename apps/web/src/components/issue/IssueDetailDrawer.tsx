@@ -28,6 +28,7 @@ import { ParentSubtasks } from './ParentSubtasks';
 import { CommentsPanel } from './CommentsPanel';
 import { ActivityPanel } from './ActivityPanel';
 import { AttachmentsPanel } from './AttachmentsPanel';
+import { CustomFieldsDrawerSection } from './CustomFieldsDrawerSection';
 
 /** Common agile estimate values offered in the Story Points select. */
 const STORY_POINT_VALUES = [1, 2, 3, 5, 8, 13] as const;
@@ -466,6 +467,14 @@ function DrawerBody({
               editable={editable}
               onPatch={onPatch}
               onOpenIssue={onOpenIssue}
+            />
+
+            <CustomFieldsDrawerSection
+              issueId={issue.id}
+              projectId={projectId}
+              issueType={issue.type}
+              currentValues={issue.customFields}
+              editable={editable}
             />
 
             <div className="border-t border-slate-100 pt-3 text-xs text-slate-400">

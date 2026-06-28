@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   rankBetween,
   type BoardDto,
+  type CustomFieldValue,
   type IssueDto,
   type IssueType,
   type PaginatedIssuesDto,
@@ -92,6 +93,8 @@ export interface CreateIssueInput {
   description?: string;
   /** Assign the new issue to a sprint on creation (e.g. inline backlog/sprint create). */
   sprintId?: string | null;
+  /** Custom field values to set on creation, keyed by definition id. */
+  customFields?: Record<string, CustomFieldValue>;
 }
 
 export function useCreateIssue(projectId: string, boardId?: string) {
@@ -133,6 +136,8 @@ export interface UpdateIssueInput {
     labelIds: string[];
     /** ISO 8601 date string or null to clear the due date. */
     dueDate: string | null;
+    /** Custom field partial merge — only provided keys change, null clears. */
+    customFields: Record<string, CustomFieldValue>;
   }>;
 }
 

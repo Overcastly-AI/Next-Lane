@@ -17,6 +17,9 @@ import { useCreateIssue } from '@/api/issues';
 import { ApiError } from '@/api/client';
 import { useToast } from '@/components/ui/Toast';
 import { titleCase } from '@/components/issue/issueMeta';
+import { useCustomFields } from '@/api/custom-fields';
+import type { CustomFieldValue } from '@/api/custom-fields';
+import { CustomFieldInput } from '@/components/issue/CustomFieldInput';
 
 export function CreateIssueModal({
   open,
@@ -38,6 +41,7 @@ export function CreateIssueModal({
   boardId?: string;
 }) {
   const create = useCreateIssue(projectId, boardId);
+  const customFieldsQuery = useCustomFields(projectId);
   const toast = useToast();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -46,12 +50,21 @@ export function CreateIssueModal({
   const [statusId, setStatusId] = useState('');
   const [assigneeId, setAssigneeId] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [customFieldValues, setCustomFieldValues] = useState<
+    Record<string, CustomFieldValue>
+  >({});
 
   useEffect(() => {
     if (open) {
       setStatusId(defaultStatusId ?? statuses[0]?.id ?? '');
     }
   }, [open, defaultStatusId, statuses]);
+
+  // Derive applicable custom fields based on selected type.
+  const allFields = customFieldsQuery.data ?? [];
+  const applicableFields = allFields.filter(
+    (f) => f.appliesToTypes.length === 0 || f.appliesToTypes.includes(type),
+  );
 
   function reset() {
     setTitle('');
@@ -60,6 +73,7 @@ export function CreateIssueModal({
     setPriority(Priority.MEDIUM);
     setAssigneeId('');
     setError(null);
+    setCustomFieldValues({});
   }
 
   function handleClose() {
@@ -67,10 +81,22 @@ export function CreateIssueModal({
     onClose();
   }
 
+  function handleCustomFieldChange(fieldId: string, value: CustomFieldValue) {
+    setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }));
+  }
+
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
     try {
+      // Build the custom fields payload: only include fields with non-null values.
+      const cfPayload: Record<string, CustomFieldValue> = {};
+      for (const [id, val] of Object.entries(customFieldValues)) {
+        if (val !== null && val !== undefined) {
+          cfPayload[id] = val;
+        }
+      }
+
       const issue = await create.mutateAsync({
         projectId,
         title: title.trim(),
@@ -79,6 +105,7 @@ export function CreateIssueModal({
         statusId: statusId || undefined,
         assigneeId: assigneeId || null,
         description: description.trim() || undefined,
+        customFields: Object.keys(cfPayload).length > 0 ? cfPayload : undefined,
       });
       reset();
       onClose();
@@ -187,6 +214,24 @@ export function CreateIssueModal({
             </Select>
           </Field>
         </div>
+
+        {/* Custom fields for the selected issue type */}
+        {applicableFields.length > 0 && (
+          <div className="space-y-3 border-t border-slate-100 pt-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Custom fields
+            </p>
+            {applicableFields.map((field) => (
+              <CustomFieldInput
+                key={field.id}
+                definition={field}
+                value={customFieldValues[field.id] ?? null}
+                onChange={(val) => handleCustomFieldChange(field.id, val)}
+              />
+            ))}
+          </div>
+        )}
+
         {error && (
           <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
             {error}
