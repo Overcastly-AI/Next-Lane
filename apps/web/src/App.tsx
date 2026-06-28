@@ -28,6 +28,7 @@ import { SharedBoardPage } from '@/pages/SharedBoardPage';
 import { WorkspaceMembersPage } from '@/pages/WorkspaceMembersPage';
 import { PokerStartPage } from '@/pages/PokerStartPage';
 import { PokerSessionPage } from '@/pages/PokerSessionPage';
+import { StandupsPage } from '@/pages/StandupsPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -134,6 +135,14 @@ export default function App() {
               element={
                 <RequireAuth>
                   <WorkspaceAuditLogPage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/projects/:projectId/standups"
+              element={
+                <RequireAuth>
+                  <StandupsPage />
                 </RequireAuth>
               }
             />

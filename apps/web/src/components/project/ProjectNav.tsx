@@ -16,6 +16,7 @@ export function ProjectNav({ projectId }: { projectId: string }) {
     { to: `/projects/${projectId}/reports`, label: 'Reports' },
     { to: `/projects/${projectId}/roadmap`, label: 'Roadmap' },
     { to: `/projects/${projectId}/poker`, label: 'Poker' },
+    { to: `/projects/${projectId}/standups`, label: 'Standup' },
     { to: `/projects/${projectId}/settings`, label: 'Settings' },
   ];
   return (
