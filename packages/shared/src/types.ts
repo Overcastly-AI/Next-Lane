@@ -9,6 +9,9 @@ import type {
   CustomFieldType,
   PokerState,
   IssueLinkType,
+  AutomationTrigger,
+  AutomationActionType,
+  AutomationRunStatus,
 } from './enums';
 
 /** API DTO shapes shared between server and client. These mirror Prisma models
@@ -909,4 +912,66 @@ export interface PokerSessionDto {
   updatedAt: string;
   /** Items belonging to this session. Present only when loaded with items. */
   items?: PokerItemDto[];
+}
+
+// ---------------------------------------------------------------------------
+// Automation engine
+// ---------------------------------------------------------------------------
+
+/**
+ * One action in an automation rule. `type` selects the behaviour; `params`
+ * carries the type-specific configuration (validated server-side). See
+ * `AutomationActionType` for the per-type param shapes.
+ */
+export interface AutomationActionDto {
+  type: AutomationActionType;
+  params: Record<string, unknown>;
+}
+
+/**
+ * A project-scoped automation rule: when `trigger` fires and the optional
+ * NLQL `condition` matches the issue, the ordered `actions` run. `condition`
+ * is null for an unconditional rule.
+ */
+export interface AutomationRuleDto {
+  id: string;
+  projectId: string;
+  name: string;
+  description: string | null;
+  enabled: boolean;
+  trigger: AutomationTrigger;
+  condition: string | null;
+  actions: AutomationActionDto[];
+  /** Evaluation order within the project (ascending). */
+  order: number;
+  createdById: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** A single thing an automation actually did, for the run audit trail. */
+export interface AutomationRunActionDto {
+  type: string;
+  detail: string;
+}
+
+/**
+ * One Glass Box audit entry: the record of a rule being evaluated against a
+ * single event. `matched` is whether the condition passed; `status` is the
+ * overall outcome; `actionsApplied` enumerates what happened.
+ */
+export interface AutomationRunDto {
+  id: string;
+  ruleId: string;
+  /** Denormalized for the run-history view; present when loaded with the rule. */
+  ruleName?: string;
+  issueId: string | null;
+  /** Denormalized issue key (e.g. "NL-42"); present when resolvable. */
+  issueKey?: string | null;
+  trigger: AutomationTrigger;
+  matched: boolean;
+  status: AutomationRunStatus;
+  actionsApplied: AutomationRunActionDto[];
+  error: string | null;
+  createdAt: string;
 }

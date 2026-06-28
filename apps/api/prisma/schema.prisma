@@ -5,8 +5,8 @@
 // add_planning_poker — applied 2026-06-28.
 // add_standups — applied 2026-06-28.
 // add_personal_boards — applied 2026-06-28.
+// add_automation_engine — applied 2026-06-28.
 // Deferred to feature slices (do not add here without a feature branch):
-//   - AutomationRule / AutomationRun (Phase 7)
 //   - ScmConnection / IssueExternalLink / pgvector embedding column (Phase 9 / Phase 6)
 //   - WorkflowTransition (Phase 2 remaining / Phase 5)
 
@@ -104,6 +104,30 @@ enum PokerState {
   CLOSED
 }
 
+/// The event that triggers an AutomationRule evaluation.
+/// ISSUE_CREATED      — a new issue was opened in the project.
+/// ISSUE_UPDATED      — any field on an existing issue changed.
+/// ISSUE_TRANSITIONED — the issue's status moved (subset of UPDATED, but
+///                      surfaced separately because transition-based rules
+///                      are the most common automation pattern).
+/// ISSUE_COMMENTED    — a comment was posted on the issue.
+enum AutomationTrigger {
+  ISSUE_CREATED
+  ISSUE_UPDATED
+  ISSUE_TRANSITIONED
+  ISSUE_COMMENTED
+}
+
+/// The outcome of a single AutomationRule run.
+/// SUCCESS — all actions executed without error.
+/// SKIPPED — the NLQL condition evaluated to false (no actions were run).
+/// FAILED  — one or more actions threw an error; see AutomationRun.error.
+enum AutomationRunStatus {
+  SUCCESS
+  SKIPPED
+  FAILED
+}
+
 // ---------------------------------------------------------------------------
 // Core entities
 // ---------------------------------------------------------------------------
@@ -158,6 +182,9 @@ model User {
   // Personal boards
   personalColumns PersonalColumn[]
   personalCards   PersonalCard[]
+
+  // Automation engine
+  automationRulesCreated AutomationRule[]
 }
 
 // Personal API Token (PAT) for scripting / CI access to the REST API.
@@ -262,6 +289,9 @@ model Project {
 
   // Async standups
   standupEntries         StandupEntry[]
+
+  // Automation engine
+  automationRules        AutomationRule[]
 
   @@unique([workspaceId, key])
   @@index([workspaceId])
@@ -543,6 +573,9 @@ model Issue {
 
   // Personal boards — cards promoted to this issue
   promotedPersonalCards PersonalCard[]
+
+  // Automation engine — run history for this issue
+  automationRuns        AutomationRun[]
 
   @@unique([projectId, number])
   @@index([projectId, statusId])
@@ -972,5 +1005,86 @@ model PersonalCard {
 
   @@index([userId])
   @@index([columnId, rank])
+}
+
+// ---------------------------------------------------------------------------
+// Automation Engine — "Glass Box" rules (Phase 7)
+// ---------------------------------------------------------------------------
+
+/// A project-scoped rule that reacts to an issue event, evaluates an optional
+/// NLQL condition, and executes an ordered list of actions.
+///
+/// `trigger`   — the domain event that causes this rule to be evaluated.
+/// `condition` — an NLQL expression evaluated against the triggering issue.
+///               NULL means "always match" (unconditional rule).
+/// `actions`   — an ordered JSON array of action descriptors, e.g.:
+///               [{"type":"SET_STATUS","statusId":"<id>"},
+///                {"type":"ASSIGN","assigneeId":"<id>"}]
+///               Validated and executed by the automation service; stored as
+///               opaque JSONB so referenced entity IDs (status, assignee,
+///               label, etc.) survive independent of hard FK constraints.
+///               Deleting a referenced user/label/status will not cascade-
+///               delete the rule — the action will simply fail at runtime and
+///               the AutomationRun will record FAILED with an error message.
+/// `order`     — evaluation priority within the project; lower = first.
+/// `createdById` — nullable so deleting a user does not destroy the rule;
+///               displays as "Deleted User" in the UI.
+model AutomationRule {
+  id          String            @id @default(cuid())
+  projectId   String
+  name        String
+  description String?
+  enabled     Boolean           @default(true)
+  trigger     AutomationTrigger
+  condition   String?           // NLQL expression; null = unconditional
+  actions     Json              // ordered array of {type, ...params}
+  order       Int               @default(0)
+  createdById String?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  project   Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy User?            @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  runs      AutomationRun[]
+
+  // Fast lookup when an event fires: filter by project + enabled + trigger.
+  @@index([projectId, enabled])
+  @@index([projectId, trigger])
+  @@index([createdById])
+}
+
+/// Immutable audit trail entry for a single AutomationRule evaluation.
+///
+/// `issueId`        — FK to the Issue that triggered the run. SetNull (not
+///                    Cascade) is intentional: the audit history is valuable
+///                    even after the issue is deleted (compliance, debugging).
+///                    The run record survives; issueId becomes null.
+/// `trigger`        — snapshot of the trigger at run time (matches the rule's
+///                    trigger at the time of firing; denormalised for query
+///                    convenience without a join to AutomationRule).
+/// `matched`        — true if the NLQL condition passed (or was absent).
+///                    false means SKIPPED (no actions executed).
+/// `actionsApplied` — ordered array of action results, e.g.:
+///                    [{"type":"SET_STATUS","detail":"done","ok":true}]
+///                    Populated even on partial success so operators can see
+///                    exactly what ran and what failed.
+/// `error`          — human-readable error detail when status = FAILED.
+model AutomationRun {
+  id             String               @id @default(cuid())
+  ruleId         String
+  issueId        String?              // nullable: SetNull when the issue is deleted
+  trigger        AutomationTrigger
+  matched        Boolean              // did the condition evaluate to true?
+  status         AutomationRunStatus
+  actionsApplied Json                 // [{type, detail, ok}, ...]
+  error          String?              // non-null only when status = FAILED
+  createdAt      DateTime             @default(now())
+
+  rule  AutomationRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  issue Issue?         @relation(fields: [issueId], references: [id], onDelete: SetNull)
+
+  // Run-history viewers: filter by rule or issue, sorted most-recent-first.
+  @@index([ruleId, createdAt])
+  @@index([issueId, createdAt])
 }
 

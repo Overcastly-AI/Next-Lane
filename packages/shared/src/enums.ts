@@ -143,3 +143,65 @@ export const POKER_DECK = [
 ] as const;
 
 export type PokerCard = (typeof POKER_DECK)[number];
+
+/**
+ * The issue lifecycle events an automation rule can react to. Mirrors the
+ * Prisma `AutomationTrigger` enum and the seams in the issue/comment services.
+ */
+export enum AutomationTrigger {
+  ISSUE_CREATED = 'ISSUE_CREATED',
+  ISSUE_UPDATED = 'ISSUE_UPDATED',
+  ISSUE_TRANSITIONED = 'ISSUE_TRANSITIONED',
+  ISSUE_COMMENTED = 'ISSUE_COMMENTED',
+}
+
+export const AUTOMATION_TRIGGERS = Object.values(AutomationTrigger);
+
+export const AUTOMATION_TRIGGER_LABELS: Record<AutomationTrigger, string> = {
+  [AutomationTrigger.ISSUE_CREATED]: 'Issue created',
+  [AutomationTrigger.ISSUE_UPDATED]: 'Issue updated',
+  [AutomationTrigger.ISSUE_TRANSITIONED]: 'Issue changes status',
+  [AutomationTrigger.ISSUE_COMMENTED]: 'Comment added',
+};
+
+/**
+ * The things an automation rule can do when it fires. Each action carries a
+ * small `params` object whose shape depends on the type (validated server-side):
+ *  - ASSIGN            → { assigneeId: string | null }   (null = unassign)
+ *  - SET_PRIORITY      → { priority: Priority }
+ *  - TRANSITION        → { statusId: string }
+ *  - ADD_LABEL         → { labelId: string }
+ *  - ADD_COMMENT       → { body: string }
+ *  - SET_CUSTOM_FIELD  → { fieldId: string, value: unknown }
+ */
+export enum AutomationActionType {
+  ASSIGN = 'ASSIGN',
+  SET_PRIORITY = 'SET_PRIORITY',
+  TRANSITION = 'TRANSITION',
+  ADD_LABEL = 'ADD_LABEL',
+  ADD_COMMENT = 'ADD_COMMENT',
+  SET_CUSTOM_FIELD = 'SET_CUSTOM_FIELD',
+}
+
+export const AUTOMATION_ACTION_TYPES = Object.values(AutomationActionType);
+
+export const AUTOMATION_ACTION_LABELS: Record<AutomationActionType, string> = {
+  [AutomationActionType.ASSIGN]: 'Assign to',
+  [AutomationActionType.SET_PRIORITY]: 'Set priority',
+  [AutomationActionType.TRANSITION]: 'Move to status',
+  [AutomationActionType.ADD_LABEL]: 'Add label',
+  [AutomationActionType.ADD_COMMENT]: 'Add comment',
+  [AutomationActionType.SET_CUSTOM_FIELD]: 'Set custom field',
+};
+
+/** Outcome of a single automation rule evaluation against one event. */
+export enum AutomationRunStatus {
+  /** Condition matched and all actions applied. */
+  SUCCESS = 'SUCCESS',
+  /** Condition did not match; no actions taken. */
+  SKIPPED = 'SKIPPED',
+  /** Condition matched but one or more actions threw. */
+  FAILED = 'FAILED',
+}
+
+export const AUTOMATION_RUN_STATUSES = Object.values(AutomationRunStatus);
