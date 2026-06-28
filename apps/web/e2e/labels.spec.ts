@@ -29,8 +29,10 @@ test.describe('Labels management & filtering', () => {
     await createAndOpenIssue(page, title);
 
     // Open the label picker popover and toggle the seeded "feature" label on.
+    // Use exact: true so only the Labels "Edit" button matches (the description
+    // Edit button has aria-label="Edit description" and is excluded).
     const drawer = page.getByRole('dialog', { name: /.*/ }).last();
-    await page.getByRole('button', { name: 'Edit' }).click();
+    await page.getByRole('button', { name: 'Edit', exact: true }).click();
     const picker = page.getByRole('dialog', { name: 'Edit labels' });
     await expect(picker).toBeVisible();
     await picker
@@ -73,7 +75,7 @@ test.describe('Labels management & filtering', () => {
     await createAndOpenIssue(page, taggedTitle);
 
     // Create a brand-new label from the picker.
-    await page.getByRole('button', { name: 'Edit' }).click();
+    await page.getByRole('button', { name: 'Edit', exact: true }).click();
     const picker = page.getByRole('dialog', { name: 'Edit labels' });
     await picker.getByRole('button', { name: 'New label' }).click();
     await picker.getByLabel('New label name').fill(labelName);

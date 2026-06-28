@@ -43,12 +43,17 @@ async function requestResetToken(
   // from your email provider. Here we parse the log file path that the
   // dev-up-instance.sh script writes to.
   //
-  // The API log path depends on how it was started: the main env (port 4000)
-  // logs to /tmp/nl-api.log; per-instance envs (port 400N) log to
-  // /tmp/nl-api-i<N>.log. Try both so the spec passes under either harness.
+  // The API log path depends on how it was started:
+  //   CI (e2e.yml): API stdout → $RUNNER_TEMP/api.log → set PW_API_LOG env var.
+  //   Local dev-up-instance.sh: port 4000 → /tmp/nl-api.log; port 400N → /tmp/nl-api-i<N>.log.
+  // Try all candidates so the spec passes under any harness.
   const port = new URL(API_URL).port;
   const n = String(Number(port) - 4000);
-  const candidatePaths = [`/tmp/nl-api-i${n}.log`, '/tmp/nl-api.log'];
+  const candidatePaths = [
+    process.env.PW_API_LOG,              // CI: set by e2e.yml via PW_API_LOG
+    `/tmp/nl-api-i${n}.log`,             // local per-instance
+    '/tmp/nl-api.log',                   // local main instance
+  ].filter(Boolean) as string[];
 
   // Read the log file directly from the test runner (same machine as the API).
   const { readFileSync, existsSync } = await import('fs');

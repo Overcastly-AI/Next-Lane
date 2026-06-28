@@ -35,6 +35,7 @@ const STORY_POINT_VALUES = [1, 2, 3, 5, 8, 13] as const;
 export function IssueDetailDrawer({
   issueId,
   projectId,
+  boardId,
   statuses,
   users,
   editable = true,
@@ -44,6 +45,8 @@ export function IssueDetailDrawer({
 }: {
   issueId: string;
   projectId: string;
+  /** Pass the active boardId so label/status mutations invalidate the boardView cache. */
+  boardId?: string;
   statuses: StatusDto[];
   users: UserDto[];
   /** When false (VIEWER), all edit controls are hidden/disabled. */
@@ -104,6 +107,7 @@ export function IssueDetailDrawer({
           <DrawerBody
             issue={issueQuery.data}
             projectId={projectId}
+            boardId={boardId}
             statuses={statuses}
             users={users}
             editable={editable}
@@ -148,6 +152,7 @@ export function IssueDetailDrawer({
 function DrawerBody({
   issue,
   projectId,
+  boardId,
   statuses,
   users,
   editable,
@@ -161,6 +166,7 @@ function DrawerBody({
 }: {
   issue: IssueDto;
   projectId: string;
+  boardId?: string;
   statuses: StatusDto[];
   users: UserDto[];
   editable: boolean;
@@ -250,6 +256,7 @@ function DrawerBody({
                 {editable && !descriptionEditing && (
                   <button
                     type="button"
+                    aria-label="Edit description"
                     onClick={() => setDescriptionEditing(true)}
                     className="text-xs font-medium text-slate-400 transition-colors hover:text-brand-600 focus:outline-none"
                   >
@@ -449,6 +456,7 @@ function DrawerBody({
             <LabelPicker
               issue={issue}
               projectId={projectId}
+              boardId={boardId}
               editable={editable}
             />
 

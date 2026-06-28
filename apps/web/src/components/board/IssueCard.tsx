@@ -61,6 +61,7 @@ export const IssueCard = forwardRef<HTMLDivElement, IssueCardProps>(
     return (
       <div
         ref={ref}
+        data-testid="issue-card"
         className={cn(
           'group rounded-md border border-slate-200 bg-white p-3 shadow-card',
           'transition-all duration-150',

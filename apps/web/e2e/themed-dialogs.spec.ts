@@ -65,11 +65,12 @@ test.describe('Themed dialogs', () => {
     await expect(page.getByText(title).first()).toBeVisible();
 
     // Click Delete in the drawer header -> a themed confirmation dialog opens
-    // (not window.confirm). The drawer aside is also role="dialog", so scope the
-    // confirmation modal by its unique body copy.
+    // (not window.confirm). ConfirmDialog uses role="alertdialog" (ARIA spec for
+    // destructive confirmations), so scope by that to distinguish it from the
+    // issue drawer (role="dialog").
     await page.getByRole('button', { name: 'Delete', exact: true }).click();
     const confirmModal = page
-      .getByRole('dialog')
+      .getByRole('alertdialog')
       .filter({ hasText: /cannot be undone/i });
     await expect(confirmModal).toBeVisible();
 

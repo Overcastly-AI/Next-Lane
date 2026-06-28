@@ -595,6 +595,7 @@ export function BoardPage() {
         <IssueDetailDrawer
           issueId={openIssueId}
           projectId={projectId}
+          boardId={selectedBoardId ?? undefined}
           statuses={statuses}
           users={users}
           editable={editable}

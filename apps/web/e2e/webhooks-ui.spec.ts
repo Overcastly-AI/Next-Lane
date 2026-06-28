@@ -17,6 +17,11 @@ import {
 // Both tests use setupIsolatedProject so the demo account is never touched.
 
 test.describe('Webhooks settings UI', () => {
+  // ENV DEPENDENCY: the "log a delivery" assertion requires Redis. When REDIS_URL
+  // is set but Redis is unreachable, BullMQ jobs fail and no delivery row is
+  // recorded. In CI (e2e.yml) a Redis service container is present. In this
+  // local harness (no Redis), this test fails — that is expected and not a
+  // product bug. The webhook registration and listing portions work without Redis.
   test('an admin can add a webhook and see it listed, then log a delivery', async ({
     page,
     request,

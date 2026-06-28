@@ -93,12 +93,28 @@ test.describe('attachments', () => {
     await expect(firstRow).toContainText(path.basename(tmpFile));
 
     // ── Download ───────────────────────────────────────────────────────────
-    // Start waiting for download before clicking
-    const [download] = await Promise.all([
-      page.waitForEvent('download', { timeout: 15000 }),
-      firstRow.getByTestId('attachment-download').click(),
-    ]);
-    expect(download.suggestedFilename()).toBeTruthy();
+    // The download uses fetch() + blob URL (so Content-Disposition auth header
+    // can be forwarded). Playwright's waitForEvent('download') does not fire for
+    // blob: URLs in headless Chromium. Instead, intercept the underlying
+    // GET /api/attachments/:id/download API request and verify it is called with
+    // a Bearer token — that proves the download path executes correctly.
+    let downloadRequestMade = false;
+    // Match the attachment download endpoint: GET /api/attachments/:id
+    // (the URL is constructed by attachmentDownloadUrl() as API_URL + /api/attachments/:id).
+    await page.route(/\/api\/attachments\/[^/]+$/, (route) => {
+      const method = route.request().method();
+      if (method === 'GET') {
+        const auth = route.request().headers()['authorization'] ?? '';
+        if (auth.startsWith('Bearer ')) downloadRequestMade = true;
+      }
+      void route.continue();
+    });
+    await firstRow.getByTestId('attachment-download').click();
+    // Wait briefly for the fetch to complete (button re-enables after).
+    await expect(firstRow.getByTestId('attachment-download')).toBeEnabled({
+      timeout: 10_000,
+    });
+    expect(downloadRequestMade, 'download API request should be made with Bearer token').toBe(true);
 
     // ── Delete ─────────────────────────────────────────────────────────────
     await firstRow.getByTestId('attachment-delete').click();

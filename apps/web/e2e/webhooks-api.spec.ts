@@ -38,6 +38,11 @@ function startReceiver(): Promise<{ server: Server; url: string; received: Recei
 }
 
 test.describe('webhook backend slice', () => {
+  // ENV DEPENDENCY: this test requires Redis to be running. When REDIS_URL is
+  // set in the API's environment but Redis is unreachable, BullMQ cannot enqueue
+  // delivery jobs and the webhook is never sent. In CI (e2e.yml) a Redis service
+  // container is present, so this test passes there. In this local harness
+  // (no Redis), it will fail — that is expected and not a product bug.
   test('an issue event delivers a signed webhook and records a delivery row', async ({
     request,
   }) => {

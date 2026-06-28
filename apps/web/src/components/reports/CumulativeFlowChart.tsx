@@ -205,7 +205,7 @@ function LegendSwatch({ color, label }: { color: string; label: string }) {
   return (
     <div className="flex items-center gap-1.5">
       <span className={`inline-block h-2.5 w-2.5 rounded-sm ${color}`} />
-      <span className="text-xs text-slate-500">{label}</span>
+      <span className="text-xs text-slate-500" data-testid="cfd-legend-item">{label}</span>
     </div>
   );
 }

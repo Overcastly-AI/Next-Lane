@@ -37,15 +37,18 @@ const SWATCHES = [
 export function LabelPicker({
   issue,
   projectId,
+  boardId,
   editable = true,
 }: {
   issue: IssueDto;
   projectId: string;
+  /** Pass the active boardId so the boardView cache is invalidated on toggle. */
+  boardId?: string;
   /** When false (VIEWER), the label chips are read-only (no Edit popover). */
   editable?: boolean;
 }) {
   const labelsQuery = useLabels(projectId);
-  const toggle = useToggleIssueLabel(projectId);
+  const toggle = useToggleIssueLabel(projectId, boardId);
   const toast = useToast();
 
   const [open, setOpen] = useState(false);

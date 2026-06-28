@@ -41,8 +41,9 @@ test.describe('Issue detail', () => {
     const editedItem = page.getByRole('listitem').filter({ hasText: edited });
     await editedItem.hover();
     await editedItem.getByRole('button', { name: 'Delete', exact: true }).click();
+    // ConfirmDialog uses role="alertdialog" (the ARIA role for destructive confirmations).
     const confirm = page
-      .getByRole('dialog')
+      .getByRole('alertdialog')
       .filter({ hasText: 'Delete comment' });
     await expect(confirm).toBeVisible();
     await confirm.getByRole('button', { name: 'Delete', exact: true }).click();
@@ -67,7 +68,10 @@ test.describe('Issue detail', () => {
     await card.click();
 
     // Change the status via the drawer's Status select, which logs activity.
-    const statusSelect = page.getByLabel('Status');
+    // Scope to the drawer (last dialog) to avoid matching the card's status
+    // button whose aria-label also starts with "Status:".
+    const drawer = page.getByRole('dialog').last();
+    const statusSelect = drawer.locator('#d-status');
     await expect(statusSelect).toBeVisible();
     await statusSelect.selectOption({ label: 'In Progress' });
 

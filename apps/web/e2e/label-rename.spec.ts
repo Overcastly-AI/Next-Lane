@@ -232,7 +232,9 @@ test.describe('Label rename / edit — desktop', () => {
     await expect(page).toHaveURL(/issue=/, { timeout: 15_000 });
     const drawer = page.getByRole('dialog').last();
     await expect(drawer).toBeVisible({ timeout: 10_000 });
-    await drawer.getByRole('button', { name: 'Edit' }).first().click();
+    // 'Edit' (exact) resolves to the Labels "Edit" button — the description
+    // edit button has aria-label="Edit description" and is excluded.
+    await drawer.getByRole('button', { name: 'Edit', exact: true }).click();
 
     const picker = page.getByRole('dialog', { name: 'Edit labels' });
     await expect(picker).toBeVisible({ timeout: 10_000 });

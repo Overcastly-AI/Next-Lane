@@ -115,9 +115,9 @@ test.describe('Reports', () => {
     // Legend labels for all three categories must be visible.
     // Scope to the section via aria-labelledby to avoid matching SVG tooltip text.
     const cfdSection = page.locator('section[aria-labelledby="cfd-heading"]');
-    // The legend spans have class text-xs and text-gray-500; match by role or
-    // class to exclude the SVG <title> elements which are not visible text nodes.
-    const legendItems = cfdSection.locator('.text-xs.text-gray-500');
+    // Use data-testid="cfd-legend-item" (set on LegendSwatch span) — stable
+    // across design-system color/class changes.
+    const legendItems = cfdSection.getByTestId('cfd-legend-item');
     await expect(legendItems.filter({ hasText: 'Done' })).toBeVisible();
     await expect(legendItems.filter({ hasText: 'In Progress' })).toBeVisible();
     await expect(legendItems.filter({ hasText: 'To Do' })).toBeVisible();

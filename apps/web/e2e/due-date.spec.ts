@@ -36,7 +36,8 @@ test.describe('Due date', () => {
     await page.getByRole('button', { name: 'Close' }).click();
 
     // The date chip should now appear on the card.
-    const card = page.locator('[class*="rounded-lg"]').filter({ hasText: title });
+    // Use data-testid="issue-card" (set on IssueCard) — more stable than class-based selectors.
+    const card = page.getByTestId('issue-card').filter({ hasText: title });
     await expect(card).toContainText('Dec 31', { timeout: 10_000 });
     // Chip should use neutral styling (not overdue) — bg-gray-100.
     const chip = card.locator('span').filter({ hasText: 'Dec 31' });
@@ -71,7 +72,7 @@ test.describe('Due date', () => {
     await expect(page.getByText(/to do/i).first()).toBeVisible({ timeout: 15_000 });
 
     // The overdue chip should appear in amber.
-    const card = page.locator('[class*="rounded-lg"]').filter({ hasText: issueTitle });
+    const card = page.getByTestId('issue-card').filter({ hasText: issueTitle });
     await expect(card).toBeVisible({ timeout: 10_000 });
     const chip = card.locator('span[aria-label*="overdue" i], span[class*="amber"]').first();
     await expect(chip).toBeVisible();
@@ -111,7 +112,7 @@ test.describe('Due date', () => {
 
     // Card should no longer show a date chip.
     const card = page
-      .locator('[class*="rounded-lg"]')
+      .getByTestId('issue-card')
       .filter({ hasText: issueTitle });
     await expect(card).toBeVisible();
     // "Jun 15" or any chip text should be gone.
@@ -140,7 +141,7 @@ test.describe('Due date', () => {
     await expect(page.getByText(/to do/i).first()).toBeVisible({ timeout: 15_000 });
 
     const card = page
-      .locator('[class*="rounded-lg"]')
+      .getByTestId('issue-card')
       .filter({ hasText: issueTitle });
     await expect(card).toBeVisible({ timeout: 10_000 });
     // "Mar 25" should appear in the chip.

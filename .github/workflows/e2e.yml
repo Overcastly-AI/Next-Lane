@@ -110,6 +110,8 @@ jobs:
         run: |
           node apps/api/dist/main.js > "$RUNNER_TEMP/api.log" 2>&1 &
           echo "API_PID=$!" >>"$GITHUB_ENV"
+          # Expose log path so the password-reset spec can read dev-log tokens.
+          echo "PW_API_LOG=$RUNNER_TEMP/api.log" >>"$GITHUB_ENV"
 
       - name: Wait for API health
         run: |

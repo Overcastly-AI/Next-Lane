@@ -120,7 +120,8 @@ test.describe('Backlog & sprint planning', () => {
     await sprintSection(page, sprintName)
       .getByRole('button', { name: 'Complete sprint' })
       .click();
-    const completeDialog = page.getByRole('dialog');
+    // ConfirmDialog uses role="alertdialog" (the ARIA role for destructive confirmations).
+    const completeDialog = page.getByRole('alertdialog');
     await expect(completeDialog).toBeVisible();
     await completeDialog
       .getByRole('button', { name: 'Complete sprint' })
