@@ -301,7 +301,7 @@ class Parser {
       this.next();
       // Function call?  name '(' ')'
       if (this.peek().type === 'LPAREN') {
-        const open = this.next();
+        this.next();
         const close = this.peek();
         if (close.type !== 'RPAREN') {
           throw new NlqlParseError(

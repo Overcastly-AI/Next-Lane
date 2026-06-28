@@ -13,7 +13,7 @@
  *    built from user input, so there is no ReDoS surface.
  */
 import { CustomFieldType, Priority, PRIORITY_ORDER } from '../enums';
-import type { CustomFieldValue, IssueDto } from '../types';
+import type { IssueDto } from '../types';
 import type {
   ComparisonNode,
   ComparisonOp,
