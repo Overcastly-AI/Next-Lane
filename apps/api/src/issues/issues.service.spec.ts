@@ -9,6 +9,7 @@ import type { RealtimeService } from '../realtime/realtime.service';
 import type { NotificationsService } from '../notifications/notifications.service';
 import type { WebhooksService } from '../webhooks/webhooks.service';
 import type { CustomFieldsService } from '../custom-fields/custom-fields.service';
+import type { WorkflowService } from '../workflows/workflow.service';
 import type { EventEmitter2 } from '@nestjs/event-emitter';
 
 const noOpEventEmitter = { emit: jest.fn() } as unknown as EventEmitter2;
@@ -17,6 +18,14 @@ const noOpEventEmitter = { emit: jest.fn() } as unknown as EventEmitter2;
 const noOpCustomFields = {
   validateAndNormalize: jest.fn().mockResolvedValue({}),
 } as unknown as CustomFieldsService;
+
+/**
+ * Minimal stub satisfying the WorkflowService dependency in IssuesService.
+ * enforceTransition is a no-op by default so existing tests are unaffected.
+ */
+const noOpWorkflow = {
+  enforceTransition: jest.fn().mockResolvedValue(undefined),
+} as unknown as WorkflowService;
 
 const webhooksMock = { dispatch: jest.fn() } as unknown as WebhooksService;
 import type { MoveIssueDto } from './dto/move-issue.dto';
@@ -93,6 +102,7 @@ describe('IssuesService.assertSameProject', () => {
       webhooksMock,
       noOpCustomFields,
       noOpEventEmitter,
+      noOpWorkflow,
     );
   });
 
@@ -214,6 +224,7 @@ describe('IssuesService.assertNoParentCycleCTE', () => {
       webhooksMock,
       noOpCustomFields,
       noOpEventEmitter,
+      noOpWorkflow,
     );
   });
 
@@ -365,6 +376,7 @@ describe('IssuesService.move', () => {
       webhooksMock,
       noOpCustomFields,
       noOpEventEmitter,
+      noOpWorkflow,
     );
 
     // The moved issue already lives in STATUS (no status change by default).
@@ -600,6 +612,7 @@ describe('IssuesService.findAll pagination', () => {
       {} as WebhooksService,
       noOpCustomFields,
       noOpEventEmitter,
+      noOpWorkflow,
     );
   });
 
@@ -769,6 +782,7 @@ describe('IssuesService.findAll full-text search', () => {
       {} as WebhooksService,
       noOpCustomFields,
       noOpEventEmitter,
+      noOpWorkflow,
     );
   });
 
@@ -961,6 +975,7 @@ describe('IssuesService.update dueDate', () => {
       webhooksMock,
       noOpCustomFields,
       noOpEventEmitter,
+      noOpWorkflow,
     );
   });
 
@@ -1122,6 +1137,7 @@ describe('IssuesService.update watcher fan-out', () => {
       webhooksMock,
       noOpCustomFields,
       noOpEventEmitter,
+      noOpWorkflow,
     );
   });
 
@@ -1303,6 +1319,7 @@ describe('IssuesService.bulkUpdate — all succeed', () => {
       webhooksMock,
       noOpCustomFields,
       noOpEventEmitter,
+      noOpWorkflow,
     );
   });
 
@@ -1434,6 +1451,7 @@ describe('IssuesService.bulkUpdate — partial success', () => {
       webhooksMock,
       noOpCustomFields,
       noOpEventEmitter,
+      noOpWorkflow,
     );
   });
 
@@ -1526,6 +1544,7 @@ describe('IssuesService.bulkUpdate — input guards', () => {
       webhooksMock,
       noOpCustomFields,
       noOpEventEmitter,
+      noOpWorkflow,
     );
   });
 

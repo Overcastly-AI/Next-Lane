@@ -3,6 +3,8 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  forwardRef,
+  Inject,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -11,6 +13,7 @@ import { RealtimeService } from '../realtime/realtime.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { WebhooksService } from '../webhooks/webhooks.service';
 import { CustomFieldsService } from '../custom-fields/custom-fields.service';
+import { WorkflowService } from '../workflows/workflow.service';
 import {
   assertProjectMember,
   assertProjectRole,
@@ -111,6 +114,8 @@ export class IssuesService {
     private readonly webhooks: WebhooksService,
     private readonly customFieldsSvc: CustomFieldsService,
     private readonly eventEmitter: EventEmitter2,
+    @Inject(forwardRef(() => WorkflowService))
+    private readonly workflowSvc: WorkflowService,
   ) {}
 
   /**
@@ -702,6 +707,12 @@ export class IssuesService {
       mergedCustomFields = merged as Prisma.InputJsonValue;
     }
 
+    // Enforce workflow gate BEFORE applying the status change.
+    // Automation-applied moves bypass enforcement (opts.automated === true).
+    if (dto.statusId !== undefined && dto.statusId !== existing.statusId) {
+      await this.workflowSvc.enforceTransition(id, dto.statusId, { automated: opts?.automated });
+    }
+
     const activities: Prisma.ActivityLogCreateManyInput[] = [];
     /** Tracks which meaningful fields changed for watcher notifications. */
     const changedFields: string[] = [];
@@ -957,6 +968,12 @@ export class IssuesService {
     });
 
     const statusChanged = dto.statusId !== existing.statusId;
+
+    // Enforce workflow gate BEFORE applying the status change.
+    // Automation-applied moves bypass enforcement (opts.automated === true).
+    if (statusChanged) {
+      await this.workflowSvc.enforceTransition(id, dto.statusId, { automated: opts?.automated });
+    }
 
     // Read neighbor ranks, compute the new rank, and persist inside a single
     // transaction. Doing the read + compute + write atomically prevents two

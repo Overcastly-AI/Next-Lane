@@ -23,6 +23,7 @@ type ProjectRow = {
   leadId: string | null;
   workspaceId: string;
   archived: boolean;
+  workflowEnforced?: boolean;
   createdAt: Date;
 };
 
@@ -35,6 +36,7 @@ export function toProjectDto(p: ProjectRow): ProjectDto {
     leadId: p.leadId,
     workspaceId: p.workspaceId,
     archived: p.archived,
+    workflowEnforced: p.workflowEnforced ?? false,
     createdAt: p.createdAt.toISOString(),
   };
 }

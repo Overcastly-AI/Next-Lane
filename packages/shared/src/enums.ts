@@ -205,3 +205,32 @@ export enum AutomationRunStatus {
 }
 
 export const AUTOMATION_RUN_STATUSES = Object.values(AutomationRunStatus);
+
+/**
+ * Gate/validator types for a workflow transition. A gate is checked before a
+ * transition is allowed; if it fails, the move is rejected with a reason.
+ * Kept as a string enum (stored in `WorkflowTransition.gates` JSON as `type`)
+ * so the vocabulary can grow without a schema migration.
+ *  - REQUIRE_ASSIGNEE        — the issue must have an assignee
+ *  - REQUIRE_DESCRIPTION     — the issue description must be non-empty
+ *  - REQUIRE_FIELD           — a given field/custom-field key must be set (params.field)
+ *  - REQUIRE_LINK            — the issue must have a link of a given type (params.linkType)
+ *  - REQUIRE_NO_OPEN_BLOCKERS — no incoming "blocked by" links may be unresolved
+ */
+export enum WorkflowGateType {
+  REQUIRE_ASSIGNEE = 'REQUIRE_ASSIGNEE',
+  REQUIRE_DESCRIPTION = 'REQUIRE_DESCRIPTION',
+  REQUIRE_FIELD = 'REQUIRE_FIELD',
+  REQUIRE_LINK = 'REQUIRE_LINK',
+  REQUIRE_NO_OPEN_BLOCKERS = 'REQUIRE_NO_OPEN_BLOCKERS',
+}
+
+export const WORKFLOW_GATE_TYPES = Object.values(WorkflowGateType);
+
+export const WORKFLOW_GATE_LABELS: Record<WorkflowGateType, string> = {
+  [WorkflowGateType.REQUIRE_ASSIGNEE]: 'Require an assignee',
+  [WorkflowGateType.REQUIRE_DESCRIPTION]: 'Require a description',
+  [WorkflowGateType.REQUIRE_FIELD]: 'Require a field to be set',
+  [WorkflowGateType.REQUIRE_LINK]: 'Require a link of a type',
+  [WorkflowGateType.REQUIRE_NO_OPEN_BLOCKERS]: 'Block if open blockers remain',
+};

@@ -14,6 +14,7 @@ import type { RealtimeService } from '../realtime/realtime.service';
 import type { NotificationsService } from '../notifications/notifications.service';
 import type { WebhooksService } from '../webhooks/webhooks.service';
 import type { CustomFieldsService } from '../custom-fields/custom-fields.service';
+import type { WorkflowService } from '../workflows/workflow.service';
 import type { EventEmitter2 } from '@nestjs/event-emitter';
 import { Priority, IssueType, StatusCategory } from '@next-lane/shared';
 
@@ -134,6 +135,9 @@ const noOpEventEmitter = { emit: jest.fn() } as unknown as EventEmitter2;
 const noOpCustomFields = {
   validateAndNormalize: jest.fn().mockResolvedValue({}),
 } as unknown as CustomFieldsService;
+const noOpWorkflow = {
+  enforceTransition: jest.fn().mockResolvedValue(undefined),
+} as unknown as WorkflowService;
 const noOpWebhooks = { dispatch: jest.fn() } as unknown as WebhooksService;
 const noOpRealtime = {} as RealtimeService;
 const noOpNotifications = {} as NotificationsService;
@@ -227,6 +231,7 @@ function makeService(prisma: PrismaService): IssuesService {
     noOpWebhooks,
     noOpCustomFields,
     noOpEventEmitter,
+    noOpWorkflow,
   );
 }
 

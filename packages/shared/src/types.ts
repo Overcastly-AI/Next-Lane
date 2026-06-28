@@ -12,6 +12,7 @@ import type {
   AutomationTrigger,
   AutomationActionType,
   AutomationRunStatus,
+  WorkflowGateType,
 } from './enums';
 
 /** API DTO shapes shared between server and client. These mirror Prisma models
@@ -60,6 +61,8 @@ export interface ProjectDto {
   workspaceId: string;
   archived: boolean;
   createdAt: string;
+  /** When true, only defined WorkflowTransitions are legal (opt-in SDLC). */
+  workflowEnforced: boolean;
 }
 
 export interface StatusDto {
@@ -1009,4 +1012,49 @@ export interface AutomationRunDto {
   actionsApplied: AutomationRunActionDto[];
   error: string | null;
   createdAt: string;
+}
+
+// ---------------------------------------------------------------------------
+// Configurable workflows (SDLC transition graph)
+// ---------------------------------------------------------------------------
+
+/**
+ * A single gate/validator on a workflow transition. `type` selects the check;
+ * the optional params carry type-specific config (validated server-side):
+ *  - REQUIRE_FIELD → { field: string }   (issue field or custom-field key)
+ *  - REQUIRE_LINK  → { linkType: string }
+ * Others take no params.
+ */
+export interface WorkflowGateDto {
+  type: WorkflowGateType;
+  field?: string;
+  linkType?: string;
+}
+
+/**
+ * One allowed transition in a project's workflow graph. `fromStatusId === null`
+ * means "from any status" (also used for the create→initial transition).
+ * `issueType === null` means the transition applies to every issue type.
+ */
+export interface WorkflowTransitionDto {
+  id: string;
+  projectId: string;
+  fromStatusId: string | null;
+  toStatusId: string;
+  issueType: IssueType | null;
+  name: string | null;
+  gates: WorkflowGateDto[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * The full workflow for a project: the enforcement flag plus the transition
+ * graph. When `enforced` is false, every transition is permitted regardless of
+ * the list (backward-compatible default).
+ */
+export interface WorkflowDto {
+  projectId: string;
+  enforced: boolean;
+  transitions: WorkflowTransitionDto[];
 }

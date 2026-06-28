@@ -41,6 +41,7 @@ import { StandupsModule } from './standups/standups.module';
 import { PersonalBoardsModule } from './personal-boards/personal-boards.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { AutomationsModule } from './automations/automations.module';
+import { WorkflowModule } from './workflows/workflow.module';
 import { HealthController } from './health.controller';
 
 const isProd = process.env.NODE_ENV === 'production';
@@ -158,6 +159,7 @@ const isProd = process.env.NODE_ENV === 'production';
     PersonalBoardsModule,
     AnalyticsModule,
     AutomationsModule,
+    WorkflowModule,
   ],
   controllers: [HealthController],
   providers: [
