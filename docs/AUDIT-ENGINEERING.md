@@ -1681,3 +1681,357 @@ The biggest structural gap from this pass is the same one as Pass 6: the nginx/d
 - **Automation dry-run / simulate endpoint** · P1 · M · Users cannot tell why a rule fired or didn't; thin wrapper over existing engine logic; `apps/api/src/automations/`
 - **AutomationRun retention/pruning job** · P2 · M · SKIPPED runs at scale (20 rules × 100 events/day = 730k rows/year); BullMQ cron + configurable retention; `apps/api/src/automations/`
 - **E2e regression test for `promoteCard` idempotency** · P2 · S · No Playwright coverage for double-promote failure; `apps/web/e2e/personal-board.spec.ts`
+
+---
+
+## 2026-06-28 — Pass 8 (post-features audit: workflows, swimlanes, branding, automation, analytics, CSV, bulk edit)
+
+Scope: deep audit of every significant feature shipped since Pass 7 — configurable
+workflows (`apps/api/src/workflows/`), board swimlanes (`BoardSwimlanesView`,
+`BoardPage` filter-URL persistence), workspace branding (logo upload/serve),
+automation engine (action-param scope validation, MEMBER create permission), analytics
+(unbounded projectAnalytics query, unvalidated `days` param), CSV export, and bulk
+edit. Also a general sweep of cross-cutting concerns: tenant isolation matrix coverage
+on all new endpoints, per-route rate limiting, real-artifact QA gaps, and dead code /
+type-safety holes. All findings are evidence-based against directly read source files.
+
+### Ratings (Pass 8)
+
+| Area | Score | Delta | Note |
+|------|:----:|:-----:|------|
+| Architecture & module boundaries | 4 | — | WorkflowModule, CSVController, BulkUpdate all follow per-domain NestJS pattern correctly. No module boundary leaks introduced. |
+| Data model & migrations | 4 | — | WorkflowTransition schema well-formed; unique constraint on (projectId, fromStatusId, toStatusId, issueType) correct; auto-seed uses `skipDuplicates` for TOCTOU partial safety. No rollback scripts for any migration (ongoing gap). |
+| AuthN | 4 | — | No regressions. JWT guard, PAT path, fail-fast secret all confirmed unchanged. |
+| AuthZ & multi-tenant isolation | **2** | -2 | All five new feature endpoint families (workflow CRUD, automations CRUD, analytics, CSV export, workspace logo) are **entirely absent from the tenant-isolation integration test matrix** (`tenant-isolation.integration.spec.ts`). Additionally: automation rules are writable by any project MEMBER (not just ADMIN); TRANSITION action `statusId` is not validated to belong to the rule's project at creation time; `GET /projects/:id/analytics` has no `@RequireScope` annotation. These are structural gaps, not just test gaps. |
+| Input validation | 3 | — | Workflow DTOs are well-formed. Logo upload validates declared MIME type but does NOT use magic-byte detection (`file-type`) — inconsistent with attachments which do use it. Analytics `days` param is parsed with raw `Number()` inside the controller rather than a typed DTO — `Infinity` passes through (though `clampDays` catches it). |
+| Error handling | 4 | — | `enforceTransition` 422 path correctly returns a descriptive message with allowed next statuses. Global exception filter handles Prisma P2002/P2025 across all new endpoints. Bulk update collects per-item errors in `failed[]` and never aborts the batch. |
+| N+1 / query efficiency | **2** | -1 | Three concrete new regressions: (a) `enforceTransition` executes 3 queries per issue on the happy path (issue fetch, project fetch, transitions fetch); `bulkUpdate` calls `this.update()` serially per issue — 100 issues × ≥3 queries = 300+ sequential DB round-trips before any gate evaluation. (b) `projectAnalytics` fetches ALL project issues into memory with no `take` limit (`allProjectIssues.findMany`) then passes ALL issue IDs to a `completionMap` `ANY()` array binding — unbounded for large projects. (c) Workflow auto-seed inserts N*(N-1) rows for N statuses — for 20 custom statuses that is 380 `WorkflowTransition` rows per enable call. |
+| Realtime correctness | 4 | — | Workflow enforcement changes (enable/disable, transition add/delete) do not emit realtime events to the project room — clients must reload settings to see changes. Low-priority gap; workflow is config-time, not board-time. |
+| Rank / ordering integrity | 4 | — | No regressions from prior passes. Swimlane grouping is purely a frontend compute (`computeLanes`) with no server-side rank mutation. |
+| Test coverage (unit + e2e) | **3** | — | `workflow.enforcement.spec.ts` (498 lines) and `workflow.service.spec.ts` (398 lines) are thorough for the happy and gate-failure paths. E2e `workflow.spec.ts` covers UI enablement, illegal-move toast, legal-move success, and mobile overflow. However: tenant isolation matrix missing all new endpoints (see AuthZ above); no workflow test for the concurrent-enable race; no test that swimlane 'epic' grouping correctly handles missing `parent.type` in the board DTO; no regression for the `bulkUpdate` DB round-trip count under workflow enforcement. |
+| Type safety | 4 | — | `enforceTransition` gate cast (`transition.gates as unknown as ...`) is necessary given Prisma JSONB. `params as Record<string, unknown>` in automations is acceptable at runtime boundaries. Swimlane `computeLanes` is strongly typed via `GroupByDimension` union. No stray `any` found in new code paths. |
+| Build / CI / Docker | 3 | -1 | No regressions in CI itself, but none of the new e2e specs (workflow, swimlanes) run against the nginx docker artifact — they all run against `vite preview`. The `docker-entrypoint.sh` CSP substitution gap from Pass 6 is still unresolved: no smoke test in `images.yml`. This is now a persistent multi-pass gap. |
+| Secrets / config hygiene | 4 | — | No new secret surfaces. Logo storage key is a UUID-named temp file path (`path.basename(file.path)`) — no path traversal risk. Uploads dir defaults to `./uploads` (relative) — acceptable for Docker where the working directory is controlled. |
+| Dependency risk | 4 | — | No new dependencies introduced by workflow, swimlanes, bulk-edit, or CSV features. Analytics and branding use existing Prisma + multer paths. |
+| **QA / debugging discipline** | **2** | — | Same score as Pass 6/7. The structural gap remains: e2e tests never run against the shipped nginx/Docker artifact. No CSP regression guard. `workflow.spec.ts` is the first e2e spec that specifically tests a 422 error surfaced as a toast — good practice, but the test still runs against `vite preview`. Workflow auto-seed race condition has zero test coverage at any layer. |
+| Diagnosability (production) | 4 | — | `enforceTransition` 422 errors carry the allowed-next-statuses list — excellent for user-facing debugging. AutomationRun log from Pass 7 provides operator-level Glass Box. No regressions in correlation IDs or structured logging. |
+
+### Debugging & QA-discipline assessment (Pass 8)
+
+The "tests pass ≠ works for users" gap is in its third consecutive audit without closure:
+
+**Gap 1 — e2e suite runs against `vite preview`, not the nginx Docker container (persistent)**
+
+All Playwright specs including the new `workflow.spec.ts`, `swimlanes.spec.ts`,
+and `bulk-edit.spec.ts` run against `vite preview` (see `apps/web/playwright.config.ts`
+and `.github/workflows/e2e.yml`). The nginx container, `docker-entrypoint.sh`, and
+`nginx.conf` are never exercised. Any regression in the CSP `connect-src` substitution,
+the `/config.js` serving path, or nginx `add_header` directives is invisible until a
+user reports it. This caused at least one user-reported bug already (the login CSP
+block).
+
+**Gap 2 — Workflow auto-seed race condition has no test**
+
+`patchEnforced` at `workflow.service.ts:116-130` reads a count, then conditionally
+seeds — outside a transaction. `skipDuplicates: true` on the `createMany` call provides
+partial protection (duplicate seed inserts are silently dropped), but it does NOT prevent
+the project's `workflowEnforced` flag from being double-written or the seed from being
+double-attempted. Two simultaneous PATCH requests enabling enforcement will both call
+`seedDefaultTransitions` if both see count=0. No test at any layer exercises this path.
+
+**Proposed regression guards (new this pass):**
+
+1. A shell smoke test in `images.yml`: run the web Docker image with a known `API_URL`,
+   fetch the home page headers with `curl -sI`, assert `Content-Security-Policy:
+   connect-src` includes the API origin and does NOT contain `__NL_CONNECT_SRC__`.
+   Run `docker exec nginx -t` for config validity. This is a < 50-line addition and
+   closes the entire CSP bug class.
+
+2. A concurrent-enable unit test for `patchEnforced`: use `Promise.all` with two
+   simultaneous calls for the same project. Assert final state is `enforced: true` with
+   exactly N*(N-1) distinct transitions (not 2×). Verifies `skipDuplicates` + the DB
+   unique constraint are sufficient for the race.
+
+3. A swimlane epic-grouping test with a board DTO that omits `parent.type`: assert all
+   issues fall into the "No epic" lane (rather than throwing) when the `parent` relation
+   is not populated on the issue DTO.
+
+### Top risks & debt (Pass 8, prioritized)
+
+#### P1 — Tenant isolation matrix missing all new feature endpoints (5 endpoint families)
+
+**Files:** `apps/api/src/tenant-isolation.integration.spec.ts`
+
+The tenant-isolation matrix is the only systematic proof that cross-workspace access is
+blocked for every route. It covers 40+ legacy endpoints. The five new endpoint families
+shipped since Pass 7 are entirely absent: `GET/PATCH /projects/:id/workflow`, `POST
+/projects/:id/workflow/transitions`, `PATCH/DELETE /workflow/transitions/:id`,
+`GET/POST/PATCH/DELETE /projects/:id/automations/:id`, `GET /projects/:id/analytics`,
+`GET /projects/:id/issues.csv`, and `GET/PUT/DELETE /workspaces/:id/logo`. A user in
+workspace B who discovers a workflow transition ID or automation rule ID from workspace A
+can hit those endpoints; the authz is present in service code but the matrix is the
+regression guard that ensures it stays wired. Without matrix coverage, any future
+refactor that accidentally bypasses `assertProjectRole` will silently go undetected.
+
+**Fix:** Add matrix rows for all five families using the existing `buildCrossWorkspaceRows`
+pattern. Estimated N+10 matrix rows. *Size: S.*
+
+---
+
+#### P1 — Logo upload trusts client-declared MIME type; no magic-byte validation
+
+**Files:** `apps/api/src/workspaces/workspaces.service.ts:264`
+
+`uploadLogo` at line 264 evaluates `LOGO_ALLOWED_MIME_TYPES.has(file.mimetype)` where
+`file.mimetype` is the `Content-Type` header from the multipart part — fully
+client-controlled. A caller can send a PNG-magic-byte file that declares
+`Content-Type: image/jpeg` (harmless) or, more dangerously, send a binary payload (e.g.
+a crafted JPEG with appended PHP) while declaring `Content-Type: image/jpeg`. The check
+passes and the file is stored on disk. SVG is explicitly blocked at line 259 (correct),
+but general magic-byte validation is absent. By contrast, `attachments.service.ts` uses
+the `file-type` package to read magic bytes before accepting any upload. The inconsistency
+creates a different security posture for the logo path vs the attachment path.
+
+**Fix:** Apply the same `file-type` magic-byte check used in `attachments.service.ts`
+to `workspaces.service.ts:uploadLogo` after multer writes the file to tmpdir, before the
+file is moved to the uploads directory. Reject if detected MIME type does not match the
+declared type or is not in `LOGO_ALLOWED_MIME_TYPES`. *Size: S.*
+
+---
+
+#### P1 — Workflow auto-seed race condition: count check is not transactional
+
+**Files:** `apps/api/src/workflows/workflow.service.ts:116-129`
+
+`patchEnforced` calls `prisma.workflowTransition.count()` at line 123, then
+conditionally calls `seedDefaultTransitions()` at line 128. These two operations are not
+inside a `$transaction` block. Two concurrent PATCH requests enabling enforcement for the
+same project will both see `count = 0` and both call `seedDefaultTransitions`. The
+`skipDuplicates: true` flag on `createMany` at line 177 means duplicate rows are silently
+dropped rather than erroring — so the final transition set will be correct, but the
+`workflowEnforced: true` write at line 116-118 happens before the count check, meaning
+both requests write `enforced: true` and both attempt the seed. For a project with 10
+statuses (90 pairs) this generates 180 `createMany` inputs across two concurrent calls,
+with `skipDuplicates` resolving the collision. Behaviorally safe but wasteful. For a
+project with 50 custom statuses (2450 pairs), two concurrent enables generate 4900 row
+insertions per call before `skipDuplicates` filters. More importantly, there is no test
+that verifies the race does not produce a partially-seeded graph.
+
+**Fix:** Move the `count + seedDefaultTransitions` into a `this.prisma.$transaction()`
+block. Alternatively, use an upsert-like pattern with `skipDuplicates` (already present)
+and rely on the DB unique constraint as the ACID guarantee — but add a unit test that
+exercises two concurrent enables. *Size: S.*
+
+---
+
+#### P2 — `bulkUpdate` serially enforces workflow per-issue: 300+ DB round-trips for 100 issues
+
+**Files:** `apps/api/src/issues/issues.service.ts:1304-1319`,
+`apps/api/src/workflows/workflow.service.ts:359-448`
+
+`bulkUpdate` calls `this.update(userId, id, updateDto)` in a serial `for` loop for each
+issue ID (lines 1304-1319). When `changes.statusId` is set and the project has
+`workflowEnforced: true`, each `update()` call triggers `enforceTransition()`, which
+executes at minimum 3 DB queries: (1) `issue.findUnique` to load current state, (2)
+`project.findUnique` to load the `workflowEnforced` flag, (3) `workflowTransition.findMany`
+to find matching transitions. The project `workflowEnforced` flag does not change
+between iterations but is re-fetched on every call. For 100 issues this is 300+ serial
+DB round-trips for enforcement alone, before the `issue.update` mutations themselves
+(each of which also fires ActivityLog, realtime, webhook, automation events). Under
+typical database latency (1-5ms per query), 300+ sequential queries takes 300ms-1500ms
+before any useful work completes.
+
+**Fix (short-term):** Pre-load the `workflowEnforced` flag and the full transitions list
+once before the loop. Pass them as context to `enforceTransition` to skip the 2 per-issue
+queries that load redundant data. This reduces 300+ queries to ~100 (one per-issue lookup
+for gates). *Size: M.*
+
+**Fix (long-term):** Group issues by current status and apply enforcement as a set
+operation: one transitions query covers all source-status→target-status pairs for the
+entire batch. *Size: L.*
+
+---
+
+#### P2 — `projectAnalytics` full table scan: all project issues loaded into memory
+
+**Files:** `apps/api/src/analytics/analytics.service.ts:418-431`
+
+`projectAnalytics` at lines 418-431 executes `prisma.issue.findMany({ where: { projectId } })`
+with no `take` limit. For a project with 50,000 issues this materializes 50,000 rows
+into Node.js memory per analytics request. The `allIssueIds` array built from this
+fetch is then passed to `completionMap` as a `ANY(${issueIds}::text[])` binding at line
+436, passing potentially 50,000 strings as a PostgreSQL array literal in a single raw
+SQL query — which is both a memory and query-plan pressure risk (Postgres must hash
+50,000 strings for the `ANY()` scan).
+
+Unlike `personalAnalytics` (which was correctly scoped to workspace-member projects in
+Pass 7), `projectAnalytics` still loads data unboundedly. The `allProjectIssues` variable
+fetches `id`, `assigneeId`, and `status.category` — no `createdAt` window filter is
+applied in SQL; the window is applied in JS on the already-loaded dataset.
+
+**Fix:** Rewrite `projectAnalytics` to push all aggregation into SQL: (a) a GROUP BY
+`DATE_TRUNC('day', "createdAt")` + COUNT for the flow series with a `createdAt >= wStart`
+filter in SQL; (b) a GROUP BY `assigneeId` + COUNT for workload distribution filtered to
+open statuses. This eliminates the full-project materialize and the 50k-element
+`ANY()` binding. *Size: M.*
+
+---
+
+#### P2 — Automation TRANSITION action does not validate `statusId` belongs to the rule's project
+
+**Files:** `apps/api/src/automations/automations.service.ts:153-157`
+
+`validateActionParams` for `TRANSITION` action type at lines 153-157 only checks
+`typeof params.statusId === 'string'` — it does NOT verify that the `statusId` belongs
+to the automation rule's project. A project MEMBER who can create automation rules
+(see Risk below) can create a rule with `TRANSITION` action pointing to a status ID
+from a different project. When the rule fires, `issuesService.update()` is called with
+the cross-project `statusId`. The `assertSameProject` check in `issues.service.ts` will
+catch this at execution time and write a `FAILED` AutomationRun — so no cross-project
+mutation succeeds. However, the rule creation still succeeds with an invalid `statusId`,
+and a `FAILED` run is silently logged rather than surfaced to the admin who configured
+the rule. The user's automation appears broken with no clear error at configuration time.
+
+**Fix:** In `validateActionParams` for `TRANSITION`, add a DB lookup to verify
+`prisma.status.findFirst({ where: { id: params.statusId, projectId: rule.projectId } })`
+and throw `BadRequestException` at rule creation time if the status doesn't belong to
+the project. Apply the same check for `ADD_LABEL` (`labelId` must belong to the project).
+*Size: S.*
+
+---
+
+#### P2 — Automation rules creatable by any project MEMBER (not ADMIN-only)
+
+**Files:** `apps/api/src/automations/automations.service.ts:247`
+
+`automations.service.ts:247` calls `assertProjectRole(this.prisma, userId, projectId, Role.MEMBER)`
+for rule create. This means any project MEMBER — including developers who cannot configure
+statuses, labels, or sprints — can create automation rules that fire on every issue event
+in the project. Automation rules can: transition issue statuses, add comments as the
+rule's creator, add labels, set priorities. These are board-mutating actions. For a
+project with 10 active developers, any developer can set up a rule that moves every
+newly-created issue to "Done" immediately, or adds noise comments on every status change.
+By contrast, webhook subscriptions are gated to ADMIN only (correctly).
+
+**Fix:** Change `assertProjectRole(..., Role.MEMBER)` to `assertProjectRole(..., Role.ADMIN)`
+for create, update, and delete of automation rules. VIEWERs and MEMBERs can list/read
+rules (the GET endpoint is already gated at MEMBER for listing). *Size: S.*
+
+---
+
+#### P2 — Analytics `days` query parameter not validated via typed DTO
+
+**Files:** `apps/api/src/analytics/analytics.controller.ts:22-24`
+
+Both analytics endpoints parse the `days` query parameter with raw `Number(daysStr)`:
+`const days = daysStr ? Number(daysStr) : 30;`. This bypasses the global
+`ValidationPipe({ whitelist: true, transform: true, forbidNonWhitelisted: true })`
+which only applies to `@Body()` and DTO-decorated `@Query()` parameters. Passing
+`?days=Infinity` calls `Number('Infinity')` → `Infinity`, which is not `NaN` and
+therefore not caught by the `isNaN(days) ? 30 : days` guard, and is passed to
+`clampDays` which does handle it (clamping to 366). However, passing `?days=1e20`
+passes through identically — `clampDays` would need to handle it. More importantly,
+the pattern is inconsistent with the codebase convention where every query param is
+validated via a DTO class with `class-validator` decorators.
+
+**Fix:** Add an `AnalyticsQueryDto` class with `@IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(366) days?: number` and use `@Query() query: AnalyticsQueryDto` in the controller. This brings the analytics endpoints into the same validation model as the rest of the API. *Size: S.*
+
+---
+
+#### P3 — Workflow auto-seed scales as O(N²) statuses; no warning for large N
+
+**Files:** `apps/api/src/workflows/workflow.service.ts:152-182`
+
+`seedDefaultTransitions` creates N*(N-1) `WorkflowTransition` rows where N is the number
+of statuses. For a project with the default 3 statuses this is 6 rows — negligible. For
+a project with 20 custom statuses (realistic for enterprise workflows) this is 380 rows,
+inserted as a single `createMany`. For 50 statuses: 2450 rows. The `createMany` is a
+single round-trip and Postgres handles it well, but the resulting 380-2450 transitions
+are all fetched on every `getWorkflow` call and every `enforceTransition` check
+(the transitions `findMany` at `workflow.service.ts:408` fetches matching transitions for
+each status-change check). The settings UI rendering 380 transition rows is also
+potentially slow.
+
+This is a P3 — acceptable for v1, but worth noting for teams with large status lists.
+
+**Fix (long-term):** Cap auto-seed at a maximum of, say, 100 transitions (10 statuses),
+and when N > 10 statuses, only seed from every status to a configurable "next" status
+(linear chain rather than fully-connected graph). Add a warning in the API response when
+auto-seed would exceed the cap. *Size: M.*
+
+### New capabilities & technical investments (ideation mandate)
+
+Three concrete technical investments for the next iteration:
+
+1. **Docker artifact smoke-test CI job (closes the persistent CSP/nginx gap).**
+   Add a job in `.github/workflows/images.yml` that after image build does: (a) `docker
+   run -d -e API_URL=https://api.example.com -p 8080:80 <image>`, (b) `curl -sI
+   http://localhost:8080/` and asserts the `Content-Security-Policy` response header
+   contains `https://api.example.com` in `connect-src` and does NOT contain the literal
+   `__NL_CONNECT_SRC__` placeholder, (c) `docker exec <ctr> nginx -t` to verify nginx
+   config validity. This is < 60 lines of shell in one workflow file and closes the
+   entire bug class that produced the user-reported login failure. This gap has now
+   survived three consecutive audit passes. *Priority: P1. Size: S.*
+
+2. **Workflow transition enforcement caching / pre-load.**
+   The `enforceTransition` function re-loads `project.workflowEnforced` and all
+   matching `WorkflowTransition` rows on every call. For projects with enforcement
+   enabled, a short-lived in-process cache (LRU, 30-second TTL, keyed by
+   `projectId`) for the transitions list would reduce the per-status-change DB cost
+   from 3 queries to 1 (only the per-issue gate state — assignee, description, links —
+   needs live data). This is particularly valuable for `bulkUpdate` where the same
+   project's transitions are loaded 100 times. Pair with cache invalidation on
+   `createTransition`/`deleteTransition`/`patchEnforced`. *Priority: P2. Size: M.*
+
+3. **Workflow visual debugger / audit trail.**
+   Add a `GET /projects/:id/workflow/audit?issueId=X` endpoint that returns the
+   AutomationRun-style log for the last N workflow enforcement checks on an issue:
+   which transition was matched (or not), which gate was evaluated, pass/fail, actor,
+   timestamp. This is the workflow equivalent of the `AutomationRun` Glass Box that
+   automation gets in Pass 7 — and it addresses the most common support request for
+   workflow-enabled projects ("why can't I move this issue?"). Store the enforcement
+   audit trail in a lightweight `WorkflowCheckLog` table (issueId, fromStatusId,
+   toStatusId, result, gateType, timestamp). *Priority: P2. Size: M.*
+
+### Direction (Pass 8)
+
+The most important immediate action is **adding the five new endpoint families to the
+tenant-isolation matrix** (P1, S). This is the structural regression guard for all the
+authorization code added in the new features — without it, a future service refactor
+that breaks a `assertProjectRole` call would go undetected. It is an S-sized addition
+using the existing `buildCrossWorkspaceRows` pattern.
+
+The second priority is **logo magic-byte validation** (P1, S) — applying the same
+`file-type` check already present in `attachments.service.ts` to `workspaces.service.ts`.
+It is a one-function addition and eliminates the inconsistency between the two upload
+paths.
+
+The third priority is **closing the Docker/nginx smoke-test gap** (P1, S) — this is now
+three audit passes old. A < 60-line shell addition to `images.yml` permanently closes the
+CSP/connect-src bug class. Its absence is the clearest example of "tests pass ≠ works for
+the user" in this codebase.
+
+After those three S-sized items, the `bulkUpdate` per-issue enforcement query waterfall
+(P2, M) is the highest-impact performance fix: pre-loading the project's enforcement flag
+and transitions once per batch call reduces 300+ serial queries to ~100 for a 100-issue
+bulk status change under enforcement.
+
+Automation rules should be ADMIN-gated (P2, S) — a one-line change that aligns
+automation with webhooks (both are board-mutating, both should be gated to project
+ADMINs).
+
+### Backlog-groomer feed (Pass 8 — compact)
+
+- **Add all new endpoint families to tenant-isolation integration test matrix (workflow, automations, analytics, CSV, logo)** · P1 · S · 5 endpoint families absent from 40-endpoint matrix; `assertProjectRole` correctness is untested for every new feature; `apps/api/src/tenant-isolation.integration.spec.ts`
+- **Add magic-byte validation (`file-type`) to logo upload path** · P1 · S · `file.mimetype` is client-declared; attachments uses `file-type`; logo does not — inconsistent security posture; `apps/api/src/workspaces/workspaces.service.ts:264`
+- **Add Docker artifact CSP smoke test in `images.yml`** · P1 · S · nginx `__NL_CONNECT_SRC__` substitution untested in CI for the third consecutive pass; `docker-entrypoint.sh`, `.github/workflows/images.yml`
+- **Change automation rule create/update/delete to require project ADMIN (not MEMBER)** · P2 · S · Any project MEMBER can create board-mutating automation rules; webhooks are ADMIN-gated; automations should be too; `apps/api/src/automations/automations.service.ts:247`
+- **Validate TRANSITION action `statusId` and ADD_LABEL `labelId` belong to rule's project at creation** · P2 · S · Cross-project IDs accepted at save time; fails silently as FAILED AutomationRun at execute time; `apps/api/src/automations/automations.service.ts:153-162`
+- **Add `AnalyticsQueryDto` with `@IsInt @Min(1) @Max(366)` for analytics `days` param** · P2 · S · Raw `Number()` parse bypasses global ValidationPipe; `Infinity` not caught; `apps/api/src/analytics/analytics.controller.ts:22-24`
+- **Pre-load `workflowEnforced` flag and transitions once per `bulkUpdate` call (not per-issue)** · P2 · M · `enforceTransition` re-queries project + transitions per issue in a serial loop; 100-issue bulk status change with enforcement = 300+ serial DB round-trips; `apps/api/src/issues/issues.service.ts:1304`, `apps/api/src/workflows/workflow.service.ts:359`
+- **Rewrite `projectAnalytics` allProjectIssues as DB-level aggregation (GROUP BY DATE_TRUNC + assigneeId)** · P2 · M · `findMany` with no limit materializes all project issues; 50k-element `ANY()` binding passed to completionMap; `apps/api/src/analytics/analytics.service.ts:418`
+- **Add unit test for concurrent `patchEnforced` (auto-seed race)** · P2 · S · No test exercises two simultaneous enable calls; `skipDuplicates` is the only guard but is untested; `apps/api/src/workflows/workflow.service.ts:122`
+- **Add `@@index` on `WorkflowTransition(projectId, toStatusId)` for `enforceTransition` query** · P2 · S · `findMany` filters on `projectId + toStatusId + OR[fromStatusId]`; no covering index for this pattern; `apps/api/prisma/schema.prisma`
+- **Emit realtime event on workflow enforcement enable/disable** · P3 · S · Settings UI in other tabs shows stale enforcement state; `apps/api/src/workflows/workflow.service.ts`
+- **Workflow transition pre-load cache (LRU, 30s TTL, per projectId)** · P2 · M · Re-fetches enforcement flag and transitions on every `enforceTransition` call; especially costly for `bulkUpdate`; `apps/api/src/workflows/workflow.service.ts`
+- **Workflow visual debugger / audit trail (`WorkflowCheckLog` table + GET endpoint)** · P2 · M · No per-issue enforcement history; "why can't I move this?" is undiagnosable without reproduction; pairs with AutomationRun Glass Box model
