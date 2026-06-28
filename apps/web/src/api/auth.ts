@@ -1,4 +1,4 @@
-import type { AuthResponse, UserDto } from '@next-lane/shared';
+import type { AuthResponse, UpdateProfileDto, UserDto } from '@next-lane/shared';
 import { request, setToken, clearAuth, USER_KEY } from './client';
 
 export interface RegisterInput {
@@ -36,6 +36,19 @@ export async function login(input: LoginInput): Promise<AuthResponse> {
 
 export async function me(): Promise<UserDto> {
   return request<UserDto>('/auth/me');
+}
+
+/**
+ * Update the current user's profile (name, notification preferences). Returns
+ * the fresh UserDto and refreshes the cached copy used for instant UI.
+ */
+export async function updateProfile(input: UpdateProfileDto): Promise<UserDto> {
+  const user = await request<UserDto>('/auth/me', {
+    method: 'PATCH',
+    body: input,
+  });
+  localStorage.setItem(USER_KEY, JSON.stringify(user));
+  return user;
 }
 
 export function logout(): void {

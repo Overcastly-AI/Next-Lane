@@ -3,11 +3,13 @@ import { NotificationType } from '@next-lane/shared';
 import { NotificationsService } from './notifications.service';
 import type { PrismaService } from '../prisma/prisma.service';
 import type { RealtimeService } from '../realtime/realtime.service';
+import type { MailService } from '../mail/mail.service';
 
 /**
- * DB-free unit tests for NotificationsService. Prisma + realtime are mocked.
+ * DB-free unit tests for NotificationsService. Prisma + realtime + mail are mocked.
  * Covers the notification-creation rules (self-suppression, assignment fan-out,
- * comment + mention fan-out with auto-watch) and owner-scoping on read.
+ * comment + mention fan-out with auto-watch), owner-scoping on read, and
+ * email delivery with opt-in/opt-out filtering.
  */
 
 interface MockPrisma {
@@ -52,14 +54,17 @@ const ISSUE = { id: 'iss-1', key: 'AB-1', projectId: 'proj-1' };
 describe('NotificationsService', () => {
   let prisma: MockPrisma;
   let realtime: { emitToUser: jest.Mock };
+  let mail: { send: jest.Mock };
   let service: NotificationsService;
 
   beforeEach(() => {
     prisma = makePrisma();
     realtime = { emitToUser: jest.fn() };
+    mail = { send: jest.fn().mockResolvedValue(undefined) };
     service = new NotificationsService(
       prisma as unknown as PrismaService,
       realtime as unknown as RealtimeService,
+      mail as unknown as MailService,
     );
   });
 
@@ -470,6 +475,120 @@ describe('NotificationsService', () => {
 
       const data = prisma.notification.createMany.mock.calls[0][0].data[0];
       expect(data.message).toBe('Alice updated AB-1 (status and priority)');
+    });
+  });
+
+  describe('email delivery (sendEmailToRecipients via notifyComment)', () => {
+    const ISSUE_WITH_TITLE = { ...ISSUE, title: 'Fix the thing' };
+
+    beforeEach(() => {
+      // notifyComment auto-watches; suppress DB side-effects for email tests.
+      prisma.watcher.upsert.mockResolvedValue({});
+      prisma.watcher.findMany.mockResolvedValue([
+        { userId: 'u-opted-in' },
+        { userId: 'u-opted-out' },
+      ]);
+      prisma.notification.createMany.mockResolvedValue({ count: 2 });
+      prisma.notification.findMany.mockResolvedValue([]);
+    });
+
+    it('sends email to opted-in recipients and skips opted-out', async () => {
+      // user.findMany returns one opted-in and one opted-out user.
+      prisma.user.findMany.mockResolvedValue([
+        { id: 'u-opted-in', email: 'in@acme.dev', emailNotifications: true },
+        { id: 'u-opted-out', email: 'out@acme.dev', emailNotifications: false },
+      ]);
+
+      await service.notifyComment({
+        authorId: 'u-author',
+        authorName: 'Author',
+        issue: ISSUE,
+        mentionedUserIds: [],
+      });
+
+      // Allow the fire-and-forget Promise to resolve.
+      await new Promise((r) => setImmediate(r));
+
+      expect(mail.send).toHaveBeenCalledTimes(1);
+      expect(mail.send).toHaveBeenCalledWith(
+        expect.objectContaining({ to: 'in@acme.dev' }),
+      );
+    });
+
+    it('does not send any email when all recipients opted out', async () => {
+      prisma.user.findMany.mockResolvedValue([
+        { id: 'u-opted-out', email: 'out@acme.dev', emailNotifications: false },
+      ]);
+
+      await service.notifyComment({
+        authorId: 'u-author',
+        authorName: 'Author',
+        issue: ISSUE,
+        mentionedUserIds: [],
+      });
+
+      await new Promise((r) => setImmediate(r));
+
+      expect(mail.send).not.toHaveBeenCalled();
+    });
+
+    it('never emails the actor (actor excluded upstream before sendEmailToRecipients)', async () => {
+      // Only watcher is the author — commentedRecipients will be empty.
+      prisma.watcher.findMany.mockResolvedValue([{ userId: 'u-author' }]);
+      prisma.notification.createMany.mockResolvedValue({ count: 0 });
+      prisma.user.findMany.mockResolvedValue([]);
+
+      await service.notifyComment({
+        authorId: 'u-author',
+        authorName: 'Author',
+        issue: ISSUE,
+        mentionedUserIds: [],
+      });
+
+      await new Promise((r) => setImmediate(r));
+
+      expect(mail.send).not.toHaveBeenCalled();
+    });
+
+    it('includes a deep link URL in the email body', async () => {
+      prisma.user.findMany.mockResolvedValue([
+        { id: 'u-opted-in', email: 'in@acme.dev', emailNotifications: true },
+      ]);
+      prisma.watcher.findMany.mockResolvedValue([{ userId: 'u-opted-in' }]);
+
+      await service.notifyComment({
+        authorId: 'u-author',
+        authorName: 'Author',
+        issue: ISSUE,
+        mentionedUserIds: [],
+      });
+
+      await new Promise((r) => setImmediate(r));
+
+      const callArg = mail.send.mock.calls[0][0] as {
+        text: string;
+        subject: string;
+      };
+      expect(callArg.subject).toContain('[AB-1]');
+      expect(callArg.text).toContain(ISSUE.id);
+      expect(callArg.text).toContain(ISSUE.projectId);
+    });
+
+    it('email failure does not propagate — service resolves normally', async () => {
+      mail.send.mockRejectedValue(new Error('SMTP timeout'));
+      prisma.user.findMany.mockResolvedValue([
+        { id: 'u-opted-in', email: 'in@acme.dev', emailNotifications: true },
+      ]);
+      prisma.watcher.findMany.mockResolvedValue([{ userId: 'u-opted-in' }]);
+
+      await expect(
+        service.notifyComment({
+          authorId: 'u-author',
+          authorName: 'Author',
+          issue: ISSUE,
+          mentionedUserIds: [],
+        }),
+      ).resolves.not.toThrow();
     });
   });
 

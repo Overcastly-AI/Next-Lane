@@ -37,6 +37,7 @@ type CommentRow = {
     email: string;
     name: string;
     avatarColor: string;
+    emailNotifications: boolean;
     createdAt: Date;
   } | null;
 };
@@ -47,6 +48,7 @@ const DELETED_USER_DTO = {
   email: '',
   name: 'Deleted User',
   avatarColor: '#94a3b8',
+  emailNotifications: false,
   createdAt: new Date(0).toISOString(),
 };
 

@@ -480,6 +480,7 @@ export class IssuesService {
       email: '',
       name: 'Deleted User',
       avatarColor: '#94a3b8',
+      emailNotifications: false,
       createdAt: new Date(0).toISOString(),
     };
 
@@ -517,6 +518,7 @@ export class IssuesService {
       email: '',
       name: 'Deleted User',
       avatarColor: '#94a3b8',
+      emailNotifications: false,
       createdAt: new Date(0).toISOString(),
     };
     return activities.map((a) => ({

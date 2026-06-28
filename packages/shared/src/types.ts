@@ -24,6 +24,13 @@ export interface UserDto {
   name: string;
   avatarColor: string;
   createdAt: string;
+  emailNotifications: boolean;
+}
+
+/** Body for PATCH /auth/me — updates the current user's own profile. */
+export interface UpdateProfileDto {
+  name?: string;
+  emailNotifications?: boolean;
 }
 
 export interface AuthResponse {

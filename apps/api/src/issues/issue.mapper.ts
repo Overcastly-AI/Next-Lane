@@ -47,6 +47,7 @@ export interface IssueWithRelations {
     email: string;
     name: string;
     avatarColor: string;
+    emailNotifications: boolean;
     createdAt: Date;
   } | null;
   reporter?: {
@@ -54,6 +55,7 @@ export interface IssueWithRelations {
     email: string;
     name: string;
     avatarColor: string;
+    emailNotifications: boolean;
     createdAt: Date;
   } | null;
   labels?: Array<{

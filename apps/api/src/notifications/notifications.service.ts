@@ -6,6 +6,7 @@ import {
 import type { Notification, User } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeService } from '../realtime/realtime.service';
+import { MailService } from '../mail/mail.service';
 import { toUserDto } from '../auth/auth.service';
 import {
   NotificationType,
@@ -52,11 +53,21 @@ export interface IssueSnapshot {
   projectId: string;
 }
 
+/** Base URL for issue deep-links in notification emails. */
+function issueDeepLinkBase(): string {
+  return (
+    process.env.WEB_BASE_URL ??
+    process.env.RESET_BASE_URL ??
+    'http://localhost:3000'
+  );
+}
+
 @Injectable()
 export class NotificationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly realtime: RealtimeService,
+    private readonly mail: MailService,
   ) {}
 
   // ---- Public API (caller-scoped) ----------------------------------------
@@ -119,6 +130,8 @@ export class NotificationsService {
     type: NotificationType;
     issue: IssueSnapshot;
     message: string;
+    emailSubject?: string;
+    emailBodyLine?: string;
   }): Promise<NotificationDto | null> {
     if (params.userId === params.actorId) return null;
 
@@ -140,6 +153,17 @@ export class NotificationsService {
       SocketEvents.NotificationCreated,
       dto,
     );
+
+    // Fire-and-forget email to opted-in recipients (after DB/realtime work).
+    if (params.emailSubject && params.emailBodyLine) {
+      void this.sendEmailToRecipients(
+        [params.userId],
+        params.emailSubject,
+        params.issue,
+        params.emailBodyLine,
+      );
+    }
+
     return dto;
   }
 
@@ -169,6 +193,8 @@ export class NotificationsService {
       type: NotificationType.ASSIGNED,
       issue: params.issue,
       message: `${params.actorName} assigned ${params.issue.key} to you`,
+      emailSubject: `[${params.issue.key}] Assigned to you`,
+      emailBodyLine: `${params.actorName} assigned ${params.issue.key} to you.`,
     });
   }
 
@@ -293,6 +319,20 @@ export class NotificationsService {
         );
       }
     }
+
+    // Fire-and-forget emails after all DB/realtime work (no await — never blocks).
+    void this.sendEmailToRecipients(
+      mentionedRecipients,
+      `[${params.issue.key}] You were mentioned`,
+      params.issue,
+      `${params.authorName} mentioned you on ${params.issue.key}.`,
+    );
+    void this.sendEmailToRecipients(
+      commentedRecipients,
+      `[${params.issue.key}] New comment`,
+      params.issue,
+      `${params.authorName} commented on ${params.issue.key}.`,
+    );
   }
 
   /**
@@ -370,6 +410,70 @@ export class NotificationsService {
         SocketEvents.NotificationCreated,
         toNotificationDto(n),
       );
+    }
+
+    // Fire-and-forget emails after all DB/realtime work.
+    void this.sendEmailToRecipients(
+      recipients,
+      `[${params.issue.key}] Updated`,
+      params.issue,
+      `${params.actorName} updated ${params.issue.key} (${fieldLabel}).`,
+    );
+  }
+
+  // ---- Email delivery (opt-in) -------------------------------------------
+
+  /**
+   * Fetch opted-in recipients and send a notification email to each of them.
+   *
+   * Sends are fire-and-forget (Promise.all after all DB/realtime work) and
+   * never throw — MailService.send() already swallows delivery errors.
+   *
+   * @param recipientIds  IDs of users who may receive an email (actor already
+   *                      excluded upstream; we further filter by opt-in flag).
+   * @param subject       Email subject line, e.g. "[NL-12] Assigned to you".
+   * @param issue         Snapshot of the issue for deep-link generation.
+   * @param bodyLine      Single sentence describing the event.
+   */
+  private async sendEmailToRecipients(
+    recipientIds: string[],
+    subject: string,
+    issue: IssueSnapshot,
+    bodyLine: string,
+  ): Promise<void> {
+    if (recipientIds.length === 0) return;
+
+    try {
+      const users = await this.prisma.user.findMany({
+        where: { id: { in: recipientIds } },
+        select: { id: true, email: true, emailNotifications: true },
+      });
+
+      const optedIn = users.filter((u) => u.emailNotifications);
+      if (optedIn.length === 0) return;
+
+      const base = issueDeepLinkBase();
+      const url = `${base}/projects/${issue.projectId}/board?issue=${issue.id}`;
+
+      const text = `${bodyLine}\n\nView in Next Lane: ${url}`;
+      const html =
+        `<p>${bodyLine}</p>` +
+        `<p><a href="${url}">View in Next Lane</a></p>`;
+
+      // Individual send errors are swallowed — a failed delivery must never
+      // break the in-app notification flow. MailService.send() already logs;
+      // we also catch at the outer level so no unexpected throw becomes an
+      // unhandled Promise rejection when this method is called fire-and-forget.
+      await Promise.all(
+        optedIn.map((u) =>
+          this.mail
+            .send({ to: u.email, subject, text, html })
+            .catch(() => undefined),
+        ),
+      );
+    } catch {
+      // Swallow any unexpected error (e.g. DB blip) — email delivery is best-
+      // effort and must never surface as an unhandled rejection.
     }
   }
 

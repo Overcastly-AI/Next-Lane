@@ -135,13 +135,14 @@ enum AutomationRunStatus {
 // ---------------------------------------------------------------------------
 
 model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  name         String
-  passwordHash String
-  avatarColor  String   @default("#6366f1")
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id                   String   @id @default(cuid())
+  email                String   @unique
+  name                 String
+  passwordHash         String
+  avatarColor          String   @default("#6366f1")
+  emailNotifications   Boolean  @default(true)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
   memberships    Membership[]
   reportedIssues Issue[]       @relation("reporter")

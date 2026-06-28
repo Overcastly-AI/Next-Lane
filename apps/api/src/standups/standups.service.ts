@@ -22,6 +22,7 @@ interface UserRow {
   email: string;
   name: string;
   avatarColor: string;
+  emailNotifications: boolean;
   createdAt: Date;
 }
 
@@ -109,6 +110,7 @@ function toUserDto(u: UserRow): UserDto {
     email: u.email,
     name: u.name,
     avatarColor: u.avatarColor,
+    emailNotifications: u.emailNotifications,
     createdAt: u.createdAt.toISOString(),
   };
 }

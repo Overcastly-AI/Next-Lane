@@ -1,8 +1,9 @@
-import { Body, Controller, Get, HttpCode, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Patch, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { AuthService, toUserDto } from './auth.service';
 import { RegisterDto, LoginDto, ForgotPasswordDto, ResetPasswordDto } from './dto/auth.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 import { Public } from './public.decorator';
 import { CurrentUser, AuthUser } from './current-user.decorator';
 import { PrismaService } from '../prisma/prisma.service';
@@ -74,5 +75,20 @@ export class AuthController {
       where: { id: user.id },
     });
     return toUserDto(full);
+  }
+
+  /**
+   * Update the current user's own profile.
+   *
+   * Only the fields provided in the body are updated; omitted fields are left
+   * unchanged. Currently supports: `name`, `emailNotifications`.
+   */
+  @ApiBearerAuth()
+  @Patch('me')
+  async updateMe(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: UpdateProfileDto,
+  ) {
+    return this.auth.updateProfile(user.id, dto);
   }
 }

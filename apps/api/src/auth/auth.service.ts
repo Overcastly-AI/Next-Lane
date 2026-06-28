@@ -7,6 +7,7 @@ import { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
 import { PrismaService } from '../prisma/prisma.service';
 import { RegisterDto, LoginDto } from './dto/auth.dto';
+import type { UpdateProfileDto } from './dto/update-profile.dto';
 import type { AuthResponse, UserDto } from '@next-lane/shared';
 
 @Injectable()
@@ -49,10 +50,23 @@ export class AuthService {
     email: string;
     name: string;
     avatarColor: string;
+    emailNotifications: boolean;
     createdAt: Date;
   }): AuthResponse {
     const accessToken = this.jwt.sign({ sub: user.id, email: user.email });
     return { accessToken, user: toUserDto(user) };
+  }
+
+  async updateProfile(userId: string, dto: UpdateProfileDto): Promise<UserDto> {
+    const data: { name?: string; emailNotifications?: boolean } = {};
+    if (dto.name !== undefined) data.name = dto.name;
+    if (dto.emailNotifications !== undefined) data.emailNotifications = dto.emailNotifications;
+
+    const updated = await this.prisma.user.update({
+      where: { id: userId },
+      data,
+    });
+    return toUserDto(updated);
   }
 }
 
@@ -61,6 +75,7 @@ export function toUserDto(user: {
   email: string;
   name: string;
   avatarColor: string;
+  emailNotifications: boolean;
   createdAt: Date;
 }): UserDto {
   return {
@@ -68,6 +83,7 @@ export function toUserDto(user: {
     email: user.email,
     name: user.name,
     avatarColor: user.avatarColor,
+    emailNotifications: user.emailNotifications,
     createdAt: user.createdAt.toISOString(),
   };
 }
