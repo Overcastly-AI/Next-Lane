@@ -1,168 +1,355 @@
 /**
- * Next Lane — Dispatch design tokens
- * Primary: Cobalt blue #2563EB (Tailwind blue-600)
- * The brand accent is spent on interactive elements; everything else is disciplined.
+ * Next Lane — Overcastly v2 design tokens
+ *
+ * Palette
+ *   accent:        #4F8BFF  (hover #7AA8FF)
+ *   success/green: #7BD389
+ *   canvas:        #15161a → #1c1d22 → #25262c
+ *   ink:           #f4f4f1 / #b8b9b6 / #6f7075 / #3a3b40
+ *   hairlines:     rgba(255,255,255,.08) / rgba(255,255,255,.16)
+ *   radius:        999px (pills), 3–4px (small), 10–12px (cards)
+ *
+ * Aesthetic: dark editorial monochrome — dotted-grid body, hairline borders,
+ *   MONO UPPERCASE eyebrows, display headings, accent used sparingly.
+ *
+ * DARK is the canonical look (appearance: 'dark' in config).
+ * Light-mode overrides live in :root and are minimal but accessible.
  */
 
-/* ─── Cobalt / Dispatch blue scale ─────────────────────────────────────────── */
+/* ─── CSS custom properties shared across modes ─────────────────────────────── */
 :root {
-  /* Brand color scale — light mode */
-  --vp-c-brand-1: #2563eb;   /* primary — Tailwind blue-600  */
-  --vp-c-brand-2: #1d4ed8;   /* hover   — Tailwind blue-700  */
-  --vp-c-brand-3: #1e40af;   /* pressed — Tailwind blue-800  */
-  --vp-c-brand-soft: rgba(37, 99, 235, 0.12);
+  /* Overcastly brand — works on both light and dark; only the surface vars differ */
+  --oc-accent:        #4F8BFF;
+  --oc-accent-hover:  #7AA8FF;
+  --oc-accent-deep:   #3a6fe0;
+  --oc-green:         #7BD389;
 
-  /* Softer, clean neutral surface */
-  --vp-c-bg: #ffffff;
-  --vp-c-bg-soft: #f6f8fc;
-  --vp-c-bg-mute: #eef1f7;
+  /* Ink scale (same both modes — dark text on light, light text on dark) */
+  --oc-ink-1: #f4f4f1;
+  --oc-ink-2: #b8b9b6;
+  --oc-ink-3: #6f7075;
+  --oc-ink-4: #3a3b40;
 
-  /* Text */
-  --vp-c-text-1: #0f172a;   /* slate-900 — rich but not pure black */
-  --vp-c-text-2: #334155;   /* slate-700 */
-  --vp-c-text-3: #64748b;   /* slate-500 */
+  /* Hairlines */
+  --oc-line:   rgba(255, 255, 255, 0.08);
+  --oc-line-2: rgba(255, 255, 255, 0.16);
 
-  /* Border */
-  --vp-c-border: #e2e8f0;   /* slate-200 */
-  --vp-c-divider: #e2e8f0;
+  /* Dotted grid (body background signature element) */
+  --oc-dot-color: rgba(255, 255, 255, 0.045);
+  --oc-dot-size:  1.5px;
+  --oc-dot-gap:   32px;
+
+  /* Typography rhythm */
+  --oc-tracking-wide:  0.08em;
+  --oc-tracking-wider: 0.12em;
+}
+
+/* ─── Light mode (minimal — kept for toggle availability) ───────────────────── */
+:root {
+  --vp-c-brand-1: var(--oc-accent);
+  --vp-c-brand-2: var(--oc-accent-hover);
+  --vp-c-brand-3: var(--oc-accent-deep);
+  --vp-c-brand-soft: rgba(79, 139, 255, 0.10);
+
+  /* Light surfaces — clean off-white, not pure white */
+  --vp-c-bg:        #f8f8f6;
+  --vp-c-bg-alt:    #f0f0ed;
+  --vp-c-bg-soft:   #f0f0ed;
+  --vp-c-bg-elv:    #f0f0ed;
+  --vp-c-bg-mute:   #e6e6e3;
+
+  /* Light ink */
+  --vp-c-text-1: #18191d;
+  --vp-c-text-2: #3a3b40;
+  --vp-c-text-3: #6f7075;
+
+  /* Light borders — subtle warm-neutral */
+  --vp-c-border:   rgba(0, 0, 0, 0.10);
+  --vp-c-divider:  rgba(0, 0, 0, 0.08);
+
+  /* Light code */
+  --vp-code-bg:    #eaeae7;
+  --vp-code-color: #18191d;
+
+  /* Sidebar / nav */
+  --vp-sidebar-bg-color: #f0f0ed;
+  --vp-nav-bg-color:     rgba(248, 248, 246, 0.92);
+
+  /* Tip / success */
+  --vp-c-tip-1: #3fa84c;
+  --vp-c-tip-2: #2c8437;
+  --vp-c-tip-soft: rgba(123, 211, 137, 0.12);
+
+  /* Hero gradient — light editorial */
+  --nl-hero-gradient: linear-gradient(160deg, #f0f0ed 0%, #f8f8f6 60%, #ffffff 100%);
+}
+
+/* ─── Dark mode — Overcastly canonical ─────────────────────────────────────── */
+.dark {
+  --vp-c-brand-1: var(--oc-accent);        /* #4F8BFF */
+  --vp-c-brand-2: var(--oc-accent-hover);  /* #7AA8FF */
+  --vp-c-brand-3: var(--oc-accent-deep);   /* #3a6fe0 */
+  --vp-c-brand-soft: rgba(79, 139, 255, 0.13);
+
+  /* Overcastly dark surfaces */
+  --vp-c-bg:        #15161a;   /* canvas / darkest */
+  --vp-c-bg-alt:    #1c1d22;
+  --vp-c-bg-soft:   #1c1d22;
+  --vp-c-bg-elv:    #1c1d22;
+  --vp-c-bg-mute:   #25262c;
+
+  /* Ink */
+  --vp-c-text-1: var(--oc-ink-1);   /* #f4f4f1 */
+  --vp-c-text-2: var(--oc-ink-2);   /* #b8b9b6 */
+  --vp-c-text-3: var(--oc-ink-3);   /* #6f7075 */
+
+  /* Hairline borders */
+  --vp-c-border:  var(--oc-line-2);  /* rgba(255,255,255,0.16) */
+  --vp-c-divider: var(--oc-line);    /* rgba(255,255,255,0.08) */
 
   /* Code blocks */
-  --vp-code-bg: #f1f5f9;    /* slate-100 */
-  --vp-code-color: #0f172a;
+  --vp-code-bg:    #1c1d22;
+  --vp-code-color: var(--oc-ink-2);
 
-  /* Sidebar */
-  --vp-sidebar-bg-color: #f6f8fc;
+  /* Sidebar / nav */
+  --vp-sidebar-bg-color: #15161a;
+  --vp-nav-bg-color:     rgba(21, 22, 26, 0.92);
 
-  /* Nav */
-  --vp-nav-bg-color: rgba(255, 255, 255, 0.92);
+  /* Tip / success — Overcastly green */
+  --vp-c-tip-1: var(--oc-green);
+  --vp-c-tip-2: #5bbf6a;
+  --vp-c-tip-soft: rgba(123, 211, 137, 0.10);
 
-  /* Home hero gradient */
-  --nl-hero-gradient: linear-gradient(135deg, #dbeafe 0%, #eff6ff 50%, #ffffff 100%);
+  /* Hero gradient — dark editorial */
+  --nl-hero-gradient: linear-gradient(160deg, #15161a 0%, #1c1d22 60%, #1e2028 100%);
 }
 
-/* ─── Dark mode overrides ───────────────────────────────────────────────────── */
-.dark {
-  --vp-c-brand-1: #60a5fa;   /* blue-400 — lighter on dark bg */
-  --vp-c-brand-2: #93c5fd;   /* blue-300 */
-  --vp-c-brand-3: #bfdbfe;   /* blue-200 */
-  --vp-c-brand-soft: rgba(96, 165, 250, 0.14);
-
-  --vp-c-bg: #0c1120;        /* deep navy — signature backdrop */
-  --vp-c-bg-soft: #141c2e;
-  --vp-c-bg-mute: #1e2a42;
-
-  --vp-c-text-1: #f0f6ff;
-  --vp-c-text-2: #9ab3d4;
-  --vp-c-text-3: #6b88aa;
-
-  --vp-c-border: #243048;
-  --vp-c-divider: #243048;
-
-  --vp-code-bg: #141c2e;
-  --vp-code-color: #93c5fd;
-
-  --vp-sidebar-bg-color: #0e1625;
-  --vp-nav-bg-color: rgba(12, 17, 32, 0.92);
-
-  --nl-hero-gradient: linear-gradient(135deg, #0c1120 0%, #0f1e38 60%, #1a2744 100%);
+/* ─── Signature element: dotted-grid body background ───────────────────────── */
+/*
+ * The grid uses radial-gradient to place a small dot at each cell center.
+ * Alpha is intentionally low (~4–5%) so it reads as texture, not pattern.
+ * Applied to body so it underlies the entire page including the hero.
+ */
+body {
+  background-image: radial-gradient(
+    circle,
+    var(--oc-dot-color) var(--oc-dot-size),
+    transparent var(--oc-dot-size)
+  );
+  background-size: var(--oc-dot-gap) var(--oc-dot-gap);
+  background-position: 0 0;
 }
 
-/* ─── Button / CTA — signature cobalt ──────────────────────────────────────── */
-.vp-doc a.vp-button.medium.brand,
-.VPButton.medium.brand {
+/* Dot grid only shows on dark canvas — suppress on light mode */
+:root:not(.dark) body {
+  --oc-dot-color: rgba(0, 0, 0, 0.035);
+}
+
+/* ─── Buttons — pill radius (Overcastly signature) ──────────────────────────── */
+.VPButton {
+  border-radius: 999px !important;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  transition: background 0.18s ease, color 0.18s ease,
+              border-color 0.18s ease, transform 0.12s ease,
+              box-shadow 0.18s ease;
+}
+
+.VPButton.brand {
   background-color: var(--vp-c-brand-1);
   border-color: var(--vp-c-brand-1);
   color: #ffffff;
-  font-weight: 600;
-  letter-spacing: 0.01em;
-  transition: background 0.18s ease, transform 0.12s ease;
 }
 
-.VPButton.medium.brand:hover {
+.VPButton.brand:hover {
   background-color: var(--vp-c-brand-2);
   border-color: var(--vp-c-brand-2);
   transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(79, 139, 255, 0.28);
+}
+
+.VPButton.alt {
+  border-radius: 999px !important;
+  border-color: var(--oc-line-2);
+}
+
+.dark .VPButton.alt {
+  background-color: transparent;
+  border-color: var(--oc-line-2);
+  color: var(--oc-ink-1);
+}
+
+.dark .VPButton.alt:hover {
+  background-color: var(--vp-c-bg-mute);
+  border-color: var(--oc-line-2);
 }
 
 /* ─── Nav bar ───────────────────────────────────────────────────────────────── */
 .VPNav {
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border-bottom: 1px solid var(--vp-c-border);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--vp-c-divider);
 }
 
+/* Site title wordmark */
 .VPNavBarTitle .title {
   font-weight: 700;
-  font-size: 1.05rem;
+  font-size: 1rem;
   letter-spacing: -0.02em;
+  color: var(--vp-c-text-1);
+}
+
+/* Nav link hover — accent underline, not background */
+.VPNavBarMenu .VPNavBarMenuLink:hover,
+.VPNavBarMenu .VPNavBarMenuLink.active {
   color: var(--vp-c-brand-1);
 }
 
 /* ─── Sidebar ───────────────────────────────────────────────────────────────── */
+/*
+ * Sidebar section headers: MONO UPPERCASE eyebrow treatment.
+ * Uses system monospace stack to echo Overcastly's label aesthetic.
+ */
 .VPSidebarItem.level-0 > .item .text {
-  font-size: 0.78rem;
+  font-family: ui-monospace, 'SF Mono', 'Cascadia Code', 'Fira Code',
+               Menlo, Consolas, monospace;
+  font-size: 0.7rem;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: var(--oc-tracking-wider);
   text-transform: uppercase;
   color: var(--vp-c-text-3);
 }
 
+.dark .VPSidebarItem.level-0 > .item .text {
+  color: var(--oc-ink-3);
+}
+
+/* Active sidebar item */
 .VPSidebarItem.is-active > .item .link .text {
   color: var(--vp-c-brand-1);
   font-weight: 600;
 }
 
+/* Sidebar hairline left border on active */
+.VPSidebarItem.is-active > .item {
+  border-left: 2px solid var(--vp-c-brand-1);
+  padding-left: 0.5rem;
+  margin-left: -2px;
+}
+
 /* ─── Hero section ──────────────────────────────────────────────────────────── */
 .VPHome .VPHero {
   background: var(--nl-hero-gradient);
-  border-radius: 0 0 24px 24px;
-  padding-bottom: 48px;
+  border-bottom: 1px solid var(--vp-c-divider);
+  padding-bottom: 56px;
 }
 
+/*
+ * Hero display heading — large, tight, ink-primary.
+ * No gradient text: Overcastly aesthetic is monochrome discipline,
+ * accent is spent on interactive elements only.
+ */
 .VPHero .name {
-  font-size: clamp(2.4rem, 6vw, 3.8rem);
+  font-size: clamp(2.6rem, 6.5vw, 4rem);
   font-weight: 800;
   letter-spacing: -0.04em;
-  line-height: 1.05;
-  background: linear-gradient(135deg, var(--vp-c-brand-1) 0%, #7c3aed 100%);
+  line-height: 1.04;
+  color: var(--vp-c-text-1);
+  /* Subtle accent underline as signature — single line rule */
+  text-decoration: none;
+}
+
+/* Accent the brand mark in the name via the clip gradient only in dark mode */
+.dark .VPHero .name {
+  background: linear-gradient(135deg, var(--oc-ink-1) 0%, var(--oc-accent-hover) 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 
+.VPHero .text {
+  font-size: clamp(1.4rem, 3vw, 2rem);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: var(--vp-c-text-1);
+}
+
 .VPHero .tagline {
-  font-size: clamp(1rem, 2.5vw, 1.25rem);
+  font-size: clamp(1rem, 2.2vw, 1.15rem);
   color: var(--vp-c-text-2);
   font-weight: 400;
-  line-height: 1.6;
-  max-width: 560px;
+  line-height: 1.65;
+  max-width: 580px;
 }
 
 /* ─── Home features grid ────────────────────────────────────────────────────── */
+.VPFeatures {
+  border-top: 1px solid var(--vp-c-divider);
+}
+
 .VPFeature {
   border: 1px solid var(--vp-c-border);
-  border-radius: 12px;
-  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+  border-radius: 10px;
+  background: var(--vp-c-bg-soft);
+  transition: border-color 0.18s ease, box-shadow 0.18s ease,
+              background 0.18s ease;
 }
 
 .VPFeature:hover {
-  border-color: var(--vp-c-brand-1);
-  box-shadow: 0 4px 24px rgba(37, 99, 235, 0.12);
+  border-color: var(--oc-accent);
+  box-shadow: 0 4px 24px rgba(79, 139, 255, 0.10);
+}
+
+.dark .VPFeature {
+  background: #1c1d22;
+  border-color: var(--oc-line);
+}
+
+.dark .VPFeature:hover {
+  border-color: var(--oc-accent);
+  background: #20212a;
 }
 
 .VPFeature .title {
   font-weight: 700;
+  letter-spacing: -0.01em;
   color: var(--vp-c-text-1);
+}
+
+.VPFeature .details {
+  color: var(--vp-c-text-2);
+  font-size: 0.9rem;
+  line-height: 1.6;
 }
 
 /* ─── Code blocks ───────────────────────────────────────────────────────────── */
 div[class*='language-'] {
-  border-radius: 10px;
+  border-radius: 8px;
   border: 1px solid var(--vp-c-border);
 }
 
-div[class*='language-'] .shiki {
-  border-radius: 10px;
+.dark div[class*='language-'] {
+  background: #1c1d22;
+  border-color: var(--oc-line);
+}
+
+/* Code block filename/lang label — eyebrow mono treatment */
+div[class*='language-'] .lang {
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: var(--oc-tracking-wide);
+  text-transform: uppercase;
+  color: var(--oc-ink-3);
+}
+
+/* ─── Inline code ───────────────────────────────────────────────────────────── */
+.vp-doc :not(pre) > code {
+  background: var(--vp-c-brand-soft);
+  color: var(--vp-c-brand-1);
+  border-radius: 4px;
+  font-size: 0.875em;
+  padding: 0.15em 0.45em;
 }
 
 /* ─── Tables ────────────────────────────────────────────────────────────────── */
@@ -175,43 +362,37 @@ div[class*='language-'] .shiki {
 
 .vp-doc table th {
   background: var(--vp-c-bg-mute);
-  font-weight: 600;
-  font-size: 0.8rem;
-  letter-spacing: 0.05em;
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-weight: 700;
+  font-size: 0.72rem;
+  letter-spacing: var(--oc-tracking-wide);
   text-transform: uppercase;
-  color: var(--vp-c-text-2);
+  color: var(--vp-c-text-3);
+  border-bottom: 1px solid var(--vp-c-border);
+}
+
+.vp-doc table td {
+  border-bottom: 1px solid var(--vp-c-divider);
 }
 
 .vp-doc table tr:hover td {
   background: var(--vp-c-bg-soft);
 }
 
-/* ─── Inline code ───────────────────────────────────────────────────────────── */
-.vp-doc :not(pre) > code {
-  background: var(--vp-c-brand-soft);
-  color: var(--vp-c-brand-1);
-  border-radius: 4px;
-  font-size: 0.875em;
-  padding: 0.15em 0.4em;
-}
-
-.dark .vp-doc :not(pre) > code {
-  background: rgba(96, 165, 250, 0.1);
-  color: var(--vp-c-brand-1);
-}
-
-/* ─── H2 divider — a touch of character ────────────────────────────────────── */
+/* ─── H2 divider with hairline ──────────────────────────────────────────────── */
 .vp-doc h2 {
-  border-top: 1px solid var(--vp-c-border);
+  border-top: 1px solid var(--vp-c-divider);
   padding-top: 1.5rem;
+  margin-top: 2.5rem;
 }
 
+/* Accent bar — one signature mark per section */
 .vp-doc h2::before {
   content: '';
   display: inline-block;
   width: 3px;
   height: 1em;
-  background: var(--vp-c-brand-1);
+  background: var(--oc-accent);
   margin-right: 0.5rem;
   vertical-align: middle;
   border-radius: 2px;
@@ -219,22 +400,68 @@ div[class*='language-'] .shiki {
   top: -1px;
 }
 
-/* ─── Last Updated ──────────────────────────────────────────────────────────── */
-.VPDocFooter .VPLastUpdated {
-  font-size: 0.8rem;
-  color: var(--vp-c-text-3);
+/* H3 mono-uppercase eyebrow feel */
+.vp-doc h3 {
+  font-size: 0.9rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--vp-c-text-2);
 }
 
-/* ─── Screenshot image in docs ──────────────────────────────────────────────── */
+/* ─── Custom blocks (tip/warning/danger) ────────────────────────────────────── */
+/* Tip title in monospace eyebrow style */
+.vp-doc .custom-block .custom-block-title {
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: var(--oc-tracking-wide);
+  text-transform: uppercase;
+}
+
+.vp-doc .custom-block.tip {
+  border-color: var(--oc-green);
+  background: rgba(123, 211, 137, 0.07);
+}
+
+.vp-doc .custom-block.tip .custom-block-title {
+  color: var(--oc-green);
+}
+
+/* ─── Doc images ────────────────────────────────────────────────────────────── */
 .vp-doc img {
-  border-radius: 12px;
+  border-radius: 10px;
   border: 1px solid var(--vp-c-border);
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
   max-width: 100%;
 }
 
 .dark .vp-doc img {
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+  border-color: var(--oc-line);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+}
+
+/* ─── Last Updated footer ───────────────────────────────────────────────────── */
+.VPDocFooter .VPLastUpdated {
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  color: var(--vp-c-text-3);
+}
+
+/* ─── Footer ────────────────────────────────────────────────────────────────── */
+.VPFooter {
+  border-top: 1px solid var(--vp-c-divider);
+  background: var(--vp-c-bg-alt);
+}
+
+.dark .VPFooter {
+  background: #15161a;
+  border-top-color: var(--oc-line);
+}
+
+/* ─── Search box ─────────────────────────────────────────────────────────────── */
+.VPNavBarSearch .DocSearch-Button {
+  border-radius: 999px;
+  border: 1px solid var(--vp-c-border);
 }
 
 /* ─── Responsive ────────────────────────────────────────────────────────────── */
@@ -243,21 +470,38 @@ div[class*='language-'] .shiki {
     font-size: 2.2rem;
   }
 
+  .VPHero .text {
+    font-size: 1.3rem;
+  }
+
   .VPHero .tagline {
-    font-size: 1rem;
+    font-size: 0.975rem;
+  }
+}
+
+/* ─── Reduced motion ────────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .VPButton,
+  .VPFeature {
+    transition: none;
   }
 }
 
 /* ─── Scrollbar (Chromium) ──────────────────────────────────────────────────── */
 ::-webkit-scrollbar {
-  width: 6px;
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--vp-c-brand-soft);
-  border-radius: 3px;
+  background: var(--oc-line-2);
+  border-radius: 999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--vp-c-brand-1);
+  background: var(--oc-accent);
 }

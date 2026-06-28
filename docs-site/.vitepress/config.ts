@@ -7,6 +7,9 @@ export default defineConfig({
   description:
     'Open-source, self-hosted issue and project tracker. Unlimited users, unlimited projects, unlimited automation — running entirely on your own hardware. MIT licensed.',
 
+  // Dark is the canonical Overcastly aesthetic; the light/dark toggle is still available.
+  appearance: 'dark',
+
   lastUpdated: true,
 
   // Ignore localhost links — these are valid for self-hosted deployments
@@ -15,7 +18,7 @@ export default defineConfig({
 
   head: [
     ['link', { rel: 'icon', type: 'image/svg+xml', href: '/Next-Lane/favicon.svg' }],
-    ['meta', { name: 'theme-color', content: '#2563EB' }],
+    ['meta', { name: 'theme-color', content: '#4F8BFF' }],
     ['meta', { property: 'og:type', content: 'website' }],
     ['meta', { property: 'og:title', content: 'Next Lane' }],
     [
