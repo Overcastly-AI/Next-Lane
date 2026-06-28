@@ -1496,3 +1496,188 @@ a class of authorization confusion as the PAT model matures.
 - **Add `runtime-config` Playwright spec against real nginx container (flag-gated)** · P2 · M · `runtime-config.spec.ts` uses `page.addInitScript` simulation; the real `/config.js` serving path is untested
 - **OpenTelemetry distributed tracing (API + Prisma + Socket.io)** · P3 · L · No trace context; production root-causing requires log correlation across multiple services manually
 - **Make board `order` assignment atomic (SELECT FOR UPDATE or DB sequence)** · P3 · S · Concurrent board creates can assign duplicate `order` values; `apps/api/src/board/board.service.ts:136-141`
+
+---
+
+## 2026-06-28 — Pass 7 (automation engine, analytics, personal boards, general)
+
+Scope: deep scrutiny of the automation engine (event-bus integration, loop guard,
+N+1 analysis, action-executor authorization, NLQL safety, transactional consistency),
+analytics service (SQL correctness, query cost, ActivityLog-based completion
+reconstruction), personal boards module, and migration `20260628070000_add_automation_engine`.
+General pass on security (authz/tenant isolation on new endpoints), performance,
+test coverage, and tech debt. All cited files read directly; no inferences.
+
+### Ratings
+
+| Area | Score | Note |
+|------|:----:|------|
+| Architecture & module boundaries | 4 | AutomationsModule correctly imports IssuesModule/CommentsModule/LabelsModule without circular deps. EventEmitter2 wired globally. AnalyticsModule, PersonalBoardsModule clean. |
+| Data model & migrations | 4 | Automation migration sound: JSONB for actions/actionsApplied, correct onDelete (CASCADE runs on rule delete, SetNull on user/issue delete). Personal boards migration clean with columnId CASCADE for cards. Index coverage mostly good; one gap noted below. |
+| AuthN/AuthZ & multi-tenant isolation | 3 | New automation CRUD correctly gates on `assertProjectRole(MEMBER)`. Analytics `/projects/:id/analytics` gated. **`personalAnalytics` loads all `Issue` rows assigned to userId across all projects with no workspace-scoping.** Action executor uses `rule.createdById ?? actorUserId` and delegates to existing service authz — the delegated checks catch cross-project statusId/labelId attacks. Personal board ownership checks solid. |
+| Input validation | 4 | `CreateAutomationRuleDto` uses `class-validator` with `@IsEnum(AutomationTrigger)` and `@ValidateNested`; `validateActionParams` enforces per-type constraints. `ListRunsQueryDto` caps at 200. Condition NLQL validated at write-time via `validateQuery` (length-capped at 2000 chars). |
+| Error handling | 4 | Engine catches all exceptions and writes `AutomationRunStatus.FAILED` — user's original mutation never breaks. `writeRun` itself is wrapped; persistence failure is logged but never re-throws. |
+| N+1 / query efficiency | 3 | Engine: 4 DB round-trips per trigger event (rules, issue, customFieldDefs, members) regardless of rule count — acceptable for typical cardinality but grows if many projects have many members. **Per-rule `automationRun.create` is not batched** — 20 rules = 20 INSERT calls. Analytics: `allProjectIssues.findMany` fetches every issue in the project into memory; large projects load O(N) rows. ActivityLog `completionMap` query lacks a covering index on `(issueId, field, to, createdAt)`. |
+| Realtime correctness | 4 | Engine emits events AFTER mutations complete (not inside tx), so no double-fire on rollback. Loop guard (`automated: true`) is propagated on all three seams (create, update, move). |
+| Rank / ordering integrity | 5 | Personal board uses fractional indexing via `rankAfter`/`rankBetween`. `move` already wrapped in transaction with rebalance fallback (fixed in earlier passes). |
+| Test coverage (unit + e2e) | 4 | Strong unit test coverage for both new services: `automation-engine.service.spec.ts` covers loop guard, condition false/parse error, action failure, actor resolution, ADD_COMMENT, ADD_LABEL, no-rules path, issue-not-found. `automations.service.spec.ts` covers CRUD, NLQL rejection, action param validation. `analytics.service.spec.ts` comprehensive. `personal-boards.service.spec.ts` present. E2e specs for all three features (desktop + mobile). **Gap: no test for `promoteCard` idempotency; no CSP regression guard against docker nginx artifact.** |
+| Type safety | 4 | Generally strict. `params as Record<string, unknown>` casts in `executeAction` are acceptable at runtime boundaries. `Prisma.JsonValue` casts on actions are correctly wrapped. |
+| Build / CI / Docker | 4 | CI pipeline runs typecheck + unit tests. E2e workflow uses `vite preview` not the nginx docker image — **CSP/entrypoint substitution remains untested in CI** (same gap as Pass 6). The `tsconfig.build.tsbuildinfo` is gitignored; the Dockerfile `COPY apps/api apps/api` copies source only, so a stale tsbuildinfo from a prior local build cannot survive into the Docker build context. `nest build` inside Docker always starts clean. |
+| Secrets / config hygiene | 4 | No new secret surface introduced. Automation JSONB params hold user-supplied IDs/values but are persisted and re-used server-side only. |
+| Debugging / QA discipline | 3 | Strong progress: correlation IDs, structured logging, health endpoints present. Engine run log (AutomationRun) provides good Glass Box diagnosability. **Still no smoke-test of the shipped nginx artifact in CI** — `docker-entrypoint.sh` CSP substitution is tested only by simulation (addInitScript). Per-keystroke focus tests exist. |
+| Dependency risk | 4 | `@nestjs/event-emitter` 2.x is mainstream, actively maintained. No new risky deps introduced. |
+
+### Top risks & debt (prioritized)
+
+#### Risk 1 — `personalAnalytics` loads ALL user-assigned issues with no workspace boundary (P1, S)
+
+**File:** `apps/api/src/analytics/analytics.service.ts:252-263`
+
+```ts
+const assignedIssues = await this.prisma.issue.findMany({
+  where: { assigneeId: userId },
+  ...
+});
+```
+
+This fetches every issue where `assigneeId = userId` across **all** projects and workspaces globally. The query has no workspace scope. For a multi-tenant deployment where the same user email exists in two tenants (possible because the unique constraint is on `email` not `workspaceId+email`), or where a rogue admin in workspace A sets `assigneeId` to a user in workspace B, that user's analytics page would include issues from a workspace they don't belong to. The data exposure is limited to aggregate counts and cycle-time (not issue titles), but the principle is broken. The query should be scoped to issues from projects in workspaces the user is a member of, joined via the Membership table.
+
+**Suggested fix:** Join through `Membership → Project → Issue` to scope to the user's own workspaces. Or at minimum add a `project: { workspace: { memberships: { some: { userId } } } }` filter. *Size: S.*
+
+#### Risk 2 — AutomationRun writes are N sequential INSERTs per rule (P2, M)
+
+**File:** `apps/api/src/automations/automation-engine.service.ts:144-147, 296-320`
+
+The engine evaluates rules sequentially (`for (const rule of rules)`) and issues one `automationRun.create` per rule — including for SKIPPED rules (every non-matching rule gets a SKIPPED run written). With 20 enabled rules matching a trigger: 20 sequential `INSERT INTO AutomationRun` calls. At 50 rules (reasonable for an active project): 50 INSERTs per event, all serial.
+
+**Suggested fix:** Collect all run rows into an array during the loop, then issue a single `prisma.automationRun.createMany({ data: [...] })` after all rules have been evaluated. Saves 49 round-trips at 50 rules. *Size: S.*
+
+#### Risk 3 — Missing covering index on ActivityLog for `completionMap` query (P2, M)
+
+**File:** `apps/api/src/analytics/analytics.service.ts:151-166`, migration `20260628004947_baseline_v2/migration.sql:570-576`
+
+The `completionMap` raw SQL filters:
+```sql
+WHERE a."issueId" = ANY(${issueIds}::text[])
+  AND a."field" = 'status'
+  AND a."to" = ANY(${doneIdsArray}::text[])
+  AND a."createdAt" >= ${windowStartDate}
+  AND a."createdAt" <= ${windowEndInclusive}
+GROUP BY a."issueId", i."createdAt"
+```
+
+The existing indexes are: `ActivityLog_issueId_idx` (single column), `ActivityLog_field_createdAt_idx` (`field, createdAt`). For a project with 10,000 issues and 5 years of activity logs, Postgres must choose between the `issueId` index (possibly high cardinality for the IN list) or the `field+createdAt` index. There is no composite index on `(field, to, createdAt)` or `(issueId, field, to, createdAt)` that would satisfy all predicates together. For the project analytics path (`allProjectIssues.findMany` gives all issue IDs, then passes them all to `completionMap`), the `ANY()` list grows unboundedly with project size.
+
+**Suggested fix 1:** Add index `CREATE INDEX "ActivityLog_field_to_createdAt_idx" ON "ActivityLog"("field", "to", "createdAt")` — allows Postgres to index-scan `field='status' AND to IN (...) AND createdAt BETWEEN` and then filter by issueId.
+**Suggested fix 2:** For the project analytics path, push the completion reconstruction into a single SQL query that joins `Issue` and `ActivityLog` on `projectId` instead of materializing all issue IDs first. *Size: M.*
+
+#### Risk 4 — `promoteCard` has no idempotency guard (P2, S)
+
+**File:** `apps/api/src/personal-boards/personal-boards.service.ts:333-360`
+
+If `promoteCard` is called twice on the same card (network retry, double-click), it creates a second Issue each time and overwrites `promotedIssueId` with the latest one — leaving orphan issues in the project. The first-promoted issue has no card link and is effectively unreachable from the board UI.
+
+**Suggested fix:** Check `if (card.promotedIssueId !== null)` at the top of `promoteCard` and throw `BadRequestException('Card already promoted')` (or return the existing issue). The idempotency check should be inside a transaction with a re-read to prevent TOCTOU. *Size: S.*
+
+#### Risk 5 — `projectAnalytics` fetches all project issues into memory regardless of project size (P2, M)
+
+**File:** `apps/api/src/analytics/analytics.service.ts:401-411`
+
+```ts
+const allProjectIssues = await this.prisma.issue.findMany({
+  where: { projectId },
+  select: { id: true, createdAt: true, assigneeId: true, status: { select: { category: true } } },
+});
+```
+
+This materializes every issue in the project to build the flow series and workload distribution. A project with 50,000 issues loads 50,000 rows into Node.js memory per analytics request. The `createdAt` range filter (the analytics window) is applied *in JS after the fetch*, not in the SQL `WHERE`. Moving the `createdAt` filter to the SQL level for the flow series, and aggregating workload in SQL rather than materializing all rows, would reduce the memory and query cost by the window fraction.
+
+**Suggested fix:** Use two targeted queries: (a) a GROUP BY `DATE_TRUNC('day', "createdAt")` + COUNT for the flow series with a `createdAt >= wStart` filter in SQL; (b) a GROUP BY `assigneeId` + COUNT for the workload distribution, filtered to open-status issues. Both eliminate the full-table materialize. *Size: M.*
+
+### Loop guard — is it watertight?
+
+Yes. The guard is correctly implemented at two levels:
+
+1. **Event level** (`automation-engine.service.ts:102-104`): `if (event.automated) return` — exits before any DB access.
+2. **Propagation** (`issues.service.ts:228, 843, 1031`): every `eventEmitter.emit` call sets `automated: opts?.automated ?? false`, so an action triggered by the engine passes `opts = { automated: true }` and the emitted event carries `automated: true`, which the guard catches on the next listener invocation.
+
+The TRANSITION action calls `issuesService.move(..., opts)` where `opts = { automated: true }`, which then emits `ISSUE_TRANSITIONED` with `automated: true`. The ADD_COMMENT action calls `commentsService.create(..., opts)` where `opts = { automated: true }`, which emits `ISSUE_COMMENTED` with `automated: true`. No chaining is possible in v1.
+
+**One subtle edge case worth noting:** `LabelsService.addToIssue` (called by `ADD_LABEL` action) does not take an `opts` parameter and does not emit any automation event — this is correct and safe, since no automation trigger fires on label changes. No loop risk.
+
+### Action executor authorization analysis
+
+The engine uses `rule.createdById ?? actorUserId` as the actor for all actions. This actor is then passed to `issuesService.update/move` and `commentsService.create`, which **do run full authorization checks** (`assertProjectRole(MEMBER)`). So:
+
+- If `rule.createdById` is a user who has since been removed from the project, the action fails with 403 — the engine's error handler catches it, writes `FAILED`, and does not break the original mutation. Correct behavior.
+- If `rule.createdById` is null (user deleted, FK set to null by migration), the engine falls back to `actorUserId`. The actorUserId is the user who triggered the original event — they are already confirmed to be a project MEMBER (they just mutated an issue). Safe.
+- Cross-project attacks via action params (e.g., a TRANSITION action with a `statusId` from another project): `issuesService.move` calls `assertSameProject` which validates the statusId belongs to the issue's project. Blocked.
+- Cross-project attacks via ADD_LABEL: `labelsService.addToIssue` verifies `label.projectId === issue.projectId`. Blocked.
+
+**No authorization bypass identified in the action executor.**
+
+### NLQL evaluation safety
+
+`parse()` and `evaluate()` in `packages/shared/src/nlql/` are safe:
+- Field resolution is an explicit allowlist via `resolveStandardField` plus a `defs.some()` check — no dynamic `issue[userInput]` property access.
+- String matching uses `String.prototype.includes` — no RegExp is constructed from user input (no ReDoS surface).
+- Length cap at 2000 characters enforced at write-time via `validateQuery`.
+- Parse errors are caught in `evaluateRule` and recorded as `FAILED` runs — they never propagate to the caller.
+
+### Transactional consistency
+
+Engine events fire *after* the mutation transaction has committed (`eventEmitter.emit` is called after `$transaction` returns). This is correct: events are not emitted inside a transaction, so a rule that fails does not roll back the original mutation. The engine catches all its own errors. The only consistency risk is that `writeRun` itself might fail (e.g., DB connection lost) — this is silently logged and does not affect anything. Acceptable for an audit log.
+
+### Migration 20260628070000_add_automation_engine — index review
+
+The migration creates five indexes:
+- `AutomationRule(projectId, enabled)` — covers the engine's `WHERE projectId=? AND enabled=true`.
+- `AutomationRule(projectId, trigger)` — covers `WHERE projectId=? AND trigger=?`.
+- `AutomationRule(createdById)` — covers user-deletion FK lookup (SetNull).
+- `AutomationRun(ruleId, createdAt)` — covers `findRuleRuns` (per-rule history).
+- `AutomationRun(issueId, createdAt)` — covers per-issue run lookups.
+
+**Gap:** The `findRuns` project-wide query (`where: { rule: { projectId } }`) requires a join through `AutomationRule.projectId`. Prisma will use the existing `AutomationRule_projectId_enabled_idx` on the join side. The `AutomationRun` table itself has no `projectId` column and no index that directly serves a "all runs for a project" scan; Prisma must join through `AutomationRule`. For a project with many rules and high run volume, this join scan can be expensive. A composite index on `AutomationRun(ruleId, createdAt DESC)` (which exists) plus a filtered query scoping to the known rule IDs would perform better than the join — but at current cardinalities this is acceptable.
+
+**onDelete behaviors are sound:**
+- `AutomationRule` → `Project` CASCADE: deleting a project removes all its rules (and cascades to runs).
+- `AutomationRule` → `User` SetNull: deleting a user preserves rules (engine falls back to actorUserId).
+- `AutomationRun` → `AutomationRule` CASCADE: deleting a rule removes its run history (correct — runs without a rule have no context).
+- `AutomationRun` → `Issue` SetNull: deleting an issue preserves run history (audit trail survives).
+
+### Debugging / QA discipline assessment
+
+**Improvements since Pass 6:** AutomationRun provides excellent Glass Box diagnosability — every rule evaluation is recorded with status, actionsApplied, and error string. Combined with the existing correlation IDs and structured logging, production root-causing of automation issues is viable without a repro.
+
+**Persistent gaps:**
+1. **CI e2e suite uses `vite preview`, not the nginx docker image.** The `docker-entrypoint.sh` CSP substitution (`__NL_CONNECT_SRC__` placeholder replacement) is never exercised in any automated test. A bug in that sed substitution (e.g., an API_URL with a path component, or a protocol nginx doesn't recognize) would silently produce a broken or over-permissive CSP in the shipped image.
+
+2. **No regression guard for the "nginx CSP blocks API" bug class.** The e2e.yml runs Playwright against `vite preview`, which does not apply `nginx.conf` or `docker-entrypoint.sh`. A spec that asserts `Content-Security-Policy: connect-src` includes the API origin when run against the real docker image is the only thing that would catch this.
+
+3. **`promoteCard` double-invoke has no e2e regression test.** The personal-board e2e spec covers create/move/delete but not the promote idempotency failure.
+
+### New capabilities & technical investments (ideation mandate)
+
+1. **AutomationRun retention policy + SKIPPED pruning.** At current rates, a project with 20 rules and 100 events/day generates 2,000 `AutomationRun` rows/day — 730,000/year. SKIPPED runs (condition did not match) are the vast majority but have the lowest diagnostic value. Implement a scheduled job (BullMQ cron) that prunes `AutomationRun` rows where `status = SKIPPED` older than N days (configurable, default 30), and FAILED/SUCCESS older than 90 days, with a user-visible retention setting. This keeps the Glass Box useful at scale without unbounded growth. P2, M.
+
+2. **Automation "dry-run" / simulation mode.** Add a `POST /projects/:projectId/automations/:ruleId/simulate` endpoint that accepts an `issueId` and evaluates the rule against that issue — returning what the condition resolved to and what actions *would* be executed — without actually applying them. This is the most-requested automation feature in comparable tools and directly addresses the "I set up a rule but can't tell why it didn't fire" class of support requests. The engine's `evaluateRule` already does all the work; simulation is a thin wrapper that skips `executeAction` and `writeRun`. P1, M.
+
+3. **Docker artifact smoke-test CI job.** Add a new GitHub Actions workflow step (or extend `images.yml`) that: (a) builds the web Docker image, (b) runs it with `API_URL=http://api-test:4000`, (c) runs `curl -I http://localhost:3000` and asserts the `Content-Security-Policy` header contains `http://api-test:4000` in `connect-src` and does NOT contain `__NL_CONNECT_SRC__`. This is a <50-line shell script that closes the entire "tests pass but nginx is broken" bug class permanently. P1, S.
+
+### Direction (Pass 7)
+
+The automation engine is well-built: the loop guard is watertight, error isolation is correct, authorization is delegated to proven service-level checks, and test coverage is strong. The three concrete concerns worth addressing are: (1) scoping `personalAnalytics` to workspace-member issues (data hygiene, S-sized fix); (2) batching `AutomationRun` INSERTs (performance, S-sized); and (3) adding the ActivityLog composite index for the `completionMap` query (query cost, S-sized migration).
+
+The biggest structural gap from this pass is the same one as Pass 6: the nginx/docker artifact is never tested in CI. Automation dry-run is the highest-value new capability; it directly enables users to understand why rules did or didn't fire, and the engine already does 95% of the work.
+
+### Backlog-groomer feed (Pass 7 — compact)
+
+- **Scope `personalAnalytics` to workspace-member projects** · P1 · S · `assigneeId=userId` query has no workspace boundary; cross-workspace issue data visible in personal analytics if assigneeId set cross-tenant; `apps/api/src/analytics/analytics.service.ts:252`
+- **Batch `AutomationRun` INSERTs with `createMany`** · P2 · S · 20 rules = 20 serial INSERTs per trigger event; `apps/api/src/automations/automation-engine.service.ts:144-147, 296-320`
+- **Add `ActivityLog(field, to, createdAt)` index for completionMap query** · P2 · S · Analytics completion reconstruction lacks covering composite index; degrades for large projects; `apps/api/prisma/migrations/`
+- **Add idempotency guard to `promoteCard`** · P2 · S · Double-call creates orphan issues; `apps/api/src/personal-boards/personal-boards.service.ts:333`
+- **Push `createdAt` window filter into SQL for `projectAnalytics`** · P2 · M · `findMany` loads all project issues; window filter applied in JS; `apps/api/src/analytics/analytics.service.ts:401`
+- **Docker artifact CSP smoke test in CI** · P1 · S · nginx entrypoint `__NL_CONNECT_SRC__` substitution never tested; `docker-entrypoint.sh`/`nginx.conf` bugs invisible until user-reported; `.github/workflows/images.yml`
+- **Automation dry-run / simulate endpoint** · P1 · M · Users cannot tell why a rule fired or didn't; thin wrapper over existing engine logic; `apps/api/src/automations/`
+- **AutomationRun retention/pruning job** · P2 · M · SKIPPED runs at scale (20 rules × 100 events/day = 730k rows/year); BullMQ cron + configurable retention; `apps/api/src/automations/`
+- **E2e regression test for `promoteCard` idempotency** · P2 · S · No Playwright coverage for double-promote failure; `apps/web/e2e/personal-board.spec.ts`
