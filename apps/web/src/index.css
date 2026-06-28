@@ -1,5 +1,27 @@
-/* Self-hosted fonts — bundled by Vite, no runtime CDN dependency */
-@import '@fontsource-variable/plus-jakarta-sans/wght.css';
+/*
+ * DISPATCH design system — self-hosted fonts, no CDN.
+ *
+ * Typeface roles:
+ *   Display / headings  → Space Grotesk (geometric, technical, restrained)
+ *   UI / body           → IBM Plex Sans (precise, readable, workhorse)
+ *   Data / keys / mono  → IBM Plex Mono (timestamps, issue keys, story points)
+ *
+ * All woff2 assets bundled by Vite — nginx CSP font-src 'self' compliant.
+ */
+
+/* Space Grotesk — display weights only */
+@import '@fontsource/space-grotesk/400.css';
+@import '@fontsource/space-grotesk/500.css';
+@import '@fontsource/space-grotesk/600.css';
+@import '@fontsource/space-grotesk/700.css';
+
+/* IBM Plex Sans — UI body face */
+@import '@fontsource/ibm-plex-sans/400.css';
+@import '@fontsource/ibm-plex-sans/500.css';
+@import '@fontsource/ibm-plex-sans/600.css';
+@import '@fontsource/ibm-plex-sans/700.css';
+
+/* IBM Plex Mono — data signature */
 @import '@fontsource/ibm-plex-mono/400.css';
 @import '@fontsource/ibm-plex-mono/500.css';
 
@@ -7,55 +29,82 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ── Design tokens (CSS custom properties) ────────────────────────────────── */
+/* ── DISPATCH Design Tokens ───────────────────────────────────────────────── */
+/*
+ * Palette rationale:
+ *
+ * Signal accent: #2563EB — "electric cobalt".
+ *   Chosen as the one bold hue in the system. Not generic indigo-500 (#6366f1)
+ *   which reads purple, not teal/cyan (the old brand), not sky-blue (too soft).
+ *   #2563EB sits precisely at the boundary of true-blue and engineering blue —
+ *   it reads as "signal", "priority", "active dispatch". Used ONLY for primary
+ *   actions, active states, and the in-progress lane signal. Everything else is
+ *   graphite-ink.
+ *
+ * Graphite-ink neutrals: a cool-temperature gray with a deliberate blue
+ *   undertone (hue ~220°). Not pure neutral gray, not warm slate. Conveys
+ *   precision and focus without the coldness of pure cool grays.
+ *
+ * Status arc (queued → moving → arrived):
+ *   Todo:        graphite  — resting, queued, neutral
+ *   In Progress: cobalt    — dispatched, in motion (the signal accent)
+ *   Done:        eucalyptus (#059669) — resolved, arrived
+ */
 :root {
   color-scheme: light;
 
-  /* Brand — deep teal */
-  --nl-accent:         #0891b2; /* brand-600 */
-  --nl-accent-light:   #cffafe; /* brand-100 */
-  --nl-accent-dim:     #0e7490; /* brand-700 */
+  /* Signal accent — electric cobalt (see rationale above) */
+  --nl-accent:         #2563EB;
+  --nl-accent-light:   #dbeafe; /* blue-100 */
+  --nl-accent-dim:     #1d4ed8; /* blue-700 */
+  --nl-accent-faint:   #eff6ff; /* blue-50 */
 
-  /* Canvas — warm off-white, not sterile #fff */
-  --nl-canvas:         #f8fafc; /* slate-50 shifted warm */
+  /* Canvas — cool graphite-ink paper, faint blue undertone */
+  --nl-canvas:         #f4f6f9; /* graphite-50: slightly cooler than slate-50 */
   --nl-surface:        #ffffff;
   --nl-surface-raised: #ffffff;
   --nl-surface-overlay:#ffffff;
 
-  /* Borders */
-  --nl-border:         #e2e8f0; /* slate-200 */
-  --nl-border-muted:   #f1f5f9; /* slate-100 */
+  /* Borders — graphite-ink, cool undertone */
+  --nl-border:         #dde1e9; /* graphite-200 */
+  --nl-border-muted:   #edf0f5; /* graphite-100 */
+  --nl-border-strong:  #c4cad6; /* graphite-300 */
 
-  /* Text */
-  --nl-text-primary:   #0f172a; /* slate-900 */
-  --nl-text-secondary: #475569; /* slate-600 */
-  --nl-text-muted:     #94a3b8; /* slate-400 */
-  --nl-text-disabled:  #cbd5e1; /* slate-300 */
+  /* Text — graphite-ink scale */
+  --nl-text-primary:   #111827; /* graphite-900 — near-black with blue cast */
+  --nl-text-secondary: #4b5563; /* graphite-600 */
+  --nl-text-muted:     #8b95a8; /* graphite-400 */
+  --nl-text-disabled:  #c4cad6; /* graphite-300 */
 
-  /* Status arc — todo → in-progress → done */
-  --nl-status-todo-dot: #78716c;
-  --nl-status-todo-bg:  #f5f5f4;
-  --nl-status-ip-dot:   #d97706;
-  --nl-status-ip-bg:    #fef3c7;
-  --nl-status-done-dot: #059669;
-  --nl-status-done-bg:  #d1fae5;
+  /* Status arc — semantic signal progression */
+  --nl-status-todo-dot:  #6b7280; /* graphite-500 — queued/resting */
+  --nl-status-todo-bg:   #f4f6f9; /* canvas */
+  --nl-status-ip-dot:    #2563EB; /* cobalt signal — in motion */
+  --nl-status-ip-bg:     #eff6ff; /* blue-50 */
+  --nl-status-done-dot:  #059669; /* eucalyptus — arrived */
+  --nl-status-done-bg:   #d1fae5; /* emerald-100 */
 
-  /* Column gutter background */
-  --nl-column-bg:      #f1f5f9;  /* slate-100 */
-  --nl-column-border:  #e2e8f0;  /* slate-200 */
+  /* Board lane surface */
+  --nl-column-bg:        #edf0f5; /* graphite-100 */
+  --nl-column-border:    #dde1e9; /* graphite-200 */
 
   /* Radii */
-  --nl-radius-xs:   0.25rem;
-  --nl-radius-sm:   0.375rem;
-  --nl-radius-md:   0.5rem;
-  --nl-radius-lg:   0.75rem;
-  --nl-radius-xl:   1rem;
+  --nl-radius-xs:   0.1875rem;  /* 3px  — tighter, more engineered */
+  --nl-radius-sm:   0.3125rem;  /* 5px  — badges, chips */
+  --nl-radius-md:   0.4375rem;  /* 7px  — cards, inputs */
+  --nl-radius-lg:   0.625rem;   /* 10px — dropdowns, popovers */
+  --nl-radius-xl:   0.875rem;   /* 14px — modals, columns */
+  --nl-radius-2xl:  1.125rem;   /* 18px — auth card */
 
   /* Motion */
-  --nl-ease:        cubic-bezier(0.16, 1, 0.3, 1);
-  --nl-duration-fast:  150ms;
-  --nl-duration-base:  200ms;
-  --nl-duration-slow:  250ms;
+  --nl-ease:             cubic-bezier(0.16, 1, 0.3, 1);
+  --nl-ease-in:          cubic-bezier(0.4, 0, 1, 1);
+  --nl-duration-fast:    120ms;
+  --nl-duration-base:    180ms;
+  --nl-duration-slow:    240ms;
+
+  /* Board lane stagger — merge-in animation base delay */
+  --nl-stagger-base:     40ms;
 }
 
 /* ── Base ─────────────────────────────────────────────────────────────────── */
@@ -68,65 +117,107 @@ body,
 body {
   background-color: var(--nl-canvas);
   color: var(--nl-text-primary);
-  font-family: 'Plus Jakarta Sans Variable', 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
+  /* IBM Plex Sans as the primary UI/body face */
+  font-family: 'IBM Plex Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  font-feature-settings: 'cv11', 'ss01';
+  font-feature-settings: 'cv01', 'ss01';
   font-size: 0.9375rem;
   line-height: 1.5rem;
 }
 
-/* ── Focus ring ───────────────────────────────────────────────────────────── */
+/* ── Focus ring — cobalt signal ───────────────────────────────────────────── */
 :focus-visible {
   outline: 2px solid var(--nl-accent);
   outline-offset: 2px;
+  border-radius: 3px;
 }
 
-/* ── Issue key signature — monospace teal chip ────────────────────────────── */
+/* ── Display / heading type — Space Grotesk ───────────────────────────────── */
+/*
+ * Apply Space Grotesk only to headings and display text.
+ * Body and form controls stay in IBM Plex Sans for legibility.
+ */
+h1, h2, h3, h4, h5, h6,
+.nl-display {
+  font-family: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: -0.02em;
+}
+
+/* ── Issue key — mono data signature ─────────────────────────────────────── */
 .nl-issue-key {
   font-family: 'IBM Plex Mono', ui-monospace, monospace;
-  font-size: 0.7rem;
+  font-size: 0.6875rem;
   font-weight: 500;
-  letter-spacing: 0.01em;
+  letter-spacing: 0.02em;
   color: var(--nl-accent);
+  /* Subtle cobalt pill — the one accent in the card footer */
+  background-color: var(--nl-accent-faint);
+  border-radius: var(--nl-radius-xs);
+  padding: 0.0625rem 0.3125rem;
 }
 
 /* ── Story-point / data chip ─────────────────────────────────────────────── */
 .nl-data-chip {
   font-family: 'IBM Plex Mono', ui-monospace, monospace;
-  font-size: 0.65rem;
+  font-size: 0.6375rem;
   font-weight: 500;
+  letter-spacing: 0.01em;
 }
 
-/* ── Drawer slide-in animation ────────────────────────────────────────────── */
+/* ── Drawer slide-in ──────────────────────────────────────────────────────── */
 .nl-drawer-animate {
   animation: nl-drawer-in var(--nl-duration-slow) var(--nl-ease) both;
 }
 
 /* ── Modal scale-in ──────────────────────────────────────────────────────── */
 .nl-modal-animate {
-  animation: nl-modal-in 180ms var(--nl-ease) both;
+  animation: nl-modal-in 160ms var(--nl-ease) both;
 }
 
-/* ── Toast animation ─────────────────────────────────────────────────────── */
+/* ── Keyframes ────────────────────────────────────────────────────────────── */
 @keyframes nl-toast-in {
-  from { opacity: 0; transform: translateY(-6px) scale(0.98); }
+  from { opacity: 0; transform: translateY(-8px) scale(0.97); }
   to   { opacity: 1; transform: translateY(0) scale(1); }
 }
+
 @keyframes nl-drawer-in {
-  from { opacity: 0; transform: translateX(24px); }
+  from { opacity: 0; transform: translateX(20px); }
   to   { opacity: 1; transform: translateX(0); }
 }
+
 @keyframes nl-modal-in {
-  from { opacity: 0; transform: translateY(8px) scale(0.97); }
+  from { opacity: 0; transform: translateY(6px) scale(0.98); }
   to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
-/* Respect reduced-motion */
+@keyframes nl-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/*
+ * DISPATCH lane merge-in — board cards stagger into position on load.
+ * Uses CSS custom property --nl-card-index set inline on each card.
+ * motion-safe only (reduced-motion override below).
+ */
+@keyframes nl-card-merge-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ── Reduced-motion — kill all animations ─────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   [data-toast],
   .nl-drawer-animate,
-  .nl-modal-animate {
+  .nl-modal-animate,
+  .nl-card-merge-in {
     animation: none !important;
     transition: none !important;
   }
@@ -136,57 +227,97 @@ body {
   }
 }
 
-/* ── Markdown prose styles ───────────────────────────────────────────────── */
-.markdown-body h1 { @apply text-xl font-bold text-slate-900 mt-4 mb-2; }
-.markdown-body h2 { @apply text-lg font-bold text-slate-900 mt-3 mb-1.5; }
-.markdown-body h3 { @apply text-base font-semibold text-slate-900 mt-2 mb-1; }
-.markdown-body h4,
-.markdown-body h5,
-.markdown-body h6 { @apply text-sm font-semibold text-slate-800 mt-2 mb-1; }
-.markdown-body p  { @apply mb-2 last:mb-0; }
-.markdown-body ul { @apply list-disc pl-5 mb-2 space-y-0.5; }
-.markdown-body ol { @apply list-decimal pl-5 mb-2 space-y-0.5; }
-.markdown-body li { @apply text-slate-700; }
-.markdown-body a  {
-  @apply text-brand-600 underline underline-offset-2 hover:text-brand-700;
-}
-.markdown-body code {
-  font-family: 'IBM Plex Mono', ui-monospace, monospace;
-  @apply rounded bg-slate-100 px-1 py-0.5 text-[0.78em] text-slate-700;
-}
-.markdown-body pre {
-  @apply mb-2 overflow-x-auto rounded-md bg-slate-100 p-3;
-}
-.markdown-body pre code {
-  @apply bg-transparent p-0;
-}
-.markdown-body blockquote {
-  @apply mb-2 border-l-4 border-slate-300 pl-3 text-slate-500 italic;
-}
-.markdown-body hr { @apply my-3 border-slate-200; }
-.markdown-body table { @apply mb-2 w-full border-collapse text-left text-sm; }
-.markdown-body th { @apply border border-slate-200 bg-slate-50 px-2 py-1 font-semibold; }
-.markdown-body td { @apply border border-slate-200 px-2 py-1; }
-.markdown-body > *:first-child { @apply mt-0; }
+/* ── Board: DISPATCH lane motif ───────────────────────────────────────────── */
+/*
+ * The lane is the signature. Each column gets a subtle directional left→right
+ * flow cue: a semi-transparent gradient wash on the column header and a dashed
+ * lane-divider rule (rendered between columns in the board layout).
+ */
 
-/* ── Thin, subtle scrollbars for board columns ───────────────────────────── */
+/* Status top-bar accent lines */
+.nl-column-todo     { border-top: 2px solid var(--nl-status-todo-dot); }
+.nl-column-progress { border-top: 2px solid var(--nl-status-ip-dot); }
+.nl-column-done     { border-top: 2px solid var(--nl-status-done-dot); }
+
+/* Lane-divider — the dashed vertical line between columns */
+.nl-lane-divider {
+  width: 1px;
+  align-self: stretch;
+  background: repeating-linear-gradient(
+    to bottom,
+    var(--nl-border) 0px,
+    var(--nl-border) 4px,
+    transparent 4px,
+    transparent 10px
+  );
+  flex-shrink: 0;
+  opacity: 0.5;
+  margin-top: 4px;
+}
+
+/* Board card merge-in stagger (motion-safe) */
+@media (prefers-reduced-motion: no-preference) {
+  .nl-card-merge-in {
+    animation: nl-card-merge-in 280ms var(--nl-ease) both;
+    animation-delay: calc(var(--nl-card-index, 0) * var(--nl-stagger-base, 40ms));
+  }
+}
+
+/* ── Thin, subtle scrollbars ─────────────────────────────────────────────── */
 .nl-scroll {
   scrollbar-width: thin;
-  scrollbar-color: #cbd5e1 transparent;
+  scrollbar-color: var(--nl-border-strong) transparent;
 }
 .nl-scroll::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
 .nl-scroll::-webkit-scrollbar-thumb {
-  background-color: #cbd5e1;
+  background-color: var(--nl-border-strong);
   border-radius: 9999px;
 }
 .nl-scroll::-webkit-scrollbar-track {
   background: transparent;
 }
 
-/* ── Board column status accent bar ─────────────────────────────────────── */
-.nl-column-todo     { border-top: 2px solid var(--nl-status-todo-dot); }
-.nl-column-progress { border-top: 2px solid var(--nl-status-ip-dot); }
-.nl-column-done     { border-top: 2px solid var(--nl-status-done-dot); }
+/* ── Markdown prose styles ───────────────────────────────────────────────── */
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3,
+.markdown-body h4,
+.markdown-body h5,
+.markdown-body h6 {
+  font-family: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: -0.015em;
+}
+.markdown-body h1 { @apply text-xl font-bold text-ink-900 mt-4 mb-2; }
+.markdown-body h2 { @apply text-lg font-bold text-ink-900 mt-3 mb-1.5; }
+.markdown-body h3 { @apply text-base font-semibold text-ink-900 mt-2 mb-1; }
+.markdown-body h4,
+.markdown-body h5,
+.markdown-body h6 { @apply text-sm font-semibold text-ink-800 mt-2 mb-1; }
+.markdown-body p  { @apply mb-2 last:mb-0; }
+.markdown-body ul { @apply list-disc pl-5 mb-2 space-y-0.5; }
+.markdown-body ol { @apply list-decimal pl-5 mb-2 space-y-0.5; }
+.markdown-body li { @apply text-ink-700; }
+.markdown-body a  {
+  @apply text-signal-600 underline underline-offset-2 hover:text-signal-700;
+}
+.markdown-body code {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  @apply rounded bg-ink-100 px-1 py-0.5 text-[0.78em] text-ink-700;
+}
+.markdown-body pre {
+  @apply mb-2 overflow-x-auto rounded-md bg-ink-100 p-3;
+}
+.markdown-body pre code {
+  @apply bg-transparent p-0;
+}
+.markdown-body blockquote {
+  @apply mb-2 border-l-4 border-ink-200 pl-3 text-ink-500 italic;
+}
+.markdown-body hr { @apply my-3 border-ink-200; }
+.markdown-body table { @apply mb-2 w-full border-collapse text-left text-sm; }
+.markdown-body th { @apply border border-ink-200 bg-ink-50 px-2 py-1 font-semibold; }
+.markdown-body td { @apply border border-ink-200 px-2 py-1; }
+.markdown-body > *:first-child { @apply mt-0; }

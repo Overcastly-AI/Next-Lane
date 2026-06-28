@@ -15,18 +15,20 @@ import { useEffect, useRef, useState } from 'react';
 import { StatusCategory, type StatusDto } from '@next-lane/shared';
 import { cn } from '@/lib/cn';
 
-// Colour mapping for category dots — matches the column header dots in BoardColumn.
-// Status progression arc: stone (resting) → amber (in motion) → emerald (resolved)
+/*
+ * DISPATCH status signal dots — matches the column header signal progression:
+ * graphite (queued) → cobalt (in motion) → eucalyptus (arrived)
+ */
 const CATEGORY_DOT: Record<string, string> = {
-  TODO: 'bg-stone-400',
-  IN_PROGRESS: 'bg-amber-500',
-  DONE: 'bg-emerald-500',
+  TODO:        'bg-ink-400',
+  IN_PROGRESS: 'bg-signal-600',
+  DONE:        'bg-emerald-500',
 };
 
 const CATEGORY_RING: Record<string, string> = {
-  TODO: 'hover:ring-stone-300',
-  IN_PROGRESS: 'hover:ring-amber-300',
-  DONE: 'hover:ring-emerald-300',
+  TODO:        'hover:ring-ink-300',
+  IN_PROGRESS: 'hover:ring-signal-300',
+  DONE:        'hover:ring-emerald-300',
 };
 
 // Human-readable label for each category used in aria-labels.
@@ -84,7 +86,6 @@ export function CardStatusPicker({
   // Move focus into the listbox when it opens.
   useEffect(() => {
     if (!open) return;
-    // Focus the currently-selected item (or the first item).
     const selected = menuRef.current?.querySelector<HTMLElement>(
       '[aria-selected="true"]',
     );
@@ -94,12 +95,10 @@ export function CardStatusPicker({
 
   if (!editable) return null;
 
-  const dotClass = CATEGORY_DOT[currentStatus?.category ?? ''] ?? 'bg-stone-400';
-  const ringClass =
-    CATEGORY_RING[currentStatus?.category ?? ''] ?? 'hover:ring-slate-300';
+  const dotClass  = CATEGORY_DOT[currentStatus?.category ?? '']  ?? 'bg-ink-400';
+  const ringClass = CATEGORY_RING[currentStatus?.category ?? ''] ?? 'hover:ring-ink-300';
 
   function handleTriggerClick(e: React.MouseEvent) {
-    // Prevent the card-body click handler from opening the drawer.
     e.stopPropagation();
     setOpen((v) => !v);
   }
@@ -161,10 +160,9 @@ export function CardStatusPicker({
     <div
       ref={containerRef}
       className="relative"
-      // Prevent pointer events bubbling up to dnd-kit.
       onPointerDown={(e) => e.stopPropagation()}
     >
-      {/* Trigger — a coloured dot that acts as a button */}
+      {/* Trigger — status signal dot */}
       <button
         ref={triggerRef}
         type="button"
@@ -175,8 +173,8 @@ export function CardStatusPicker({
         onClick={handleTriggerClick}
         onKeyDown={handleTriggerKeyDown}
         className={cn(
-          'flex h-4 w-4 shrink-0 items-center justify-center rounded-full ring-1 ring-transparent transition-all',
-          'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-1',
+          'flex h-4 w-4 shrink-0 items-center justify-center rounded-full ring-1 ring-transparent transition-all duration-[120ms]',
+          'focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-400 focus-visible:ring-offset-1',
           ringClass,
         )}
       >
@@ -194,7 +192,7 @@ export function CardStatusPicker({
           aria-label="Change status"
           data-testid="card-status-menu"
           className={cn(
-            'absolute left-0 top-6 z-50 min-w-[10rem] rounded-lg border border-slate-200',
+            'absolute left-0 top-6 z-50 min-w-[10rem] rounded-lg border border-ink-200',
             'bg-white py-1 shadow-dropdown',
           )}
         >
@@ -211,16 +209,16 @@ export function CardStatusPicker({
                   onKeyDown={(e) => handleOptionKeyDown(e, s.id)}
                   className={cn(
                     'flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm',
-                    'focus:outline-none focus-visible:bg-slate-50',
+                    'focus:outline-none focus-visible:bg-ink-50',
                     isCurrent
-                      ? 'bg-slate-50 font-semibold text-slate-900'
-                      : 'text-slate-700 hover:bg-slate-50',
+                      ? 'bg-ink-50 font-semibold text-ink-900'
+                      : 'text-ink-700 hover:bg-ink-50',
                   )}
                 >
                   <span
                     className={cn(
                       'h-2 w-2 shrink-0 rounded-full',
-                      CATEGORY_DOT[s.category] ?? 'bg-gray-400',
+                      CATEGORY_DOT[s.category] ?? 'bg-ink-400',
                     )}
                     aria-hidden="true"
                   />
@@ -234,7 +232,7 @@ export function CardStatusPicker({
                       stroke="currentColor"
                       strokeWidth="3"
                       aria-hidden="true"
-                      className="ml-auto shrink-0 text-brand-600"
+                      className="ml-auto shrink-0 text-signal-600"
                     >
                       <path
                         strokeLinecap="round"

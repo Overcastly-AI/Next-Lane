@@ -24,7 +24,6 @@ export function NotificationBell() {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
 
-  // Live updates + polling fallback.
   useNotificationsRealtime(Boolean(user));
   const { data: count } = useUnreadCount();
   const { data: list, isLoading, isError } = useNotifications();
@@ -52,7 +51,7 @@ export function NotificationBell() {
         }
         aria-haspopup="menu"
         aria-expanded={open}
-        className="relative rounded-lg p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
+        className="relative rounded p-2 text-ink-500 transition-colors duration-[120ms] hover:bg-ink-100 hover:text-ink-700"
       >
         <svg
           className="h-5 w-5"
@@ -89,16 +88,16 @@ export function NotificationBell() {
           <div
             role="menu"
             aria-label="Notifications"
-            className="absolute right-0 z-20 mt-2 flex max-h-[28rem] w-80 flex-col overflow-hidden rounded-xl border border-slate-100 bg-white shadow-lg sm:w-96"
+            className="absolute right-0 z-20 mt-2 flex max-h-[28rem] w-80 flex-col overflow-hidden rounded-xl border border-ink-100 bg-white shadow-dropdown sm:w-96"
           >
-            <div className="flex items-center justify-between border-b border-slate-100 px-3 py-2">
-              <p className="text-sm font-semibold text-slate-900">Notifications</p>
+            <div className="flex items-center justify-between border-b border-ink-100 px-3 py-2">
+              <p className="font-display text-sm font-semibold text-ink-900">Notifications</p>
               {unread > 0 && (
                 <button
                   type="button"
                   onClick={() => markAll.mutate()}
                   disabled={markAll.isPending}
-                  className="text-xs font-medium text-brand-700 hover:text-brand-800 disabled:opacity-50"
+                  className="text-xs font-medium text-signal-700 hover:text-signal-800 disabled:opacity-50 transition-colors duration-[120ms]"
                 >
                   Mark all read
                 </button>
@@ -107,7 +106,7 @@ export function NotificationBell() {
 
             <div className="min-h-0 flex-1 overflow-y-auto">
               {isLoading && (
-                <p className="px-3 py-6 text-center text-sm text-slate-500">
+                <p className="px-3 py-6 text-center text-sm text-ink-500">
                   Loading…
                 </p>
               )}
@@ -122,7 +121,7 @@ export function NotificationBell() {
                   className="flex flex-col items-center gap-2 px-3 py-8 text-center"
                 >
                   <svg
-                    className="h-8 w-8 text-slate-200"
+                    className="h-8 w-8 text-ink-200"
                     viewBox="0 0 24 24"
                     fill="none"
                     stroke="currentColor"
@@ -136,10 +135,10 @@ export function NotificationBell() {
                     />
                     <path strokeLinecap="round" strokeLinejoin="round" d="M13.7 21a2 2 0 0 1-3.4 0" />
                   </svg>
-                  <p className="text-sm font-medium text-slate-500">
+                  <p className="text-sm font-medium text-ink-500">
                     You&rsquo;re all caught up
                   </p>
-                  <p className="text-xs text-slate-400">
+                  <p className="text-xs text-ink-400">
                     Notifications appear here when you&rsquo;re assigned to an
                     issue or someone mentions you.
                   </p>
@@ -151,17 +150,17 @@ export function NotificationBell() {
                     <button
                       type="button"
                       onClick={() => onOpenItem(n)}
-                      className={`flex w-full items-start gap-2.5 px-3 py-2.5 text-left transition-colors hover:bg-slate-50 ${
-                        n.read ? '' : 'bg-brand-50/60'
+                      className={`flex w-full items-start gap-2.5 px-3 py-2.5 text-left transition-colors duration-[120ms] hover:bg-ink-50 ${
+                        n.read ? '' : 'bg-signal-50/60'
                       }`}
                     >
                       <Avatar user={n.actor} size="sm" className="mt-0.5" />
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm text-slate-900">
+                        <span className="block truncate text-sm text-ink-900">
                           {n.message}
                         </span>
-                        <span className="mt-0.5 flex items-center gap-1.5 text-xs text-slate-500">
-                          <span className="rounded bg-slate-100 px-1 py-px font-medium text-slate-600">
+                        <span className="mt-0.5 flex items-center gap-1.5 text-xs text-ink-500">
+                          <span className="rounded-sm bg-ink-100 px-1 py-px font-mono font-medium text-ink-600">
                             {n.issueKey}
                           </span>
                           <span>{TYPE_LABEL[n.type]}</span>
@@ -171,7 +170,7 @@ export function NotificationBell() {
                       </span>
                       {!n.read && (
                         <span
-                          className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-brand-500"
+                          className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-signal-500"
                           aria-label="unread"
                         />
                       )}

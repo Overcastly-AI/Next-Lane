@@ -4,40 +4,110 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Brand: deep teal (cyan family) — "lane/flow" metaphor, not generic indigo
-        brand: {
-          50:  '#ecfeff',
-          100: '#cffafe',
-          200: '#a5f3fc',
-          300: '#67e8f9',
-          400: '#22d3ee',
-          500: '#06b6d4',
-          600: '#0891b2',
-          700: '#0e7490',
-          800: '#155e75',
-          900: '#164e63',
+        /*
+         * DISPATCH palette — graphite-ink neutrals with cool blue undertone (~220°).
+         * NOT flat gray (hue 0°), not warm slate, not cream.
+         * Named "ink" to be evocative: the dispatch board is ink on paper.
+         */
+        ink: {
+          50:  '#f4f6f9',  // canvas — very faint graphite wash
+          100: '#edf0f5',  // surface borders, muted fills
+          200: '#dde1e9',  // default border
+          300: '#c4cad6',  // strong border, disabled text
+          400: '#8b95a8',  // muted text
+          500: '#6b7280',  // secondary icons, placeholders
+          600: '#4b5563',  // secondary text
+          700: '#374151',  // body text mid
+          800: '#1f2937',  // near-headings
+          900: '#111827',  // primary text — near-black with blue cast
         },
-        // Status-progression palette — designed as a semantic arc
-        // todo: neutral stone (resting), in-progress: amber (motion), done: emerald (resolved)
+
+        /*
+         * Signal accent — electric cobalt #2563EB.
+         * Used ONLY for: primary buttons, active nav states, in-progress status
+         * signals, focus rings, and the issue-key chip. Everything else is ink.
+         *
+         * Why this hue: sits between true-blue and engineering-blue.
+         * Reads as "signal", "priority", "active dispatch" — not generic SaaS
+         * indigo (#6366f1 which reads purple), not teal/cyan (old brand),
+         * not sky-blue (too soft). Passes WCAG AA on white at all weights ≥500.
+         */
+        signal: {
+          50:  '#eff6ff',  // blue-50 — faint wash for active fills
+          100: '#dbeafe',  // blue-100
+          200: '#bfdbfe',  // blue-200
+          300: '#93c5fd',  // blue-300
+          400: '#60a5fa',  // blue-400
+          500: '#3b82f6',  // blue-500
+          600: '#2563EB',  // blue-600 — the ONE accent (primary)
+          700: '#1d4ed8',  // blue-700 — hover/dim
+          800: '#1e40af',  // blue-800
+          900: '#1e3a8a',  // blue-900
+        },
+
+        /*
+         * Legacy alias — kept so existing `brand-*` classes in components
+         * continue to resolve without a mass find-replace. Maps to signal.
+         */
+        brand: {
+          50:  '#eff6ff',
+          100: '#dbeafe',
+          200: '#bfdbfe',
+          300: '#93c5fd',
+          400: '#60a5fa',
+          500: '#3b82f6',
+          600: '#2563EB',
+          700: '#1d4ed8',
+          800: '#1e40af',
+          900: '#1e3a8a',
+        },
+
+        /*
+         * Status-progression palette — semantic signal arc.
+         * todo: graphite (queued, resting)
+         * inprogress: cobalt (dispatched, in motion) — inherits signal accent
+         * done: eucalyptus (resolved, arrived)
+         */
         status: {
-          todo:        '#78716c', // stone-500
-          'todo-bg':   '#f5f5f4', // stone-100
-          inprogress:  '#d97706', // amber-600
-          'inprogress-bg': '#fef3c7', // amber-100
-          done:        '#059669', // emerald-600
-          'done-bg':   '#d1fae5', // emerald-100
+          todo:            '#6b7280', // ink-500 — resting
+          'todo-bg':       '#f4f6f9', // ink-50
+          inprogress:      '#2563EB', // cobalt signal — in motion
+          'inprogress-bg': '#eff6ff', // signal-50
+          done:            '#059669', // eucalyptus — arrived
+          'done-bg':       '#d1fae5', // emerald-100
         },
       },
+
       fontFamily: {
+        /*
+         * Display — Space Grotesk: geometric, technical, used for headings
+         * and brand mark text. Restrained: only h1-h6 and .nl-display.
+         */
+        display: [
+          'Space Grotesk',
+          'ui-sans-serif',
+          'system-ui',
+          '-apple-system',
+          'sans-serif',
+        ],
+        /*
+         * Sans — IBM Plex Sans: the primary UI/body face.
+         * Replaces Plus Jakarta Sans. More precise, engineered, technical.
+         * Used for all body text, labels, form controls, nav.
+         */
         sans: [
-          'Plus Jakarta Sans Variable',
-          'Plus Jakarta Sans',
+          'IBM Plex Sans',
           'ui-sans-serif',
           'system-ui',
           '-apple-system',
           'Segoe UI',
           'sans-serif',
         ],
+        /*
+         * Mono — IBM Plex Mono: data signature.
+         * Issue keys, timestamps, story points, code blocks.
+         * The "dispatch board" data layer.
+         */
         mono: [
           'IBM Plex Mono',
           'ui-monospace',
@@ -48,18 +118,21 @@ export default {
           'monospace',
         ],
       },
+
       fontSize: {
-        // Tighter, more refined type scale
-        '2xs': ['0.65rem',  { lineHeight: '1rem'    }],
-        'xs':  ['0.75rem',  { lineHeight: '1.125rem'}],
-        'sm':  ['0.8125rem',{ lineHeight: '1.25rem' }],
-        'base':['0.9375rem',{ lineHeight: '1.5rem'  }],
-        'lg':  ['1.0625rem',{ lineHeight: '1.625rem'}],
-        'xl':  ['1.1875rem',{ lineHeight: '1.75rem' }],
-        '2xl': ['1.375rem', { lineHeight: '2rem'    }],
+        /* Refined type scale — slightly tighter than default for precision */
+        '2xs': ['0.625rem',  { lineHeight: '0.9375rem' }],
+        'xs':  ['0.75rem',   { lineHeight: '1.125rem'  }],
+        'sm':  ['0.8125rem', { lineHeight: '1.25rem'   }],
+        'base':['0.9375rem', { lineHeight: '1.5rem'    }],
+        'lg':  ['1.0625rem', { lineHeight: '1.625rem'  }],
+        'xl':  ['1.1875rem', { lineHeight: '1.75rem'   }],
+        '2xl': ['1.375rem',  { lineHeight: '2rem'      }],
+        '3xl': ['1.625rem',  { lineHeight: '2.25rem'   }],
       },
+
       spacing: {
-        // 4px base grid — everything divisible by 4
+        /* 4px base grid */
         '0.5':  '2px',
         '1':    '4px',
         '1.5':  '6px',
@@ -78,55 +151,71 @@ export default {
         '14':   '56px',
         '16':   '64px',
       },
+
       borderRadius: {
-        'sm':   '0.25rem',   // 4px  — badges, chips
-        DEFAULT:'0.375rem',  // 6px  — inputs, small controls
-        'md':   '0.5rem',    // 8px  — cards
-        'lg':   '0.625rem',  // 10px — dropdowns
-        'xl':   '0.75rem',   // 12px — modals, columns
-        '2xl':  '1rem',      // 16px — auth card
-        'full': '9999px',    // — pills, avatars
+        /* Tighter radii — more engineered, less bubbly */
+        'sm':   '0.1875rem',  // 3px  — chips, badges
+        DEFAULT:'0.3125rem',  // 5px  — inputs, small controls
+        'md':   '0.4375rem',  // 7px  — cards
+        'lg':   '0.625rem',   // 10px — dropdowns
+        'xl':   '0.875rem',   // 14px — modals, columns
+        '2xl':  '1.125rem',   // 18px — auth card
+        'full': '9999px',
       },
+
       boxShadow: {
-        // Refined 2-tier shadow system
-        'xs':        '0 1px 2px 0 rgb(0 0 0 / 0.04)',
-        'sm':        '0 1px 3px 0 rgb(0 0 0 / 0.06), 0 1px 2px -1px rgb(0 0 0 / 0.04)',
-        'card':      '0 1px 3px 0 rgb(0 0 0 / 0.06), 0 1px 2px -1px rgb(0 0 0 / 0.04)',
-        'cardHover': '0 4px 16px -2px rgb(0 0 0 / 0.10), 0 2px 6px -2px rgb(0 0 0 / 0.06)',
-        'modal':     '0 20px 60px -12px rgb(0 0 0 / 0.25), 0 8px 20px -8px rgb(0 0 0 / 0.10)',
-        'dropdown':  '0 4px 16px -4px rgb(0 0 0 / 0.12), 0 2px 6px -2px rgb(0 0 0 / 0.06)',
+        /* 2-tier shadow system — ink-tinted, not warm gray */
+        'xs':        '0 1px 2px 0 rgb(17 24 39 / 0.05)',
+        'sm':        '0 1px 3px 0 rgb(17 24 39 / 0.07), 0 1px 2px -1px rgb(17 24 39 / 0.05)',
+        'card':      '0 1px 3px 0 rgb(17 24 39 / 0.06), 0 1px 2px -1px rgb(17 24 39 / 0.04)',
+        'cardHover': '0 4px 16px -2px rgb(17 24 39 / 0.12), 0 2px 6px -2px rgb(17 24 39 / 0.07)',
+        'modal':     '0 24px 64px -12px rgb(17 24 39 / 0.28), 0 8px 24px -8px rgb(17 24 39 / 0.12)',
+        'dropdown':  '0 4px 16px -4px rgb(17 24 39 / 0.14), 0 2px 6px -2px rgb(17 24 39 / 0.07)',
+        'signal':    '0 0 0 3px rgb(37 99 235 / 0.18)',  /* cobalt glow for focus */
       },
+
       transitionDuration: {
+        '120': '120ms',
         '150': '150ms',
+        '180': '180ms',
         '200': '200ms',
-        '250': '250ms',
+        '240': '240ms',
       },
+
       transitionTimingFunction: {
         'out': 'cubic-bezier(0.16, 1, 0.3, 1)',
+        'in':  'cubic-bezier(0.4, 0, 1, 1)',
       },
+
       keyframes: {
         'nl-toast-in': {
-          from: { opacity: '0', transform: 'translateY(-6px) scale(0.98)' },
+          from: { opacity: '0', transform: 'translateY(-8px) scale(0.97)' },
           to:   { opacity: '1', transform: 'translateY(0) scale(1)' },
         },
         'nl-drawer-in': {
-          from: { opacity: '0', transform: 'translateX(24px)' },
+          from: { opacity: '0', transform: 'translateX(20px)' },
           to:   { opacity: '1', transform: 'translateX(0)' },
         },
         'nl-modal-in': {
-          from: { opacity: '0', transform: 'translateY(8px) scale(0.97)' },
+          from: { opacity: '0', transform: 'translateY(6px) scale(0.98)' },
           to:   { opacity: '1', transform: 'translateY(0) scale(1)' },
         },
         'nl-fade-in': {
           from: { opacity: '0' },
           to:   { opacity: '1' },
         },
+        'nl-card-merge-in': {
+          from: { opacity: '0', transform: 'translateY(10px)' },
+          to:   { opacity: '1', transform: 'translateY(0)' },
+        },
       },
+
       animation: {
-        'nl-toast-in':  'nl-toast-in 200ms cubic-bezier(0.16,1,0.3,1) both',
-        'nl-drawer-in': 'nl-drawer-in 220ms cubic-bezier(0.16,1,0.3,1) both',
-        'nl-modal-in':  'nl-modal-in 180ms cubic-bezier(0.16,1,0.3,1) both',
-        'nl-fade-in':   'nl-fade-in 150ms ease both',
+        'nl-toast-in':      'nl-toast-in 200ms cubic-bezier(0.16,1,0.3,1) both',
+        'nl-drawer-in':     'nl-drawer-in 240ms cubic-bezier(0.16,1,0.3,1) both',
+        'nl-modal-in':      'nl-modal-in 160ms cubic-bezier(0.16,1,0.3,1) both',
+        'nl-fade-in':       'nl-fade-in 140ms ease both',
+        'nl-card-merge-in': 'nl-card-merge-in 280ms cubic-bezier(0.16,1,0.3,1) both',
       },
     },
   },

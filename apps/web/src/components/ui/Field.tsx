@@ -12,12 +12,12 @@ export function Field({ label, htmlFor, children, hint }: FieldProps) {
     <div className="space-y-1">
       <label
         htmlFor={htmlFor}
-        className="block text-xs font-semibold uppercase tracking-wide text-slate-500"
+        className="block text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-500"
       >
         {label}
       </label>
       {children}
-      {hint && <p className="text-xs text-slate-400">{hint}</p>}
+      {hint && <p className="text-xs text-ink-400">{hint}</p>}
     </div>
   );
 }

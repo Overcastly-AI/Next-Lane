@@ -11,6 +11,7 @@ export function SortableIssueCard({
   editable = true,
   accentColor,
   accentRuleId,
+  cardIndex = 0,
 }: {
   issue: IssueDto;
   /** Project statuses forwarded to the inline status picker. */
@@ -24,6 +25,11 @@ export function SortableIssueCard({
   accentColor?: string;
   /** Rule id that produced accentColor — set as data-color-rule-id on the card. */
   accentRuleId?: string;
+  /**
+   * Position index within the column — used for the DISPATCH merge-in stagger.
+   * Capped at 12 so the max delay stays ~480ms.
+   */
+  cardIndex?: number;
 }) {
   const {
     attributes,
@@ -40,7 +46,9 @@ export function SortableIssueCard({
   const style = {
     transform: CSS.Translate.toString(transform),
     transition,
-  };
+    /* CSS custom property drives the stagger delay in nl-card-merge-in */
+    '--nl-card-index': Math.min(cardIndex, 12),
+  } as React.CSSProperties;
 
   return (
     <div
@@ -48,7 +56,11 @@ export function SortableIssueCard({
       style={style}
       {...attributes}
       {...listeners}
-      className="cursor-grab touch-none active:cursor-grabbing"
+      /*
+       * nl-card-merge-in applies the DISPATCH stagger animation (motion-safe only).
+       * The CSS animation fires once on mount/insert — no JS needed.
+       */
+      className="cursor-grab touch-none active:cursor-grabbing motion-safe:nl-card-merge-in"
       onClick={() => {
         if (!isDragging) onOpen(issue.id);
       }}
@@ -56,7 +68,6 @@ export function SortableIssueCard({
       tabIndex={0}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
-          // Space is also used by dnd-kit keyboard sensor; only Enter opens.
           if (e.key === 'Enter') {
             e.preventDefault();
             onOpen(issue.id);

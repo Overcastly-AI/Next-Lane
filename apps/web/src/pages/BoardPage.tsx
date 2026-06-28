@@ -524,16 +524,16 @@ export function BoardPage() {
         <div className="flex min-w-0 items-center gap-2 overflow-hidden">
           <Link
             to="/"
-            className="shrink-0 text-sm text-slate-400 hover:text-slate-600"
+            className="shrink-0 text-sm text-ink-400 hover:text-ink-700"
             aria-label="Back to projects"
           >
             Projects
           </Link>
-          <span className="shrink-0 text-slate-300">/</span>
-          <span className="min-w-0 truncate text-sm font-semibold text-slate-900">
+          <span className="shrink-0 text-ink-300">/</span>
+          <span className="min-w-0 truncate text-sm font-semibold text-ink-900">
             {board.project.name}
           </span>
-          <span className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-500">
+          <span className="shrink-0 rounded bg-ink-100 px-1.5 py-0.5 font-mono text-xs font-medium text-ink-500">
             {board.project.key}
           </span>
           <ActiveSprintBadge sprint={activeSprint} />
@@ -557,7 +557,7 @@ export function BoardPage() {
           {/* Search */}
           <div className="relative">
             <svg
-              className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400"
+              className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-400"
               width="15"
               height="15"
               viewBox="0 0 24 24"
@@ -641,8 +641,8 @@ export function BoardPage() {
                 'inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-sm transition-colors',
                 'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200',
                 colorRules.length > 0
-                  ? 'border-brand-300 bg-brand-50 text-brand-700 hover:bg-brand-100'
-                  : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50',
+                  ? 'border-signal-300 bg-signal-50 text-signal-700 hover:bg-signal-100'
+                  : 'border-ink-200 bg-white text-ink-600 hover:bg-ink-50',
               )}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
@@ -709,20 +709,30 @@ export function BoardPage() {
           onDragEnd={onDragEnd}
           onDragCancel={() => setActiveIssue(null)}
         >
-          <div className="nl-scroll flex flex-1 gap-4 overflow-x-auto px-4 pb-4">
-            {statuses.map((status) => (
-              <BoardColumn
-                key={status.id}
-                status={status}
-                issues={issuesByStatus.get(status.id) ?? []}
-                statuses={statuses}
-                editable={editable}
-                onAdd={(id) => setCreateForStatus(id)}
-                onOpenIssue={openIssue}
-                onStatusChange={handleCardStatusChange}
-                colorRules={colorRules}
-                colorCtx={colorCtx}
-              />
+          {/*
+           * DISPATCH lane board layout — dashed lane-dividers between columns
+           * render the left→right flow cue that defines the DISPATCH signature.
+           * Each divider is a repeating-gradient vertical hairline (see index.css
+           * .nl-lane-divider). Columns themselves carry no left/right padding gap
+           * so the divider sits precisely in the gutter between lanes.
+           */}
+          <div className="nl-scroll flex flex-1 overflow-x-auto px-4 pb-4 pt-3 gap-0">
+            {statuses.map((status, idx) => (
+              <div key={status.id} className="flex items-stretch gap-0">
+                {/* Dashed lane divider — between columns, not before the first */}
+                {idx > 0 && <div className="nl-lane-divider mx-2" aria-hidden="true" />}
+                <BoardColumn
+                  status={status}
+                  issues={issuesByStatus.get(status.id) ?? []}
+                  statuses={statuses}
+                  editable={editable}
+                  onAdd={(id) => setCreateForStatus(id)}
+                  onOpenIssue={openIssue}
+                  onStatusChange={handleCardStatusChange}
+                  colorRules={colorRules}
+                  colorCtx={colorCtx}
+                />
+              </div>
             ))}
           </div>
 
@@ -1440,7 +1450,7 @@ function NlqlQueryBar({
               aria-label="NLQL query help"
               aria-expanded={helpOpen}
               onClick={() => setHelpOpen((v) => !v)}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200"
+              className="inline-flex h-9 w-9 items-center justify-center rounded border border-ink-200 bg-white text-ink-500 transition-colors duration-[120ms] hover:bg-ink-50 hover:text-ink-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-200"
             >
               <span className="text-xs font-bold leading-none">?</span>
             </button>

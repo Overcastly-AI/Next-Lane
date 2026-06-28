@@ -84,14 +84,14 @@ export function IssueDetailDrawer({
   return createPortal(
     <div className="fixed inset-0 z-50 flex justify-end">
       <div
-        className="absolute inset-0 bg-slate-900/30 backdrop-blur-[1px]"
+        className="absolute inset-0 bg-ink-900/25 backdrop-blur-[1px]"
         onClick={onClose}
         aria-hidden="true"
       />
       <aside
         ref={panelRef}
         tabIndex={-1}
-        className="nl-drawer-animate relative z-10 flex h-full w-full max-w-2xl flex-col bg-white shadow-modal outline-none border-l border-slate-200"
+        className="nl-drawer-animate relative z-10 flex h-full w-full max-w-2xl flex-col bg-white shadow-modal outline-none border-l border-ink-200"
         role="dialog"
         aria-modal="true"
       >
@@ -181,14 +181,9 @@ function DrawerBody({
 }) {
   const [title, setTitle] = useState(issue.title);
   const [description, setDescription] = useState(issue.description ?? '');
-  // When true, the description is shown as a plain textarea for editing.
-  // When false (default), it is rendered as formatted markdown.
   const [descriptionEditing, setDescriptionEditing] = useState(false);
-  // Tracks whether Escape was pressed in the description editor so the onBlur
-  // handler knows to skip saving (cancel, not save).
   const descriptionCancelled = useRef(false);
 
-  // Re-sync local editable fields when the underlying issue changes (realtime).
   useEffect(() => setTitle(issue.title), [issue.id, issue.title]);
   useEffect(
     () => setDescription(issue.description ?? ''),
@@ -197,16 +192,17 @@ function DrawerBody({
 
   return (
     <>
-      <header className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
+      {/* Drawer header */}
+      <header className="flex items-center justify-between border-b border-ink-100 px-5 py-3">
         <div className="flex items-center gap-2">
-          <IssueTypeIcon type={issue.type} className="h-4 w-4 text-slate-400" />
-          {/* Issue key — monospace teal signature */}
+          <IssueTypeIcon type={issue.type} className="h-4 w-4 text-ink-400" />
+          {/* Issue key — DISPATCH mono data signature */}
           <span className="nl-issue-key">{issue.key}</span>
-          {saving && <span className="text-xs text-slate-400">Saving…</span>}
+          {saving && <span className="text-xs text-ink-400">Saving…</span>}
           {!editable && (
             <span
               data-testid="readonly-hint"
-              className="inline-flex items-center gap-1 rounded-sm bg-slate-100 px-1.5 py-0.5 text-[11px] font-semibold text-slate-500"
+              className="inline-flex items-center gap-1 rounded-sm bg-ink-100 px-1.5 py-0.5 text-[11px] font-semibold text-ink-500"
             >
               View only
             </span>
@@ -227,9 +223,9 @@ function DrawerBody({
           <button
             onClick={onClose}
             aria-label="Close"
-            className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+            className="rounded p-1.5 text-ink-400 transition-colors duration-[120ms] hover:bg-ink-100 hover:text-ink-700"
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
               <path strokeLinecap="round" d="M6 6l12 12M6 18L18 6" />
             </svg>
           </button>
@@ -240,6 +236,7 @@ function DrawerBody({
         <div className="grid grid-cols-1 gap-6 p-5 md:grid-cols-3">
           {/* Main column */}
           <div className="space-y-5 md:col-span-2">
+            {/* Title — Space Grotesk for the display weight */}
             <input
               value={title}
               disabled={!editable}
@@ -248,18 +245,18 @@ function DrawerBody({
                 if (editable && title.trim() && title !== issue.title)
                   onPatch('title', title.trim());
               }}
-              className="w-full rounded-md border border-transparent px-1 text-lg font-semibold tracking-[-0.01em] text-slate-900 transition-colors hover:border-slate-200 focus:border-brand-400 focus:outline-none disabled:cursor-default disabled:hover:border-transparent"
+              className="w-full rounded border border-transparent px-1 font-display text-lg font-semibold tracking-[-0.02em] text-ink-900 transition-colors duration-[120ms] hover:border-ink-200 focus:border-signal-400 focus:outline-none disabled:cursor-default disabled:hover:border-transparent"
             />
 
             <div>
               <div className="mb-1 flex items-center justify-between">
-                <p className="text-[11px] font-bold uppercase tracking-widest text-slate-500">Description</p>
+                <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-ink-500">Description</p>
                 {editable && !descriptionEditing && (
                   <button
                     type="button"
                     aria-label="Edit description"
                     onClick={() => setDescriptionEditing(true)}
-                    className="text-xs font-medium text-slate-400 transition-colors hover:text-brand-600 focus:outline-none"
+                    className="text-xs font-medium text-ink-400 transition-colors duration-[120ms] hover:text-signal-600 focus:outline-none"
                   >
                     Edit
                   </button>
@@ -267,7 +264,6 @@ function DrawerBody({
               </div>
 
               {editable && descriptionEditing ? (
-                /* Edit mode: plain textarea */
                 <div>
                   <Textarea
                     rows={6}
@@ -277,7 +273,6 @@ function DrawerBody({
                     onChange={(e) => setDescription(e.target.value)}
                     onBlur={() => {
                       if (descriptionCancelled.current) {
-                        // Escape was pressed — discard, do not save
                         descriptionCancelled.current = false;
                         return;
                       }
@@ -286,9 +281,6 @@ function DrawerBody({
                         onPatch('description', description || null);
                     }}
                     onKeyDown={(e) => {
-                      // Escape cancels the edit without saving. We stop
-                      // immediate propagation so useOverlay's document-level
-                      // Escape handler doesn't also close the drawer.
                       if (e.key === 'Escape') {
                         e.preventDefault();
                         e.stopPropagation();
@@ -300,12 +292,11 @@ function DrawerBody({
                     }}
                     data-testid="description-editor"
                   />
-                  <p className="mt-1 text-[11px] text-slate-400">
+                  <p className="mt-1 text-[11px] text-ink-400">
                     Markdown supported — blur or press Esc to exit
                   </p>
                 </div>
               ) : description ? (
-                /* View mode: rendered markdown, click to edit */
                 <div
                   role={editable ? 'button' : undefined}
                   tabIndex={editable ? 0 : undefined}
@@ -315,9 +306,9 @@ function DrawerBody({
                       setDescriptionEditing(true);
                   }}
                   className={[
-                    'min-h-[3rem] rounded-md border px-2 py-1.5 transition-colors duration-150',
+                    'min-h-[3rem] rounded border px-2 py-1.5 transition-colors duration-[120ms]',
                     editable
-                      ? 'cursor-text border-transparent hover:border-slate-200 focus:border-brand-400 focus:outline-none'
+                      ? 'cursor-text border-transparent hover:border-ink-200 focus:border-signal-400 focus:outline-none'
                       : 'border-transparent',
                   ].join(' ')}
                   data-testid="description-rendered"
@@ -325,13 +316,12 @@ function DrawerBody({
                 >
                   <MarkdownRenderer content={description} />
                   {editable && (
-                    <p className="mt-1.5 text-[11px] text-slate-400">
+                    <p className="mt-1.5 text-[11px] text-ink-400">
                       Markdown supported
                     </p>
                   )}
                 </div>
               ) : (
-                /* Empty state */
                 <div
                   role={editable ? 'button' : undefined}
                   tabIndex={editable ? 0 : undefined}
@@ -341,10 +331,10 @@ function DrawerBody({
                       setDescriptionEditing(true);
                   }}
                   className={[
-                    'min-h-[3rem] rounded-md border px-2 py-1.5 text-sm transition-colors duration-150',
+                    'min-h-[3rem] rounded border px-2 py-1.5 text-sm transition-colors duration-[120ms]',
                     editable
-                      ? 'cursor-text border-dashed border-slate-200 text-slate-400 hover:border-brand-300 hover:bg-brand-50/30 focus:border-brand-400 focus:outline-none'
-                      : 'border-transparent text-slate-400',
+                      ? 'cursor-text border-dashed border-ink-200 text-ink-400 hover:border-signal-300 hover:bg-signal-50/30 focus:border-signal-400 focus:outline-none'
+                      : 'border-transparent text-ink-400',
                   ].join(' ')}
                   data-testid="description-empty"
                 >
@@ -477,7 +467,7 @@ function DrawerBody({
               editable={editable}
             />
 
-            <div className="border-t border-slate-100 pt-3 text-xs text-slate-400">
+            <div className="border-t border-ink-100 pt-3 text-xs text-ink-400">
               Created {new Date(issue.createdAt).toLocaleDateString()}
             </div>
 
@@ -494,9 +484,7 @@ function DrawerBody({
 }
 
 /**
- * Due date picker sidebar field. Shows a native date input when editable,
- * or a read-only formatted date when not. Displays in an overdue warning
- * color (amber) when the issue is past due and not in a Done-category status.
+ * Due date picker sidebar field.
  */
 function DueDateField({
   dueDate,
@@ -513,10 +501,8 @@ function DueDateField({
   const isOverdue =
     !isDone && dueDate !== null && new Date(dueDate) < new Date();
 
-  // Format a stored ISO datetime as a YYYY-MM-DD string for the date input.
   const toInputValue = (iso: string | null) => {
     if (!iso) return '';
-    // Take just the date part (handles both full ISO and date-only strings).
     return iso.slice(0, 10);
   };
 
@@ -531,14 +517,13 @@ function DueDateField({
             value={toInputValue(dueDate)}
             onChange={(e) => {
               const val = e.target.value;
-              // val is '' when the user clears via the date input's clear button.
               onPatch('dueDate', val ? val : null);
             }}
             className={
-              'rounded-md border px-2 py-1 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-brand-400 ' +
+              'rounded border px-2 py-1 text-sm transition-colors duration-[120ms] focus:outline-none focus:ring-2 focus:ring-signal-400 ' +
               (isOverdue
                 ? 'border-amber-300 bg-amber-50 text-amber-800'
-                : 'border-slate-200 bg-white text-slate-700')
+                : 'border-ink-200 bg-white text-ink-700')
             }
           />
           {dueDate && (
@@ -546,7 +531,7 @@ function DueDateField({
               type="button"
               aria-label="Clear due date"
               onClick={() => onPatch('dueDate', null)}
-              className="rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
+              className="rounded p-0.5 text-ink-400 hover:bg-ink-100 hover:text-ink-700 transition-colors duration-[120ms]"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path strokeLinecap="round" d="M6 6l12 12M6 18L18 6" />
@@ -558,7 +543,7 @@ function DueDateField({
         <span
           className={
             'text-sm ' +
-            (isOverdue ? 'font-semibold text-amber-700' : 'text-slate-700')
+            (isOverdue ? 'font-semibold text-amber-700' : 'text-ink-700')
           }
         >
           {new Date(dueDate).toLocaleDateString(undefined, {
@@ -573,7 +558,7 @@ function DueDateField({
           )}
         </span>
       ) : (
-        <span className="text-sm text-slate-400">None</span>
+        <span className="text-sm text-ink-400">None</span>
       )}
     </Field>
   );

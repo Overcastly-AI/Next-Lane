@@ -1,11 +1,16 @@
+/*
+ * DISPATCH logo mark — "lanes" motif: three vertical bars of increasing height
+ * represent work flowing through lanes (queued → dispatched → arrived).
+ * Signal cobalt fill on the mark; Space Grotesk for the wordmark.
+ */
 export function Logo({ compact = false }: { compact?: boolean }) {
   return (
     <span className="inline-flex items-center gap-2">
-      {/* "Lanes" mark — three vertical bars of increasing height, like a momentum graph */}
-      <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600 text-white shadow-xs">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      {/* Lane mark — three bars, cobalt signal */}
+      <span className="flex h-7 w-7 items-center justify-center rounded bg-signal-600 text-white shadow-xs">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
           <path
-            d="M5 19V5m7 14V9m7 10V12"
+            d="M5 19V7m7 12V11m7 8V14"
             stroke="currentColor"
             strokeWidth="2.5"
             strokeLinecap="round"
@@ -13,7 +18,7 @@ export function Logo({ compact = false }: { compact?: boolean }) {
         </svg>
       </span>
       {!compact && (
-        <span className="text-base font-bold tracking-[-0.02em] text-slate-900">
+        <span className="font-display text-[0.9375rem] font-semibold tracking-[-0.025em] text-ink-900">
           Next Lane
         </span>
       )}

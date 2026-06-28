@@ -9,9 +9,9 @@ export interface AvatarProps {
 }
 
 const sizes = {
-  xs: 'h-5 w-5 text-[8px]',
-  sm: 'h-6 w-6 text-[9px]',
-  md: 'h-8 w-8 text-[11px]',
+  xs: 'h-5 w-5 text-[7px]',
+  sm: 'h-6 w-6 text-[8px]',
+  md: 'h-8 w-8 text-[10px]',
 };
 
 export function Avatar({ user, size = 'sm', className, title }: AvatarProps) {
@@ -20,7 +20,7 @@ export function Avatar({ user, size = 'sm', className, title }: AvatarProps) {
       <span
         title={title ?? 'Unassigned'}
         className={cn(
-          'inline-flex items-center justify-center rounded-full border border-dashed border-slate-300 bg-slate-50 text-slate-400',
+          'inline-flex items-center justify-center rounded-full border border-dashed border-ink-300 bg-ink-50 text-ink-400',
           sizes[size],
           className,
         )}

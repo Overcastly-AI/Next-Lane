@@ -4,6 +4,9 @@ import { cn } from '@/lib/cn';
 /**
  * Per-project sub-navigation shown under the app header. Switches between the
  * kanban Board (active-sprint + backlog) and the Backlog/sprint-planning view.
+ *
+ * DISPATCH nav — IBM Plex Sans at medium weight; cobalt signal underline on
+ * active tab; ink surface, no background fill on the nav bar.
  */
 export function ProjectNav({ projectId }: { projectId: string }) {
   const tabs = [
@@ -15,17 +18,17 @@ export function ProjectNav({ projectId }: { projectId: string }) {
     { to: `/projects/${projectId}/settings`, label: 'Settings' },
   ];
   return (
-    <nav className="flex items-center gap-1 border-b border-slate-200 bg-white px-4">
+    <nav className="flex items-center gap-1 border-b border-ink-200 bg-white px-4">
       {tabs.map((tab) => (
         <NavLink
           key={tab.to}
           to={tab.to}
           className={({ isActive }) =>
             cn(
-              'relative -mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors',
+              'relative -mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors duration-[120ms]',
               isActive
-                ? 'border-brand-600 text-brand-700'
-                : 'border-transparent text-slate-500 hover:text-slate-800',
+                ? 'border-signal-600 text-signal-700 font-semibold'
+                : 'border-transparent text-ink-500 hover:text-ink-800',
             )
           }
         >

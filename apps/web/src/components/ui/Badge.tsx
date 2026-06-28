@@ -13,10 +13,10 @@ export function Badge({ children, className, color }: BadgeProps) {
     return (
       <span
         className={cn(
-          'inline-flex items-center rounded-sm px-1.5 py-0.5 text-[11px] font-semibold leading-none tracking-wide',
+          'inline-flex items-center rounded-sm px-1.5 py-0.5 text-[10px] font-semibold leading-none tracking-wide',
           className,
         )}
-        style={{ backgroundColor: hexWithAlpha(color, 0.14), color: darken(color) }}
+        style={{ backgroundColor: hexWithAlpha(color, 0.13), color: darken(color) }}
       >
         {children}
       </span>
@@ -25,7 +25,7 @@ export function Badge({ children, className, color }: BadgeProps) {
   return (
     <span
       className={cn(
-        'inline-flex items-center rounded-sm bg-slate-100 px-1.5 py-0.5 text-[11px] font-semibold leading-none tracking-wide text-slate-600',
+        'inline-flex items-center rounded-sm bg-ink-100 px-1.5 py-0.5 text-[10px] font-semibold leading-none tracking-wide text-ink-600',
         className,
       )}
     >

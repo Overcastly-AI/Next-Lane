@@ -72,7 +72,6 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     [dismiss],
   );
 
-  // Clear any pending timers on unmount.
   useEffect(() => {
     const map = timers.current;
     return () => {
@@ -108,6 +107,12 @@ export function useToast(): ToastApi {
   return ctx;
 }
 
+/*
+ * DISPATCH toast variants:
+ * success → eucalyptus (arrived)
+ * error   → red (alert)
+ * info    → cobalt signal (active)
+ */
 const variantStyles: Record<
   ToastVariant,
   { container: string; icon: ReactNode; iconColor: string }
@@ -127,8 +132,8 @@ const variantStyles: Record<
     ),
   },
   info: {
-    container: 'border-brand-200 bg-brand-50',
-    iconColor: 'text-brand-600',
+    container: 'border-signal-200 bg-signal-50',
+    iconColor: 'text-signal-600',
     icon: (
       <path
         strokeLinecap="round"
@@ -192,17 +197,17 @@ function ToastItem({
       </svg>
       <div className="min-w-0 flex-1 text-sm">
         {toast.title && (
-          <p className="font-semibold text-slate-900">{toast.title}</p>
+          <p className="font-semibold text-ink-900">{toast.title}</p>
         )}
-        <p className="text-slate-700">{toast.message}</p>
+        <p className="text-ink-700">{toast.message}</p>
       </div>
       <button
         type="button"
         onClick={() => onDismiss(toast.id)}
         aria-label="Dismiss notification"
-        className="-mr-1 -mt-0.5 rounded-md p-1 text-slate-400 transition-colors hover:bg-black/5 hover:text-slate-600"
+        className="-mr-1 -mt-0.5 rounded p-1 text-ink-400 transition-colors duration-[120ms] hover:bg-black/5 hover:text-ink-700"
       >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path strokeLinecap="round" d="M6 6l12 12M6 18L18 6" />
         </svg>
       </button>

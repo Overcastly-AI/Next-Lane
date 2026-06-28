@@ -73,12 +73,18 @@ export const IssueCard = forwardRef<HTMLDivElement, IssueCardProps>(
         data-testid="issue-card"
         data-color-rule-id={accentRuleId ?? undefined}
         className={cn(
-          'group relative rounded-md border border-slate-200 bg-white shadow-card',
-          'transition-all duration-150',
-          'hover:border-slate-300 hover:shadow-cardHover hover:-translate-y-px',
+          /*
+           * DISPATCH card:
+           * - White surface on graphite-ink column fill
+           * - Tight md radius (7px) — engineered, not bubbly
+           * - Ink-tinted shadow
+           * - Subtle border that steps up on hover
+           */
+          'group relative rounded-md border border-ink-200 bg-white shadow-card',
+          'transition-all duration-[120ms]',
+          'hover:border-ink-300 hover:shadow-cardHover hover:-translate-y-px',
           dragging && 'opacity-40',
           overlay && 'rotate-1 cursor-grabbing shadow-cardHover scale-105',
-          // When we have an accent color we use flex layout to accommodate the stripe
           accentColor ? 'flex overflow-hidden p-0' : 'p-3',
           className,
         )}
@@ -88,109 +94,109 @@ export const IssueCard = forwardRef<HTMLDivElement, IssueCardProps>(
         {accentColor && (
           <div
             aria-hidden="true"
-            className="w-1 shrink-0 motion-safe:transition-colors motion-safe:duration-150"
+            className="w-1 shrink-0 motion-safe:transition-colors motion-safe:duration-[120ms]"
             style={{ backgroundColor: accentColor }}
           />
         )}
 
-        {/* Card body — identical content, wrapped in a padding div when stripe present */}
+        {/* Card body */}
         <div className={cn('min-w-0 flex-1', accentColor ? 'p-3' : undefined)}>
-        {/* Title */}
-        <p className="mb-2 line-clamp-3 text-sm font-medium leading-snug text-slate-800">
-          {issue.title}
-        </p>
+          {/* Title */}
+          <p className="mb-2 line-clamp-3 text-sm font-medium leading-snug text-ink-800">
+            {issue.title}
+          </p>
 
-        {/* Labels */}
-        {issue.labels && issue.labels.length > 0 && (
-          <div className="mb-2 flex flex-wrap gap-1">
-            {issue.labels.map((l) => (
-              <Badge key={l.id} color={l.color}>
-                {l.name}
-              </Badge>
-            ))}
-          </div>
-        )}
+          {/* Labels */}
+          {issue.labels && issue.labels.length > 0 && (
+            <div className="mb-2 flex flex-wrap gap-1">
+              {issue.labels.map((l) => (
+                <Badge key={l.id} color={l.color}>
+                  {l.name}
+                </Badge>
+              ))}
+            </div>
+          )}
 
-        {/* Due date chip */}
-        {issue.dueDate && (
-          <div className="mb-2">
-            <span
-              aria-label={`Due ${formatDueDate(issue.dueDate)}${isOverdue(issue) ? ' (overdue)' : ''}`}
-              className={cn(
-                'inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-[10px] font-semibold',
-                isOverdue(issue)
-                  ? 'bg-amber-100 text-amber-800'
-                  : 'bg-slate-100 text-slate-500',
-              )}
-            >
-              <svg
-                width="10"
-                height="10"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                aria-hidden="true"
-              >
-                <rect x="3" y="4" width="18" height="18" rx="2" />
-                <path strokeLinecap="round" d="M16 2v4M8 2v4M3 10h18" />
-              </svg>
-              {formatDueDate(issue.dueDate)}
-              {isOverdue(issue) && (
-                <span className="sr-only"> (overdue)</span>
-              )}
-            </span>
-          </div>
-        )}
-
-        {/* Footer row */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1.5">
-            {/* Inline status picker */}
-            {statuses && statuses.length > 0 && onStatusChange && (
-              <CardStatusPicker
-                currentStatus={currentStatus}
-                statuses={statuses}
-                onSelect={onStatusChange}
-                editable={editable}
-              />
-            )}
-            <IssueTypeIcon type={issue.type} className="h-3.5 w-3.5 text-slate-400" />
-            {/* Issue key — signature mono chip */}
-            <span className="nl-issue-key">
-              {issue.key}
-            </span>
-            <PriorityIcon priority={issue.priority} className="h-3.5 w-3.5" />
-          </div>
-          <div className="flex items-center gap-1.5">
-            {issue.storyPoints != null && (
+          {/* Due date chip */}
+          {issue.dueDate && (
+            <div className="mb-2">
               <span
-                title={`${issue.storyPoints} story points`}
-                className="nl-data-chip inline-flex min-w-[18px] items-center justify-center rounded-sm bg-slate-100 px-1.5 py-0.5 text-slate-600"
+                aria-label={`Due ${formatDueDate(issue.dueDate)}${isOverdue(issue) ? ' (overdue)' : ''}`}
+                className={cn(
+                  'inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-[10px] font-semibold',
+                  isOverdue(issue)
+                    ? 'bg-amber-100 text-amber-800'
+                    : 'bg-ink-100 text-ink-500',
+                )}
               >
-                {issue.storyPoints}
+                <svg
+                  width="10"
+                  height="10"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  aria-hidden="true"
+                >
+                  <rect x="3" y="4" width="18" height="18" rx="2" />
+                  <path strokeLinecap="round" d="M16 2v4M8 2v4M3 10h18" />
+                </svg>
+                {formatDueDate(issue.dueDate)}
+                {isOverdue(issue) && (
+                  <span className="sr-only"> (overdue)</span>
+                )}
               </span>
-            )}
-            {typeof issue.commentCount === 'number' &&
-              issue.commentCount > 0 && (
-                <span className="flex items-center gap-0.5 text-[11px] text-slate-400">
-                  <svg
-                    width="11"
-                    height="11"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    aria-hidden="true"
-                  >
-                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                  </svg>
-                  {issue.commentCount}
+            </div>
+          )}
+
+          {/* Footer row */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5">
+              {/* Inline status picker */}
+              {statuses && statuses.length > 0 && onStatusChange && (
+                <CardStatusPicker
+                  currentStatus={currentStatus}
+                  statuses={statuses}
+                  onSelect={onStatusChange}
+                  editable={editable}
+                />
+              )}
+              <IssueTypeIcon type={issue.type} className="h-3.5 w-3.5 text-ink-400" />
+              {/* Issue key — DISPATCH data signature: cobalt mono chip */}
+              <span className="nl-issue-key">
+                {issue.key}
+              </span>
+              <PriorityIcon priority={issue.priority} className="h-3.5 w-3.5" />
+            </div>
+            <div className="flex items-center gap-1.5">
+              {issue.storyPoints != null && (
+                <span
+                  title={`${issue.storyPoints} story points`}
+                  className="nl-data-chip inline-flex min-w-[18px] items-center justify-center rounded-sm bg-ink-100 px-1.5 py-0.5 text-ink-600"
+                >
+                  {issue.storyPoints}
                 </span>
               )}
-            <Avatar user={issue.assignee} size="sm" />
+              {typeof issue.commentCount === 'number' &&
+                issue.commentCount > 0 && (
+                  <span className="flex items-center gap-0.5 text-[11px] text-ink-400">
+                    <svg
+                      width="11"
+                      height="11"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      aria-hidden="true"
+                    >
+                      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                    </svg>
+                    {issue.commentCount}
+                  </span>
+                )}
+              <Avatar user={issue.assignee} size="sm" />
+            </div>
           </div>
-        </div>
         </div>
       </div>
     );

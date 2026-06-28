@@ -10,19 +10,20 @@ export function ProjectCard({
   return (
     <button
       onClick={onClick}
-      className="group flex flex-col items-start gap-3 rounded-xl border border-slate-200 bg-white p-4 text-left shadow-card transition-all hover:-translate-y-0.5 hover:border-brand-200 hover:shadow-cardHover focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+      className="group flex flex-col items-start gap-3 rounded-xl border border-ink-200 bg-white p-4 text-left shadow-card transition-all duration-[120ms] hover:-translate-y-0.5 hover:border-signal-200 hover:shadow-cardHover focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-400"
     >
-      <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-100 text-sm font-bold text-brand-700">
+      {/* Project key badge — cobalt fill */}
+      <span className="flex h-9 w-9 items-center justify-center rounded font-display text-sm font-bold bg-signal-50 text-signal-700 border border-signal-100 group-hover:bg-signal-100 transition-colors duration-[120ms]">
         {project.key.slice(0, 2)}
       </span>
       <div className="min-w-0">
-        <p className="truncate font-semibold text-slate-900 group-hover:text-brand-700">
+        <p className="truncate font-semibold text-ink-900 group-hover:text-signal-700 transition-colors duration-[120ms]">
           {project.name}
         </p>
-        <p className="text-xs text-slate-500">{project.key}</p>
+        <p className="font-mono text-xs text-ink-400">{project.key}</p>
       </div>
       {project.description && (
-        <p className="line-clamp-2 text-sm text-slate-500">
+        <p className="line-clamp-2 text-sm text-ink-500">
           {project.description}
         </p>
       )}
