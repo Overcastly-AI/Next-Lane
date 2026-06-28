@@ -8,6 +8,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { WebhooksService } from '../webhooks/webhooks.service';
+import { CustomFieldsService } from '../custom-fields/custom-fields.service';
 import {
   assertProjectMember,
   assertProjectRole,
@@ -26,6 +27,7 @@ import {
   rankAfter,
   rankBetween,
   Role,
+  IssueType,
 } from '@next-lane/shared';
 import type {
   IssueDto,
@@ -85,6 +87,7 @@ export class IssuesService {
     private readonly realtime: RealtimeService,
     private readonly notifications: NotificationsService,
     private readonly webhooks: WebhooksService,
+    private readonly customFieldsSvc: CustomFieldsService,
   ) {}
 
   /**
@@ -109,6 +112,16 @@ export class IssuesService {
       Role.MEMBER,
     );
     await this.assertAssigneeInWorkspace(project.workspaceId, dto.assigneeId);
+
+    // Validate and normalise custom field values before entering the transaction.
+    const issueType = (dto.type ?? IssueType.TASK) as IssueType;
+    const normalizedCustomFields = dto.customFields
+      ? await this.customFieldsSvc.validateAndNormalize(
+          dto.projectId,
+          issueType,
+          dto.customFields,
+        )
+      : undefined;
 
     const issue = await this.prisma.$transaction(async (tx) => {
       const project = await tx.project.update({
@@ -157,6 +170,9 @@ export class IssuesService {
           storyPoints: dto.storyPoints,
           dueDate: dto.dueDate ? new Date(dto.dueDate) : undefined,
           rank,
+          ...(normalizedCustomFields !== undefined
+            ? { customFields: normalizedCustomFields as Prisma.InputJsonValue }
+            : {}),
         },
         include: listInclude,
       });
@@ -622,6 +638,36 @@ export class IssuesService {
     });
     await this.assertAssigneeInWorkspace(project.workspaceId, dto.assigneeId);
 
+    // Resolve the effective issue type (may change in the same PATCH).
+    const effectiveType = (dto.type ?? existing.type) as IssueType;
+
+    // Validate and merge custom field values if provided.
+    // MERGE: existing values not mentioned in the payload are untouched.
+    // A key set to null removes that key from the stored object.
+    let mergedCustomFields: Prisma.InputJsonValue | undefined;
+    if (dto.customFields !== undefined) {
+      const incoming = dto.customFields as Record<string, import('@next-lane/shared').CustomFieldValue>;
+      const normalized = await this.customFieldsSvc.validateAndNormalize(
+        existing.projectId,
+        effectiveType,
+        incoming,
+      );
+
+      // Start from the existing stored object (may be null/undefined → {}).
+      const current =
+        (existing.customFields as Record<string, import('@next-lane/shared').CustomFieldValue> | null) ?? {};
+
+      const merged: Record<string, import('@next-lane/shared').CustomFieldValue> = { ...current };
+      for (const [k, v] of Object.entries(normalized)) {
+        if (v === null) {
+          delete merged[k];
+        } else {
+          merged[k] = v;
+        }
+      }
+      mergedCustomFields = merged as Prisma.InputJsonValue;
+    }
+
     const activities: Prisma.ActivityLogCreateManyInput[] = [];
     /** Tracks which meaningful fields changed for watcher notifications. */
     const changedFields: string[] = [];
@@ -705,6 +751,10 @@ export class IssuesService {
               : dto.dueDate === null
                 ? null
                 : new Date(dto.dueDate),
+          // customFields: undefined = no-op; merged object = replace stored JSON
+          ...(mergedCustomFields !== undefined
+            ? { customFields: mergedCustomFields }
+            : {}),
         },
         include: listInclude,
       });

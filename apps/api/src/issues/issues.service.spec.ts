@@ -8,6 +8,12 @@ import type { PrismaService } from '../prisma/prisma.service';
 import type { RealtimeService } from '../realtime/realtime.service';
 import type { NotificationsService } from '../notifications/notifications.service';
 import type { WebhooksService } from '../webhooks/webhooks.service';
+import type { CustomFieldsService } from '../custom-fields/custom-fields.service';
+
+/** Minimal stub satisfying the CustomFieldsService dependency in IssuesService. */
+const noOpCustomFields = {
+  validateAndNormalize: jest.fn().mockResolvedValue({}),
+} as unknown as CustomFieldsService;
 
 const webhooksMock = { dispatch: jest.fn() } as unknown as WebhooksService;
 import type { MoveIssueDto } from './dto/move-issue.dto';
@@ -82,6 +88,7 @@ describe('IssuesService.assertSameProject', () => {
       realtime,
       {} as NotificationsService,
       webhooksMock,
+      noOpCustomFields,
     );
   });
 
@@ -201,6 +208,7 @@ describe('IssuesService.assertNoParentCycleCTE', () => {
       realtime,
       {} as NotificationsService,
       webhooksMock,
+      noOpCustomFields,
     );
   });
 
@@ -350,6 +358,7 @@ describe('IssuesService.move', () => {
       realtime as unknown as RealtimeService,
       {} as NotificationsService,
       webhooksMock,
+      noOpCustomFields,
     );
 
     // The moved issue already lives in STATUS (no status change by default).
@@ -583,6 +592,7 @@ describe('IssuesService.findAll pagination', () => {
       {} as RealtimeService,
       {} as NotificationsService,
       {} as WebhooksService,
+      noOpCustomFields,
     );
   });
 
@@ -750,6 +760,7 @@ describe('IssuesService.findAll full-text search', () => {
       {} as RealtimeService,
       {} as NotificationsService,
       {} as WebhooksService,
+      noOpCustomFields,
     );
   });
 
@@ -940,6 +951,7 @@ describe('IssuesService.update dueDate', () => {
       { emitToProject: jest.fn() } as unknown as RealtimeService,
       { notifyWatchersUpdated: jest.fn().mockResolvedValue(undefined) } as unknown as NotificationsService,
       webhooksMock,
+      noOpCustomFields,
     );
   });
 
@@ -1099,6 +1111,7 @@ describe('IssuesService.update watcher fan-out', () => {
       { emitToProject: jest.fn() } as unknown as RealtimeService,
       notificationsService as unknown as NotificationsService,
       webhooksMock,
+      noOpCustomFields,
     );
   });
 

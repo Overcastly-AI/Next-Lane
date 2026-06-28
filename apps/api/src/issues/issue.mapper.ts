@@ -6,7 +6,9 @@ import type {
   LabelDto,
   IssueType,
   Priority,
+  CustomFieldValue,
 } from '@next-lane/shared';
+import type { Prisma } from '@prisma/client';
 
 /**
  * Shape of a Prisma Issue row with the relations the mapper consumes. All
@@ -28,6 +30,8 @@ export interface IssueWithRelations {
   sprintId: string | null;
   dueDate: Date | null;
   rank: string;
+  /** Raw JSONB from Prisma — typed as Prisma.JsonValue but we treat it as Record. */
+  customFields?: Prisma.JsonValue | null;
   createdAt: Date;
   updatedAt: Date;
   project?: { key: string } | null;
@@ -135,6 +139,16 @@ export function toIssueDto(issue: IssueWithRelations): IssueDto {
   if (issue.parent !== undefined)
     dto.parent = issue.parent ? toIssueRefDto(issue.parent) : null;
   if (issue.children) dto.children = issue.children.map(toIssueRefDto);
+
+  // Expose customFields when the column is present on the row. The stored JSON
+  // is already keyed by CustomFieldDefinition.id with typed values. We cast
+  // through unknown because Prisma types JsonValue broadly.
+  if (issue.customFields != null) {
+    dto.customFields = issue.customFields as unknown as Record<
+      string,
+      CustomFieldValue
+    >;
+  }
 
   return dto;
 }

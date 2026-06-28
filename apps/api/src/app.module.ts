@@ -32,6 +32,7 @@ import { AuditModule } from './audit/audit.module';
 import { MailModule } from './mail/mail.module';
 import { ShareTokensModule } from './share-tokens/share-tokens.module';
 import { PublicModule } from './public/public.module';
+import { CustomFieldsModule } from './custom-fields/custom-fields.module';
 import { HealthController } from './health.controller';
 
 const isProd = process.env.NODE_ENV === 'production';
@@ -136,6 +137,7 @@ const isProd = process.env.NODE_ENV === 'production';
     MailModule,
     ShareTokensModule,
     PublicModule,
+    CustomFieldsModule,
   ],
   controllers: [HealthController],
   providers: [

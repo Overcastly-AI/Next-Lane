@@ -272,8 +272,11 @@ test.describe('Board switcher — desktop', () => {
     await expect(confirmDialog).toBeVisible({ timeout: 5_000 });
     await confirmDialog.getByRole('button', { name: /delete board/i }).click();
 
-    // The modal should close and the board should no longer appear.
-    await expect(dialog).toBeHidden({ timeout: 5_000 });
+    // Wait on the CONFIRM dialog closing — it only hides after the delete
+    // mutation resolves (the handler sets confirmDelete=false + onClose on
+    // success). The settings modal is already hidden while the confirm is open,
+    // so waiting on it would resolve instantly and race the DELETE round-trip.
+    await expect(confirmDialog).toBeHidden({ timeout: 10_000 });
 
     // Verify via API that the board is gone.
     const boards = await listBoards(request, ctx.token, ctx.project.id);

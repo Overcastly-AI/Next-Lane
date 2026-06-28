@@ -2,6 +2,7 @@ import {
   IsDateString,
   IsEnum,
   IsInt,
+  IsObject,
   IsOptional,
   IsString,
   Max,
@@ -10,6 +11,7 @@ import {
   MinLength,
 } from 'class-validator';
 import { IssueType, Priority } from '@next-lane/shared';
+import type { CustomFieldValue } from '@next-lane/shared';
 
 export class CreateIssueDto {
   @IsString()
@@ -58,4 +60,13 @@ export class CreateIssueDto {
   @IsOptional()
   @IsDateString()
   dueDate?: string;
+
+  /**
+   * Custom field values keyed by CustomFieldDefinition.id. Each value is
+   * validated against the definition in the service layer (type, options,
+   * appliesToTypes). Unknown keys are rejected.
+   */
+  @IsOptional()
+  @IsObject()
+  customFields?: Record<string, CustomFieldValue>;
 }
