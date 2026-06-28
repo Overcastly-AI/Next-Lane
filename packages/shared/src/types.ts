@@ -292,6 +292,86 @@ export interface CfdDto {
 }
 
 /**
+ * One day in a flow series: how many issues were created versus how many
+ * reached a DONE-category status on that calendar day. `date` is an ISO date
+ * (YYYY-MM-DD). Suitable for a created-vs-resolved line or area chart.
+ */
+export interface FlowPointDto {
+  date: string;
+  created: number;
+  completed: number;
+}
+
+/** A count of completed issues bucketed by how long they took (created → done). */
+export interface CycleTimeBucketDto {
+  /** Human label for the bucket, e.g. "<1d", "1–3d", "3–7d", "1–2w", ">2w". */
+  bucket: string;
+  count: number;
+}
+
+/** Open-issue load carried by a single assignee (plus an "Unassigned" row). */
+export interface WorkloadRowDto {
+  /** Assignee user id, or null for the synthetic "Unassigned" bucket. */
+  userId: string | null;
+  name: string;
+  open: number;
+}
+
+/** A count of open issues grouped by a categorical field (type or priority). */
+export interface CategoryCountDto {
+  key: string;
+  count: number;
+}
+
+/**
+ * Personal analytics for the signed-in user over a rolling day window. Covers
+ * the issues assigned to them across all projects plus their personal board.
+ * `avgCycleTimeDays` is null when nothing completed in the window.
+ */
+export interface PersonalAnalyticsDto {
+  days: number;
+  assigned: {
+    /** Assigned to me and not in a DONE-category status. */
+    open: number;
+    /** Assigned to me and reached DONE within the window. */
+    completed: number;
+    /** Open + dueDate in the past. */
+    overdue: number;
+  };
+  /** Per-day completed count over the window (assigned to me). */
+  throughput: FlowPointDto[];
+  avgCycleTimeDays: number | null;
+  /** Open issues assigned to me, grouped by issue type. */
+  byType: CategoryCountDto[];
+  /** Open issues assigned to me, grouped by priority. */
+  byPriority: CategoryCountDto[];
+  personalBoard: {
+    totalCards: number;
+    promoted: number;
+    createdInWindow: number;
+  };
+}
+
+/**
+ * Team analytics for a single project over a rolling day window — the
+ * delivery-flow companion to the sprint-centric reports. `avgCycleTimeDays`
+ * is null when nothing completed in the window.
+ */
+export interface ProjectAnalyticsDto {
+  projectId: string;
+  days: number;
+  /** Per-day created vs completed across the window. */
+  flow: FlowPointDto[];
+  createdTotal: number;
+  completedTotal: number;
+  avgCycleTimeDays: number | null;
+  /** Distribution of cycle times for issues completed in the window. */
+  cycleTime: CycleTimeBucketDto[];
+  /** Open issues by assignee, busiest first. */
+  workload: WorkloadRowDto[];
+}
+
+/**
  * One epic on the roadmap timeline. The date window is derived: from the
  * earliest start to the latest end of the sprints its child issues belong to;
  * when no child has a dated sprint, it falls back to the epic's own createdAt.
