@@ -38,4 +38,5 @@ export const qk = {
   customFields: (projectId: string) => ['customFields', projectId] as const,
   pokerSessions: (projectId: string) => ['pokerSessions', projectId] as const,
   pokerSession: (sessionId: string) => ['pokerSession', sessionId] as const,
+  issueLinks: (issueId: string) => ['issueLinks', issueId] as const,
 };

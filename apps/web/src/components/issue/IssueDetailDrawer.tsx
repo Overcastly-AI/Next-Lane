@@ -29,6 +29,7 @@ import { CommentsPanel } from './CommentsPanel';
 import { ActivityPanel } from './ActivityPanel';
 import { AttachmentsPanel } from './AttachmentsPanel';
 import { CustomFieldsDrawerSection } from './CustomFieldsDrawerSection';
+import { LinkedIssuesSection } from './LinkedIssuesSection';
 
 /** Common agile estimate values offered in the Story Points select. */
 const STORY_POINT_VALUES = [1, 2, 3, 5, 8, 13] as const;
@@ -456,6 +457,12 @@ function DrawerBody({
               projectId={projectId}
               editable={editable}
               onPatch={onPatch}
+              onOpenIssue={onOpenIssue}
+            />
+
+            <LinkedIssuesSection
+              issueId={issue.id}
+              editable={editable}
               onOpenIssue={onOpenIssue}
             />
 
