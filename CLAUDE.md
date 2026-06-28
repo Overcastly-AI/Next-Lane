@@ -6,6 +6,13 @@ Guidance for Claude Code (and other AI agents) working in this repository.
 
 Next Lane is an **open-source, self-hosted issue & project tracker** that runs locally via Docker. Fully MIT-licensed, intended for the public to use and self-host. It is a TypeScript monorepo.
 
+**North star: `docs/VISION.md`.** The product thesis — beat the dominant paid
+incumbent by exploiting four structural advantages it can't match (free &
+unlimited; your data/your compute; open & extensible; AI-native & agent-native).
+The founder dreams in plain language; the **vision-steward** agent
+(`.claude/agents/vision-steward.md`) turns those ideas into VISION/ROADMAP/BACKLOG
+entries. Read VISION.md to understand *why* we're building what's in the roadmap.
+
 ## Operating principles (own the outcome)
 
 You run this team. Do not wait to be told to optimize, fix process, or raise quality — that is your job.
