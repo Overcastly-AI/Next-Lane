@@ -1,4 +1,9 @@
 version: 2
+
+# Noise control: minor + patch updates are GROUPED into a single PR per
+# ecosystem, and automatic MAJOR-version PRs are suppressed (majors are
+# breaking and handled deliberately — security advisories still come through
+# regardless of the `ignore` below). This keeps the open-PR count small.
 updates:
   # Root workspace (covers shared devDependencies like prettier)
   - package-ecosystem: npm
@@ -11,6 +16,15 @@ updates:
     open-pull-requests-limit: 5
     labels:
       - dependencies
+    groups:
+      npm-minor-patch:
+        update-types:
+          - minor
+          - patch
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major
 
   # API app
   - package-ecosystem: npm
@@ -24,6 +38,15 @@ updates:
     labels:
       - dependencies
       - backend
+    groups:
+      npm-minor-patch:
+        update-types:
+          - minor
+          - patch
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major
 
   # Web app
   - package-ecosystem: npm
@@ -37,6 +60,15 @@ updates:
     labels:
       - dependencies
       - frontend
+    groups:
+      npm-minor-patch:
+        update-types:
+          - minor
+          - patch
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major
 
   # Shared package
   - package-ecosystem: npm
@@ -49,8 +81,17 @@ updates:
     open-pull-requests-limit: 5
     labels:
       - dependencies
+    groups:
+      npm-minor-patch:
+        update-types:
+          - minor
+          - patch
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major
 
-  # GitHub Actions
+  # GitHub Actions — group all action bumps into one PR
   - package-ecosystem: github-actions
     directory: /
     schedule:
@@ -62,3 +103,7 @@ updates:
     labels:
       - dependencies
       - ci
+    groups:
+      github-actions:
+        patterns:
+          - "*"
