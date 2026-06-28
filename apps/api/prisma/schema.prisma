@@ -6,6 +6,7 @@
 // add_standups — applied 2026-06-28.
 // add_personal_boards — applied 2026-06-28.
 // add_automation_engine — applied 2026-06-28.
+// add_activitylog_status_index — applied 2026-06-28.
 // Deferred to feature slices (do not add here without a feature branch):
 //   - ScmConnection / IssueExternalLink / pgvector embedding column (Phase 9 / Phase 6)
 //   - WorkflowTransition (Phase 2 remaining / Phase 5)
@@ -680,6 +681,11 @@ model ActivityLog {
   @@index([issueId])
   @@index([actorId, createdAt])
   @@index([field, createdAt])
+  // Composite index for the completionMap raw query, which filters
+  // field='status', to IN (done-status IDs), createdAt BETWEEN window.
+  // (field, to) equality narrows to status transitions for specific done-status
+  // values; createdAt then supports the window range scan without a full sort.
+  @@index([field, to, createdAt])
 }
 
 model Watcher {

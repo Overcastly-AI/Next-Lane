@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -336,6 +337,12 @@ export class PersonalBoardsService {
     dto: PromotePersonalCardDto,
   ): Promise<{ card: PersonalCardDto; issue: IssueDto }> {
     const card = await this.getOwnedCard(userId, cardId);
+
+    // Idempotency guard: reject double-promote to prevent creating a second
+    // Issue and orphaning the first.
+    if (card.promotedIssueId !== null) {
+      throw new BadRequestException('Card already promoted');
+    }
 
     // Enforce project membership (MEMBER+) — same requirement as issue creation.
     // assertProjectMember checks workspace membership; IssuesService.create

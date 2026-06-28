@@ -112,7 +112,8 @@ function makePrisma(rules: object[] = []) {
       findUnique: jest.fn().mockResolvedValue(ISSUE_ROW),
     },
     automationRun: {
-      create: jest.fn().mockResolvedValue({}),
+      // Batch insert — replaces the previous per-rule create() loop.
+      createMany: jest.fn().mockResolvedValue({ count: 0 }),
     },
     customFieldDefinition: {
       findMany: jest.fn().mockResolvedValue([]),
@@ -164,6 +165,26 @@ function makeEngine(prisma: ReturnType<typeof makePrisma>) {
 
 describe('AutomationEngineService', () => {
 
+  // ── Helper: extract the first run row from a createMany batch ──────────────
+  //
+  // The engine now collects all run rows across rules and issues a single
+  // createMany({ data: [...] }) call. Tests use this helper to inspect the
+  // batch instead of per-call create() arguments.
+
+  function firstRunRow(prisma: ReturnType<typeof makePrisma>) {
+    const call = prisma.automationRun.createMany.mock.calls[0];
+    expect(call).toBeDefined(); // fail fast if no call was made
+    const rows = call[0].data as Array<Record<string, unknown>>;
+    expect(rows.length).toBeGreaterThan(0);
+    return rows[0];
+  }
+
+  function allRunRows(prisma: ReturnType<typeof makePrisma>) {
+    const call = prisma.automationRun.createMany.mock.calls[0];
+    expect(call).toBeDefined();
+    return call[0].data as Array<Record<string, unknown>>;
+  }
+
   describe('loop guard', () => {
     it('returns immediately when event.automated is true (no rule evaluation)', async () => {
       const prisma = makePrisma([makeRule()]);
@@ -173,7 +194,7 @@ describe('AutomationEngineService', () => {
 
       // Should not even query rules
       expect(prisma.automationRule.findMany).not.toHaveBeenCalled();
-      expect(prisma.automationRun.create).not.toHaveBeenCalled();
+      expect(prisma.automationRun.createMany).not.toHaveBeenCalled();
     });
   });
 
@@ -191,15 +212,13 @@ describe('AutomationEngineService', () => {
         { priority: Priority.HIGH },
         { automated: true },
       );
-      expect(prisma.automationRun.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            ruleId: rule.id,
-            matched: true,
-            status: AutomationRunStatus.SUCCESS,
-          }),
-        }),
-      );
+
+      // createMany called once with a batch containing the SUCCESS row.
+      expect(prisma.automationRun.createMany).toHaveBeenCalledTimes(1);
+      const row = firstRunRow(prisma);
+      expect(row.ruleId).toBe(rule.id);
+      expect(row.matched).toBe(true);
+      expect(row.status).toBe(AutomationRunStatus.SUCCESS);
     });
   });
 
@@ -216,15 +235,11 @@ describe('AutomationEngineService', () => {
       expect(comments.create).not.toHaveBeenCalled();
       expect(labels.addToIssue).not.toHaveBeenCalled();
 
-      expect(prisma.automationRun.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            matched: false,
-            status: AutomationRunStatus.SKIPPED,
-            actionsApplied: [],
-          }),
-        }),
-      );
+      expect(prisma.automationRun.createMany).toHaveBeenCalledTimes(1);
+      const row = firstRunRow(prisma);
+      expect(row.matched).toBe(false);
+      expect(row.status).toBe(AutomationRunStatus.SKIPPED);
+      expect(row.actionsApplied).toEqual([]);
     });
   });
 
@@ -238,10 +253,11 @@ describe('AutomationEngineService', () => {
 
       expect(issues.update).not.toHaveBeenCalled();
 
-      const createCall = prisma.automationRun.create.mock.calls[0][0];
-      expect(createCall.data.status).toBe(AutomationRunStatus.FAILED);
-      expect(createCall.data.matched).toBe(false);
-      expect(createCall.data.error).toContain('Condition evaluation error');
+      expect(prisma.automationRun.createMany).toHaveBeenCalledTimes(1);
+      const row = firstRunRow(prisma);
+      expect(row.status).toBe(AutomationRunStatus.FAILED);
+      expect(row.matched).toBe(false);
+      expect(String(row.error)).toContain('Condition evaluation error');
     });
   });
 
@@ -268,12 +284,14 @@ describe('AutomationEngineService', () => {
       expect(issues.update).toHaveBeenCalledTimes(1);
       expect(issues.move).toHaveBeenCalledTimes(1);
 
-      const createCall = prisma.automationRun.create.mock.calls[0][0];
-      expect(createCall.data.status).toBe(AutomationRunStatus.FAILED);
-      expect(createCall.data.error).toContain('TRANSITION failed');
+      expect(prisma.automationRun.createMany).toHaveBeenCalledTimes(1);
+      const row = firstRunRow(prisma);
+      expect(row.status).toBe(AutomationRunStatus.FAILED);
+      expect(String(row.error)).toContain('TRANSITION failed');
       // partial actionsApplied: only the first action succeeded
-      expect(createCall.data.actionsApplied).toHaveLength(1);
-      expect(createCall.data.actionsApplied[0].type).toBe(AutomationActionType.SET_PRIORITY);
+      const applied = row.actionsApplied as Array<{ type: string }>;
+      expect(applied).toHaveLength(1);
+      expect(applied[0].type).toBe(AutomationActionType.SET_PRIORITY);
     });
   });
 
@@ -311,7 +329,6 @@ describe('AutomationEngineService', () => {
 
   describe('rules evaluated in order', () => {
     it('evaluates rules in ascending order (order asc, createdAt asc)', async () => {
-      const callOrder: string[] = [];
       const rule1 = makeRule({ id: 'rule-a', order: 1, condition: null });
       const rule2 = makeRule({ id: 'rule-b', order: 0, condition: null });
       // Note: Prisma is expected to return them pre-sorted; we verify the engine
@@ -319,19 +336,44 @@ describe('AutomationEngineService', () => {
       const prisma = makePrisma([rule2, rule1]); // sorted: order 0 first
       const { engine, issues } = makeEngine(prisma);
 
-      // Use a mock that records which rule's actor is used (they share RULE_CREATOR_ID,
-      // but we can verify via run writes).
-      const createMock = prisma.automationRun.create.mockResolvedValue({});
       issues.update.mockResolvedValue({});
 
       await engine.onIssueCreated(makeEvent());
 
-      // Two rules → two runs
-      expect(createMock).toHaveBeenCalledTimes(2);
-      // First run should be for rule-b (order 0)
-      expect(createMock.mock.calls[0][0].data.ruleId).toBe('rule-b');
-      // Second run should be for rule-a (order 1)
-      expect(createMock.mock.calls[1][0].data.ruleId).toBe('rule-a');
+      // One createMany call with 2 rows in evaluation order.
+      expect(prisma.automationRun.createMany).toHaveBeenCalledTimes(1);
+      const rows = allRunRows(prisma);
+      expect(rows).toHaveLength(2);
+      // First row should be for rule-b (order 0)
+      expect(rows[0].ruleId).toBe('rule-b');
+      // Second row should be for rule-a (order 1)
+      expect(rows[1].ruleId).toBe('rule-a');
+    });
+  });
+
+  describe('batch insert: multiple rules produce one createMany call', () => {
+    it('issues exactly one createMany regardless of rule count', async () => {
+      const rules = [
+        makeRule({ id: 'rule-1', order: 0, condition: null }),
+        makeRule({ id: 'rule-2', order: 1, condition: 'priority = High' }), // SKIPPED
+        makeRule({ id: 'rule-3', order: 2, condition: null }),
+      ];
+      const prisma = makePrisma(rules);
+      const { engine, issues } = makeEngine(prisma);
+      issues.update.mockResolvedValue({});
+
+      await engine.onIssueCreated(makeEvent());
+
+      // Exactly one createMany call with all 3 rows.
+      expect(prisma.automationRun.createMany).toHaveBeenCalledTimes(1);
+      const rows = allRunRows(prisma);
+      expect(rows).toHaveLength(3);
+      expect(rows[0].ruleId).toBe('rule-1');
+      expect(rows[0].status).toBe(AutomationRunStatus.SUCCESS);
+      expect(rows[1].ruleId).toBe('rule-2');
+      expect(rows[1].status).toBe(AutomationRunStatus.SKIPPED);
+      expect(rows[2].ruleId).toBe('rule-3');
+      expect(rows[2].status).toBe(AutomationRunStatus.SUCCESS);
     });
   });
 
@@ -378,7 +420,7 @@ describe('AutomationEngineService', () => {
       await engine.onIssueCreated(makeEvent());
 
       expect(prisma.issue.findUnique).not.toHaveBeenCalled();
-      expect(prisma.automationRun.create).not.toHaveBeenCalled();
+      expect(prisma.automationRun.createMany).not.toHaveBeenCalled();
       expect(issues.update).not.toHaveBeenCalled();
     });
   });
@@ -391,7 +433,7 @@ describe('AutomationEngineService', () => {
 
       // Should not throw
       await expect(engine.onIssueCreated(makeEvent())).resolves.toBeUndefined();
-      expect(prisma.automationRun.create).not.toHaveBeenCalled();
+      expect(prisma.automationRun.createMany).not.toHaveBeenCalled();
     });
   });
 });

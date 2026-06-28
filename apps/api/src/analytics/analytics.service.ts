@@ -246,11 +246,19 @@ export class AnalyticsService {
     // ── 1. Find all issues assigned to this user (across all projects) ────────
     //
     // We need status category, so we join Status.
-    // Scope: only non-archived projects (or all — spec says "projects the user
-    // can see" which in practice means membership-scoped; we load all assigned
-    // issues and let the activity-log query bound things).
+    // Scope: ONLY issues in projects within workspaces the user is a member of.
+    // Without this scope, a user assigned to an issue in a workspace they no
+    // longer belong to (or were never a member of) would see those issues in
+    // their personal analytics — a cross-tenant data leak.
     const assignedIssues = await this.prisma.issue.findMany({
-      where: { assigneeId: userId },
+      where: {
+        assigneeId: userId,
+        project: {
+          workspace: {
+            memberships: { some: { userId } },
+          },
+        },
+      },
       select: {
         id: true,
         projectId: true,
@@ -394,19 +402,33 @@ export class AnalyticsService {
     // ── 1. DONE status IDs for this project ───────────────────────────────────
     const doneIds = await this.doneStatusIds(projectId);
 
-    // ── 2. All issues in the project ─────────────────────────────────────────
+    // ── 2. Issue queries: separate concerns for workload vs. flow series ──────
     //
-    // We need all issue IDs to query the ActivityLog for completion dates.
-    // We also need open issues for workload. Load minimal columns.
-    const allProjectIssues = await this.prisma.issue.findMany({
-      where: { projectId },
-      select: {
-        id: true,
-        createdAt: true,
-        assigneeId: true,
-        status: { select: { category: true } },
-      },
-    });
+    // Workload needs ALL open issues in the project regardless of creation date
+    // (open-ended inventory). The flow/completion series only cares about issues
+    // created OR completed within the rolling window.
+    //
+    // Splitting into two targeted queries avoids scanning the full issue table in
+    // JS just to discard out-of-window rows for the flow chart:
+    //
+    //   (a) allProjectIssues — full project scan: ids for completionMap + open
+    //       status+assignee for workload. createdAt NOT loaded (not needed here).
+    //   (b) windowCreatedIssues — window-scoped: only issues created inside the
+    //       window, for the "created" side of the flow series.
+    const [allProjectIssues, windowCreatedIssues] = await Promise.all([
+      this.prisma.issue.findMany({
+        where: { projectId },
+        select: {
+          id: true,
+          assigneeId: true,
+          status: { select: { category: true } },
+        },
+      }),
+      this.prisma.issue.findMany({
+        where: { projectId, createdAt: { gte: wStart, lte: new Date(wEnd.getTime() + 86400000 - 1) } },
+        select: { id: true, createdAt: true },
+      }),
+    ]);
 
     const allIssueIds = allProjectIssues.map((i) => i.id);
 
@@ -419,12 +441,11 @@ export class AnalyticsService {
       completedByDay.set(completedDay, (completedByDay.get(completedDay) ?? 0) + 1);
     }
 
+    // Use the window-scoped query result — no JS-side date filtering needed.
     const createdByDay = new Map<string, number>();
-    for (const issue of allProjectIssues) {
+    for (const issue of windowCreatedIssues) {
       const dk = dayKey(issue.createdAt);
-      if (dk >= allDays[0] && dk <= allDays[allDays.length - 1]) {
-        createdByDay.set(dk, (createdByDay.get(dk) ?? 0) + 1);
-      }
+      createdByDay.set(dk, (createdByDay.get(dk) ?? 0) + 1);
     }
 
     const flow = this.buildFlowSeries(allDays, createdByDay, completedByDay);
@@ -436,6 +457,8 @@ export class AnalyticsService {
     const { avgCycleTimeDays, buckets: cycleTime } = this.computeCycleTimeStats(completions);
 
     // ── 6. Workload (open issues by assignee, busiest first) ──────────────────
+    // Uses allProjectIssues (full scan) — workload is window-agnostic; it counts
+    // all currently open issues regardless of when they were created.
     const openIssues = allProjectIssues.filter(
       (i) => i.status.category !== StatusCategory.DONE,
     );

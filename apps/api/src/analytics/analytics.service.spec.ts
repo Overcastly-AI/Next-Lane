@@ -91,6 +91,15 @@ function makePrisma() {
   };
 }
 
+/**
+ * Capture the `where` clause passed to the most recent `issue.findMany` call.
+ */
+function captureIssueFindManyWhere(prisma: ReturnType<typeof makePrisma>) {
+  const calls = (prisma.issue.findMany as jest.Mock).mock.calls;
+  expect(calls.length).toBeGreaterThan(0);
+  return calls[0][0]?.where as Record<string, unknown>;
+}
+
 type MockPrisma = ReturnType<typeof makePrisma>;
 
 // ---------------------------------------------------------------------------
@@ -324,6 +333,52 @@ describe('AnalyticsService', () => {
       expect(result.personalBoard.totalCards).toBe(10);
       expect(result.personalBoard.promoted).toBe(3);
       expect(result.personalBoard.createdInWindow).toBe(2);
+    });
+
+    // ── Tenant isolation regression ────────────────────────────────────────
+
+    it('scopes issue query to workspaces the user is a member of (tenant isolation)', async () => {
+      // This test guards against the P1 security finding: without the workspace
+      // membership scope, a user who is assigned to an issue in a workspace they
+      // are NOT a member of (e.g. removed from the workspace after assignment)
+      // would see that issue's counts in their personal analytics dashboard.
+      //
+      // We verify that the `where` clause passed to issue.findMany includes
+      // the nested workspace-membership filter — not just `assigneeId: userId`.
+      setupEmpty();
+      await service.personalAnalytics(USER_ID, 30);
+
+      const where = captureIssueFindManyWhere(prisma);
+
+      // Must still scope to the requesting user as assignee.
+      expect(where['assigneeId']).toBe(USER_ID);
+
+      // Must additionally restrict to projects whose workspace the user belongs to.
+      // Prisma path: issue.project.workspace.memberships (some { userId })
+      const projectFilter = where['project'] as Record<string, unknown> | undefined;
+      expect(projectFilter).toBeDefined();
+      const workspaceFilter = projectFilter!['workspace'] as Record<string, unknown> | undefined;
+      expect(workspaceFilter).toBeDefined();
+      const membershipsFilter = workspaceFilter!['memberships'] as Record<string, unknown> | undefined;
+      expect(membershipsFilter).toBeDefined();
+      expect(membershipsFilter!['some']).toMatchObject({ userId: USER_ID });
+    });
+
+    it('does NOT count issues from workspaces the user is not a member of', async () => {
+      // Simulate: prisma returns zero issues because the workspace-membership
+      // filter excluded the cross-workspace issue. The service must report 0
+      // open/completed regardless of what the DB might hold without the filter.
+      prisma.issue.findMany.mockResolvedValue([]); // filter excluded all issues
+      prisma.status.findMany.mockResolvedValue([]);
+      prisma.$queryRaw.mockResolvedValue([]);
+      prisma.personalCard.count.mockResolvedValue(0);
+
+      const result = await service.personalAnalytics(USER_ID, 30);
+
+      // Counts must be zero — cross-workspace issues must not be aggregated.
+      expect(result.assigned.open).toBe(0);
+      expect(result.assigned.completed).toBe(0);
+      expect(result.assigned.overdue).toBe(0);
     });
 
     it('throughput created count increments on the issue createdAt day', async () => {

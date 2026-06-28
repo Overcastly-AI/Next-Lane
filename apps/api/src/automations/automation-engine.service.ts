@@ -140,14 +140,28 @@ export class AutomationEngineService {
     // Build EvalContext (custom field defs + project users for me() resolution).
     const evalCtx = await this.buildEvalContext(projectId);
 
-    // Evaluate each rule sequentially (preserves order semantics).
+    // Collect run-row data objects across all rules, then batch-insert at the
+    // end. Actions execute per-rule in order (behavior unchanged); only the
+    // audit-log writes are deferred for batching.
+    const runRows: Prisma.AutomationRunCreateManyInput[] = [];
+
     for (const rule of rules) {
-      await this.evaluateRule(rule, issueDto, evalCtx, actorUserId, trigger);
+      const runData = await this.evaluateRule(rule, issueDto, evalCtx, actorUserId, trigger);
+      runRows.push(runData);
     }
+
+    // Single createMany for all run rows collected in this event evaluation.
+    await this.flushRunRows(runRows);
   }
 
   // ── Rule evaluation ───────────────────────────────────────────────────────
 
+  /**
+   * Evaluate a single rule against the issue. Executes actions inline
+   * (preserving per-rule order semantics), but returns the run-row data
+   * object rather than writing it immediately. The caller batches all
+   * run rows and issues a single createMany after the loop.
+   */
   private async evaluateRule(
     rule: {
       id: string;
@@ -159,7 +173,7 @@ export class AutomationEngineService {
     evalCtx: EvalContext,
     actorUserId: string,
     trigger: AutomationTrigger,
-  ): Promise<void> {
+  ): Promise<Prisma.AutomationRunCreateManyInput> {
     // Actor for automation actions: the rule creator if available, else the
     // user who triggered the original event.
     const automationActorId = rule.createdById ?? actorUserId;
@@ -171,32 +185,30 @@ export class AutomationEngineService {
         const ast = parse(rule.condition);
         matched = evaluate(ast, issueDto, evalCtx);
       } catch (err) {
-        // Parse/eval error → record FAILED run, continue to next rule.
-        await this.writeRun({
+        // Parse/eval error → collect FAILED run, continue to next rule.
+        return {
           ruleId: rule.id,
           issueId: issueDto.id,
           trigger,
           matched: false,
           status: AutomationRunStatus.FAILED,
-          actionsApplied: [],
+          actionsApplied: [] as unknown as Prisma.InputJsonValue,
           error: `Condition evaluation error: ${String(err)}`,
-        });
-        return;
+        };
       }
     }
 
     // ── Condition did not match → SKIPPED (Glass Box: always record) ──────
     if (!matched) {
-      await this.writeRun({
+      return {
         ruleId: rule.id,
         issueId: issueDto.id,
         trigger,
         matched: false,
         status: AutomationRunStatus.SKIPPED,
-        actionsApplied: [],
+        actionsApplied: [] as unknown as Prisma.InputJsonValue,
         error: null,
-      });
-      return;
+      };
     }
 
     // ── Execute actions ───────────────────────────────────────────────────
@@ -221,15 +233,15 @@ export class AutomationEngineService {
       }
     }
 
-    await this.writeRun({
+    return {
       ruleId: rule.id,
       issueId: issueDto.id,
       trigger,
       matched: true,
       status: runStatus,
-      actionsApplied,
+      actionsApplied: actionsApplied as unknown as Prisma.InputJsonValue,
       error: runError,
-    });
+    };
   }
 
   // ── Action executors ──────────────────────────────────────────────────────
@@ -293,30 +305,21 @@ export class AutomationEngineService {
 
   // ── Persistence ───────────────────────────────────────────────────────────
 
-  private async writeRun(data: {
-    ruleId: string;
-    issueId: string;
-    trigger: AutomationTrigger;
-    matched: boolean;
-    status: AutomationRunStatus;
-    actionsApplied: AutomationRunActionDto[];
-    error: string | null;
-  }): Promise<void> {
+  /**
+   * Batch-insert all collected run rows in a single createMany call.
+   * This replaces the previous per-rule create() loop, reducing N round-trips
+   * to the database to exactly 1 regardless of the number of rules evaluated.
+   * Failure to persist the audit log must not interrupt or surface to the caller.
+   */
+  private async flushRunRows(
+    rows: Prisma.AutomationRunCreateManyInput[],
+  ): Promise<void> {
+    if (!Array.isArray(rows) || rows.length === 0) return;
     try {
-      await this.prisma.automationRun.create({
-        data: {
-          ruleId: data.ruleId,
-          issueId: data.issueId,
-          trigger: data.trigger,
-          matched: data.matched,
-          status: data.status,
-          actionsApplied: data.actionsApplied as unknown as Prisma.InputJsonValue,
-          error: data.error,
-        },
-      });
+      await this.prisma.automationRun.createMany({ data: rows });
     } catch (err) {
       // Run persistence failure must not interrupt rule processing.
-      this.logger.error(`Failed to persist AutomationRun: ${String(err)}`);
+      this.logger.error(`Failed to persist AutomationRun batch: ${String(err)}`);
     }
   }
 

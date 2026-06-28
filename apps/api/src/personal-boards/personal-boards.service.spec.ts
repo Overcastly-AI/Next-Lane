@@ -1,4 +1,4 @@
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import * as membershipUtil from '../common/membership.util';
 import { PersonalBoardsService } from './personal-boards.service';
 import type { PrismaService } from '../prisma/prisma.service';
@@ -480,6 +480,22 @@ describe('PersonalBoardsService', () => {
       ).rejects.toBeInstanceOf(ForbiddenException);
 
       expect(issuesSvc.create).not.toHaveBeenCalled();
+    });
+
+    it('throws BadRequestException (Card already promoted) on double-promote', async () => {
+      // Simulate a card that already has a promotedIssueId set (already promoted).
+      const alreadyPromoted = makeCard({ promotedIssueId: ISSUE_ID });
+      prisma.personalCard.findUnique.mockResolvedValue(alreadyPromoted);
+
+      // A second promote call must be rejected before any issue is created.
+      await expect(
+        service.promoteCard(USER_A, CARD_1, { projectId: PROJ_ID }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+
+      // No issue should be created on a duplicate promote.
+      expect(issuesSvc.create).not.toHaveBeenCalled();
+      // The card record must not be updated (promotedIssueId stays unchanged).
+      expect(prisma.personalCard.update).not.toHaveBeenCalled();
     });
 
     it('passes null notes as undefined description so the issue field is unset', async () => {
