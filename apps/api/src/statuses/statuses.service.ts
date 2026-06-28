@@ -17,6 +17,7 @@ type StatusRow = {
   name: string;
   category: string;
   order: number;
+  wipLimit?: number | null;
   projectId: string;
 };
 
@@ -26,6 +27,7 @@ export function toStatusDto(s: StatusRow): StatusDto {
     name: s.name,
     category: s.category as StatusCategory,
     order: s.order,
+    wipLimit: s.wipLimit ?? null,
     projectId: s.projectId,
   };
 }
@@ -63,6 +65,7 @@ export class StatusesService {
         name: dto.name,
         category: dto.category,
         order,
+        wipLimit: dto.wipLimit ?? null,
       },
     });
     return toStatusDto(status);
@@ -88,6 +91,7 @@ export class StatusesService {
         name: dto.name,
         category: dto.category,
         order: dto.order,
+        ...(dto.wipLimit !== undefined ? { wipLimit: dto.wipLimit } : {}),
       },
     });
     return toStatusDto(status);

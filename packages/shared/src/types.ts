@@ -79,6 +79,8 @@ export interface StatusDto {
   category: StatusCategory;
   order: number;
   projectId: string;
+  /** Optional WIP limit for this column; null means no limit. */
+  wipLimit: number | null;
 }
 
 export interface LabelDto {

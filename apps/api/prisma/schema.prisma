@@ -395,6 +395,7 @@ model Status {
   name      String
   category  StatusCategory @default(TODO)
   order     Int            @default(0)
+  wipLimit  Int?
   projectId String
   createdAt DateTime       @default(now())
   updatedAt DateTime       @updatedAt

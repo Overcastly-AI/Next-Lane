@@ -80,6 +80,7 @@ function toStatusDto(s: {
   name: string;
   category: string;
   order: number;
+  wipLimit?: number | null;
   projectId: string;
 }): StatusDto {
   return {
@@ -87,6 +88,7 @@ function toStatusDto(s: {
     name: s.name,
     category: s.category as StatusDto['category'],
     order: s.order,
+    wipLimit: s.wipLimit ?? null,
     projectId: s.projectId,
   };
 }

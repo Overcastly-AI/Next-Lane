@@ -42,6 +42,7 @@ export interface IssueWithRelations {
     name: string;
     category: string;
     order: number;
+    wipLimit?: number | null;
     projectId: string;
   } | null;
   assignee?: {
@@ -94,6 +95,7 @@ interface IssueRef {
     name: string;
     category: string;
     order: number;
+    wipLimit?: number | null;
     projectId: string;
   } | null;
 }
