@@ -2,7 +2,7 @@
  * Seed a demo workspace so `docker compose up` yields a usable board.
  * Idempotent: safe to run repeatedly (clears demo data first).
  */
-import { PrismaClient, IssueType, Priority, StatusCategory, SprintState, Role } from '@prisma/client';
+import { PrismaClient, IssueType, Priority, StatusCategory, SprintState, Role, CustomFieldType } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { initialRanks } from '@next-lane/shared';
 
@@ -73,6 +73,26 @@ async function main() {
     });
   }
 
+  // Team (workspace-scoped)
+  const existingTeam = await prisma.team.findUnique({
+    where: { workspaceId_name: { workspaceId: workspace.id, name: 'Core Team' } },
+  });
+  const team = existingTeam ?? await prisma.team.create({
+    data: {
+      workspaceId: workspace.id,
+      name: 'Core Team',
+      description: 'The primary development team.',
+      members: {
+        create: [
+          { userId: demo.id },
+          { userId: alex.id },
+          { userId: sam.id },
+        ],
+      },
+    },
+  });
+  console.log(`  Team: ${team.name}`);
+
   // Fresh project each seed run (wipe prior demo project by key)
   const existing = await prisma.project.findUnique({
     where: { workspaceId_key: { workspaceId: workspace.id, key: 'NL' } },
@@ -109,6 +129,36 @@ async function main() {
   });
   const design = await prisma.label.create({
     data: { name: 'design', color: '#a855f7', projectId: project.id },
+  });
+
+  // Custom field definitions (Phase 5 demo data)
+  await prisma.customFieldDefinition.upsert({
+    where: { projectId_key: { projectId: project.id, key: 'severity' } },
+    update: {},
+    create: {
+      projectId: project.id,
+      name: 'Severity',
+      key: 'severity',
+      type: CustomFieldType.SELECT,
+      options: ['S1 - Critical', 'S2 - High', 'S3 - Medium', 'S4 - Low'],
+      appliesToTypes: [IssueType.BUG],
+      required: false,
+      order: 0,
+    },
+  });
+  await prisma.customFieldDefinition.upsert({
+    where: { projectId_key: { projectId: project.id, key: 'estimated_hours' } },
+    update: {},
+    create: {
+      projectId: project.id,
+      name: 'Estimated Hours',
+      key: 'estimated_hours',
+      type: CustomFieldType.NUMBER,
+      options: [],
+      appliesToTypes: [],
+      required: false,
+      order: 1,
+    },
   });
 
   const sprint = await prisma.sprint.create({

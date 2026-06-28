@@ -123,11 +123,21 @@ function getMaxBytes(): number {
   return v ? parseInt(v, 10) : DEFAULT_MAX_BYTES;
 }
 
+/** Sentinel UserDto used when an attachment uploader has been deleted. */
+const DELETED_UPLOADER_DTO = {
+  id: '',
+  email: '',
+  name: 'Deleted User',
+  avatarColor: '#94a3b8',
+  createdAt: new Date(0).toISOString(),
+};
+
 function toDto(
   a: {
     id: string;
     issueId: string;
-    uploaderId: string;
+    // uploaderId is nullable: the uploader may have been deleted (onDelete: SetNull).
+    uploaderId: string | null;
     filename: string;
     mimeType: string;
     sizeBytes: number;
@@ -138,14 +148,14 @@ function toDto(
       name: string;
       avatarColor: string;
       createdAt: Date;
-    };
+    } | null;
   },
 ): AttachmentDto {
   return {
     id: a.id,
     issueId: a.issueId,
-    uploaderId: a.uploaderId,
-    uploader: toUserDto(a.uploader),
+    uploaderId: a.uploaderId ?? '',
+    uploader: a.uploader ? toUserDto(a.uploader) : DELETED_UPLOADER_DTO,
     filename: a.filename,
     mimeType: a.mimeType,
     sizeBytes: a.sizeBytes,

@@ -21,15 +21,26 @@ type CommentRow = {
   id: string;
   body: string;
   issueId: string;
+  authorId: string | null;
   createdAt: Date;
   updatedAt: Date;
+  // author is null when the user has been deleted (onDelete: SetNull)
   author: {
     id: string;
     email: string;
     name: string;
     avatarColor: string;
     createdAt: Date;
-  };
+  } | null;
+};
+
+/** Sentinel UserDto used when a comment author has been deleted. */
+const DELETED_USER_DTO = {
+  id: '',
+  email: '',
+  name: 'Deleted User',
+  avatarColor: '#94a3b8',
+  createdAt: new Date(0).toISOString(),
 };
 
 function toCommentDto(c: CommentRow): CommentDto {
@@ -37,7 +48,7 @@ function toCommentDto(c: CommentRow): CommentDto {
     id: c.id,
     body: c.body,
     issueId: c.issueId,
-    author: toUserDto(c.author),
+    author: c.author ? toUserDto(c.author) : DELETED_USER_DTO,
     createdAt: c.createdAt.toISOString(),
     updatedAt: c.updatedAt.toISOString(),
   };
@@ -95,7 +106,7 @@ export class CommentsService {
     );
     await this.notifications.notifyComment({
       authorId: userId,
-      authorName: comment.author.name,
+      authorName: comment.author?.name ?? 'Someone',
       issue: {
         id: issue.id,
         key: `${issue.projectKey}-${issue.number}`,

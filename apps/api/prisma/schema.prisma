@@ -1,5 +1,14 @@
 // Next Lane data model. Single source of truth for the database.
 // Changes go through `prisma migrate`. See docs/ARCHITECTURE.md.
+//
+// Baseline v2 — applied 2026-06-28.
+// Deferred to feature slices (do not add here without a feature branch):
+//   - AutomationRule / AutomationRun (Phase 7)
+//   - StandupEntry / StandupBlockerLink (Phase 10)
+//   - PersonalBoard / PersonalCard (Phase 10)
+//   - ScmConnection / IssueExternalLink / pgvector embedding column (Phase 9 / Phase 6)
+//   - PokerSession / PokerItem / PokerVote (Phase 5 planning poker sub-feature)
+//   - WorkflowTransition (Phase 2 remaining / Phase 5)
 
 generator client {
   provider = "prisma-client-js"
@@ -9,6 +18,10 @@ datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
 
 enum IssueType {
   TASK
@@ -56,6 +69,35 @@ enum NotificationType {
   WATCHED_UPDATED
 }
 
+enum CustomFieldType {
+  TEXT
+  NUMBER
+  SELECT
+  MULTI_SELECT
+  DATE
+  CHECKBOX
+  URL
+}
+
+enum IssueLinkType {
+  BLOCKS
+  BLOCKED_BY
+  RELATES_TO
+  DUPLICATES
+  DUPLICATED_BY
+  CLONES
+}
+
+enum VersionState {
+  UNRELEASED
+  RELEASED
+  ARCHIVED
+}
+
+// ---------------------------------------------------------------------------
+// Core entities
+// ---------------------------------------------------------------------------
+
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
@@ -73,13 +115,28 @@ model User {
   watching       Watcher[]
 
   // Notifications addressed to this user (recipient) and ones this user caused.
-  notifications      Notification[]      @relation("recipient")
-  actedNotifications Notification[]      @relation("actor")
+  notifications       Notification[]       @relation("recipient")
+  actedNotifications  Notification[]       @relation("actor")
   passwordResetTokens PasswordResetToken[]
   apiTokens           ApiToken[]
   attachments         Attachment[]
   auditEvents         AuditEvent[]
   shareTokens         ShareToken[]
+
+  // Team memberships
+  teamMemberships     TeamMember[]
+
+  // Issue links created by this user
+  issueLinksCreated   IssueLink[]
+
+  // Project lead back-relation
+  ledProjects         Project[]            @relation("projectLead")
+
+  // Component default assignee back-relation
+  defaultAssigneeComponents Component[]    @relation("componentDefaultAssignee")
+
+  // SavedFilter ownership
+  savedFilters        SavedFilter[]
 }
 
 // Personal API Token (PAT) for scripting / CI access to the REST API.
@@ -91,15 +148,15 @@ model User {
 // An empty array means "unrestricted" (same as a JWT browser session).
 // See PAT_SCOPES in packages/shared for the full vocabulary.
 model ApiToken {
-  id          String    @id @default(cuid())
-  userId      String
-  name        String
-  tokenHash   String    @unique // SHA-256 hex of the raw "nlp_..." token
-  lastUsedAt  DateTime?
-  expiresAt   DateTime?
-  createdAt   DateTime  @default(now())
-  revokedAt   DateTime? // null = active; non-null = revoked
-  scopes      String[]  @default([]) // empty = unrestricted (backward-compat)
+  id         String    @id @default(cuid())
+  userId     String
+  name       String
+  tokenHash  String    @unique // SHA-256 hex of the raw "nlp_..." token
+  lastUsedAt DateTime?
+  expiresAt  DateTime?
+  createdAt  DateTime  @default(now())
+  revokedAt  DateTime? // null = active; non-null = revoked
+  scopes     String[]  @default([]) // empty = unrestricted (backward-compat)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -128,9 +185,10 @@ model Workspace {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  memberships  Membership[]
-  projects     Project[]
-  auditEvents  AuditEvent[]
+  memberships Membership[]
+  projects    Project[]
+  auditEvents AuditEvent[]
+  teams       Team[]
 }
 
 model Membership {
@@ -139,12 +197,14 @@ model Membership {
   userId      String
   workspaceId String
   createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@unique([userId, workspaceId])
   @@index([workspaceId])
+  @@index([userId])
 }
 
 model Project {
@@ -159,7 +219,8 @@ model Project {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  workspace    Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace    Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  lead         User?                 @relation("projectLead", fields: [leadId], references: [id], onDelete: SetNull)
   issues       Issue[]
   statuses     Status[]
   sprints      Sprint[]
@@ -168,34 +229,87 @@ model Project {
   webhooks     WebhookSubscription[]
   shareTokens  ShareToken[]
 
+  // Phase 5 entities
+  customFieldDefinitions CustomFieldDefinition[]
+  savedFilters           SavedFilter[]
+  components             Component[]
+  versions               Version[]
+  notifications          Notification[]
+
   @@unique([workspaceId, key])
   @@index([workspaceId])
+  @@index([leadId])
 }
+
+// ---------------------------------------------------------------------------
+// Team (workspace-scoped; prerequisite for Phases 5, 7, 10)
+// ---------------------------------------------------------------------------
+
+/// A named sub-workspace group of members. Teams are the audience for
+/// standups, planning poker sessions, and per-team analytics. A team spans
+/// multiple projects (workspace-level, not project-level).
+model Team {
+  id          String   @id @default(cuid())
+  workspaceId String
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  members   TeamMember[]
+
+  @@unique([workspaceId, name])
+  @@index([workspaceId])
+}
+
+/// Many-to-many: User belongs to zero or more Teams within a Workspace.
+model TeamMember {
+  teamId String
+  userId String
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([teamId, userId])
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// Board
+// ---------------------------------------------------------------------------
 
 /// A view of a project's issues. A project can have many boards; each has a
 /// `type` (KANBAN = continuous flow; SCRUM = active-sprint focus) that controls
 /// how issues are scoped. Boards share the project's statuses (columns). The
 /// `filterQuery` (NLQL) and `colorRules` columns are reserved for later slices
 /// (saved query filtering + conditional card colors) and are dormant until then.
+/// `savedFilterId` optionally links to a persisted SavedFilter (Phase 5).
 model Board {
-  id          String    @id @default(cuid())
-  projectId   String
-  name        String
-  type        BoardType @default(KANBAN)
+  id            String    @id @default(cuid())
+  projectId     String
+  name          String
+  type          BoardType @default(KANBAN)
   /// NLQL query string applied on top of the board's base scope. Null = no filter.
-  filterQuery String?
+  filterQuery   String?
   /// Ordered list of conditional color rules: [{ id, query, color, label }].
   /// First match wins. Null/empty = no card coloring.
-  colorRules  Json?
-  order       Int       @default(0)
-  isDefault   Boolean   @default(false)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  colorRules    Json?
+  order         Int       @default(0)
+  isDefault     Boolean   @default(false)
+  savedFilterId String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  savedFilter SavedFilter? @relation("boardFilter", fields: [savedFilterId], references: [id], onDelete: SetNull)
 
   @@index([projectId])
 }
+
+// ---------------------------------------------------------------------------
+// Status, Sprint, Label
+// ---------------------------------------------------------------------------
 
 model Status {
   id        String         @id @default(cuid())
@@ -203,6 +317,8 @@ model Status {
   category  StatusCategory @default(TODO)
   order     Int            @default(0)
   projectId String
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
   issues  Issue[]
@@ -211,14 +327,16 @@ model Status {
 }
 
 model Sprint {
-  id        String      @id @default(cuid())
-  name      String
-  goal      String?
-  state     SprintState @default(PLANNED)
-  startDate DateTime?
-  endDate   DateTime?
-  projectId String
-  createdAt DateTime    @default(now())
+  id          String      @id @default(cuid())
+  name        String
+  goal        String?
+  state       SprintState @default(PLANNED)
+  startDate   DateTime?
+  endDate     DateTime?
+  completedAt DateTime?
+  projectId   String
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
   issues  Issue[]
@@ -227,41 +345,146 @@ model Sprint {
 }
 
 model Label {
-  id        String @id @default(cuid())
+  id        String   @id @default(cuid())
   name      String
-  color     String @default("#94a3b8")
+  color     String   @default("#94a3b8")
   projectId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  project Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
   issues  IssueLabel[]
 
   @@unique([projectId, name])
   @@index([projectId])
 }
 
-model Issue {
-  id          String    @id @default(cuid())
-  number      Int // per-project sequential number; key = project.key + "-" + number
+// ---------------------------------------------------------------------------
+// Phase 5: Custom Fields
+// ---------------------------------------------------------------------------
+
+/// Project-scoped definition of a custom field.
+/// `appliesToTypes` is empty array = applies to all issue types.
+/// `options` is non-null and non-empty only for SELECT / MULTI_SELECT types.
+/// `order` controls display order in the issue form.
+model CustomFieldDefinition {
+  id             String          @id @default(cuid())
+  projectId      String
+  name           String // display name, e.g. "Severity"
+  key            String // snake_case machine key, e.g. "severity"
+  type           CustomFieldType
+  options        String[]        @default([]) // allowed values for SELECT/MULTI_SELECT
+  appliesToTypes IssueType[]     @default([]) // empty = all types
+  required       Boolean         @default(false)
+  order          Int             @default(0)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, key])
+  @@index([projectId])
+}
+
+// ---------------------------------------------------------------------------
+// Phase 5: Saved Filters
+// ---------------------------------------------------------------------------
+
+/// A saved NLQL filter. Personal (projectId null) or project-shared.
+/// Boards can reference a saved filter rather than duplicating NLQL text.
+model SavedFilter {
+  id        String   @id @default(cuid())
+  ownerId   String // always set — the user who created it
+  projectId String? // null = personal/cross-project; non-null = project-shared
+  name      String
+  query     String // NLQL query text
+  isShared  Boolean  @default(false) // visible to all project members when true
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  owner   User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  project Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  boards  Board[]  @relation("boardFilter")
+
+  @@index([ownerId])
+  @@index([projectId])
+}
+
+// ---------------------------------------------------------------------------
+// Phase 5: Components and Versions / Releases
+// ---------------------------------------------------------------------------
+
+/// Project-scoped sub-area (e.g. "Mobile App", "API", "Database").
+/// Has an optional default assignee.
+model Component {
+  id                String   @id @default(cuid())
+  projectId         String
+  name              String
+  description       String?
+  defaultAssigneeId String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  project         Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  defaultAssignee User?   @relation("componentDefaultAssignee", fields: [defaultAssigneeId], references: [id], onDelete: SetNull)
+  issues          Issue[]
+
+  @@unique([projectId, name])
+  @@index([projectId])
+  @@index([defaultAssigneeId])
+}
+
+/// Version / Release: tracks what target release an issue is planned for.
+model Version {
+  id          String       @id @default(cuid())
   projectId   String
-  type        IssueType @default(TASK)
-  title       String
+  name        String // e.g. "v1.2.0"
   description String?
-  statusId    String
-  assigneeId  String?
-  reporterId  String?
-  priority    Priority  @default(MEDIUM)
-  storyPoints Int?
-  parentId    String? // self-relation for epic -> story -> subtask
-  sprintId    String?
-  dueDate     DateTime? // optional due date; null = no due date
-  rank        String // fractional index for board/backlog ordering
+  state       VersionState @default(UNRELEASED)
+  releaseDate DateTime?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  project Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  issues  IssueVersion[]
+
+  @@unique([projectId, name])
+  @@index([projectId])
+}
+
+// ---------------------------------------------------------------------------
+// Issue (core)
+// ---------------------------------------------------------------------------
+
+model Issue {
+  id           String    @id @default(cuid())
+  number       Int // per-project sequential number; key = project.key + "-" + number
+  projectId    String
+  type         IssueType @default(TASK)
+  title        String
+  description  String?
+  statusId     String
+  assigneeId   String?
+  reporterId   String?
+  priority     Priority  @default(MEDIUM)
+  storyPoints  Int?
+  parentId     String? // self-relation for epic -> story -> subtask
+  // Intended hierarchy: EPIC > STORY / TASK > SUBTASK. Enforced in service layer.
+  sprintId     String?
+  dueDate      DateTime? // optional due date; null = no due date
+  rank         String // fractional index for board/backlog ordering
+  // Custom field values as a flat JSONB object keyed by CustomFieldDefinition.id.
+  // Queried via jsonb_path_ops GIN index (see baseline migration raw SQL).
+  // Example: { "cldefinition_abc": "S1", "cldefinition_xyz": 42 }
+  customFields Json?
+  componentId  String?
   // Generated tsvector for full-text search; managed entirely by Postgres
   // (GENERATED ALWAYS AS ... STORED). Prisma cannot read/write this column
   // directly — all FTS queries go through $queryRaw. The GIN index
-  // "Issue_searchVector_idx" is created in migration 20260627230000.
+  // "Issue_searchVector_idx" is created via raw SQL in the baseline migration.
   searchVector Unsupported("tsvector")?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   project    Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
   status     Status        @relation(fields: [statusId], references: [id])
@@ -270,12 +493,18 @@ model Issue {
   parent     Issue?        @relation("subtasks", fields: [parentId], references: [id], onDelete: SetNull)
   children   Issue[]       @relation("subtasks")
   sprint     Sprint?       @relation(fields: [sprintId], references: [id], onDelete: SetNull)
-  comments    Comment[]
-  activities  ActivityLog[]
-  labels      IssueLabel[]
-  watchers    Watcher[]
+  component  Component?    @relation(fields: [componentId], references: [id], onDelete: SetNull)
+  comments   Comment[]
+  activities ActivityLog[]
+  labels     IssueLabel[]
+  watchers   Watcher[]
   notifications Notification[]
-  attachments Attachment[]
+  attachments   Attachment[]
+
+  // Phase 5 relations
+  linksFrom  IssueLink[]    @relation("linkSource")
+  linksTo    IssueLink[]    @relation("linkTarget")
+  versions   IssueVersion[]
 
   @@unique([projectId, number])
   @@index([projectId, statusId])
@@ -287,7 +516,19 @@ model Issue {
   @@index([projectId, createdAt, id])
   // Covers overdue queries: WHERE dueDate < now() ORDER BY dueDate
   @@index([dueDate])
+  // Additional indexes for NLQL / roadmap queries
+  @@index([projectId, type])
+  @@index([projectId, priority])
+  @@index([projectId, assigneeId, statusId])
+  @@index([projectId, sprintId, rank])
+  @@index([projectId, dueDate])
+  @@index([componentId])
+  @@index([projectId, componentId])
 }
+
+// ---------------------------------------------------------------------------
+// Join tables
+// ---------------------------------------------------------------------------
 
 model IssueLabel {
   issueId String
@@ -300,16 +541,55 @@ model IssueLabel {
   @@index([labelId])
 }
 
+/// M:N join: an issue can target multiple versions (fix in v1.2 and backport to v1.1).
+model IssueVersion {
+  issueId   String
+  versionId String
+
+  issue   Issue   @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  version Version @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@id([issueId, versionId])
+  @@index([versionId])
+}
+
+/// Directed link between two issues.
+/// For symmetric types (RELATES_TO), a single row suffices.
+/// For asymmetric pairs (BLOCKS/BLOCKED_BY, DUPLICATES/DUPLICATED_BY),
+/// store only the canonical direction (BLOCKS / DUPLICATES) and derive the
+/// inverse in application code.
+model IssueLink {
+  id          String        @id @default(cuid())
+  sourceId    String
+  targetId    String
+  type        IssueLinkType
+  createdAt   DateTime      @default(now())
+  createdById String? // who created the link
+
+  source    Issue  @relation("linkSource", fields: [sourceId], references: [id], onDelete: Cascade)
+  target    Issue  @relation("linkTarget", fields: [targetId], references: [id], onDelete: Cascade)
+  createdBy User?  @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@unique([sourceId, targetId, type])
+  @@index([sourceId])
+  @@index([targetId])
+  @@index([createdById])
+}
+
+// ---------------------------------------------------------------------------
+// Issue children: Comment, ActivityLog, Watcher, Attachment
+// ---------------------------------------------------------------------------
+
 model Comment {
   id        String   @id @default(cuid())
   body      String
   issueId   String
-  authorId  String
+  authorId  String?  // nullable: author can be deleted (SetNull); display as "Deleted User"
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   issue  Issue @relation(fields: [issueId], references: [id], onDelete: Cascade)
-  author User  @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  author User? @relation(fields: [authorId], references: [id], onDelete: SetNull)
 
   @@index([issueId])
 }
@@ -317,16 +597,18 @@ model Comment {
 model ActivityLog {
   id        String   @id @default(cuid())
   issueId   String
-  actorId   String
+  actorId   String? // nullable: actor can be deleted (SetNull); history is preserved
   field     String // e.g. "status", "assignee", "created"
   from      String?
   to        String?
   createdAt DateTime @default(now())
 
   issue Issue @relation(fields: [issueId], references: [id], onDelete: Cascade)
-  actor User  @relation(fields: [actorId], references: [id], onDelete: Cascade)
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
 
   @@index([issueId])
+  @@index([actorId, createdAt])
+  @@index([field, createdAt])
 }
 
 model Watcher {
@@ -355,11 +637,13 @@ model Notification {
   read      Boolean          @default(false)
   createdAt DateTime         @default(now())
 
-  user  User  @relation("recipient", fields: [userId], references: [id], onDelete: Cascade)
-  actor User? @relation("actor", fields: [actorId], references: [id], onDelete: SetNull)
-  issue Issue? @relation(fields: [issueId], references: [id], onDelete: SetNull)
+  user    User     @relation("recipient", fields: [userId], references: [id], onDelete: Cascade)
+  actor   User?    @relation("actor", fields: [actorId], references: [id], onDelete: SetNull)
+  issue   Issue?   @relation(fields: [issueId], references: [id], onDelete: SetNull)
+  project Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([userId, read, createdAt])
+  @@index([projectId])
 }
 
 // A file attached to an issue. The raw file is stored on the local filesystem
@@ -369,7 +653,7 @@ model Notification {
 model Attachment {
   id         String   @id @default(cuid())
   issueId    String
-  uploaderId String
+  uploaderId String? // nullable: uploader can be deleted (SetNull); file metadata preserved
   filename   String // original client-supplied name (display only, never used as path)
   mimeType   String
   sizeBytes  Int
@@ -377,11 +661,15 @@ model Attachment {
   createdAt  DateTime @default(now())
 
   issue    Issue @relation(fields: [issueId], references: [id], onDelete: Cascade)
-  uploader User  @relation(fields: [uploaderId], references: [id], onDelete: Cascade)
+  uploader User? @relation(fields: [uploaderId], references: [id], onDelete: SetNull)
 
   @@index([issueId])
   @@index([uploaderId])
 }
+
+// ---------------------------------------------------------------------------
+// Workspace-level audit log
+// ---------------------------------------------------------------------------
 
 // Workspace-level audit log: immutable record of security- and
 // governance-relevant actions (membership changes, project lifecycle,
@@ -394,7 +682,7 @@ model AuditEvent {
   action      String // e.g. "membership.add", "project.create", "token.revoke"
   targetType  String // e.g. "Membership", "Project", "ApiToken"
   targetId    String // the id of the affected resource
-  metadata    Json?   // optional extra context (role, email, etc.)
+  metadata    Json? // optional extra context (role, email, etc.)
   ip          String? // caller's IP, best-effort
   createdAt   DateTime @default(now())
 
@@ -460,3 +748,4 @@ model WebhookDelivery {
 
   @@index([subscriptionId, createdAt])
 }
+

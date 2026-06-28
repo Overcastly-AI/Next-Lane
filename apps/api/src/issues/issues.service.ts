@@ -408,18 +408,28 @@ export class IssuesService {
     await assertProjectMember(this.prisma, userId, issue.projectId);
 
     const base = toIssueDto(issue);
+
+    /** Sentinel used when the comment author or activity actor has been deleted. */
+    const deletedUserDto = {
+      id: '',
+      email: '',
+      name: 'Deleted User',
+      avatarColor: '#94a3b8',
+      createdAt: new Date(0).toISOString(),
+    };
+
     const comments: CommentDto[] = issue.comments.map((c) => ({
       id: c.id,
       body: c.body,
       issueId: c.issueId,
-      author: toUserDto(c.author),
+      author: c.author ? toUserDto(c.author) : deletedUserDto,
       createdAt: c.createdAt.toISOString(),
       updatedAt: c.updatedAt.toISOString(),
     }));
     const activities: ActivityDto[] = issue.activities.map((a) => ({
       id: a.id,
       issueId: a.issueId,
-      actor: toUserDto(a.actor),
+      actor: a.actor ? toUserDto(a.actor) : deletedUserDto,
       field: a.field,
       from: a.from,
       to: a.to,
@@ -437,10 +447,17 @@ export class IssuesService {
       include: { actor: true },
       orderBy: { createdAt: 'desc' },
     });
+    const deletedUserDto = {
+      id: '',
+      email: '',
+      name: 'Deleted User',
+      avatarColor: '#94a3b8',
+      createdAt: new Date(0).toISOString(),
+    };
     return activities.map((a) => ({
       id: a.id,
       issueId: a.issueId,
-      actor: toUserDto(a.actor),
+      actor: a.actor ? toUserDto(a.actor) : deletedUserDto,
       field: a.field,
       from: a.from,
       to: a.to,

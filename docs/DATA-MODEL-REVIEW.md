@@ -1,8 +1,26 @@
 # Data Model Review and Forward-Looking Redesign Proposal
 
-**Status:** Design proposal — DO NOT apply without explicit instruction. No schema files or migrations were modified in producing this document.
+**Status:** APPLIED — baseline_v2 migration applied 2026-06-28. All corrective fixes and Phase 5 parity tables are now in `apps/api/prisma/schema.prisma`. The single canonical migration is `20260628004947_baseline_v2`.
 
 **Scope:** Full audit of `apps/api/prisma/schema.prisma` + 15 migrations through `20260627250000_add_board`, cross-referenced against `docs/ROADMAP.md` Phases 5–10 and the shared types in `packages/shared`.
+
+---
+
+## Deferred to feature slices (do not add to schema.prisma without a dedicated feature branch)
+
+The following items from Section 2 of this review were explicitly deferred out of the baseline. Each belongs in its own feature-slice migration:
+
+| Deferred item | Review section | Target phase |
+|---|---|---|
+| `AutomationRule` / `AutomationRun` + `AutomationTriggerType` / `AutomationRunStatus` enums | 2.10 | Phase 7 |
+| `StandupEntry` / `StandupBlockerLink` | 2.9 | Phase 10 |
+| `PersonalBoard` / `PersonalCard` + `PersonalCardState` enum | 2.8 | Phase 10 |
+| `PokerSession` / `PokerItem` / `PokerVote` + `PokerSessionState` enum | 2.7 | Phase 5 (planning poker sub-feature) |
+| `WorkflowTransition` | 2.6 | Phase 2 remaining / Phase 5 |
+| `ScmConnection` / `IssueExternalLink` + `ScmProvider` / `ExternalLinkType` / `ExternalLinkStatus` enums | 2.11 | Phase 9 |
+| `Issue.embedding Unsupported("vector(1536)")` + pgvector HNSW index | 2.12 | Phase 6 (requires `pgvector/pgvector:pg16` Docker image) |
+
+---
 
 ---
 

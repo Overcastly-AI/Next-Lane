@@ -55,16 +55,27 @@ Issues on a board (and in a sprint/backlog) are ordered by a `rank` **string** c
 
 ## Data model (essentials)
 
+Baseline v2 (applied 2026-06-28). Single migration: `20260628004947_baseline_v2`. See `docs/DATA-MODEL-REVIEW.md` for the full audit and deferred items.
+
 Core entities and relationships:
 
-- `User` —< `Membership` >— `Workspace`  (a user belongs to workspaces with a role)
-- `Workspace` —< `Project` (`key`, lead)
-- `Project` —< `Issue`, `Status`, `Sprint`, `Board`, `Label`
-- `Issue`: `key`, `type` (TASK/BUG/STORY/EPIC/SUBTASK), `title`, `description`, `statusId`, `assigneeId`, `reporterId`, `priority`, `storyPoints`, `parentId` (self-FK for hierarchy), `sprintId`, `rank`
-- `Issue` —< `Comment`, `Attachment`, `ActivityLog`, `Watcher`
-- `Issue` >—< `Label` (join table)
-- `Status`: per-project, with a `category` (TODO / IN_PROGRESS / DONE)
-- `Sprint`: goal, start/end dates, state (PLANNED/ACTIVE/COMPLETED)
+- `User` —< `Membership` >— `Workspace` (a user belongs to workspaces with a role)
+- `Workspace` —< `Project` (`key`, `leadId` FK → User with `onDelete: SetNull`)
+- `Workspace` —< `Team` —< `TeamMember` >— `User` (sub-workspace groups for standups / poker / analytics)
+- `Project` —< `Issue`, `Status`, `Sprint`, `Board`, `Label`, `Component`, `Version`, `CustomFieldDefinition`, `SavedFilter`
+- `Issue`: `number` (per-project seq), `type` (TASK/BUG/STORY/EPIC/SUBTASK), `title`, `description`, `statusId`, `assigneeId`, `reporterId`, `priority`, `storyPoints`, `parentId` (self-FK, `onDelete: SetNull`), `sprintId`, `dueDate`, `rank` (fractional index), `customFields` (JSONB with GIN index), `componentId`, `searchVector` (generated tsvector, GIN indexed)
+- `Issue` —< `Comment` (authorId nullable, `onDelete: SetNull`), `Attachment` (uploaderId nullable, `onDelete: SetNull`), `ActivityLog` (actorId nullable, `onDelete: SetNull`), `Watcher`, `Notification`
+- `Issue` >—< `Label` (via `IssueLabel`), `Version` (via `IssueVersion`), `IssueLink` (directed links: BLOCKS, RELATES_TO, DUPLICATES, etc.)
+- `Status`: per-project, `category` (TODO / IN_PROGRESS / DONE), `createdAt` / `updatedAt`
+- `Sprint`: goal, start/end dates, `completedAt`, state (PLANNED/ACTIVE/COMPLETED), `updatedAt`
+- `Board`: KANBAN or SCRUM, `filterQuery` (NLQL), `colorRules` (JSON), optional `savedFilterId` FK → `SavedFilter`
+- `SavedFilter`: NLQL query owned by a user, optionally shared to a project; boards can reference it
+- `CustomFieldDefinition`: project-scoped typed field definitions (TEXT/NUMBER/SELECT/…); values stored as JSONB on `Issue.customFields`
+- `Component`: project-scoped sub-areas with optional `defaultAssigneeId`
+- `Version` (aka Release): project-scoped, `VersionState` (UNRELEASED/RELEASED/ARCHIVED), M:N with Issue via `IssueVersion`
+- `Notification.projectId` now has a proper FK (`onDelete: Cascade`)
+
+**Cascade / delete policy:** user deletion sets actor/author/uploader fields to null (`onDelete: SetNull`) rather than deleting history. Project deletion cascades to all project-scoped children. Workspace deletion cascades to projects (and thus everything). See `docs/DATA-MODEL-REVIEW.md` §3.3 for the full policy table.
 
 See `apps/api/prisma/schema.prisma` for the authoritative definition.
 
