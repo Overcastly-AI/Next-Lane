@@ -37,6 +37,7 @@ import { SavedFiltersModule } from './saved-filters/saved-filters.module';
 import { PokerModule } from './poker/poker.module';
 import { IssueLinksModule } from './issue-links/issue-links.module';
 import { StandupsModule } from './standups/standups.module';
+import { PersonalBoardsModule } from './personal-boards/personal-boards.module';
 import { HealthController } from './health.controller';
 
 const isProd = process.env.NODE_ENV === 'production';
@@ -146,6 +147,7 @@ const isProd = process.env.NODE_ENV === 'production';
     PokerModule,
     IssueLinksModule,
     StandupsModule,
+    PersonalBoardsModule,
   ],
   controllers: [HealthController],
   providers: [
