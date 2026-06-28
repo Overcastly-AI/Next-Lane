@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -23,6 +24,7 @@ import {
   SocketEvents,
   WebhookEventTypes,
   StatusCategory,
+  AutomationTrigger,
   initialRanks,
   rankAfter,
   rankBetween,
@@ -35,6 +37,17 @@ import type {
   ActivityDto,
   PaginatedIssuesDto,
 } from '@next-lane/shared';
+import { AUTOMATION_EVENTS } from '../automations/automation-events';
+
+/** Options for automation-aware mutations. */
+export interface MutationOpts {
+  /**
+   * When true, this mutation was applied by the automation engine itself.
+   * The emitted event will carry `automated: true` so the engine's loop guard
+   * can skip it and prevent infinite chaining (v1).
+   */
+  automated?: boolean;
+}
 
 /** Default number of issues returned by {@link IssuesService.findAll} per page. */
 export const DEFAULT_ISSUES_PAGE_SIZE = 50;
@@ -88,6 +101,7 @@ export class IssuesService {
     private readonly notifications: NotificationsService,
     private readonly webhooks: WebhooksService,
     private readonly customFieldsSvc: CustomFieldsService,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   /**
@@ -104,7 +118,7 @@ export class IssuesService {
     await assertWorkspaceMember(this.prisma, assigneeId, workspaceId);
   }
 
-  async create(userId: string, dto: CreateIssueDto): Promise<IssueDto> {
+  async create(userId: string, dto: CreateIssueDto, opts?: MutationOpts): Promise<IssueDto> {
     const project = await assertProjectRole(
       this.prisma,
       userId,
@@ -204,6 +218,16 @@ export class IssuesService {
     if (dtoOut.assigneeId) {
       await this.notifyAssignment(userId, dtoOut.assigneeId, dtoOut);
     }
+
+    // Emit automation event AFTER the mutation + dispatch are done.
+    this.eventEmitter.emit(AUTOMATION_EVENTS.ISSUE_CREATED, {
+      projectId: issue.projectId,
+      issueId: issue.id,
+      actorUserId: userId,
+      trigger: AutomationTrigger.ISSUE_CREATED,
+      automated: opts?.automated ?? false,
+    });
+
     return dtoOut;
   }
 
@@ -621,6 +645,7 @@ export class IssuesService {
     userId: string,
     id: string,
     dto: UpdateIssueDto,
+    opts?: MutationOpts,
   ): Promise<IssueDto> {
     const existing = await this.prisma.issue.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('Issue not found');
@@ -809,6 +834,16 @@ export class IssuesService {
         });
     }
 
+    // Emit automation event AFTER the mutation + dispatch are done.
+    this.eventEmitter.emit(AUTOMATION_EVENTS.ISSUE_UPDATED, {
+      projectId: issue.projectId,
+      issueId: issue.id,
+      actorUserId: userId,
+      trigger: AutomationTrigger.ISSUE_UPDATED,
+      automated: opts?.automated ?? false,
+      changedFields,
+    });
+
     return dtoOut;
   }
 
@@ -893,6 +928,7 @@ export class IssuesService {
     userId: string,
     id: string,
     dto: MoveIssueDto,
+    opts?: MutationOpts,
   ): Promise<IssueDto> {
     const existing = await this.prisma.issue.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('Issue not found');
@@ -985,6 +1021,16 @@ export class IssuesService {
       WebhookEventTypes.IssueMoved,
       movePayload,
     );
+
+    // Emit automation event AFTER the mutation + dispatch are done.
+    this.eventEmitter.emit(AUTOMATION_EVENTS.ISSUE_TRANSITIONED, {
+      projectId: issue.projectId,
+      issueId: issue.id,
+      actorUserId: userId,
+      trigger: AutomationTrigger.ISSUE_TRANSITIONED,
+      automated: opts?.automated ?? false,
+    });
+
     return toIssueDto(issue);
   }
 

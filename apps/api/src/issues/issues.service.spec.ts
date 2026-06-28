@@ -9,6 +9,9 @@ import type { RealtimeService } from '../realtime/realtime.service';
 import type { NotificationsService } from '../notifications/notifications.service';
 import type { WebhooksService } from '../webhooks/webhooks.service';
 import type { CustomFieldsService } from '../custom-fields/custom-fields.service';
+import type { EventEmitter2 } from '@nestjs/event-emitter';
+
+const noOpEventEmitter = { emit: jest.fn() } as unknown as EventEmitter2;
 
 /** Minimal stub satisfying the CustomFieldsService dependency in IssuesService. */
 const noOpCustomFields = {
@@ -89,6 +92,7 @@ describe('IssuesService.assertSameProject', () => {
       {} as NotificationsService,
       webhooksMock,
       noOpCustomFields,
+      noOpEventEmitter,
     );
   });
 
@@ -209,6 +213,7 @@ describe('IssuesService.assertNoParentCycleCTE', () => {
       {} as NotificationsService,
       webhooksMock,
       noOpCustomFields,
+      noOpEventEmitter,
     );
   });
 
@@ -359,6 +364,7 @@ describe('IssuesService.move', () => {
       {} as NotificationsService,
       webhooksMock,
       noOpCustomFields,
+      noOpEventEmitter,
     );
 
     // The moved issue already lives in STATUS (no status change by default).
@@ -593,6 +599,7 @@ describe('IssuesService.findAll pagination', () => {
       {} as NotificationsService,
       {} as WebhooksService,
       noOpCustomFields,
+      noOpEventEmitter,
     );
   });
 
@@ -761,6 +768,7 @@ describe('IssuesService.findAll full-text search', () => {
       {} as NotificationsService,
       {} as WebhooksService,
       noOpCustomFields,
+      noOpEventEmitter,
     );
   });
 
@@ -952,6 +960,7 @@ describe('IssuesService.update dueDate', () => {
       { notifyWatchersUpdated: jest.fn().mockResolvedValue(undefined) } as unknown as NotificationsService,
       webhooksMock,
       noOpCustomFields,
+      noOpEventEmitter,
     );
   });
 
@@ -1112,6 +1121,7 @@ describe('IssuesService.update watcher fan-out', () => {
       notificationsService as unknown as NotificationsService,
       webhooksMock,
       noOpCustomFields,
+      noOpEventEmitter,
     );
   });
 

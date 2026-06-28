@@ -1,6 +1,7 @@
 import { MiddlewareConsumer, Module, NestModule, RequestMethod } from '@nestjs/common';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 import { LoggerModule } from 'nestjs-pino';
 import { randomUUID } from 'crypto';
 import type { IncomingMessage } from 'http';
@@ -39,6 +40,7 @@ import { IssueLinksModule } from './issue-links/issue-links.module';
 import { StandupsModule } from './standups/standups.module';
 import { PersonalBoardsModule } from './personal-boards/personal-boards.module';
 import { AnalyticsModule } from './analytics/analytics.module';
+import { AutomationsModule } from './automations/automations.module';
 import { HealthController } from './health.controller';
 
 const isProd = process.env.NODE_ENV === 'production';
@@ -108,6 +110,11 @@ const isProd = process.env.NODE_ENV === 'production';
         },
       },
     }),
+    // Domain event emitter — used by the automation engine to decouple rule
+    // evaluation from the mutation seams. EventEmitter2 is injected into
+    // IssuesService and CommentsService; AutomationEngineService listens via
+    // @OnEvent decorators. wildcard: true enables pattern-based listeners.
+    EventEmitterModule.forRoot({ wildcard: false }),
     // Global rate-limit (per IP). Defaults to 100 req / 60s; tune via env.
     // Auth routes apply a stricter limit via @Throttle() on the controller.
     // Set RATE_LIMIT_DISABLED=true to switch off entirely (shared-IP / tests).
@@ -150,6 +157,7 @@ const isProd = process.env.NODE_ENV === 'production';
     StandupsModule,
     PersonalBoardsModule,
     AnalyticsModule,
+    AutomationsModule,
   ],
   controllers: [HealthController],
   providers: [

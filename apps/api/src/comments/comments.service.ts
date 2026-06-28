@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -11,11 +12,17 @@ import {
   assertProjectMember,
   assertProjectRole,
 } from '../common/membership.util';
-import { Role } from '@next-lane/shared';
+import { AutomationTrigger, Role, SocketEvents, WebhookEventTypes } from '@next-lane/shared';
 import { toUserDto } from '../auth/auth.service';
 import { CreateCommentDto, UpdateCommentDto } from './dto/comment.dto';
-import { SocketEvents, WebhookEventTypes } from '@next-lane/shared';
 import type { CommentDto } from '@next-lane/shared';
+import { AUTOMATION_EVENTS } from '../automations/automation-events';
+
+/** Options for automation-aware mutations. */
+export interface CommentMutationOpts {
+  /** When true, the event emitted will carry `automated: true` (loop guard). */
+  automated?: boolean;
+}
 
 type CommentRow = {
   id: string;
@@ -61,6 +68,7 @@ export class CommentsService {
     private readonly realtime: RealtimeService,
     private readonly notifications: NotificationsService,
     private readonly webhooks: WebhooksService,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   async findAll(userId: string, issueId: string): Promise<CommentDto[]> {
@@ -78,6 +86,7 @@ export class CommentsService {
     userId: string,
     issueId: string,
     dto: CreateCommentDto,
+    opts?: CommentMutationOpts,
   ): Promise<CommentDto> {
     const issue = await this.getIssue(issueId);
     await assertProjectRole(this.prisma, userId, issue.projectId, Role.MEMBER);
@@ -114,6 +123,16 @@ export class CommentsService {
       },
       mentionedUserIds,
     });
+
+    // Emit automation event AFTER the mutation + dispatch are done.
+    this.eventEmitter.emit(AUTOMATION_EVENTS.ISSUE_COMMENTED, {
+      projectId: issue.projectId,
+      issueId: issue.id,
+      actorUserId: userId,
+      trigger: AutomationTrigger.ISSUE_COMMENTED,
+      automated: opts?.automated ?? false,
+    });
+
     return dtoOut;
   }
 
