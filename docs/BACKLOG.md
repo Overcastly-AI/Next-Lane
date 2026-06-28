@@ -13,6 +13,11 @@ Format: `- [ ] (P1, M) title — description [src]` · P0 critical / P1 now / P2
 > complete pending first real docker compose validation. Phase 6 (Autopilot) and Phase 7
 > data-ownership layer are the next moonshots.
 >
+> Docs site QA bug-fix pass (2026-06-28): All P1s from the 2026-06-28 QA section resolved —
+> task-list plugin installed (`markdown-it-task-lists`), hero image corrected to board-desktop.png,
+> table mobile overflow fixed (`display:block; overflow-x:auto`). P2 polish also shipped: light-mode
+> hero heading color reset, image paths canonicalized, long kubectl command split for mobile readability.
+>
 > Grooming note (2026-06-27, Pass 5): Pass 5 closes the rapid-shipping wave (attachments,
 > PATs, CFD, triage mode, audit log, pino, BullMQ/Redis adapter, Helm/Kustomize, GHCR CI).
 > The product has crossed the threshold from "impressive OSS project" to "credible daily-driver
@@ -35,6 +40,15 @@ Format: `- [ ] (P1, M) title — description [src]` · P0 critical / P1 now / P2
 ## Ready (top of queue)
 
 - [ ] (P1, L) **Configurable workflows — bake in your full SDLC (UI + MCP)** — make the per-project (optionally per-issue-type) workflow a first-class, editable object: a status **graph** with explicitly-allowed transitions + per-transition **conditions/validators/gates** (require assignee before In Progress, resolution before Done, linked PR before In Review, etc.) and optional post-transition actions (reuse the Glass Box automation engine). Ship default **templates** (simple/Kanban/Scrum/bug-triage/full-SDLC) + a visual **workflow builder** in project settings; board/triage/transition controls enforce the graph. The workflow definition must be **readable AND editable over MCP** so an agent can introspect legal states/transitions/gates and modify them exactly like the UI. Slice it: (1) schema (Workflow + Transition + gate rules, per project/issue-type) → (2) backend (CRUD + transition-enforcement in `IssuesService.move`/`update` + validators) → (3) MCP read/write surface → (4) UI builder + enforced controls. Both parity table-stakes and an agent-native differentiator. [founder request 2026-06-28]
+
+_Docs site QA bug-fix pass — ✅ all shipped 2026-06-28:_
+
+- [x] (P1, S) Fix task lists rendering as literal `[ ]` — installed `markdown-it-task-lists@2.1.1` devDep; wired in `config.ts` via `createRequire` ESM→CJS interop; Quick Start checklist now renders real checkboxes. [docs-site QA 2026-06-28]
+- [x] (P1, S) Fix hero image showing login screen instead of board — `index.md` hero `src` changed from `/screenshots/home-desktop.png` to `/screenshots/board-desktop.png`; alt text corrected; `og:image` in `config.ts` also updated. [docs-site QA 2026-06-28]
+- [x] (P1, S) Fix table mobile overflow on configuration + self-hosting pages — `.vp-doc table` CSS rule changed from `display:table` (no overflow containment) to `display:block; overflow-x:auto`; wide tables now scroll internally, page body no longer scrolls horizontally at 390px. [docs-site QA 2026-06-28]
+- [x] (P2, S) Light-mode hero heading reset — added `:root:not(.dark) .VPHero .name` CSS rule to prevent VitePress default brand-blue bleed-through in light mode; gradient stays dark-only. [docs-site QA 2026-06-28]
+- [x] (P2, S) Canonicalize image paths — `./public/screenshots/` and `../public/screenshots/` references in `index.md` and `guide/features.md` changed to root-relative `/screenshots/` (idiomatic VitePress). [docs-site QA 2026-06-28]
+- [x] (P2, S) Split long kubectl+python3 command in troubleshooting.md — multi-line form reduces horizontal scroll extent on mobile code blocks. [docs-site QA 2026-06-28]
 
 _Engineering-audit Pass-7 hardening — ✅ all shipped 2026-06-28:_
 
