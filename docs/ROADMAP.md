@@ -119,6 +119,7 @@ delivered as QA'd vertical slices.
 - ⬜ **Custom fields** (project-level, type-targetable): text / number / select / multi-select / date / checkbox / url; rendered on the card detail + create form; usable in filters and color rules.
 - ⬜ **NLQL — a real query language** (`assignee = me() AND priority in (High, Highest) AND "Severity" = S1`): tokenizer + parser + evaluator in `packages/shared`; inline query bar on the board; **saved filters** (personal + shareable). Field-name allowlist + length cap to prevent injection/ReDoS.
 - ⬜ **Conditional card colors** — per-board ordered rule list (NLQL condition → color, first match wins) with a legend.
+- ⬜ **Planning poker (scrum poker)** — real-time collaborative estimation: open a session over a set of backlog issues, everyone votes story points behind hidden cards, reveal simultaneously, surface high/low outliers for discussion, then commit the agreed estimate straight onto the issue. Built on the existing Socket.io realtime + presence layer; spectator mode for non-voters; mobile-friendly.
 - ⬜ **Parity-gap backlog** (from the Pass-6 audit): issue links / dependencies, "watch" toggle, quick-filter presets, swimlanes, bulk edit, workflow transitions + validators, components, versions/releases, import/export, per-assignee workload report, configurable dashboards, project-level role overrides.
 
 ## Phase 6 — Autopilot: a self-hosted AI teammate 🔭 (vision)
@@ -141,6 +142,26 @@ Everything the incumbents meter or lock away, given freely because it's self-hos
 - ⬜ **Automation engine** — a trigger → condition → action rule builder (when status/label/assignee/field changes, due date passes, etc. → assign, transition, comment, notify, call webhook, run an Autopilot action). **Unlimited runs** (vs per-seat metering) with a full audit of every execution.
 - ⬜ **Rule library + templates** — common automations one-click installable; rules are versioned and inspectable.
 - ⬜ **True data ownership** — read-only SQL access / warehouse export of your own tracker data, plus shippable Grafana dashboards (pairs with the Phase 4 `/metrics` + observability work). Your data, your queries, no export tax.
+
+## Phase 8 — The Unbundle 🔭 (vision)
+
+Bundle, for free, what the incumbents sell as *separate paid products*. One
+self-hosted app replaces a tracker + a wiki + a whiteboard + a feedback tool.
+
+- ⬜ **Docs / wiki** — markdown knowledge base scoped to workspace & projects, cross-linked with issues (`#NL-123` ↔ page back-references); reuses the existing sanitized markdown renderer.
+- ⬜ **Whiteboard / story-mapping canvas** — infinite canvas for planning, story maps, and retros; cards can promote to real issues; realtime multi-cursor via the existing Socket.io layer.
+- ⬜ **Public roadmap + feature-voting portal** — publish a project as a customer-facing roadmap with upvotes and status; built on the existing share-token mechanism. A whole separate SaaS, free, for OSS maintainers & product teams.
+- ⬜ **Intake forms** — public, brandable submission forms that create pre-triaged issues (support/bug/feature intake); self-serve helpdesk-lite.
+
+## Phase 9 — Developer Graph (SCM integrations) 🔭 (vision)
+
+The tracker that actually knows your code — and works with **self-hosted**
+forges, not just the big clouds.
+
+- ⬜ **GitHub integration** — link issues ↔ branches / commits / pull requests; show live PR + CI status on the card; auto-transition issues on PR merge; smart-commit syntax (`NL-123 #done`) in commit messages. App/PAT auth; inbound webhooks (we already have the outbound + signing substrate).
+- ⬜ **GitLab integration** — the same two-way linking, MR status, and auto-transition for GitLab (SaaS and self-managed).
+- ⬜ **Gitea / self-hosted forges** — first-class support for fully self-hosted Git, the combo the cloud incumbents can't credibly serve.
+- ⬜ **Pairs with Autopilot/MCP** — agents that open a PR can auto-link and close their own ticket on merge, completing the dogfooded build loop.
 
 ---
 
