@@ -102,9 +102,10 @@ test.describe('Roadmap', () => {
       sprintId,
     });
 
-    // Open the Roadmap tab from ProjectNav.
+    // Open the Roadmap tab from ProjectNav — it lives in the "More" menu.
     await page.goto(`/projects/${project.id}/board`);
-    await page.getByRole('link', { name: 'Roadmap' }).click();
+    await page.getByRole('button', { name: /^more/i }).click();
+    await page.getByRole('menuitem', { name: 'Roadmap' }).click();
     await expect(page).toHaveURL(/\/roadmap$/, { timeout: 15_000 });
     await expect(
       page.getByRole('heading', { name: 'Roadmap', level: 1 }),

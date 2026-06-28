@@ -64,6 +64,8 @@ test.describe('Automation rules — desktop', () => {
 
     await login(page, { email: user.email, password: user.password });
     await page.goto(`/projects/${project.id}/board`);
+    // Automation lives in the project nav "More" menu.
+    await page.getByRole('button', { name: /^more/i }).click();
     await page.getByTestId('nav-automation').click();
     await expect(page).toHaveURL(/\/automations/);
     await expect(page.getByTestId('automations-page')).toBeVisible({

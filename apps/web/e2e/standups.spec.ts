@@ -274,13 +274,14 @@ test.describe('Async Standups — mobile', () => {
     await expect(entry).toContainText('Mobile standup yesterday');
   });
 
-  test('standup nav tab visible on mobile', async ({ page }) => {
+  test('standup nav tab reachable on mobile', async ({ page }) => {
     await login(page, { email: ctx.user.email, password: ctx.user.password });
     await page.goto(`/projects/${ctx.project.id}/board`);
     await expect(page).toHaveURL(/\/board/, { timeout: 15_000 });
 
-    // The nav tab should be accessible.
-    const standupTab = page.getByRole('link', { name: /standup/i });
+    // On mobile, Standup is reachable via the project nav "More" menu.
+    await page.getByRole('button', { name: /^more/i }).click();
+    const standupTab = page.getByRole('menuitem', { name: /standup/i });
     await expect(standupTab).toBeVisible({ timeout: 10_000 });
     await standupTab.click();
     await expect(page).toHaveURL(/\/standups/, { timeout: 15_000 });

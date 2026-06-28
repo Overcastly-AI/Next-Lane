@@ -163,8 +163,11 @@ test.describe('Project analytics — desktop', () => {
     await login(page, { email: user.email, password: user.password });
     await page.goto(`/projects/${project.id}/board`);
 
-    // Navigate via the project nav "Analytics" tab.
-    await page.getByRole('link', { name: /^analytics$/i }).click();
+    // Navigate via the project nav: Analytics lives in the "More" menu.
+    await page.getByRole('button', { name: /^more/i }).click();
+    await page
+      .getByRole('menuitem', { name: /^analytics$/i })
+      .click();
     await expect(page).toHaveURL(/\/analytics/);
     await expect(page.getByTestId('project-analytics')).toBeVisible({
       timeout: 15_000,
