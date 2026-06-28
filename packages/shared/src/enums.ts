@@ -40,6 +40,17 @@ export enum BoardType {
   SCRUM = 'SCRUM',
 }
 
+/** Custom field data types. Keep in sync with the Prisma CustomFieldType enum. */
+export enum CustomFieldType {
+  TEXT = 'TEXT',
+  NUMBER = 'NUMBER',
+  SELECT = 'SELECT',
+  MULTI_SELECT = 'MULTI_SELECT',
+  DATE = 'DATE',
+  CHECKBOX = 'CHECKBOX',
+  URL = 'URL',
+}
+
 /** Why a notification was created. Keep in sync with the Prisma schema. */
 export enum NotificationType {
   ASSIGNED = 'ASSIGNED',
@@ -52,6 +63,7 @@ export const ISSUE_TYPES = Object.values(IssueType);
 export const PRIORITIES = Object.values(Priority);
 export const STATUS_CATEGORIES = Object.values(StatusCategory);
 export const BOARD_TYPES = Object.values(BoardType);
+export const CUSTOM_FIELD_TYPES = Object.values(CustomFieldType);
 
 /** Display + ordering metadata for priorities (highest first). */
 export const PRIORITY_ORDER: Record<Priority, number> = {

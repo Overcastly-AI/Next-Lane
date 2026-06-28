@@ -6,6 +6,7 @@ import type {
   Role,
   NotificationType,
   BoardType,
+  CustomFieldType,
 } from './enums';
 
 /** API DTO shapes shared between server and client. These mirror Prisma models
@@ -98,6 +99,35 @@ export interface IssueDto {
   rank: string;
   labels?: LabelDto[];
   commentCount?: number;
+  /**
+   * Custom field values, keyed by CustomFieldDefinition.id. Value shape depends
+   * on the field type (string | number | boolean | string[] | ISO date string).
+   * Absent keys mean "no value set". Only present when the issue is loaded with
+   * custom fields.
+   */
+  customFields?: Record<string, CustomFieldValue>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** A single custom field value. Shape depends on the field's type. */
+export type CustomFieldValue = string | number | boolean | string[] | null;
+
+/** A project-defined custom field. Mirrors the CustomFieldDefinition model. */
+export interface CustomFieldDefinitionDto {
+  id: string;
+  projectId: string;
+  /** Human label, e.g. "Severity". */
+  name: string;
+  /** Stable machine key used in NLQL and as the storage key, e.g. "severity". */
+  key: string;
+  type: CustomFieldType;
+  /** Options for SELECT / MULTI_SELECT (empty for other types). */
+  options: string[];
+  /** If non-empty, the field only applies to these issue types. Empty = all types. */
+  appliesToTypes: IssueType[];
+  required: boolean;
+  order: number;
   createdAt: string;
   updatedAt: string;
 }
