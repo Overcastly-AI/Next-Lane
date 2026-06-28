@@ -30,7 +30,9 @@ async function createProject(page: Page): Promise<{ key: string }> {
   const keyInput = dialog.getByLabel('Key');
   await keyInput.fill('');
   await keyInput.fill(key);
-  await dialog.getByRole('button', { name: 'Create project' }).click();
+  // Submit via Enter (the submit button targets form="create-project-form").
+  // A pointer click races footer-button hit-testing on emulated mobile.
+  await keyInput.press('Enter');
   await expect(page).toHaveURL(/\/board/, { timeout: 15_000 });
   return { key };
 }
@@ -109,7 +111,8 @@ test.describe('Backlog & sprint planning', () => {
     await expect(section.getByText('Active')).toBeVisible({ timeout: 10_000 });
 
     // The issue now appears on the kanban board (active-sprint issues show there).
-    await page.getByRole('link', { name: 'Board' }).click();
+    // Use exact match: a "My Board" header link also exists.
+    await page.getByRole('link', { name: 'Board', exact: true }).click();
     await expect(page).toHaveURL(/\/board/, { timeout: 15_000 });
     await expect(page.getByText(issueKey!).first()).toBeVisible({
       timeout: 10_000,

@@ -34,6 +34,10 @@ export default defineConfig({
     baseURL: BASE_URL,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
+    // Exercise the reduced-motion path and remove entrance-animation flakiness:
+    // modal/drawer/toast animations are disabled under prefers-reduced-motion,
+    // so elements are click-stable immediately (no mid-animation hit-test races).
+    reducedMotion: 'reduce',
   },
   projects: [
     {
