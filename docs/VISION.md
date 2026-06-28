@@ -56,11 +56,16 @@ we ship to be credible — not where we differentiate.
    first: multiple boards + board types, custom fields, a real query language (NLQL)
    + saved filters, conditional card colors, planning poker, issue
    links/dependencies, bulk edit, CSV export, workspace branding. Remaining gaps:
-   swimlanes, workflow transitions, components/versions.
+   swimlanes, components/versions, and **configurable workflows** — let teams
+   bake in their full SDLC as an editable status graph (allowed transitions +
+   conditions/validators/gates + templates). This one bridges to pillar 4: the
+   workflow definition is **readable and editable over MCP**, so an agent can
+   introspect and reshape a project's SDLC the same as a human — an agent-legible,
+   self-defined process is something closed per-seat trackers don't expose.
 2. **Autopilot — a self-hosted AI teammate** *(Phase 6)* — private, unlimited,
    $0 AI: natural-language→NLQL, auto-triage + semantic dedupe (pgvector),
    sprint risk radar & summaries, and **MCP-native** so agents read/write issues
-   from the IDE.
+   (and the workflow definition) from the IDE.
 3. **Glass Box — unlimited automation + data ownership** *(Phase 7)* — a
    trigger→condition→action engine (conditions reuse NLQL) with **unlimited
    runs** and a full audit (shipped). Remaining: rule library/templates, true
