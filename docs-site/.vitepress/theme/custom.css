@@ -1,0 +1,263 @@
+/**
+ * Next Lane — Dispatch design tokens
+ * Primary: Cobalt blue #2563EB (Tailwind blue-600)
+ * The brand accent is spent on interactive elements; everything else is disciplined.
+ */
+
+/* ─── Cobalt / Dispatch blue scale ─────────────────────────────────────────── */
+:root {
+  /* Brand color scale — light mode */
+  --vp-c-brand-1: #2563eb;   /* primary — Tailwind blue-600  */
+  --vp-c-brand-2: #1d4ed8;   /* hover   — Tailwind blue-700  */
+  --vp-c-brand-3: #1e40af;   /* pressed — Tailwind blue-800  */
+  --vp-c-brand-soft: rgba(37, 99, 235, 0.12);
+
+  /* Softer, clean neutral surface */
+  --vp-c-bg: #ffffff;
+  --vp-c-bg-soft: #f6f8fc;
+  --vp-c-bg-mute: #eef1f7;
+
+  /* Text */
+  --vp-c-text-1: #0f172a;   /* slate-900 — rich but not pure black */
+  --vp-c-text-2: #334155;   /* slate-700 */
+  --vp-c-text-3: #64748b;   /* slate-500 */
+
+  /* Border */
+  --vp-c-border: #e2e8f0;   /* slate-200 */
+  --vp-c-divider: #e2e8f0;
+
+  /* Code blocks */
+  --vp-code-bg: #f1f5f9;    /* slate-100 */
+  --vp-code-color: #0f172a;
+
+  /* Sidebar */
+  --vp-sidebar-bg-color: #f6f8fc;
+
+  /* Nav */
+  --vp-nav-bg-color: rgba(255, 255, 255, 0.92);
+
+  /* Home hero gradient */
+  --nl-hero-gradient: linear-gradient(135deg, #dbeafe 0%, #eff6ff 50%, #ffffff 100%);
+}
+
+/* ─── Dark mode overrides ───────────────────────────────────────────────────── */
+.dark {
+  --vp-c-brand-1: #60a5fa;   /* blue-400 — lighter on dark bg */
+  --vp-c-brand-2: #93c5fd;   /* blue-300 */
+  --vp-c-brand-3: #bfdbfe;   /* blue-200 */
+  --vp-c-brand-soft: rgba(96, 165, 250, 0.14);
+
+  --vp-c-bg: #0c1120;        /* deep navy — signature backdrop */
+  --vp-c-bg-soft: #141c2e;
+  --vp-c-bg-mute: #1e2a42;
+
+  --vp-c-text-1: #f0f6ff;
+  --vp-c-text-2: #9ab3d4;
+  --vp-c-text-3: #6b88aa;
+
+  --vp-c-border: #243048;
+  --vp-c-divider: #243048;
+
+  --vp-code-bg: #141c2e;
+  --vp-code-color: #93c5fd;
+
+  --vp-sidebar-bg-color: #0e1625;
+  --vp-nav-bg-color: rgba(12, 17, 32, 0.92);
+
+  --nl-hero-gradient: linear-gradient(135deg, #0c1120 0%, #0f1e38 60%, #1a2744 100%);
+}
+
+/* ─── Button / CTA — signature cobalt ──────────────────────────────────────── */
+.vp-doc a.vp-button.medium.brand,
+.VPButton.medium.brand {
+  background-color: var(--vp-c-brand-1);
+  border-color: var(--vp-c-brand-1);
+  color: #ffffff;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  transition: background 0.18s ease, transform 0.12s ease;
+}
+
+.VPButton.medium.brand:hover {
+  background-color: var(--vp-c-brand-2);
+  border-color: var(--vp-c-brand-2);
+  transform: translateY(-1px);
+}
+
+/* ─── Nav bar ───────────────────────────────────────────────────────────────── */
+.VPNav {
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--vp-c-border);
+}
+
+.VPNavBarTitle .title {
+  font-weight: 700;
+  font-size: 1.05rem;
+  letter-spacing: -0.02em;
+  color: var(--vp-c-brand-1);
+}
+
+/* ─── Sidebar ───────────────────────────────────────────────────────────────── */
+.VPSidebarItem.level-0 > .item .text {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vp-c-text-3);
+}
+
+.VPSidebarItem.is-active > .item .link .text {
+  color: var(--vp-c-brand-1);
+  font-weight: 600;
+}
+
+/* ─── Hero section ──────────────────────────────────────────────────────────── */
+.VPHome .VPHero {
+  background: var(--nl-hero-gradient);
+  border-radius: 0 0 24px 24px;
+  padding-bottom: 48px;
+}
+
+.VPHero .name {
+  font-size: clamp(2.4rem, 6vw, 3.8rem);
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1.05;
+  background: linear-gradient(135deg, var(--vp-c-brand-1) 0%, #7c3aed 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.VPHero .tagline {
+  font-size: clamp(1rem, 2.5vw, 1.25rem);
+  color: var(--vp-c-text-2);
+  font-weight: 400;
+  line-height: 1.6;
+  max-width: 560px;
+}
+
+/* ─── Home features grid ────────────────────────────────────────────────────── */
+.VPFeature {
+  border: 1px solid var(--vp-c-border);
+  border-radius: 12px;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.VPFeature:hover {
+  border-color: var(--vp-c-brand-1);
+  box-shadow: 0 4px 24px rgba(37, 99, 235, 0.12);
+}
+
+.VPFeature .title {
+  font-weight: 700;
+  color: var(--vp-c-text-1);
+}
+
+/* ─── Code blocks ───────────────────────────────────────────────────────────── */
+div[class*='language-'] {
+  border-radius: 10px;
+  border: 1px solid var(--vp-c-border);
+}
+
+div[class*='language-'] .shiki {
+  border-radius: 10px;
+}
+
+/* ─── Tables ────────────────────────────────────────────────────────────────── */
+.vp-doc table {
+  display: table;
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.vp-doc table th {
+  background: var(--vp-c-bg-mute);
+  font-weight: 600;
+  font-size: 0.8rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--vp-c-text-2);
+}
+
+.vp-doc table tr:hover td {
+  background: var(--vp-c-bg-soft);
+}
+
+/* ─── Inline code ───────────────────────────────────────────────────────────── */
+.vp-doc :not(pre) > code {
+  background: var(--vp-c-brand-soft);
+  color: var(--vp-c-brand-1);
+  border-radius: 4px;
+  font-size: 0.875em;
+  padding: 0.15em 0.4em;
+}
+
+.dark .vp-doc :not(pre) > code {
+  background: rgba(96, 165, 250, 0.1);
+  color: var(--vp-c-brand-1);
+}
+
+/* ─── H2 divider — a touch of character ────────────────────────────────────── */
+.vp-doc h2 {
+  border-top: 1px solid var(--vp-c-border);
+  padding-top: 1.5rem;
+}
+
+.vp-doc h2::before {
+  content: '';
+  display: inline-block;
+  width: 3px;
+  height: 1em;
+  background: var(--vp-c-brand-1);
+  margin-right: 0.5rem;
+  vertical-align: middle;
+  border-radius: 2px;
+  position: relative;
+  top: -1px;
+}
+
+/* ─── Last Updated ──────────────────────────────────────────────────────────── */
+.VPDocFooter .VPLastUpdated {
+  font-size: 0.8rem;
+  color: var(--vp-c-text-3);
+}
+
+/* ─── Screenshot image in docs ──────────────────────────────────────────────── */
+.vp-doc img {
+  border-radius: 12px;
+  border: 1px solid var(--vp-c-border);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+  max-width: 100%;
+}
+
+.dark .vp-doc img {
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+}
+
+/* ─── Responsive ────────────────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .VPHero .name {
+    font-size: 2.2rem;
+  }
+
+  .VPHero .tagline {
+    font-size: 1rem;
+  }
+}
+
+/* ─── Scrollbar (Chromium) ──────────────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--vp-c-brand-soft);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--vp-c-brand-1);
+}

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 32" fill="none">
+  <rect x="2" y="6" width="4" height="20" rx="2" fill="#60a5fa"/>
+  <rect x="9" y="10" width="4" height="12" rx="2" fill="#60a5fa" opacity="0.7"/>
+  <rect x="16" y="8" width="4" height="16" rx="2" fill="#60a5fa" opacity="0.45"/>
+  <text x="26" y="22" font-family="system-ui, -apple-system, sans-serif" font-size="14" font-weight="700" letter-spacing="-0.5" fill="#f0f6ff">Next Lane</text>
+</svg>
