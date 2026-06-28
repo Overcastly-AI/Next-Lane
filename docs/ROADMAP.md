@@ -109,9 +109,44 @@ Compose path for small installs.
 > P2 on the backlog) are the gating prerequisites for true multi-replica HA, so
 > they should land before/with the Helm chart. Single-replica Helm can ship first.
 
+## Phase 5 — Core PM parity 🚧 (in progress)
+
+Close the table-stakes gaps that define a credible daily-driver tracker (see the
+parity scorecard in `docs/AUDIT-PRODUCT.md`). This is the current build epic,
+delivered as QA'd vertical slices.
+
+- ✅ **Multiple boards per project + board types (Kanban / Scrum)** — `Board` model + switcher (create / rename / change type / delete), board-id-driven view, KANBAN (continuous flow) vs SCRUM (active-sprint) scoping; default board guaranteed per project. (2026-06-28)
+- ⬜ **Custom fields** (project-level, type-targetable): text / number / select / multi-select / date / checkbox / url; rendered on the card detail + create form; usable in filters and color rules.
+- ⬜ **NLQL — a real query language** (`assignee = me() AND priority in (High, Highest) AND "Severity" = S1`): tokenizer + parser + evaluator in `packages/shared`; inline query bar on the board; **saved filters** (personal + shareable). Field-name allowlist + length cap to prevent injection/ReDoS.
+- ⬜ **Conditional card colors** — per-board ordered rule list (NLQL condition → color, first match wins) with a legend.
+- ⬜ **Parity-gap backlog** (from the Pass-6 audit): issue links / dependencies, "watch" toggle, quick-filter presets, swimlanes, bulk edit, workflow transitions + validators, components, versions/releases, import/export, per-assignee workload report, configurable dashboards, project-level role overrides.
+
+## Phase 6 — Autopilot: a self-hosted AI teammate 🔭 (vision)
+
+The unfair advantage of a free, self-hosted, MIT tracker: **AI that is private,
+unlimited, and $0** because it runs on *your* hardware. Points at a local LLM
+(Ollama) or a bring-your-own key — no data egress, no per-seat AI metering. This
+is the headline differentiator the cloud-first incumbents structurally can't match.
+
+- ⬜ **Natural language → NLQL.** "overdue bugs assigned to me in the mobile component" compiles to a safe NLQL query (Phase 5 gives the execution target; the model only translates).
+- ⬜ **Auto-triage on create** — suggested type / priority / component / assignee / labels, with **semantic duplicate detection** (add `pgvector` embeddings on top of the existing Postgres FTS/GIN index).
+- ⬜ **Sprint risk radar + summaries** — "this sprint will miss by ~6 pts; blocker is NL-142"; auto standups and release notes generated from closed issues.
+- ⬜ **MCP-native** — ship Next Lane as an **MCP server** so AI coding agents (Claude Code, etc.) read & write issues directly from the IDE (file bugs, move cards, close tickets as they code). Dogfooded by this project's own agent build loop. No paid tracker is MCP-native today.
+- ⬜ **Privacy posture** — all inference local by default; a hard "no external calls" switch for regulated installs; per-workspace model/endpoint config.
+
+## Phase 7 — Glass Box: unlimited automation + data ownership 🔭 (vision)
+
+Everything the incumbents meter or lock away, given freely because it's self-hosted.
+
+- ⬜ **Automation engine** — a trigger → condition → action rule builder (when status/label/assignee/field changes, due date passes, etc. → assign, transition, comment, notify, call webhook, run an Autopilot action). **Unlimited runs** (vs per-seat metering) with a full audit of every execution.
+- ⬜ **Rule library + templates** — common automations one-click installable; rules are versioned and inspectable.
+- ⬜ **True data ownership** — read-only SQL access / warehouse export of your own tracker data, plus shippable Grafana dashboards (pairs with the Phase 4 `/metrics` + observability work). Your data, your queries, no export tax.
+
 ---
 
 ### Current focus
+**Phase 5 — Core PM parity (2026-06-28).** Building the table-stakes capabilities a credible tracker needs, as QA'd vertical slices: multiple boards + Kanban/Scrum types ✅ shipped; custom fields → NLQL query language + saved filters → conditional card colors next, then the parity-gap backlog. Phases 6 (Autopilot: private/unlimited self-hosted AI + MCP-native) and 7 (Glass Box: unlimited automation + data ownership) are the "better-than-the-incumbent, free forever" moonshots queued after parity.
+
 **UI design elevation (2026-06-27): "Slate + Teal-Shift" design system foundation shipped.** Full token-system overhaul: deep teal accent replacing generic indigo; stone/amber/emerald status-progression arc (Todo→In Progress→Done); Plus Jakarta Sans Variable for UI copy + IBM Plex Mono for issue keys / story points (the signature element — teal `.nl-issue-key` class applied to every issue key); refined shadow/radius/spacing/animation scales; all UI primitives (Button, Input, Select, Textarea, Field, Badge, Avatar, Modal, Toast) and highest-traffic surfaces (AppHeader, BoardColumn, IssueCard, CardStatusPicker, IssueDetailDrawer, AuthShell) updated. Self-hosted via @fontsource (no CDN). Drawer and modal entrance animations; `prefers-reduced-motion` respected. WCAG-AA contrast maintained. All test hooks (`data-testid`, ARIA roles, accessible names) preserved; 24/24 representative e2e tests pass. The component redesign loop continues (see docs/UI-REVIEW.md tracker).
 
 **Phase 3 security hardening sprint (Pass 5) + Phase 4 observability hooks now complete. Tenant isolation harness shipped (2026-06-27): 42-endpoint cross-tenant matrix + WebSocket gateway isolation, all BLOCKED.** Phases 0–2 are fully done (CFD shipped 2026-06-27, closing the last Phase 2 item). Phase 4 Kubernetes packaging is substantially complete (Helm, Kustomize, GHCR CI, Redis adapter, BullMQ queue, observability hooks — all shipped 2026-06-27). Phase 4 is now functionally complete; the only remaining gate is the real `docker compose up -d --build` first-run validation on a host with registry access.
