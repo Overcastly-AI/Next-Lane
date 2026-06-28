@@ -46,7 +46,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # GHCR (and image refs) must be lowercase; ${{ github.repository_owner }}
       # may contain uppercase, so normalise it here.
