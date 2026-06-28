@@ -5,6 +5,33 @@ import { Avatar } from './ui/Avatar';
 import { NotificationBell } from './NotificationBell';
 import { useAuth } from '@/auth/AuthContext';
 import { useCommandPalette } from './CommandPaletteProvider';
+import { useWorkspaceContext } from '@/contexts/WorkspaceContext';
+import { getApiUrl } from '@/api/config';
+
+/** Renders the workspace logo if one is set, otherwise the default product mark. */
+function WorkspaceLogo() {
+  const { activeWorkspace } = useWorkspaceContext();
+
+  if (activeWorkspace?.logoUrl) {
+    // logoUrl is relative to the API base (e.g. /workspaces/:id/logo).
+    // The GET endpoint is public so a plain <img> with no auth header works.
+    const src = `${getApiUrl()}/api${activeWorkspace.logoUrl}`;
+    return (
+      <img
+        src={src}
+        alt={activeWorkspace.name}
+        data-testid="workspace-logo"
+        className="h-7 w-auto max-w-[120px] rounded object-contain"
+        // Cache-bust on logo changes by appending the workspace's updatedAt if
+        // present; fall back to a timestamp that resets on page load (cheap).
+        // Since WorkspaceDto doesn't expose updatedAt, we use a stable src — the
+        // server sets Cache-Control headers; the DELETE + re-upload path invalidates.
+      />
+    );
+  }
+
+  return <Logo />;
+}
 
 export function AppHeader({ children }: { children?: React.ReactNode }) {
   const { user, logout } = useAuth();
@@ -14,8 +41,8 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
 
   return (
     <header className="sticky top-0 z-30 flex h-13 items-center gap-2 border-b border-ink-200 bg-white/96 backdrop-blur-sm px-4 sm:gap-3">
-      <Link to="/" className="shrink-0">
-        <Logo />
+      <Link to="/" className="shrink-0" aria-label="Home">
+        <WorkspaceLogo />
       </Link>
       <div className="min-w-0 flex-1">{children}</div>
       <NavLink

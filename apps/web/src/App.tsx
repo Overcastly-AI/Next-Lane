@@ -10,6 +10,7 @@ import { AuthProvider } from '@/auth/AuthContext';
 import { RequireAuth } from '@/auth/RequireAuth';
 import { ToastProvider } from '@/components/ui/Toast';
 import { CommandPaletteProvider } from '@/components/CommandPaletteProvider';
+import { WorkspaceProvider } from '@/contexts/WorkspaceContext';
 import { LoginPage } from '@/pages/LoginPage';
 import { RegisterPage } from '@/pages/RegisterPage';
 import { ForgotPasswordPage } from '@/pages/ForgotPasswordPage';
@@ -33,6 +34,7 @@ import { PersonalBoardPage } from '@/pages/PersonalBoardPage';
 import { PersonalAnalyticsPage } from '@/pages/PersonalAnalyticsPage';
 import { ProjectAnalyticsPage } from '@/pages/ProjectAnalyticsPage';
 import { AutomationsPage } from '@/pages/AutomationsPage';
+import { WorkspaceBrandingPage } from '@/pages/WorkspaceBrandingPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -56,6 +58,7 @@ export default function App() {
       <BrowserRouter>
         <AuthProvider>
           <ToastProvider>
+          <WorkspaceProvider>
           <CommandPaletteProvider>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
@@ -208,9 +211,18 @@ export default function App() {
                 </RequireAuth>
               }
             />
+            <Route
+              path="/workspaces/:workspaceId/branding"
+              element={
+                <RequireAuth>
+                  <WorkspaceBrandingPage />
+                </RequireAuth>
+              }
+            />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
           </CommandPaletteProvider>
+          </WorkspaceProvider>
           </ToastProvider>
         </AuthProvider>
       </BrowserRouter>

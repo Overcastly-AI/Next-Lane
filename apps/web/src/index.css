@@ -53,11 +53,31 @@
 :root {
   color-scheme: light;
 
-  /* Signal accent — electric cobalt (see rationale above) */
-  --nl-accent:         #2563EB;
-  --nl-accent-light:   #dbeafe; /* blue-100 */
-  --nl-accent-dim:     #1d4ed8; /* blue-700 */
-  --nl-accent-faint:   #eff6ff; /* blue-50 */
+  /*
+   * Signal accent scale — electric cobalt #2563EB defaults.
+   * These variables are the single source of truth for the accent color system.
+   * applyBrandColor.ts overwrites them at runtime when a workspace sets a
+   * custom brandColor; removing the inline overrides restores these defaults.
+   *
+   * Exact hex values preserved from the previous static Tailwind scale so the
+   * rendered output is byte-identical when no workspace brand color is set.
+   */
+  --nl-signal-50:  #eff6ff;  /* blue-50  — faint wash for active fills */
+  --nl-signal-100: #dbeafe;  /* blue-100 */
+  --nl-signal-200: #bfdbfe;  /* blue-200 */
+  --nl-signal-300: #93c5fd;  /* blue-300 */
+  --nl-signal-400: #60a5fa;  /* blue-400 */
+  --nl-signal-500: #3b82f6;  /* blue-500 */
+  --nl-signal-600: #2563eb;  /* blue-600 — the ONE accent (primary) */
+  --nl-signal-700: #1d4ed8;  /* blue-700 — hover/dim */
+  --nl-signal-800: #1e40af;  /* blue-800 */
+  --nl-signal-900: #1e3a8a;  /* blue-900 */
+
+  /* Signal accent — semantic aliases derived from the scale above */
+  --nl-accent:         var(--nl-signal-600);
+  --nl-accent-light:   var(--nl-signal-100);
+  --nl-accent-dim:     var(--nl-signal-700);
+  --nl-accent-faint:   var(--nl-signal-50);
 
   /* Canvas — cool graphite-ink paper, faint blue undertone */
   --nl-canvas:         #f4f6f9; /* graphite-50: slightly cooler than slate-50 */
@@ -79,8 +99,8 @@
   /* Status arc — semantic signal progression */
   --nl-status-todo-dot:  #6b7280; /* graphite-500 — queued/resting */
   --nl-status-todo-bg:   #f4f6f9; /* canvas */
-  --nl-status-ip-dot:    #2563EB; /* cobalt signal — in motion */
-  --nl-status-ip-bg:     #eff6ff; /* blue-50 */
+  --nl-status-ip-dot:    var(--nl-signal-600); /* cobalt signal — in motion */
+  --nl-status-ip-bg:     var(--nl-signal-50);  /* faint accent wash */
   --nl-status-done-dot:  #059669; /* eucalyptus — arrived */
   --nl-status-done-bg:   #d1fae5; /* emerald-100 */
 

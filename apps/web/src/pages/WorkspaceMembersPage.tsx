@@ -12,7 +12,7 @@
  * Route: /workspaces/:workspaceId/members
  */
 import { useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, NavLink, useParams } from 'react-router-dom';
 import { Role } from '@next-lane/shared';
 import type { MembershipDto } from '@next-lane/shared';
 import { AppHeader } from '@/components/AppHeader';
@@ -259,39 +259,63 @@ function Shell({
         <div className="flex min-w-0 items-center gap-2 overflow-hidden">
           <Link
             to="/"
-            className="shrink-0 text-sm text-slate-400 hover:text-slate-600"
+            className="shrink-0 text-sm text-ink-400 hover:text-ink-600"
             aria-label="Back to dashboard"
           >
             Dashboard
           </Link>
-          <span className="shrink-0 text-slate-300">/</span>
-          <span className="min-w-0 truncate text-sm text-slate-500">
+          <span className="shrink-0 text-ink-300">/</span>
+          <span className="min-w-0 truncate text-sm text-ink-500">
             {workspaceName ?? 'Workspace'}
           </span>
-          <span className="shrink-0 text-slate-300">/</span>
-          <span className="shrink-0 text-sm font-semibold text-slate-900">
+          <span className="shrink-0 text-ink-300">/</span>
+          <span className="shrink-0 text-sm font-semibold text-ink-900">
             Members
           </span>
         </div>
       </AppHeader>
       {/* Workspace sub-nav */}
       <nav
-        className="flex items-center gap-1 border-b border-slate-100 bg-white px-4 py-1"
+        className="flex items-center gap-1 border-b border-ink-100 bg-white px-4 py-1"
         aria-label="Workspace navigation"
       >
-        <Link
+        <NavLink
           to={`/workspaces/${workspaceId}/members`}
-          className="rounded-md px-3 py-1.5 text-sm font-medium text-brand-700 bg-brand-50"
+          className={({ isActive }) =>
+            `rounded-md px-3 py-1.5 text-sm font-medium ${
+              isActive
+                ? 'bg-signal-50 text-signal-700'
+                : 'text-ink-600 hover:bg-ink-100 hover:text-ink-900'
+            }`
+          }
           aria-current="page"
         >
           Members
-        </Link>
-        <Link
+        </NavLink>
+        <NavLink
           to={`/workspaces/${workspaceId}/audit-log`}
-          className="rounded-md px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+          className={({ isActive }) =>
+            `rounded-md px-3 py-1.5 text-sm font-medium ${
+              isActive
+                ? 'bg-signal-50 text-signal-700'
+                : 'text-ink-600 hover:bg-ink-100 hover:text-ink-900'
+            }`
+          }
         >
           Audit log
-        </Link>
+        </NavLink>
+        <NavLink
+          to={`/workspaces/${workspaceId}/branding`}
+          className={({ isActive }) =>
+            `rounded-md px-3 py-1.5 text-sm font-medium ${
+              isActive
+                ? 'bg-signal-50 text-signal-700'
+                : 'text-ink-600 hover:bg-ink-100 hover:text-ink-900'
+            }`
+          }
+        >
+          Branding
+        </NavLink>
       </nav>
       <main className="flex flex-1 flex-col overflow-y-auto">{children}</main>
     </div>

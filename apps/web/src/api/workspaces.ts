@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { MembershipDto, Role, WorkspaceDto } from '@next-lane/shared';
-import { request } from './client';
+import { request, getToken, API_URL } from './client';
 import { qk } from './keys';
 import { useAuth } from '@/auth/AuthContext';
 
@@ -45,6 +45,85 @@ export function useCreateWorkspace() {
   return useMutation({
     mutationFn: (input: CreateWorkspaceInput) =>
       request<WorkspaceDto>('/workspaces', { method: 'POST', body: input }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: qk.workspaces });
+    },
+  });
+}
+
+// ── Branding mutations ────────────────────────────────────────────────────────
+
+export interface UpdateWorkspaceBrandingInput {
+  name?: string;
+  brandColor?: string | null;
+}
+
+/**
+ * PATCH /workspaces/:id — update name and/or brandColor.
+ * Admin-only. Invalidates the workspaces list so the header + theme update.
+ */
+export function useUpdateWorkspaceBranding(workspaceId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: UpdateWorkspaceBrandingInput) =>
+      request<WorkspaceDto>(`/workspaces/${workspaceId}`, {
+        method: 'PATCH',
+        body: input,
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: qk.workspaces });
+    },
+  });
+}
+
+/**
+ * POST /workspaces/:id/logo (multipart) — upload a new workspace logo.
+ * Admin-only. Uses fetch directly for multipart/form-data.
+ * Invalidates the workspaces list so the header updates.
+ */
+export function useUploadWorkspaceLogo(workspaceId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (file: File): Promise<WorkspaceDto> => {
+      const formData = new FormData();
+      formData.append('file', file);
+      const token = getToken();
+      const res = await fetch(`${API_URL}/api/workspaces/${workspaceId}/logo`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formData,
+      });
+      const text = await res.text();
+      let data: unknown = null;
+      if (text) {
+        try { data = JSON.parse(text); } catch { data = text; }
+      }
+      if (!res.ok) {
+        const msg =
+          (data && typeof data === 'object' && 'message' in data
+            ? String((data as { message: unknown }).message)
+            : null) ?? `Upload failed (${res.status})`;
+        throw new Error(msg);
+      }
+      return data as WorkspaceDto;
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: qk.workspaces });
+    },
+  });
+}
+
+/**
+ * DELETE /workspaces/:id/logo — remove the workspace logo.
+ * Admin-only. Invalidates the workspaces list.
+ */
+export function useDeleteWorkspaceLogo(workspaceId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      request<WorkspaceDto>(`/workspaces/${workspaceId}/logo`, {
+        method: 'DELETE',
+      }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: qk.workspaces });
     },

@@ -32,34 +32,41 @@ export default {
          * indigo (#6366f1 which reads purple), not teal/cyan (old brand),
          * not sky-blue (too soft). Passes WCAG AA on white at all weights ≥500.
          */
+        /*
+         * Signal accent — CSS-var backed so runtime theming can swap the full
+         * 50–900 scale when a workspace sets a custom brandColor.
+         * The `:root` defaults in index.css initialise these to the exact same
+         * electric-cobalt hex values that were previously hard-coded here, so the
+         * rendered output is byte-identical when no workspace brand color is set.
+         */
         signal: {
-          50:  '#eff6ff',  // blue-50 — faint wash for active fills
-          100: '#dbeafe',  // blue-100
-          200: '#bfdbfe',  // blue-200
-          300: '#93c5fd',  // blue-300
-          400: '#60a5fa',  // blue-400
-          500: '#3b82f6',  // blue-500
-          600: '#2563EB',  // blue-600 — the ONE accent (primary)
-          700: '#1d4ed8',  // blue-700 — hover/dim
-          800: '#1e40af',  // blue-800
-          900: '#1e3a8a',  // blue-900
+          50:  'var(--nl-signal-50)',
+          100: 'var(--nl-signal-100)',
+          200: 'var(--nl-signal-200)',
+          300: 'var(--nl-signal-300)',
+          400: 'var(--nl-signal-400)',
+          500: 'var(--nl-signal-500)',
+          600: 'var(--nl-signal-600)',
+          700: 'var(--nl-signal-700)',
+          800: 'var(--nl-signal-800)',
+          900: 'var(--nl-signal-900)',
         },
 
         /*
          * Legacy alias — kept so existing `brand-*` classes in components
-         * continue to resolve without a mass find-replace. Maps to signal.
+         * continue to resolve without a mass find-replace. Points to signal vars.
          */
         brand: {
-          50:  '#eff6ff',
-          100: '#dbeafe',
-          200: '#bfdbfe',
-          300: '#93c5fd',
-          400: '#60a5fa',
-          500: '#3b82f6',
-          600: '#2563EB',
-          700: '#1d4ed8',
-          800: '#1e40af',
-          900: '#1e3a8a',
+          50:  'var(--nl-signal-50)',
+          100: 'var(--nl-signal-100)',
+          200: 'var(--nl-signal-200)',
+          300: 'var(--nl-signal-300)',
+          400: 'var(--nl-signal-400)',
+          500: 'var(--nl-signal-500)',
+          600: 'var(--nl-signal-600)',
+          700: 'var(--nl-signal-700)',
+          800: 'var(--nl-signal-800)',
+          900: 'var(--nl-signal-900)',
         },
 
         /*
