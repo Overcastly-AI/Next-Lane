@@ -139,7 +139,7 @@ is the headline differentiator the cloud-first incumbents structurally can't mat
 
 Everything the incumbents meter or lock away, given freely because it's self-hosted.
 
-- ⬜ **Automation engine** — a trigger → condition → action rule builder (when status/label/assignee/field changes, due date passes, etc. → assign, transition, comment, notify, call webhook, run an Autopilot action). **Unlimited runs** (vs per-seat metering) with a full audit of every execution.
+- ⬜ **Automation engine** — a trigger → condition → action rule builder (when status/label/assignee/field changes, due date passes, issue created, etc. → assign, transition, set field, add label, comment, notify, call webhook, or run an Autopilot action). **Conditions reuse the NLQL evaluator** (Phase 5), so this is buildable immediately after parity lands — it is a flagship near-term feature, not just far-future vision. **Unlimited runs** (vs per-seat metering), executed on the existing BullMQ queue, with a full audit of every execution. Scheduled/recurring rules (SLA escalations, stale-issue nudges) included.
 - ⬜ **Rule library + templates** — common automations one-click installable; rules are versioned and inspectable.
 - ⬜ **True data ownership** — read-only SQL access / warehouse export of your own tracker data, plus shippable Grafana dashboards (pairs with the Phase 4 `/metrics` + observability work). Your data, your queries, no export tax.
 
