@@ -603,6 +603,9 @@ model Issue {
   // Automation engine — run history for this issue
   automationRuns        AutomationRun[]
 
+  // Checklist items
+  checklistItems        ChecklistItem[]
+
   @@unique([projectId, number])
   @@index([projectId, statusId])
   @@index([statusId, rank])
@@ -621,6 +624,23 @@ model Issue {
   @@index([projectId, dueDate])
   @@index([componentId])
   @@index([projectId, componentId])
+}
+
+// ---------------------------------------------------------------------------
+// Checklist items (lightweight todo items on an issue)
+// ---------------------------------------------------------------------------
+
+model ChecklistItem {
+  id        String   @id @default(cuid())
+  issueId   String
+  text      String
+  done      Boolean  @default(false)
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  issue     Issue    @relation(fields: [issueId], references: [id], onDelete: Cascade)
+
+  @@index([issueId])
 }
 
 // ---------------------------------------------------------------------------

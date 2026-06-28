@@ -1,5 +1,6 @@
 import { toUserDto } from '../auth/auth.service';
 import { toStatusDto } from '../statuses/statuses.service';
+import { toChecklistItemDto } from '../checklist/checklist.service';
 import type {
   IssueDto,
   IssueRefDto,
@@ -7,6 +8,7 @@ import type {
   IssueType,
   Priority,
   CustomFieldValue,
+  ChecklistItemDto,
 } from '@next-lane/shared';
 import { VersionState } from '@next-lane/shared';
 import type { Prisma } from '@prisma/client';
@@ -80,6 +82,14 @@ export interface IssueWithRelations {
   parent?: IssueRef | null;
   children?: IssueRef[];
   component?: { id: string; name: string } | null;
+  checklistItems?: Array<{
+    id: string;
+    issueId: string;
+    text: string;
+    done: boolean;
+    order: number;
+    createdAt: Date;
+  }>;
 }
 
 /** Subset of an Issue row sufficient to build an IssueRefDto. */
@@ -175,6 +185,16 @@ export function toIssueDto(issue: IssueWithRelations): IssueDto {
       string,
       CustomFieldValue
     >;
+  }
+
+  // Checklist items — only surfaced when the relation was included.
+  if (issue.checklistItems !== undefined) {
+    const checklist: ChecklistItemDto[] = issue.checklistItems.map(toChecklistItemDto);
+    dto.checklist = checklist;
+    dto.checklistProgress = {
+      done: checklist.filter((i) => i.done).length,
+      total: checklist.length,
+    };
   }
 
   return dto;

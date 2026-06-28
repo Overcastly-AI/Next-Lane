@@ -116,6 +116,7 @@ const listInclude = {
   project: { select: { key: true } },
   _count: { select: { comments: true } },
   component: { select: { id: true, name: true } },
+  checklistItems: { orderBy: { order: 'asc' as const } },
 } satisfies Prisma.IssueInclude;
 
 @Injectable()

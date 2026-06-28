@@ -44,6 +44,7 @@ import { AutomationsModule } from './automations/automations.module';
 import { WorkflowModule } from './workflows/workflow.module';
 import { ComponentsModule } from './components/components.module';
 import { VersionsModule } from './versions/versions.module';
+import { ChecklistModule } from './checklist/checklist.module';
 import { HealthController } from './health.controller';
 
 const isProd = process.env.NODE_ENV === 'production';
@@ -164,6 +165,7 @@ const isProd = process.env.NODE_ENV === 'production';
     WorkflowModule,
     ComponentsModule,
     VersionsModule,
+    ChecklistModule,
   ],
   controllers: [HealthController],
   providers: [

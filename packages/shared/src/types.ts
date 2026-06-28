@@ -141,6 +141,16 @@ export interface IssueDto {
    * the versions relation. An empty array means no version targeted.
    */
   versions?: { id: string; name: string; state: VersionState }[];
+  /**
+   * Checklist items for this issue, ordered by `order` asc.
+   * Present when the issue is loaded with the checklist relation.
+   */
+  checklist?: ChecklistItemDto[];
+  /**
+   * Derived progress summary: how many checklist items are done vs. total.
+   * Only present when `checklist` is loaded.
+   */
+  checklistProgress?: { done: number; total: number };
   createdAt: string;
   updatedAt: string;
 }
@@ -252,6 +262,31 @@ export interface CustomFieldDefinitionDto {
 export interface PaginatedIssuesDto {
   items: IssueDto[];
   nextCursor: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Checklist items
+// ---------------------------------------------------------------------------
+
+export interface ChecklistItemDto {
+  id: string;
+  issueId: string;
+  text: string;
+  done: boolean;
+  order: number;
+  createdAt: string;
+}
+
+/** Body for POST /issues/:issueId/checklist */
+export interface CreateChecklistItemDto {
+  text: string;
+}
+
+/** Body for PATCH /checklist/:itemId */
+export interface UpdateChecklistItemDto {
+  text?: string;
+  done?: boolean;
+  order?: number;
 }
 
 export interface CommentDto {
