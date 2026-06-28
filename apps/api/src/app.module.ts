@@ -34,6 +34,7 @@ import { ShareTokensModule } from './share-tokens/share-tokens.module';
 import { PublicModule } from './public/public.module';
 import { CustomFieldsModule } from './custom-fields/custom-fields.module';
 import { SavedFiltersModule } from './saved-filters/saved-filters.module';
+import { PokerModule } from './poker/poker.module';
 import { HealthController } from './health.controller';
 
 const isProd = process.env.NODE_ENV === 'production';
@@ -140,6 +141,7 @@ const isProd = process.env.NODE_ENV === 'production';
     PublicModule,
     CustomFieldsModule,
     SavedFiltersModule,
+    PokerModule,
   ],
   controllers: [HealthController],
   providers: [
