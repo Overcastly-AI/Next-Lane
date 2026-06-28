@@ -112,6 +112,7 @@ const listInclude = {
   assignee: true,
   reporter: true,
   labels: { include: { label: true } },
+  versions: { include: { version: { select: { id: true, name: true, state: true } } } },
   project: { select: { key: true } },
   _count: { select: { comments: true } },
   component: { select: { id: true, name: true } },

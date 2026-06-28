@@ -13,6 +13,7 @@ import type {
   AutomationActionType,
   AutomationRunStatus,
   WorkflowGateType,
+  VersionState,
 } from './enums';
 
 /** API DTO shapes shared between server and client. These mirror Prisma models
@@ -133,6 +134,11 @@ export interface IssueDto {
   componentId: string | null;
   /** Lightweight component summary for board cards and the drawer. */
   component?: { id: string; name: string } | null;
+  /**
+   * Versions this issue targets (M:N). Present when the issue is loaded with
+   * the versions relation. An empty array means no version targeted.
+   */
+  versions?: { id: string; name: string; state: VersionState }[];
   createdAt: string;
   updatedAt: string;
 }
@@ -163,6 +169,41 @@ export interface UpdateComponentDto {
   name?: string;
   description?: string | null;
   defaultAssigneeId?: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Versions / Releases
+// ---------------------------------------------------------------------------
+
+/** A project-scoped release target (e.g. "v1.2.0"). */
+export interface VersionDto {
+  id: string;
+  projectId: string;
+  name: string;
+  description: string | null;
+  state: VersionState;
+  /** ISO 8601 datetime string, or null when no release date is set. */
+  releaseDate: string | null;
+  /** Count of issues targeting this version. Present on list responses. */
+  issueCount?: number;
+  createdAt: string;
+}
+
+/** Body for POST /projects/:projectId/versions */
+export interface CreateVersionDto {
+  name: string;
+  description?: string | null;
+  /** ISO 8601 date/datetime string, or null to clear. */
+  releaseDate?: string | null;
+}
+
+/** Body for PATCH /versions/:id */
+export interface UpdateVersionDto {
+  name?: string;
+  description?: string | null;
+  state?: VersionState;
+  /** ISO 8601 date/datetime string, or null to clear. */
+  releaseDate?: string | null;
 }
 
 /** A single custom field value. Shape depends on the field's type. */

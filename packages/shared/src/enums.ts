@@ -234,3 +234,26 @@ export const WORKFLOW_GATE_LABELS: Record<WorkflowGateType, string> = {
   [WorkflowGateType.REQUIRE_LINK]: 'Require a link of a type',
   [WorkflowGateType.REQUIRE_NO_OPEN_BLOCKERS]: 'Block if open blockers remain',
 };
+
+/**
+ * Lifecycle state of a version/release.
+ * Keep in sync with the Prisma `VersionState` enum.
+ *
+ * UNRELEASED — the version is planned but not yet released.
+ * RELEASED   — the version has been shipped; releaseDate is set.
+ * ARCHIVED   — the version is no longer active.
+ */
+export enum VersionState {
+  UNRELEASED = 'UNRELEASED',
+  RELEASED = 'RELEASED',
+  ARCHIVED = 'ARCHIVED',
+}
+
+export const VERSION_STATES = Object.values(VersionState);
+
+/** Human label for each version state. */
+export const VERSION_STATE_LABELS: Record<VersionState, string> = {
+  [VersionState.UNRELEASED]: 'Unreleased',
+  [VersionState.RELEASED]: 'Released',
+  [VersionState.ARCHIVED]: 'Archived',
+};

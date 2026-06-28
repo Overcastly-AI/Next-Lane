@@ -43,6 +43,7 @@ import { AnalyticsModule } from './analytics/analytics.module';
 import { AutomationsModule } from './automations/automations.module';
 import { WorkflowModule } from './workflows/workflow.module';
 import { ComponentsModule } from './components/components.module';
+import { VersionsModule } from './versions/versions.module';
 import { HealthController } from './health.controller';
 
 const isProd = process.env.NODE_ENV === 'production';
@@ -162,6 +163,7 @@ const isProd = process.env.NODE_ENV === 'production';
     AutomationsModule,
     WorkflowModule,
     ComponentsModule,
+    VersionsModule,
   ],
   controllers: [HealthController],
   providers: [

@@ -8,6 +8,7 @@ import type {
   Priority,
   CustomFieldValue,
 } from '@next-lane/shared';
+import { VersionState } from '@next-lane/shared';
 import type { Prisma } from '@prisma/client';
 
 /**
@@ -65,6 +66,13 @@ export interface IssueWithRelations {
       name: string;
       color: string;
       projectId: string;
+    };
+  }>;
+  versions?: Array<{
+    version: {
+      id: string;
+      name: string;
+      state: string;
     };
   }>;
   _count?: { comments: number } | null;
@@ -148,6 +156,14 @@ export function toIssueDto(issue: IssueWithRelations): IssueDto {
     dto.component = issue.component
       ? { id: issue.component.id, name: issue.component.name }
       : null;
+
+  if (issue.versions) {
+    dto.versions = issue.versions.map((iv) => ({
+      id: iv.version.id,
+      name: iv.version.name,
+      state: iv.version.state as VersionState,
+    }));
+  }
 
   // Expose customFields when the column is present on the row. The stored JSON
   // is already keyed by CustomFieldDefinition.id with typed values. We cast
