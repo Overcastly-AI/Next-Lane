@@ -7,6 +7,7 @@
 // add_personal_boards — applied 2026-06-28.
 // add_automation_engine — applied 2026-06-28.
 // add_activitylog_status_index — applied 2026-06-28.
+// add_workspace_branding — applied 2026-06-28.
 // Deferred to feature slices (do not add here without a feature branch):
 //   - ScmConnection / IssueExternalLink / pgvector embedding column (Phase 9 / Phase 6)
 //   - WorkflowTransition (Phase 2 remaining / Phase 5)
@@ -231,6 +232,17 @@ model Workspace {
   id        String   @id @default(cuid())
   name      String
   slug      String   @unique
+  /// Accent color for workspace branding, stored as a #RRGGBB hex string.
+  /// Null = use the product default. Validated in the application layer.
+  brandColor      String?
+  /// On-disk storage key for the uploaded workspace logo image (same scheme as
+  /// Attachment.storageKey — a UUID-based path under UPLOADS_DIR set by multer
+  /// diskStorage). Null = no custom logo has been uploaded.
+  logoStorageKey  String?
+  /// MIME type of the uploaded logo (e.g. "image/png", "image/svg+xml").
+  /// Required by the serve endpoint to set the correct Content-Type header.
+  /// Null when no logo has been uploaded (always null when logoStorageKey is null).
+  logoMimeType    String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

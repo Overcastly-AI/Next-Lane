@@ -41,6 +41,14 @@ export interface WorkspaceDto {
   name: string;
   slug: string;
   createdAt: string;
+  /** Accent color as `#RRGGBB`, or null to use the product default. */
+  brandColor: string | null;
+  /**
+   * URL to fetch the workspace's custom logo image, or null when none is set.
+   * Relative to the API base (e.g. `/workspaces/:id/logo`); the client
+   * prefixes the configured API URL and may append a cache-busting param.
+   */
+  logoUrl: string | null;
 }
 
 export interface ProjectDto {
