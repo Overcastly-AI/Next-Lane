@@ -44,16 +44,16 @@ export function ProjectAnalyticsPage() {
   return (
     <div className="flex h-screen flex-col overflow-x-clip">
       <AppHeader>
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 items-center gap-2 overflow-hidden">
           <Link
             to="/"
-            className="text-sm text-slate-400 hover:text-slate-600"
+            className="shrink-0 text-sm text-ink-400 hover:text-ink-600"
             aria-label="Back to projects"
           >
             Projects
           </Link>
-          <span className="text-slate-300">/</span>
-          <span className="truncate text-sm font-semibold text-slate-900">
+          <span className="shrink-0 text-ink-300">/</span>
+          <span className="min-w-0 truncate text-sm font-semibold text-ink-900">
             {projectName ?? 'Project'}
           </span>
         </div>
@@ -61,17 +61,17 @@ export function ProjectAnalyticsPage() {
       <ProjectNav projectId={projectId} />
 
       <main
-        className="flex-1 overflow-y-auto bg-slate-50"
+        className="flex-1 overflow-y-auto bg-ink-50"
         data-testid="project-analytics"
       >
         <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 p-4 sm:p-6">
           {/* Page header + window selector */}
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <h1 className="text-lg font-semibold text-slate-900">
+              <h1 className="text-lg font-semibold text-ink-900">
                 Analytics
               </h1>
-              <p className="text-sm text-slate-500">
+              <p className="text-sm text-ink-500">
                 Delivery-flow metrics for this project.
               </p>
             </div>
@@ -132,17 +132,17 @@ export function ProjectAnalyticsPage() {
 
           {/* Flow chart */}
           <section
-            className="rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:p-5"
+            className="rounded-xl border border-ink-200 bg-white p-4 shadow-card sm:p-5"
             aria-labelledby="project-flow-heading"
           >
             <div className="mb-3">
               <h2
                 id="project-flow-heading"
-                className="text-sm font-semibold text-slate-900"
+                className="text-sm font-semibold text-ink-900"
               >
                 Flow
               </h2>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-ink-500">
                 Issues created vs completed per day over the window.
               </p>
             </div>
@@ -163,17 +163,17 @@ export function ProjectAnalyticsPage() {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {/* Cycle-time distribution */}
             <section
-              className="rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:p-5"
+              className="rounded-xl border border-ink-200 bg-white p-4 shadow-card sm:p-5"
               aria-labelledby="cycle-dist-heading"
             >
               <div className="mb-3">
                 <h2
                   id="cycle-dist-heading"
-                  className="text-sm font-semibold text-slate-900"
+                  className="text-sm font-semibold text-ink-900"
                 >
                   Cycle-time distribution
                 </h2>
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-ink-500">
                   How long issues took from creation to done.
                 </p>
               </div>
@@ -200,17 +200,17 @@ export function ProjectAnalyticsPage() {
 
             {/* Workload by assignee */}
             <section
-              className="rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:p-5"
+              className="rounded-xl border border-ink-200 bg-white p-4 shadow-card sm:p-5"
               aria-labelledby="workload-heading"
             >
               <div className="mb-3">
                 <h2
                   id="workload-heading"
-                  className="text-sm font-semibold text-slate-900"
+                  className="text-sm font-semibold text-ink-900"
                 >
                   Open workload
                 </h2>
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-ink-500">
                   Open issues per team member, busiest first.
                 </p>
               </div>

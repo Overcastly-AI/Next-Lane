@@ -22,6 +22,7 @@ import { Link } from 'react-router-dom';
 import { AppHeader } from '@/components/AppHeader';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { Select } from '@/components/ui/Select';
 import { Textarea } from '@/components/ui/Textarea';
 import { Modal } from '@/components/ui/Modal';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -776,7 +777,7 @@ function AddCardComposer({
         onKeyDown={(e) => {
           if (e.key === 'Escape') onClose();
         }}
-        className="w-full rounded border border-ink-200 bg-white px-2 py-1.5 text-sm text-ink-900 placeholder:text-ink-400 focus:border-signal-500 focus:outline-none focus:ring-2 focus:ring-signal-200"
+        className="w-full rounded border border-ink-200 bg-white px-2 py-1.5 text-sm text-ink-900 placeholder:text-ink-400 focus:border-signal-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-200"
         aria-label="New card title"
       />
       <div className="mt-2 flex items-center gap-1.5">
@@ -996,21 +997,20 @@ function PromoteCardModal({
                 >
                   Workspace
                 </label>
-                <select
+                <Select
                   id="promote-workspace"
                   value={effectiveWorkspaceId}
                   onChange={(e) => {
                     setSelectedWorkspaceId(e.target.value);
                     setSelectedProjectId('');
                   }}
-                  className="h-9 w-full rounded border border-ink-200 bg-white px-3 text-sm text-ink-900 focus:border-signal-500 focus:outline-none focus:ring-2 focus:ring-signal-200"
                 >
                   {workspaces.map((ws) => (
                     <option key={ws.id} value={ws.id}>
                       {ws.name}
                     </option>
                   ))}
-                </select>
+                </Select>
               </div>
             )}
 
@@ -1031,18 +1031,17 @@ function PromoteCardModal({
                   </Link>
                 </p>
               ) : (
-                <select
+                <Select
                   id="promote-project"
                   value={effectiveProjectId}
                   onChange={(e) => setSelectedProjectId(e.target.value)}
-                  className="h-9 w-full rounded border border-ink-200 bg-white px-3 text-sm text-ink-900 focus:border-signal-500 focus:outline-none focus:ring-2 focus:ring-signal-200"
                 >
                   {projects.map((p) => (
                     <option key={p.id} value={p.id}>
                       [{p.key}] {p.name}
                     </option>
                   ))}
-                </select>
+                </Select>
               )}
             </div>
           </>

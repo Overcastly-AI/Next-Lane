@@ -45,26 +45,26 @@ export function ReportsPage() {
     <Shell projectId={projectId} projectName={projectName}>
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 p-4 sm:p-6">
         <div>
-          <h1 className="text-lg font-semibold text-slate-900">Reports</h1>
-          <p className="text-sm text-slate-500">
+          <h1 className="text-lg font-semibold text-ink-900">Reports</h1>
+          <p className="text-sm text-ink-500">
             Sprint velocity, burndown, and cumulative flow for this project.
           </p>
         </div>
 
         {/* Velocity */}
         <section
-          className="rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:p-5"
+          className="rounded-xl border border-ink-200 bg-white p-4 shadow-card sm:p-5"
           aria-labelledby="velocity-heading"
         >
           <div className="mb-3 flex items-center justify-between">
             <div>
               <h2
                 id="velocity-heading"
-                className="text-sm font-semibold text-slate-900"
+                className="text-sm font-semibold text-ink-900"
               >
                 Velocity
               </h2>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-ink-500">
                 Committed vs completed story points per sprint.
               </p>
             </div>
@@ -90,18 +90,18 @@ export function ReportsPage() {
 
         {/* Burndown */}
         <section
-          className="rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:p-5"
+          className="rounded-xl border border-ink-200 bg-white p-4 shadow-card sm:p-5"
           aria-labelledby="burndown-heading"
         >
           <div className="mb-3 flex items-center justify-between gap-3">
             <div>
               <h2
                 id="burndown-heading"
-                className="text-sm font-semibold text-slate-900"
+                className="text-sm font-semibold text-ink-900"
               >
                 Burndown
               </h2>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-ink-500">
                 Remaining story points over the sprint, vs the ideal pace.
               </p>
             </div>
@@ -155,18 +155,18 @@ export function ReportsPage() {
 
         {/* Cumulative Flow Diagram */}
         <section
-          className="rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:p-5"
+          className="rounded-xl border border-ink-200 bg-white p-4 shadow-card sm:p-5"
           aria-labelledby="cfd-heading"
         >
           <div className="mb-3 flex items-center justify-between gap-3">
             <div>
               <h2
                 id="cfd-heading"
-                className="text-sm font-semibold text-slate-900"
+                className="text-sm font-semibold text-ink-900"
               >
                 Cumulative Flow
               </h2>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-ink-500">
                 Issue counts per status category over time, stacked by area.
               </p>
             </div>
@@ -225,22 +225,22 @@ function Shell({
   return (
     <div className="flex h-screen flex-col overflow-x-clip">
       <AppHeader>
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 items-center gap-2 overflow-hidden">
           <Link
             to="/"
-            className="text-sm text-slate-400 hover:text-slate-600"
+            className="shrink-0 text-sm text-ink-400 hover:text-ink-600"
             aria-label="Back to projects"
           >
             Projects
           </Link>
-          <span className="text-slate-300">/</span>
-          <span className="truncate text-sm font-semibold text-slate-900">
+          <span className="shrink-0 text-ink-300">/</span>
+          <span className="min-w-0 truncate text-sm font-semibold text-ink-900">
             {projectName ?? 'Project'}
           </span>
         </div>
       </AppHeader>
       <ProjectNav projectId={projectId} />
-      <main className="flex-1 overflow-y-auto bg-slate-50">{children}</main>
+      <main className="flex-1 overflow-y-auto bg-ink-50">{children}</main>
     </div>
   );
 }

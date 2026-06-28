@@ -22,7 +22,7 @@ export function ProjectNav({ projectId }: { projectId: string }) {
     { to: `/projects/${projectId}/settings`, label: 'Settings' },
   ];
   return (
-    <nav className="flex items-center gap-1 overflow-x-auto border-b border-ink-200 bg-white px-4">
+    <nav aria-label="Project navigation" className="flex items-center gap-1 overflow-x-auto border-b border-ink-200 bg-white px-4">
       {tabs.map((tab) => (
         <NavLink
           key={tab.to}

@@ -25,7 +25,6 @@ import { CustomFieldType } from '@next-lane/shared';
 import { Select } from '@/components/ui/Select';
 import { Input } from '@/components/ui/Input';
 import { Textarea } from '@/components/ui/Textarea';
-import { cn } from '@/lib/cn';
 
 const PRIORITY_LABELS: Record<Priority, string> = {
   [Priority.HIGHEST]: 'Highest',
@@ -337,17 +336,12 @@ function CustomFieldValueInput({
       return (
         <div className="space-y-1">
           <label htmlFor={id} className={labelClass}>Value</label>
-          <input
+          <Input
             id={id}
             type="date"
             value={dateVal}
             disabled={disabled}
             onChange={(e) => onChange(e.target.value || null)}
-            className={cn(
-              'h-9 w-full rounded border border-ink-200 bg-white px-3 text-sm text-ink-900',
-              'focus:border-signal-500 focus:outline-none focus:ring-2 focus:ring-signal-200',
-              'disabled:cursor-not-allowed disabled:bg-ink-50',
-            )}
           />
         </div>
       );
@@ -361,7 +355,7 @@ function CustomFieldValueInput({
             checked={value === true}
             disabled={disabled}
             onChange={(e) => onChange(e.target.checked)}
-            className="h-4 w-4 rounded border-ink-300"
+            className="h-4 w-4 rounded border-ink-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-200"
           />
           <label htmlFor={id} className={labelClass}>Checked</label>
         </div>

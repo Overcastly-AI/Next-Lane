@@ -63,14 +63,14 @@ export function BurndownChart({
               x2={W - padX}
               y1={y(t)}
               y2={y(t)}
-              stroke="#e5e7eb"
+              className="stroke-ink-200"
               strokeWidth={1}
             />
             <text
               x={padX - 8}
               y={y(t) + 4}
               textAnchor="end"
-              className="fill-gray-400"
+              className="fill-ink-400"
               fontSize={11}
             >
               {t}
@@ -82,7 +82,7 @@ export function BurndownChart({
         <path
           d={idealPath}
           fill="none"
-          className="stroke-gray-300"
+          className="stroke-ink-300"
           strokeWidth={2}
           strokeDasharray="5 5"
         />
@@ -114,7 +114,7 @@ export function BurndownChart({
               x={x(i)}
               y={H - padBottom + 18}
               textAnchor="middle"
-              className="fill-gray-600"
+              className="fill-ink-600"
               fontSize={10}
             >
               {shortDate(s.date)}
@@ -126,14 +126,14 @@ export function BurndownChart({
       <div className="mt-2 flex items-center justify-center gap-4">
         <div className="flex items-center gap-1.5">
           <span className="inline-block h-0.5 w-4 bg-brand-600" />
-          <span className="text-xs text-slate-500">Remaining</span>
+          <span className="text-xs text-ink-500">Remaining</span>
         </div>
         <div className="flex items-center gap-1.5">
           <span
-            className="inline-block h-0 w-4 border-t-2 border-dashed border-slate-300"
+            className="inline-block h-0 w-4 border-t-2 border-dashed border-ink-300"
             aria-hidden
           />
-          <span className="text-xs text-slate-500">Ideal</span>
+          <span className="text-xs text-ink-500">Ideal</span>
         </div>
       </div>
     </div>

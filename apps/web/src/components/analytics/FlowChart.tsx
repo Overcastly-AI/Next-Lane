@@ -77,14 +77,14 @@ export function FlowChart({ series }: { series: FlowPointDto[] }) {
               x2={W - padX}
               y1={yOf(t)}
               y2={yOf(t)}
-              stroke="#e5e7eb"
+              className="stroke-ink-200"
               strokeWidth={1}
             />
             <text
               x={padX - 8}
               y={yOf(t) + 4}
               textAnchor="end"
-              className="fill-gray-400"
+              className="fill-ink-400"
               fontSize={11}
             >
               {t}
@@ -97,11 +97,11 @@ export function FlowChart({ series }: { series: FlowPointDto[] }) {
           <path d={completedArea} className="fill-brand-600" opacity={0.12} />
         )}
 
-        {/* Created line (dashed, ink-400) */}
+        {/* Created line (dashed, ink-400 = #8b95a8) */}
         <path
           d={createdPath}
           fill="none"
-          stroke="#8b95a8"
+          className="stroke-ink-400"
           strokeWidth={2}
           strokeDasharray="5 3"
           strokeLinejoin="round"
@@ -137,7 +137,7 @@ export function FlowChart({ series }: { series: FlowPointDto[] }) {
               x={xOf(i)}
               y={H - padBottom + 18}
               textAnchor="middle"
-              className="fill-gray-600"
+              className="fill-ink-600"
               fontSize={10}
             >
               {shortDate(s.date)}
@@ -150,14 +150,14 @@ export function FlowChart({ series }: { series: FlowPointDto[] }) {
       <div className="mt-2 flex items-center justify-center gap-4">
         <div className="flex items-center gap-1.5">
           <span className="inline-block h-[2px] w-4 bg-brand-600" />
-          <span className="text-xs text-slate-500">Completed</span>
+          <span className="text-xs text-ink-500">Completed</span>
         </div>
         <div className="flex items-center gap-1.5">
           <span
-            className="inline-block h-0 w-4 border-t-2 border-dashed border-gray-400"
+            className="inline-block h-0 w-4 border-t-2 border-dashed border-ink-400"
             aria-hidden="true"
           />
-          <span className="text-xs text-slate-500">Created</span>
+          <span className="text-xs text-ink-500">Created</span>
         </div>
       </div>
     </div>

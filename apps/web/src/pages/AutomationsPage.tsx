@@ -470,7 +470,7 @@ function RulesTab({
   }
 
   return (
-    <div className="overflow-hidden rounded-xl border border-ink-200 bg-white shadow-sm">
+    <div className="overflow-hidden rounded-xl border border-ink-200 bg-white shadow-card">
       <ul className="divide-y divide-ink-100">
         {rules.map((rule) => (
           <RuleRow

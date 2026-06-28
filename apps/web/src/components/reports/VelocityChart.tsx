@@ -53,14 +53,14 @@ export function VelocityChart({ data }: { data: VelocityPointDto[] }) {
               x2={W - padX}
               y1={y(t)}
               y2={y(t)}
-              stroke="#e5e7eb"
+              className="stroke-ink-200"
               strokeWidth={1}
             />
             <text
               x={padX - 8}
               y={y(t) + 4}
               textAnchor="end"
-              className="fill-gray-400"
+              className="fill-ink-400"
               fontSize={11}
             >
               {t}
@@ -99,7 +99,7 @@ export function VelocityChart({ data }: { data: VelocityPointDto[] }) {
                 x={gx}
                 y={H - padBottom + 18}
                 textAnchor="middle"
-                className="fill-gray-600"
+                className="fill-ink-600"
                 fontSize={11}
               >
                 {truncate(d.sprintName, 14)}
@@ -129,7 +129,7 @@ function Legend({
       {items.map((it) => (
         <div key={it.label} className="flex items-center gap-1.5">
           <span className={`inline-block h-2.5 w-2.5 rounded-sm ${it.color}`} />
-          <span className="text-xs text-slate-500">{it.label}</span>
+          <span className="text-xs text-ink-500">{it.label}</span>
         </div>
       ))}
     </div>

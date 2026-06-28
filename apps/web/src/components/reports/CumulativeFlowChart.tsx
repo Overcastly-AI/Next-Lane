@@ -95,14 +95,14 @@ export function CumulativeFlowChart({ series }: { series: CfdPointDto[] }) {
               x2={W - padX}
               y1={yOf(t)}
               y2={yOf(t)}
-              stroke="#e5e7eb"
+              className="stroke-ink-200"
               strokeWidth={1}
             />
             <text
               x={padX - 8}
               y={yOf(t) + 4}
               textAnchor="end"
-              className="fill-gray-400"
+              className="fill-ink-400"
               fontSize={11}
             >
               {t}
@@ -110,13 +110,13 @@ export function CumulativeFlowChart({ series }: { series: CfdPointDto[] }) {
           </g>
         ))}
 
-        {/* TODO band (top — gray-200) */}
+        {/* TODO band (top — ink-200) */}
         <path
           d={bandPath(
             (pt) => pt.yTodo,
             (pt) => pt.yInProgress,
           )}
-          className="fill-gray-200"
+          className="fill-ink-200"
           opacity={0.85}
         />
 
@@ -140,11 +140,11 @@ export function CumulativeFlowChart({ series }: { series: CfdPointDto[] }) {
           opacity={0.85}
         />
 
-        {/* Stroke lines on top of each band boundary for crispness */}
+        {/* Stroke lines on top of each band boundary for crispness — ink-300 = #c4cad6 */}
         <polyline
           points={stack.map((pt) => `${pt.x},${pt.yTodo}`).join(' ')}
           fill="none"
-          stroke="#d1d5db"
+          className="stroke-ink-300"
           strokeWidth={1.5}
         />
         <polyline
@@ -168,7 +168,7 @@ export function CumulativeFlowChart({ series }: { series: CfdPointDto[] }) {
               x={xOf(i)}
               y={H - padBottom + 18}
               textAnchor="middle"
-              className="fill-gray-600"
+              className="fill-ink-600"
               fontSize={10}
             >
               {shortDate(s.date)}
@@ -195,7 +195,7 @@ export function CumulativeFlowChart({ series }: { series: CfdPointDto[] }) {
       <div className="mt-2 flex items-center justify-center gap-4">
         <LegendSwatch color="bg-brand-600" label="Done" />
         <LegendSwatch color="bg-brand-200" label="In Progress" />
-        <LegendSwatch color="bg-slate-200" label="To Do" />
+        <LegendSwatch color="bg-ink-200" label="To Do" />
       </div>
     </div>
   );
@@ -205,7 +205,7 @@ function LegendSwatch({ color, label }: { color: string; label: string }) {
   return (
     <div className="flex items-center gap-1.5">
       <span className={`inline-block h-2.5 w-2.5 rounded-sm ${color}`} />
-      <span className="text-xs text-slate-500" data-testid="cfd-legend-item">{label}</span>
+      <span className="text-xs text-ink-500" data-testid="cfd-legend-item">{label}</span>
     </div>
   );
 }

@@ -9,30 +9,46 @@ import { ThroughputChart } from '@/components/analytics/ThroughputChart';
 import { CategoryBars } from '@/components/analytics/CategoryBars';
 import { titleCase } from '@/components/issue/issueMeta';
 
-/** Hex colours keyed by IssueType — same values as IssueTypeIcon map. */
-const TYPE_COLORS: Record<string, string> = {
-  [IssueType.STORY]: '#22c55e',
-  [IssueType.TASK]: '#3b82f6',
-  [IssueType.BUG]: '#ef4444',
-  [IssueType.EPIC]: '#a855f7',
-  [IssueType.SUBTASK]: '#6b7280',
+/**
+ * Tailwind bg-* class strings keyed by IssueType.
+ * Colors match the IssueTypeIcon hex values mapped to Tailwind equivalents:
+ *   STORY  #22c55e → bg-green-500
+ *   TASK   #3b82f6 → bg-blue-500   (signal-500)
+ *   BUG    #ef4444 → bg-red-500
+ *   EPIC   #a855f7 → bg-purple-500
+ *   SUBTASK #6b7280 → bg-ink-500
+ */
+const TYPE_COLOR_CLASSES: Record<string, string> = {
+  [IssueType.STORY]: 'bg-green-500',
+  [IssueType.TASK]: 'bg-blue-500',
+  [IssueType.BUG]: 'bg-red-500',
+  [IssueType.EPIC]: 'bg-purple-500',
+  [IssueType.SUBTASK]: 'bg-ink-500',
 };
 
-/** Hex colours keyed by Priority — same values as PRIORITY_META. */
-const PRIORITY_COLORS: Record<string, string> = {
-  [Priority.HIGHEST]: '#dc2626',
-  [Priority.HIGH]: '#ef4444',
-  [Priority.MEDIUM]: '#f59e0b',
-  [Priority.LOW]: '#3b82f6',
-  [Priority.LOWEST]: '#6b7280',
+/**
+ * Tailwind bg-* class strings keyed by Priority.
+ * Colors match the PRIORITY_META hex values mapped to Tailwind equivalents:
+ *   HIGHEST #dc2626 → bg-red-600
+ *   HIGH    #ef4444 → bg-red-500
+ *   MEDIUM  #f59e0b → bg-amber-400
+ *   LOW     #3b82f6 → bg-blue-500  (signal-500)
+ *   LOWEST  #6b7280 → bg-ink-500
+ */
+const PRIORITY_COLOR_CLASSES: Record<string, string> = {
+  [Priority.HIGHEST]: 'bg-red-600',
+  [Priority.HIGH]: 'bg-red-500',
+  [Priority.MEDIUM]: 'bg-amber-400',
+  [Priority.LOW]: 'bg-blue-500',
+  [Priority.LOWEST]: 'bg-ink-500',
 };
 
 function typeColor(key: string): string {
-  return TYPE_COLORS[key] ?? '#6b7280';
+  return TYPE_COLOR_CLASSES[key] ?? 'bg-ink-500';
 }
 
 function priorityColor(key: string): string {
-  return PRIORITY_COLORS[key] ?? '#6b7280';
+  return PRIORITY_COLOR_CLASSES[key] ?? 'bg-ink-500';
 }
 
 export function PersonalAnalyticsPage() {
@@ -67,7 +83,7 @@ export function PersonalAnalyticsPage() {
       </div>
 
       <main
-        className="flex-1 overflow-y-auto bg-slate-50"
+        className="flex-1 overflow-y-auto bg-ink-50"
         data-testid="personal-analytics"
       >
         <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 p-4 sm:p-6">
@@ -129,17 +145,17 @@ export function PersonalAnalyticsPage() {
 
           {/* Throughput chart */}
           <section
-            className="rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:p-5"
+            className="rounded-xl border border-ink-200 bg-white p-4 shadow-card sm:p-5"
             aria-labelledby="throughput-heading"
           >
             <div className="mb-3">
               <h2
                 id="throughput-heading"
-                className="text-sm font-semibold text-slate-900"
+                className="text-sm font-semibold text-ink-900"
               >
                 Throughput
               </h2>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-ink-500">
                 Issues completed (and created) each day over the window.
               </p>
             </div>
@@ -160,12 +176,12 @@ export function PersonalAnalyticsPage() {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {/* By type */}
             <section
-              className="rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:p-5"
+              className="rounded-xl border border-ink-200 bg-white p-4 shadow-card sm:p-5"
               aria-labelledby="bytype-heading"
             >
               <h2
                 id="bytype-heading"
-                className="mb-3 text-sm font-semibold text-slate-900"
+                className="mb-3 text-sm font-semibold text-ink-900"
               >
                 Open issues by type
               </h2>
@@ -195,12 +211,12 @@ export function PersonalAnalyticsPage() {
 
             {/* By priority */}
             <section
-              className="rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:p-5"
+              className="rounded-xl border border-ink-200 bg-white p-4 shadow-card sm:p-5"
               aria-labelledby="bypriority-heading"
             >
               <h2
                 id="bypriority-heading"
-                className="mb-3 text-sm font-semibold text-slate-900"
+                className="mb-3 text-sm font-semibold text-ink-900"
               >
                 Open issues by priority
               </h2>
@@ -231,18 +247,18 @@ export function PersonalAnalyticsPage() {
 
           {/* Personal board mini-stats */}
           <section
-            className="rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:p-5"
+            className="rounded-xl border border-ink-200 bg-white p-4 shadow-card sm:p-5"
             aria-labelledby="board-stats-heading"
             data-testid="personal-board-stats"
           >
             <div className="mb-3">
               <h2
                 id="board-stats-heading"
-                className="text-sm font-semibold text-slate-900"
+                className="text-sm font-semibold text-ink-900"
               >
                 Personal board
               </h2>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-ink-500">
                 Stats for your private kanban board.
               </p>
             </div>
