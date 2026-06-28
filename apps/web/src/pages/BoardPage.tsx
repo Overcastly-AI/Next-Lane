@@ -188,34 +188,103 @@ export function BoardPage() {
     [board],
   );
 
-  // ── Filters ──────────────────────────────────────────────────────────────
+  // ── Filters — URL as single source of truth ──────────────────────────────
+  //
+  // All filter state is read directly from `searchParams` and written back via
+  // `setSearchParams`. There is no separate React state mirror, so there is no
+  // bidirectional-sync loop to guard against.  Helpers below compute derived
+  // values from the URL and return setters that call `setSearchParams`.
+  //
+  // URL param names (compact to keep shared links readable):
+  //   s         — title search string
+  //   assignee  — assignee id or "unassigned"
+  //   labels    — comma-separated label ids
+  //   types     — comma-separated IssueType values
+  //   priorities — comma-separated Priority values
+  //   presets   — comma-separated QuickFilterKey values
+  //   q         — NLQL query string
+  //   issue     — existing deep-link param (preserved)
+  //   new       — existing deep-link param (preserved)
 
-  const [search, setSearch] = useState('');
-  const [assigneeFilter, setAssigneeFilter] = useState('');
-  const [labelFilter, setLabelFilter] = useState<string[]>([]);
-  const [typeFilter, setTypeFilter] = useState<IssueType[]>([]);
-  const [priorityFilter, setPriorityFilter] = useState<Priority[]>([]);
+  // Read current filter values from URL.
+  const search = searchParams.get('s') ?? '';
+  const assigneeFilter = searchParams.get('assignee') ?? '';
+  const labelFilter = useMemo((): string[] => {
+    const raw = searchParams.get('labels');
+    return raw ? raw.split(',').filter(Boolean) : [];
+  }, [searchParams]);
+  const typeFilter = useMemo((): IssueType[] => {
+    const raw = searchParams.get('types');
+    if (!raw) return [];
+    return raw.split(',').filter((v): v is IssueType =>
+      Object.values(IssueType).includes(v as IssueType),
+    );
+  }, [searchParams]);
+  const priorityFilter = useMemo((): Priority[] => {
+    const raw = searchParams.get('priorities');
+    if (!raw) return [];
+    return raw.split(',').filter((v): v is Priority =>
+      Object.values(Priority).includes(v as Priority),
+    );
+  }, [searchParams]);
+  const nlqlQuery = searchParams.get('q') ?? '';
+  const activePresets = useMemo((): Set<QuickFilterKey> => {
+    const raw = searchParams.get('presets');
+    if (!raw) return new Set<QuickFilterKey>();
+    const valid = new Set<QuickFilterKey>(['myIssues', 'highPriority', 'unresolved', 'recent']);
+    return new Set(
+      raw.split(',').filter((v): v is QuickFilterKey => valid.has(v as QuickFilterKey)),
+    );
+  }, [searchParams]);
 
-  // NLQL query bar state
-  const [nlqlQuery, setNlqlQuery] = useState('');
+  // Generic URL-param setter. Merges into the existing params (never clobbers
+  // `?issue=` or other unrelated params). Uses `replace:true` so incremental
+  // typing doesn't spam browser history; use `replace:false` for discrete
+  // toggle actions where back-button UX matters.
+  function setFilterParam(
+    key: string,
+    value: string | null,
+    opts: { replace: boolean } = { replace: true },
+  ) {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (value === null || value === '') {
+          next.delete(key);
+        } else {
+          next.set(key, value);
+        }
+        return next;
+      },
+      { replace: opts.replace },
+    );
+  }
 
-  // ── Quick-filter presets ──────────────────────────────────────────────────
-  // Each preset key maps to a boolean (on/off). Active presets layer on top of
-  // the manual pill filters and are mutually composable with them.
-  const [activePresets, setActivePresets] = useState<Set<QuickFilterKey>>(
-    () => new Set(),
-  );
+  const setSearch = (v: string) => setFilterParam('s', v || null, { replace: true });
+  const setAssigneeFilter = (v: string) => setFilterParam('assignee', v || null, { replace: false });
+  const setNlqlQuery = (v: string) => setFilterParam('q', v || null, { replace: true });
+
+  const setLabelFilter = (next: string[]) =>
+    setFilterParam('labels', next.length ? next.join(',') : null, { replace: false });
+
+  const setTypeFilter = (next: IssueType[]) =>
+    setFilterParam('types', next.length ? next.join(',') : null, { replace: false });
+
+  const setPriorityFilter = (next: Priority[]) =>
+    setFilterParam('priorities', next.length ? next.join(',') : null, { replace: false });
 
   function togglePreset(key: QuickFilterKey) {
-    setActivePresets((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) {
-        next.delete(key);
-      } else {
-        next.add(key);
-      }
-      return next;
-    });
+    const next = new Set(activePresets);
+    if (next.has(key)) {
+      next.delete(key);
+    } else {
+      next.add(key);
+    }
+    setFilterParam(
+      'presets',
+      next.size ? [...next].join(',') : null,
+      { replace: false },
+    );
   }
 
   // Controls opening the Card Colors tab inside the BoardSettingsModal via the toolbar button.
