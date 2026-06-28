@@ -772,6 +772,41 @@ export interface StandupEntryDto {
   updatedAt: string;
 }
 
+// ── Personal Boards ───────────────────────────────────────────────────────────
+
+/**
+ * A single card within a personal kanban column.
+ * `promotedIssueId` is non-null when the card has been promoted to a real
+ * tracked issue. `notes` is the optional free-text body of the card.
+ */
+export interface PersonalCardDto {
+  id: string;
+  columnId: string;
+  title: string;
+  notes: string | null;
+  /** Fractional-index rank for ordering within the column (same scheme as Issue.rank). */
+  rank: string;
+  /** ID of the Issue this card was promoted to, or null when not yet promoted. */
+  promotedIssueId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * A user-owned kanban column in the private personal board.
+ * `order` is a stable integer position (lower = further left).
+ * `cards` is present only when the column is loaded with its cards.
+ */
+export interface PersonalColumnDto {
+  id: string;
+  name: string;
+  order: number;
+  createdAt: string;
+  updatedAt: string;
+  /** Cards in this column, present when loaded with the `cards` relation. */
+  cards?: PersonalCardDto[];
+}
+
 /**
  * A planning poker estimation session, scoped to a project and optionally a sprint.
  *
