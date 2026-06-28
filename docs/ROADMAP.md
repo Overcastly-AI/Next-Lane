@@ -145,7 +145,8 @@ delivered as QA'd vertical slices.
   - ✅ **Phase 2 — Backend**: `WorkflowModule` (`apps/api/src/workflows/`) with full REST API; transition enforcement wired into `IssuesService.move()` + `update()`; automation bypass; auto-seed on first enable; `ProjectDto.workflowEnforced` added to mapper; 47 unit tests; build clean. (2026-06-28)
   - ⬜ **Phase 3 — MCP surface**: read/write workflow transitions and gates via MCP so agents can introspect/modify the project SDLC.
   - ⬜ **Phase 4 — UI**: visual workflow builder in project settings; board/triage transition controls enforce the graph; default templates.
-- ⬜ **Remaining parity gaps**: swimlanes / group-by, components, versions/releases, CSV import + tracker importers, configurable dashboards, project-level role overrides, filter-state URL persistence.
+- ✅ **Filter-state URL persistence** (2026-06-28) — board filter state (NLQL `?q=`, title search `?s=`, assignee `?assignee=`, labels `?labels=`, types `?types=`, priorities `?priorities=`, quick-filter presets `?presets=`) synced to the URL via `useSearchParams`; URL is the single source of truth (no separate state mirror, no bidirectional-sync loop); existing `?issue=` and `?new=` deep-link params preserved; empty/default filters omit their param (clean URLs); `replace:true` for incremental typing, `replace:false` for discrete toggle actions; filter state survives reload and is shareable via link. Build clean; all 17 NLQL-filter + quick-filter e2e tests green.
+- ⬜ **Remaining parity gaps**: swimlanes / group-by, components, versions/releases, CSV import + tracker importers, configurable dashboards, project-level role overrides.
 
 ## Phase 6 — Autopilot: a self-hosted AI teammate 🔭 (vision)
 
