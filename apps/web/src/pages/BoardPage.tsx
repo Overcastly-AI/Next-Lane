@@ -54,6 +54,11 @@ import { ErrorState, LoadingState, EmptyState } from '@/components/ui/States';
 import { ProjectNav } from '@/components/project/ProjectNav';
 import { BoardColumn } from '@/components/board/BoardColumn';
 import { IssueCard } from '@/components/board/IssueCard';
+import {
+  BoardSwimlanesView,
+  computeLanes,
+  type GroupByDimension,
+} from '@/components/board/BoardSwimlanesView';
 import { CreateIssueModal } from '@/components/board/CreateIssueModal';
 import { IssueDetailDrawer } from '@/components/issue/IssueDetailDrawer';
 import { PresenceAvatars } from '@/components/board/PresenceAvatars';
@@ -287,7 +292,25 @@ export function BoardPage() {
     );
   }
 
-  // Controls opening the Card Colors tab inside the BoardSettingsModal via the toolbar button.
+  // ── Group-by (swimlanes) — URL as single source of truth ─────────────────
+  //
+  // URL param: ?group=assignee|priority|type|epic (omitted → None)
+
+  const VALID_GROUP_DIMS: GroupByDimension[] = ['assignee', 'priority', 'type', 'epic'];
+
+  const groupBy = useMemo((): GroupByDimension | null => {
+    const raw = searchParams.get('group');
+    if (raw && VALID_GROUP_DIMS.includes(raw as GroupByDimension)) {
+      return raw as GroupByDimension;
+    }
+    return null;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
+  const setGroupBy = (next: GroupByDimension | null) =>
+    setFilterParam('group', next, { replace: false });
+
+  // ── Controls opening the Card Colors tab inside the BoardSettingsModal via the toolbar button.
   const [openColorsTab, setOpenColorsTab] = useState(false);
 
   const { exportCsv, isExporting } = useExportCsv({
@@ -468,6 +491,13 @@ export function BoardPage() {
     currentUser?.id,
     activePresets,
   ]);
+
+  // ── Swimlanes — computed from the already-filtered issuesByStatus ────────
+
+  const swimLanes = useMemo(() => {
+    if (!groupBy) return null;
+    return computeLanes(groupBy, issuesByStatus, usersQuery.data ?? []);
+  }, [groupBy, issuesByStatus, usersQuery.data]);
 
   // ── Drag and drop ─────────────────────────────────────────────────────────
 
@@ -728,7 +758,7 @@ export function BoardPage() {
           )}
         </div>
 
-        {/* Row 2: filter pills */}
+        {/* Row 2: filter pills + group-by */}
         <div className="flex items-center gap-3 overflow-x-auto pb-0.5 sm:overflow-x-visible sm:pb-0">
           <LabelFilter
             labels={labelsQuery.data ?? []}
@@ -737,6 +767,8 @@ export function BoardPage() {
           />
           <TypeFilter selected={typeFilter} onChange={setTypeFilter} />
           <PriorityFilter selected={priorityFilter} onChange={setPriorityFilter} />
+          {/* Group by selector — swimlanes */}
+          <GroupBySelector value={groupBy} onChange={setGroupBy} />
         </div>
 
         {/* Quick-filter preset chips */}
@@ -865,7 +897,30 @@ export function BoardPage() {
             }
           />
         </div>
+      ) : groupBy && swimLanes ? (
+        /* ── Swimlanes mode — each lane is its own DndContext ── */
+        <BoardSwimlanesView
+          lanes={swimLanes}
+          dimension={groupBy}
+          statuses={statuses}
+          issuesByStatus={issuesByStatus}
+          users={usersQuery.data ?? []}
+          editable={editable}
+          onAdd={(id) => setCreateForStatus(id)}
+          onOpenIssue={openIssue}
+          onStatusChange={handleCardStatusChange}
+          colorRules={colorRules}
+          colorCtx={colorCtx}
+          onMove={(params) =>
+            moveIssue.mutate(params, {
+              onError: (err) =>
+                toast.error(errorMessage(err, 'Could not move that card.')),
+            })
+          }
+          neighborsUnchanged={neighborsUnchanged}
+        />
       ) : (
+        /* ── Flat board mode (default, no group-by) ── */
         <DndContext
           sensors={sensors}
           collisionDetection={closestCorners}
@@ -1891,6 +1946,123 @@ function NlqlQueryBar({
         onCancel={() => setDeleteTarget(null)}
       />
     </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// GroupBySelector — swimlane group-by dimension picker
+// ---------------------------------------------------------------------------
+
+const GROUP_BY_OPTIONS: { value: GroupByDimension; label: string }[] = [
+  { value: 'assignee', label: 'Assignee' },
+  { value: 'priority', label: 'Priority' },
+  { value: 'type', label: 'Issue type' },
+  { value: 'epic', label: 'Epic' },
+];
+
+function GroupBySelector({
+  value,
+  onChange,
+}: {
+  value: GroupByDimension | null;
+  onChange: (next: GroupByDimension | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDown(e: MouseEvent) {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setOpen(false);
+    }
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  const activeLabel = GROUP_BY_OPTIONS.find((o) => o.value === value)?.label;
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        data-testid="swimlane-groupby"
+        aria-label="Group by"
+        aria-expanded={open}
+        aria-haspopup="menu"
+        onClick={() => setOpen((v) => !v)}
+        className={cn(
+          'inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-sm transition-colors',
+          'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200',
+          value
+            ? 'border-brand-300 bg-brand-50 text-brand-700'
+            : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50',
+        )}
+      >
+        {/* Rows/swimlane icon */}
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+          <rect x="3" y="3" width="18" height="5" rx="1" />
+          <rect x="3" y="10" width="18" height="5" rx="1" />
+          <rect x="3" y="17" width="18" height="5" rx="1" />
+        </svg>
+        {value ? `Group: ${activeLabel}` : 'Group by'}
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M6 9l6 6 6-6" />
+        </svg>
+      </button>
+
+      {open && (
+        <div
+          role="menu"
+          aria-label="Group by menu"
+          className="absolute left-0 z-20 mt-2 w-44 rounded-lg border border-slate-200 bg-white p-1.5 shadow-cardHover"
+        >
+          {/* None option */}
+          <button
+            type="button"
+            role="menuitemradio"
+            aria-checked={value === null}
+            onClick={() => { onChange(null); setOpen(false); }}
+            className={cn(
+              'flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-left text-sm transition-colors',
+              'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300',
+              value === null
+                ? 'bg-brand-50 font-medium text-brand-700'
+                : 'text-slate-700 hover:bg-slate-50',
+            )}
+          >
+            None
+          </button>
+
+          <div className="my-1 border-t border-slate-100" />
+
+          {GROUP_BY_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              role="menuitemradio"
+              aria-checked={value === opt.value}
+              onClick={() => { onChange(opt.value); setOpen(false); }}
+              className={cn(
+                'flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-left text-sm transition-colors',
+                'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300',
+                value === opt.value
+                  ? 'bg-brand-50 font-medium text-brand-700'
+                  : 'text-slate-700 hover:bg-slate-50',
+              )}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
