@@ -36,6 +36,13 @@ import {
 } from '@next-lane/shared';
 import type { ImportIssuesResultDto, ImportIssueRowError } from '@next-lane/shared';
 import type { CreateIssueDto } from './dto/create-issue.dto';
+import {
+  type ImportSource,
+  isImportSource,
+  looksLikeJson,
+  githubJsonToRows,
+  normaliseRowForSource,
+} from './issues-import.sources';
 
 /** Hard row limit per import request (header excluded). */
 export const IMPORT_MAX_ROWS = 2000;
@@ -99,6 +106,12 @@ function splitLabels(raw: string): string[] {
 export interface ImportOptions {
   /** When true, validate rows and return would-be results without writing. */
   dryRun?: boolean;
+  /**
+   * Source tracker that produced the file.  When non-generic, a pre-
+   * normalisation step rewrites headers and maps enum values before the
+   * generic pipeline runs.  Defaults to 'generic'.
+   */
+  source?: ImportSource;
 }
 
 @Injectable()
@@ -109,12 +122,13 @@ export class IssuesImportService {
   ) {}
 
   /**
-   * Import issues from a CSV string into a project.
+   * Import issues from a CSV (or JSON) string into a project.
    *
    * @param userId     — The authenticated user performing the import (MEMBER+).
    * @param projectId  — Target project.
-   * @param csvText    — Raw CSV content (UTF-8 string).
-   * @param opts       — Import options (dryRun).
+   * @param csvText    — Raw CSV content (UTF-8 string) OR a JSON array for
+   *                     GitHub source.
+   * @param opts       — Import options (dryRun, source).
    * @returns          — Summary with created/skipped/errors counts.
    */
   async importCsv(
@@ -123,6 +137,10 @@ export class IssuesImportService {
     csvText: string,
     opts: ImportOptions = {},
   ): Promise<ImportIssuesResultDto> {
+    // ── 0. Validate source ────────────────────────────────────────────────────
+    const source: ImportSource =
+      opts.source && isImportSource(opts.source) ? opts.source : 'generic';
+
     // ── 1. Authorisation (MEMBER+ required to create issues) ─────────────────
     const project = await assertProjectRole(
       this.prisma,
@@ -132,19 +150,32 @@ export class IssuesImportService {
     );
     const workspaceId = project.workspaceId;
 
-    // ── 2. Parse CSV ─────────────────────────────────────────────────────────
+    // ── 2. Parse CSV (or JSON for GitHub source) ──────────────────────────────
     let rawRows: Record<string, string>[];
-    try {
-      rawRows = parse(csvText, {
-        columns: true,          // use first row as header keys
-        skip_empty_lines: true,
-        trim: true,
-        relax_column_count: true,
-        bom: true,              // strip UTF-8 BOM if present
-      }) as Record<string, string>[];
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'CSV parse error';
-      throw new BadRequestException(`CSV parse error: ${msg}`);
+
+    // GitHub source: detect JSON vs CSV by content sniff.
+    if (source === 'github' && looksLikeJson(csvText)) {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(csvText);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'JSON parse error';
+        throw new BadRequestException(`GitHub JSON parse error: ${msg}`);
+      }
+      rawRows = githubJsonToRows(parsed);
+    } else {
+      try {
+        rawRows = parse(csvText, {
+          columns: true,          // use first row as header keys
+          skip_empty_lines: true,
+          trim: true,
+          relax_column_count: true,
+          bom: true,              // strip UTF-8 BOM if present
+        }) as Record<string, string>[];
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'CSV parse error';
+        throw new BadRequestException(`CSV parse error: ${msg}`);
+      }
     }
 
     // ── 3. Row-count limit ────────────────────────────────────────────────────
@@ -154,10 +185,29 @@ export class IssuesImportService {
       );
     }
 
+    // ── 3b. Source pre-normalisation ─────────────────────────────────────────
+    //    For non-generic sources, remap headers and enum values to the canonical
+    //    Next Lane column names.  Per-row notes from this step are stored so
+    //    they can be appended to any error messages.  Normalised rows always use
+    //    lowercase canonical keys, so the header-map step below works the same.
+    interface NormalisedWithNotes {
+      row: Record<string, string>;
+      notes: string[];
+    }
+    let normalisedRows: NormalisedWithNotes[];
+    if (source === 'generic') {
+      normalisedRows = rawRows.map((r) => ({ row: r, notes: [] }));
+    } else {
+      normalisedRows = rawRows.map((r) => normaliseRowForSource(source, r));
+    }
+
     // ── 4. Normalise headers (case-insensitive) ───────────────────────────────
-    //    csv-parse uses the raw header strings as keys; build a lowercase→raw map.
-    const headers = rawRows.length > 0 ? Object.keys(rawRows[0]) : [];
-    /** Map from lower-cased header → original header key in the raw row objects. */
+    //    For the generic source, csv-parse uses raw header strings as keys;
+    //    build a lowercase→raw map.  For non-generic sources the normaliser has
+    //    already down-cased and renamed all keys, so the map is identity.
+    const headers =
+      normalisedRows.length > 0 ? Object.keys(normalisedRows[0].row) : [];
+    /** Map from lower-cased header → key in the normalised row objects. */
     const headerMap = new Map<string, string>();
     for (const h of headers) {
       headerMap.set(h.toLowerCase(), h);
@@ -210,9 +260,9 @@ export class IssuesImportService {
     let skipped = 0;
     const errors: ImportIssueRowError[] = [];
 
-    for (let i = 0; i < rawRows.length; i += 1) {
+    for (let i = 0; i < normalisedRows.length; i += 1) {
       const rowNum = i + 1; // 1-based (header = row 0)
-      const row = rawRows[i];
+      const { row, notes: rowNotes } = normalisedRows[i];
 
       // Skip rows that are entirely empty after normalisation.
       const allEmpty = Object.values(row).every((v) => v.trim() === '');
@@ -296,9 +346,13 @@ export class IssuesImportService {
 
         const uid = memberByEmail.get(emailToLookup);
         if (!uid) {
+          // Append any source-normaliser notes for context (e.g. "this is a
+          // display name, not an email" for Jira/GitHub assignees).
+          const noteSuffix =
+            rowNotes.length > 0 ? ` (${rowNotes.join('; ')})` : '';
           errors.push({
             row: rowNum,
-            message: `Assignee not found in workspace: "${rawAssignee}"`,
+            message: `Assignee not found in workspace: "${rawAssignee}"${noteSuffix}`,
           });
           continue;
         }

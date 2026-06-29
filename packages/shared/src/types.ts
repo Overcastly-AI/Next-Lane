@@ -1273,8 +1273,22 @@ export interface UpdateWorkLogDto {
 }
 
 // ---------------------------------------------------------------------------
-// CSV Import
+// CSV / Tracker Import
 // ---------------------------------------------------------------------------
+
+/**
+ * The source tracker that produced the export file. Controls the pre-
+ * normalisation step that maps tracker-specific column names and enum values
+ * to Next Lane's canonical schema before the generic import pipeline runs.
+ *
+ * - `generic` (default) — Next Lane's own CSV export format (round-trip safe).
+ * - `jira`    — Jira CSV export (Summary / Issue Type / Priority / Labels / etc.)
+ * - `github`  — GitHub Issues CSV or JSON array (title / body / state / etc.)
+ * - `linear`  — Linear CSV export (Title / Status / Priority / Estimate / etc.)
+ *
+ * All sources are **file-based only** — no live API calls are made.
+ */
+export type ImportSource = 'generic' | 'jira' | 'github' | 'linear';
 
 /**
  * One row-level error from a CSV import. `row` is 1-based (header = row 0,
@@ -1299,6 +1313,21 @@ export interface ImportIssuesResultDto {
   skipped: number;
   errors: ImportIssueRowError[];
   dryRun: boolean;
+}
+
+/**
+ * Optional request contract for `POST /projects/:projectId/issues/import`.
+ * All fields are optional; `source` defaults to `'generic'` server-side.
+ * Can be sent as a JSON body (with `csv`) or as query params alongside a
+ * multipart upload.
+ */
+export interface ImportIssuesRequestDto {
+  /** Raw CSV text (or JSON array for GitHub source). Required if no multipart file. */
+  csv?: string;
+  /** When true, validate rows only — no writes. Defaults to false. */
+  dryRun?: boolean;
+  /** Source tracker preset. Defaults to 'generic'. */
+  source?: ImportSource;
 }
 
 // ---------------------------------------------------------------------------

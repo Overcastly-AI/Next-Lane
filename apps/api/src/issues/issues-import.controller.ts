@@ -4,7 +4,7 @@
  * POST /projects/:projectId/issues/import
  *
  * Accepts a CSV file as multipart/form-data (field name: "file") OR
- * a JSON body with `{ csv: string, dryRun?: boolean }`.
+ * a JSON body with `{ csv: string, dryRun?: boolean, source?: ImportSource }`.
  *
  * Multipart: mirrors the attachment upload convention already in the codebase
  *   (FileInterceptor from @nestjs/platform-express). The field name is "file".
@@ -12,8 +12,13 @@
  * JSON body: set Content-Type: application/json and pass { csv: "<raw csv>" }.
  *   The csv field is read directly from the request body via @Body().
  *
- * Query param: ?dryRun=true — validates rows and returns the would-be result
- *   without writing to the database. Overrides the body flag when present.
+ * Query params:
+ *   ?dryRun=true   — validates rows and returns the would-be result without
+ *                    writing to the database. Overrides the body flag.
+ *   ?source=<src>  — source preset: 'generic' (default), 'jira', 'github',
+ *                    or 'linear'. Normalises the tracker's export columns and
+ *                    enum values before the generic import pipeline runs.
+ *                    Overrides the body field when present.
  *
  * Response: ImportIssuesResultDto
  *   { created: number, skipped: number, errors: { row, message }[], dryRun }
@@ -40,6 +45,8 @@ import { IssuesImportService } from './issues-import.service';
 import { CurrentUser, AuthUser } from '../auth/current-user.decorator';
 import { RequireScope } from '../auth/require-scope.decorator';
 import type { ImportIssuesResultDto } from '@next-lane/shared';
+import { isImportSource } from './issues-import.sources';
+import type { ImportSource } from './issues-import.sources';
 
 /** 2 MB hard cap on uploaded CSV files. */
 const MAX_CSV_BYTES = 2 * 1024 * 1024;
@@ -79,8 +86,9 @@ export class IssuesImportController {
     @CurrentUser() user: AuthUser,
     @Param('projectId') projectId: string,
     @Query('dryRun') dryRunQuery: string | undefined,
+    @Query('source') sourceQuery: string | undefined,
     @UploadedFile() file: Express.Multer.File | undefined,
-    @Body() body: { csv?: string; dryRun?: boolean | string },
+    @Body() body: { csv?: string; dryRun?: boolean | string; source?: string },
   ): Promise<ImportIssuesResultDto> {
     // Resolve dryRun: query param > body flag.
     const dryRun =
@@ -88,7 +96,20 @@ export class IssuesImportController {
       body?.dryRun === true ||
       body?.dryRun === 'true';
 
-    // Resolve the CSV text: multipart file buffer > json body.
+    // Resolve source: query param > body field > default 'generic'.
+    // Validate against the known values; reject unknown ones early.
+    const rawSource = sourceQuery ?? body?.source;
+    let source: ImportSource = 'generic';
+    if (rawSource !== undefined) {
+      if (!isImportSource(rawSource)) {
+        throw new BadRequestException(
+          `Unknown import source: "${rawSource}". Valid values: generic, jira, github, linear`,
+        );
+      }
+      source = rawSource;
+    }
+
+    // Resolve the CSV/JSON text: multipart file buffer > json body.
     let csvText: string;
     if (file?.buffer && file.buffer.length > 0) {
       csvText = file.buffer.toString('utf8');
@@ -109,6 +130,7 @@ export class IssuesImportController {
 
     return this.importSvc.importCsv(user.id, projectId, csvText, {
       dryRun,
+      source,
     });
   }
 }
