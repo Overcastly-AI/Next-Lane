@@ -60,6 +60,7 @@ import {
   type GroupByDimension,
 } from '@/components/board/BoardSwimlanesView';
 import { CreateIssueModal } from '@/components/board/CreateIssueModal';
+import { FromTemplateMenu } from '@/components/board/FromTemplateMenu';
 import { IssueDetailDrawer } from '@/components/issue/IssueDetailDrawer';
 import { PresenceAvatars } from '@/components/board/PresenceAvatars';
 import { BoardSwitcher } from '@/components/board/BoardSwitcher';
@@ -886,9 +887,15 @@ export function BoardPage() {
             Export CSV
           </Button>
           {editable && (
-            <Button onClick={() => setCreateForStatus(statuses[0]?.id ?? null)}>
-              + Create issue
-            </Button>
+            <>
+              <FromTemplateMenu
+                projectId={projectId}
+                onCreated={(id) => openIssue(id)}
+              />
+              <Button onClick={() => setCreateForStatus(statuses[0]?.id ?? null)}>
+                + Create issue
+              </Button>
+            </>
           )}
         </div>
       </div>

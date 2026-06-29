@@ -43,8 +43,11 @@ export const qk = {
   issueLinks: (issueId: string) => ['issueLinks', issueId] as const,
   watchers: (issueId: string) => ['watchers', issueId] as const,
   checklist: (issueId: string) => ['checklist', issueId] as const,
+  worklogs: (issueId: string) => ['worklogs', issueId] as const,
   /** Named workflows for a project (per-board workflow feature). */
   workflows: (projectId: string) => ['workflows', projectId] as const,
   /** Single named workflow (includes transitions). */
   workflow: (workflowId: string) => ['workflow', workflowId] as const,
+  /** Issue templates for a project. */
+  issueTemplates: (projectId: string) => ['issueTemplates', projectId] as const,
 };

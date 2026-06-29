@@ -35,6 +35,8 @@ import { AttachmentsPanel } from './AttachmentsPanel';
 import { CustomFieldsDrawerSection } from './CustomFieldsDrawerSection';
 import { LinkedIssuesSection } from './LinkedIssuesSection';
 import { ChecklistSection } from './ChecklistSection';
+import { TimeTrackingSection } from './TimeTrackingSection';
+import { useAuth } from '@/auth/AuthContext';
 
 /** Common agile estimate values offered in the Story Points select. */
 const STORY_POINT_VALUES = [1, 2, 3, 5, 8, 13] as const;
@@ -191,6 +193,7 @@ function DrawerBody({
   onDelete: () => void;
   deleting: boolean;
 }) {
+  const { user: currentUser } = useAuth();
   const [title, setTitle] = useState(issue.title);
   const toggleWatch = useToggleWatch(issue.id);
   const watcherInfo = useWatcherInfo(issue.id);
@@ -414,6 +417,15 @@ function DrawerBody({
               items={issue.checklist ?? []}
               progress={issue.checklistProgress ?? { done: 0, total: 0 }}
               editable={editable}
+            />
+
+            <TimeTrackingSection
+              issue={issue}
+              editable={editable}
+              currentUserId={currentUser?.id}
+              onPatchEstimate={(minutes) =>
+                onPatch('originalEstimateMinutes', minutes)
+              }
             />
 
             <CommentsPanel issueId={issue.id} users={users} editable={editable} />

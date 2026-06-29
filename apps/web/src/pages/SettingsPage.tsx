@@ -14,6 +14,7 @@ import { WebhooksSection } from '@/components/settings/WebhooksSection';
 import { ShareSection } from '@/components/settings/ShareSection';
 import { CustomFieldsSection } from '@/components/settings/CustomFieldsSection';
 import { ComponentsSection } from '@/components/settings/ComponentsSection';
+import { TemplatesManager } from '@/components/settings/TemplatesManager';
 import { VersionsSection } from '@/components/settings/VersionsSection';
 import { WorkflowSection } from '@/components/settings/WorkflowSection';
 import { WorkflowsManager } from '@/components/settings/WorkflowsManager';
@@ -142,6 +143,12 @@ export function SettingsPage() {
         <ComponentsSection
           projectId={projectId}
           editable={editable}
+          isAdmin={isAdmin}
+          users={workspaceUsers}
+        />
+
+        <TemplatesManager
+          projectId={projectId}
           isAdmin={isAdmin}
           users={workspaceUsers}
         />

@@ -142,6 +142,8 @@ export interface UpdateIssueInput {
     customFields: Record<string, CustomFieldValue>;
     /** Component id to assign, or null to clear. */
     componentId: string | null;
+    /** Time estimate in minutes; null clears the estimate. */
+    originalEstimateMinutes: number | null;
   }>;
 }
 
