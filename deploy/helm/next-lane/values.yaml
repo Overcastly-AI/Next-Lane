@@ -317,13 +317,21 @@ externalRedis:
 # rolls out, so schema changes apply safely on every upgrade. Uses the api image.
 migrations:
   enabled: true
-  # The migration runs as a Helm pre-install/pre-upgrade HOOK, which executes
-  # before the chart's ServiceAccount is created. It only needs database access
-  # (the DATABASE_URL secret), not the Kubernetes API, so by default it runs
-  # under the namespace "default" ServiceAccount (no token mounted). Only set
-  # this to pin a PRE-EXISTING ServiceAccount — e.g. IRSA (AWS) / Workload
-  # Identity (GCP) for IAM database auth — which must already exist when the
-  # hook runs. Leave empty for the normal password-auth (DATABASE_URL) setup.
+  # STRATEGY (default true): run `prisma migrate deploy` as an initContainer on
+  # the API Deployment instead of a Helm pre-install hook. This is the robust
+  # default — it works with the bundled Postgres (a normal resource that starts
+  # in the main install phase, which a pre-install hook can never reach) and is
+  # `helm --wait`-safe (the pod becomes Ready only after migrations succeed).
+  # Set false ONLY if you run an already-up EXTERNAL database and prefer the
+  # pre-install hook Job (templates/migrations-job.yaml) semantics.
+  runAsInitContainer: true
+  # initContainer DB-readiness retry: total wait ≈ initRetries × initRetryDelaySeconds.
+  initRetries: 60
+  initRetryDelaySeconds: 5
+  # --- the settings below apply only to the opt-in hook Job (runAsInitContainer=false) ---
+  # The hook only needs database access (DATABASE_URL), not the Kubernetes API,
+  # so it runs under the namespace "default" ServiceAccount (no token). Set this
+  # to pin a PRE-EXISTING SA (IRSA / Workload Identity for IAM DB auth).
   serviceAccountName: ""
   # Hook weight orders the job before the workloads.
   hookWeight: "-5"
@@ -351,6 +359,10 @@ serviceAccount:
 # production prefer a managed DB (set this false + fill externalDatabase).
 postgresql:
   enabled: true
+  # Bundled Postgres now runs from the OFFICIAL image via an in-chart
+  # StatefulSet (templates/postgres.yaml) — no Bitnami subchart.
+  image: postgres:16
+  imagePullPolicy: IfNotPresent
   auth:
     username: nextlane
     # REQUIRED CHANGE. The chart FAILS FAST (refuses to render) when the bundled
@@ -377,6 +389,10 @@ postgresql:
 # replication for HA. Leave DISABLED for single-replica installs.
 redis:
   enabled: false
+  # Bundled Redis now runs from the OFFICIAL image via an in-chart Deployment
+  # (templates/redis.yaml) — no Bitnami subchart.
+  image: redis:7-alpine
+  imagePullPolicy: IfNotPresent
   architecture: standalone
   auth:
     enabled: false                 # set true + password for a hardened install

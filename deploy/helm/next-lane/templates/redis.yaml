@@ -1,0 +1,107 @@
+{{- if .Values.redis.enabled }}
+{{- /*
+  Bundled Redis — a plain, self-managed Deployment on the OFFICIAL `redis` image
+  (no Bitnami subchart). Single node; enables the Socket.io adapter + BullMQ
+  webhook queue. For HA/managed Redis set redis.enabled=false and use
+  externalRedis / secrets.redisUrl.
+
+  The Service is named "<release>-redis-master" to match next-lane.bundledRedisUrl.
+*/ -}}
+{{- $redis := .Values.redis -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-redis-master
+  labels:
+    {{- include "next-lane.componentLabels" (dict "ctx" . "component" "redis") | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: redis
+  selector:
+    {{- include "next-lane.componentSelectorLabels" (dict "ctx" . "component" "redis") | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-redis-master
+  labels:
+    {{- include "next-lane.componentLabels" (dict "ctx" . "component" "redis") | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "next-lane.componentSelectorLabels" (dict "ctx" . "component" "redis") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "next-lane.componentLabels" (dict "ctx" . "component" "redis") | nindent 8 }}
+    spec:
+      securityContext:
+        fsGroup: 999
+        runAsUser: 999
+        runAsGroup: 999
+      containers:
+        - name: redis
+          image: {{ $redis.image | default "redis:7-alpine" }}
+          imagePullPolicy: {{ $redis.imagePullPolicy | default "IfNotPresent" }}
+          {{- if $redis.auth.enabled }}
+          command: ["redis-server", "--requirepass", "$(REDIS_PASSWORD)", "--save", "60", "1"]
+          env:
+            - name: REDIS_PASSWORD
+              value: {{ $redis.auth.password | quote }}
+          {{- else }}
+          command: ["redis-server", "--save", "60", "1"]
+          {{- end }}
+          ports:
+            - name: redis
+              containerPort: 6379
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "redis-cli{{ if $redis.auth.enabled }} -a \"$REDIS_PASSWORD\"{{ end }} ping | grep -q PONG"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            tcpSocket:
+              port: redis
+            initialDelaySeconds: 20
+            periodSeconds: 15
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          {{- with $redis.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: data
+          {{- if $redis.master.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ .Release.Name }}-redis-data
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+{{- if $redis.master.persistence.enabled }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .Release.Name }}-redis-data
+  labels:
+    {{- include "next-lane.componentLabels" (dict "ctx" . "component" "redis") | nindent 4 }}
+spec:
+  accessModes: ["ReadWriteOnce"]
+  {{- with $redis.master.persistence.storageClass }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ $redis.master.persistence.size | default "2Gi" }}
+{{- end }}
+{{- end }}

@@ -25,21 +25,12 @@ keywords:
 maintainers:
   - name: Next Lane contributors
 
-# Optional datastore subcharts. Both are gated by *.enabled in values.yaml.
-# When disabled (recommended for production), point the app at an external /
-# managed PostgreSQL + Redis via values.externalDatabase / values.externalRedis.
-#
-# NOTE ON FETCHING DEPENDENCIES: `helm dependency update` requires network
-# access to the Bitnami chart repository. In air-gapped or egress-restricted
-# environments either (a) vendor the .tgz into charts/, or (b) leave
-# postgresql.enabled=false / redis.enabled=false and use external datastores —
-# in that mode the chart renders and installs with NO dependency fetch required.
-dependencies:
-  - name: postgresql
-    version: "16.x.x"
-    repository: https://charts.bitnami.com/bitnami
-    condition: postgresql.enabled
-  - name: redis
-    version: "20.x.x"
-    repository: https://charts.bitnami.com/bitnami
-    condition: redis.enabled
+# NO third-party chart dependencies. The optional bundled PostgreSQL and Redis
+# are plain in-chart manifests on the OFFICIAL postgres / redis images
+# (templates/postgres.yaml, templates/redis.yaml), each gated by *.enabled in
+# values.yaml. This removes the prior Bitnami subchart dependency — Bitnami
+# relicensed and moved its images off Docker Hub, which broke
+# `helm dependency update` and image pulls. The chart now installs with NO
+# `helm dependency update` / registry fetch required, air-gapped or not.
+# For production, set postgresql.enabled=false / redis.enabled=false and point
+# at managed datastores via values.externalDatabase / values.externalRedis.

@@ -1,10 +1,11 @@
-{{- if .Values.migrations.enabled }}
+{{- if and .Values.migrations.enabled (not .Values.migrations.runAsInitContainer) }}
 {{- /*
-  Pre-install / pre-upgrade hook that runs `prisma migrate deploy` BEFORE the
-  API Deployment is created/updated, so schema changes are applied exactly once
-  and never race multiple replicas. Uses the api image (Prisma client + schema
-  are baked in at apps/api). If this Job fails, the install/upgrade aborts and
-  the old API keeps running.
+  OPT-IN alternative to the API init-container (migrations.runAsInitContainer).
+  Pre-install / pre-upgrade hook that runs `prisma migrate deploy` BEFORE the API
+  Deployment. Suitable ONLY with an already-running EXTERNAL database — a Helm
+  pre-install hook runs before all normal resources, so it cannot reach the
+  bundled Postgres (which starts in the main phase). For the bundled DB, keep the
+  default init-container strategy (migrations.runAsInitContainer=true).
 */ -}}
 apiVersion: batch/v1
 kind: Job

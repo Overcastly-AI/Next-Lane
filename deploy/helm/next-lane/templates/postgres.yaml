@@ -1,0 +1,114 @@
+{{- if .Values.postgresql.enabled }}
+{{- /*
+  Bundled PostgreSQL — a plain, self-managed StatefulSet on the OFFICIAL
+  `postgres` image (no Bitnami subchart: Bitnami relicensed and moved its images
+  off Docker Hub, breaking `helm dependency update` and image pulls). Single
+  primary, suitable for self-hosted installs. For HA/managed Postgres, set
+  postgresql.enabled=false and point at externalDatabase / secrets.databaseUrl.
+
+  The Service is named "<release>-postgresql" to match next-lane.bundledDatabaseUrl.
+*/ -}}
+{{- $pg := .Values.postgresql -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-postgresql
+  labels:
+    {{- include "next-lane.componentLabels" (dict "ctx" . "component" "postgresql") | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: postgresql
+      port: 5432
+      targetPort: postgresql
+  selector:
+    {{- include "next-lane.componentSelectorLabels" (dict "ctx" . "component" "postgresql") | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ .Release.Name }}-postgresql
+  labels:
+    {{- include "next-lane.componentLabels" (dict "ctx" . "component" "postgresql") | nindent 4 }}
+spec:
+  serviceName: {{ .Release.Name }}-postgresql
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "next-lane.componentSelectorLabels" (dict "ctx" . "component" "postgresql") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "next-lane.componentLabels" (dict "ctx" . "component" "postgresql") | nindent 8 }}
+    spec:
+      securityContext:
+        # The official postgres image runs as uid 999 (postgres); fsGroup makes
+        # the mounted volume writable by that user.
+        fsGroup: 999
+        runAsUser: 999
+        runAsGroup: 999
+      containers:
+        - name: postgresql
+          image: {{ $pg.image | default "postgres:16" }}
+          imagePullPolicy: {{ $pg.imagePullPolicy | default "IfNotPresent" }}
+          ports:
+            - name: postgresql
+              containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              value: {{ $pg.auth.username | quote }}
+            - name: POSTGRES_DB
+              value: {{ $pg.auth.database | quote }}
+            - name: POSTGRES_PASSWORD
+              {{- if $pg.auth.existingSecret }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $pg.auth.existingSecret }}
+                  key: {{ $pg.auth.existingSecretPasswordKey | default "password" }}
+              {{- else }}
+              value: {{ $pg.auth.password | quote }}
+              {{- end }}
+            # Keep data in a subdirectory so the volume's lost+found doesn't
+            # collide with initdb on first boot.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\" -h 127.0.0.1"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -h 127.0.0.1"]
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 6
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+          {{- with $pg.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- if not $pg.primary.persistence.enabled }}
+      volumes:
+        - name: data
+          emptyDir: {}
+      {{- end }}
+  {{- if $pg.primary.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- with $pg.primary.persistence.storageClass }}
+        storageClassName: {{ . | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ $pg.primary.persistence.size | default "8Gi" }}
+  {{- end }}
+{{- end }}

@@ -35,6 +35,50 @@ spec:
       securityContext:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- if .Values.migrations.runAsInitContainer }}
+      initContainers:
+        # Run `prisma migrate deploy` as part of pod startup. This makes schema
+        # migration part of the normal install graph (no Helm hook), so it works
+        # with the bundled Postgres (a normal resource) and is `helm --wait`-safe:
+        # the pod only becomes Ready after migrations succeed. The retry loop
+        # tolerates the DB not being reachable yet (e.g. Postgres still starting).
+        # Prisma's advisory migration lock makes concurrent replica runs safe.
+        - name: migrate
+          image: {{ include "next-lane.apiImage" . }}
+          imagePullPolicy: {{ .Values.image.api.pullPolicy }}
+          {{- with .Values.api.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          command:
+            - sh
+            - -c
+            - |
+              echo "Applying database migrations (waiting for the database if needed)...";
+              attempt=0;
+              max={{ .Values.migrations.initRetries | default 60 }};
+              delay={{ .Values.migrations.initRetryDelaySeconds | default 5 }};
+              until npx prisma migrate deploy; do
+                attempt=$((attempt+1));
+                if [ "$attempt" -ge "$max" ]; then
+                  echo "Migrations did not succeed after $attempt attempts — giving up.";
+                  exit 1;
+                fi;
+                echo "Database not ready or migrate failed (attempt $attempt/$max) — retrying in ${delay}s...";
+                sleep "$delay";
+              done;
+              echo "Database migrations applied.";
+          envFrom:
+            - secretRef:
+                name: {{ include "next-lane.secretName" . }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          {{- with .Values.migrations.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- end }}
       containers:
         - name: api
           image: {{ include "next-lane.apiImage" . }}
@@ -43,9 +87,10 @@ spec:
           securityContext:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          # Start the compiled server directly. Migrations run in the pre-upgrade
-          # Job (templates/migrations-job.yaml), NOT here — so the read-only root
-          # FS + multi-replica rollout stay safe and migrations run exactly once.
+          # Start the compiled server directly. Migrations run in the `migrate`
+          # initContainer above (migrations.runAsInitContainer, default), or in
+          # the opt-in pre-install hook Job (templates/migrations-job.yaml) when
+          # that strategy is selected — never in this container.
           command: ["node", "dist/main.js"]
           ports:
             - name: http
