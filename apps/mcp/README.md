@@ -138,6 +138,8 @@ Then run `claude mcp list` to confirm it is connected.
 | `delete_workflow_transition`    | Delete a transition.                                               |
 | `assign_board_workflow`         | Attach a workflow to a board (`workflowId` null detaches).        |
 | `create_issue`                  | Create an issue (`projectId`, `title`, …).                         |
+| `update_issue`                  | Partial-update an issue: `parentId` (re-parent / null to detach), title, type, description, priority, assignee, sprint, component, story points, due date. |
+| `set_issue_parent`              | Shortcut to set/clear an issue's parent (`issueId`, `parentId` or null). |
 | `move_issue`                    | Move an issue to a status (`boardId` applies enforced workflow).  |
 | `link_issues`                   | Link two issues (`issueId`, `target`, `type` BLOCKS/BLOCKED_BY/RELATES_TO/DUPLICATES/DUPLICATED_BY/CLONES). |
 | `unlink_issues`                 | Remove an issue link by id (`linkId`).                            |

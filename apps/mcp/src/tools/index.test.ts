@@ -49,6 +49,8 @@ describe('tool registry', () => {
       'delete_workflow_transition',
       'assign_board_workflow',
       'create_issue',
+      'update_issue',
+      'set_issue_parent',
       'move_issue',
       'link_issues',
       'unlink_issues',
@@ -132,6 +134,31 @@ describe('tool registry', () => {
       statusId: 's3',
       boardId: 'b1',
     });
+  });
+
+  it('update_issue PATCHes only the provided fields (parentId set), dropping undefined', async () => {
+    const { client, fetchImpl } = clientWith(200, { id: 'i1' });
+    await tool('update_issue').handler(
+      { issueId: 'i1', parentId: 'epic-9', title: 'Renamed' },
+      client,
+    );
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toBe('http://localhost:4000/api/issues/i1');
+    expect((init as RequestInit).method).toBe('PATCH');
+    // undefined fields are dropped by JSON.stringify; null/explicit values kept.
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({
+      parentId: 'epic-9',
+      title: 'Renamed',
+    });
+  });
+
+  it('set_issue_parent PATCHes parentId:null to detach', async () => {
+    const { client, fetchImpl } = clientWith(200, { id: 'i1', parentId: null });
+    await tool('set_issue_parent').handler({ issueId: 'i1', parentId: null }, client);
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toBe('http://localhost:4000/api/issues/i1');
+    expect((init as RequestInit).method).toBe('PATCH');
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({ parentId: null });
   });
 
   it('link_issues POSTs target + type to /issues/:id/links', async () => {

@@ -452,6 +452,95 @@ const writeTools: ToolDef[] = [
         .then(jsonResult),
   },
   {
+    name: 'update_issue',
+    group: 'write',
+    description:
+      'Update fields on an existing issue. Only the fields you pass are changed ' +
+      '(partial update). Use parentId to re-parent an issue (e.g. attach a ' +
+      'subtask to an epic/story) or pass parentId:null to unparent it; the same ' +
+      'null-to-clear rule applies to assigneeId, sprintId, componentId, ' +
+      'storyPoints, and dueDate. To change status use move_issue (it can apply ' +
+      'workflow rules); to link issues use link_issues.',
+    inputSchema: {
+      issueId: z.string().describe('Issue id to update.'),
+      parentId: z
+        .string()
+        .nullable()
+        .optional()
+        .describe(
+          'New parent issue id, or null to detach from the current parent. Omit to leave unchanged.',
+        ),
+      title: z.string().min(1).max(300).optional(),
+      type: issueTypeEnum.optional(),
+      description: z.string().max(50000).optional(),
+      priority: priorityEnum.optional(),
+      assigneeId: z
+        .string()
+        .nullable()
+        .optional()
+        .describe('Assignee user id, or null to unassign.'),
+      sprintId: z
+        .string()
+        .nullable()
+        .optional()
+        .describe('Sprint id, or null to remove from sprint.'),
+      componentId: z
+        .string()
+        .nullable()
+        .optional()
+        .describe('Component id, or null to clear.'),
+      storyPoints: z
+        .number()
+        .int()
+        .min(0)
+        .max(999)
+        .nullable()
+        .optional()
+        .describe('Story points, or null to clear.'),
+      dueDate: z
+        .string()
+        .nullable()
+        .optional()
+        .describe('ISO-8601 date string, or null to clear.'),
+    },
+    handler: (args, client) =>
+      client
+        .patch(`/issues/${args.issueId}`, {
+          parentId: args.parentId,
+          title: args.title,
+          type: args.type,
+          description: args.description,
+          priority: args.priority,
+          assigneeId: args.assigneeId,
+          sprintId: args.sprintId,
+          componentId: args.componentId,
+          storyPoints: args.storyPoints,
+          dueDate: args.dueDate,
+        })
+        .then(jsonResult),
+  },
+  {
+    name: 'set_issue_parent',
+    group: 'write',
+    description:
+      'Set or clear an issue’s parent — a focused shortcut for the most common ' +
+      're-parenting case (e.g. nest a subtask under a story, or a story under ' +
+      'an epic). Pass parentId to attach, or parentId:null to detach. Both ' +
+      'issues must be in the same project. (update_issue can do this too, ' +
+      'alongside other fields.)',
+    inputSchema: {
+      issueId: z.string().describe('The child issue id to re-parent.'),
+      parentId: z
+        .string()
+        .nullable()
+        .describe('The new parent issue id, or null to remove the parent.'),
+    },
+    handler: (args, client) =>
+      client
+        .patch(`/issues/${args.issueId}`, { parentId: args.parentId })
+        .then(jsonResult),
+  },
+  {
     name: 'move_issue',
     group: 'write',
     description:
