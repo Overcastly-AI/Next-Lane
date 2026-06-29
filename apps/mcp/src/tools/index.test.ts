@@ -40,6 +40,7 @@ describe('tool registry', () => {
       'list_issues',
       'get_issue',
       'list_issue_links',
+      'list_labels',
       'create_workflow',
       'create_workflow_from_template',
       'update_workflow',
@@ -54,6 +55,9 @@ describe('tool registry', () => {
       'move_issue',
       'link_issues',
       'unlink_issues',
+      'create_label',
+      'add_issue_label',
+      'remove_issue_label',
     ];
     for (const name of expected) expect(names).toContain(name);
     // No duplicate names.
@@ -191,6 +195,37 @@ describe('tool registry', () => {
     const [url, init] = fetchImpl.mock.calls[0];
     expect(url).toBe('http://localhost:4000/api/issue-links/lk1');
     expect((init as RequestInit).method).toBe('DELETE');
+  });
+
+  it('add_issue_label POSTs labelId to /issues/:id/labels', async () => {
+    const { client, fetchImpl } = clientWith(201, { id: 'lbl1' });
+    await tool('add_issue_label').handler({ issueId: 'i1', labelId: 'lbl1' }, client);
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toBe('http://localhost:4000/api/issues/i1/labels');
+    expect((init as RequestInit).method).toBe('POST');
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({ labelId: 'lbl1' });
+  });
+
+  it('remove_issue_label DELETEs /issues/:id/labels/:labelId', async () => {
+    const { client, fetchImpl } = clientWith(200, null);
+    await tool('remove_issue_label').handler({ issueId: 'i1', labelId: 'lbl1' }, client);
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toBe('http://localhost:4000/api/issues/i1/labels/lbl1');
+    expect((init as RequestInit).method).toBe('DELETE');
+  });
+
+  it('create_label POSTs name + color to /projects/:id/labels', async () => {
+    const { client, fetchImpl } = clientWith(201, { id: 'lbl2' });
+    await tool('create_label').handler(
+      { projectId: 'p1', name: 'bug', color: '#ef4444' },
+      client,
+    );
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toBe('http://localhost:4000/api/projects/p1/labels');
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({
+      name: 'bug',
+      color: '#ef4444',
+    });
   });
 
   it('handlers propagate API errors so the server wrapper can mark isError', async () => {

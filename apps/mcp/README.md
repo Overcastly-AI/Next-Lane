@@ -124,6 +124,7 @@ Then run `claude mcp list` to confirm it is connected.
 | `list_issues`       | List issues with optional project/sprint/assignee/type/status/`q` filters + cursor paging. |
 | `get_issue`         | Get one issue by id (`issueId`).                                        |
 | `list_issue_links`  | List an issue's typed links/dependencies (`issueId`); includes link ids. |
+| `list_labels`       | List a project's labels with ids + colors (`projectId`).               |
 
 ### Write (SDLC)
 
@@ -143,6 +144,9 @@ Then run `claude mcp list` to confirm it is connected.
 | `move_issue`                    | Move an issue to a status (`boardId` applies enforced workflow).  |
 | `link_issues`                   | Link two issues (`issueId`, `target`, `type` BLOCKS/BLOCKED_BY/RELATES_TO/DUPLICATES/DUPLICATED_BY/CLONES). |
 | `unlink_issues`                 | Remove an issue link by id (`linkId`).                            |
+| `create_label`                  | Create a project label (`projectId`, `name`, optional hex `color`). |
+| `add_issue_label`               | Attach a label to an issue (`issueId`, `labelId`).                |
+| `remove_issue_label`            | Remove a label from an issue (`issueId`, `labelId`).             |
 
 ## Development
 

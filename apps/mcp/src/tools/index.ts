@@ -242,6 +242,18 @@ const readTools: ToolDef[] = [
     handler: (args, client) =>
       client.get(`/issues/${args.issueId}/links`).then(jsonResult),
   },
+  {
+    name: 'list_labels',
+    group: 'read',
+    description:
+      'List the labels defined in a project, with their ids and colors. Use ' +
+      'this to find a labelId for add_issue_label / remove_issue_label.',
+    inputSchema: {
+      projectId: z.string().describe('Project id to list labels for.'),
+    },
+    handler: (args, client) =>
+      client.get(`/projects/${args.projectId}/labels`).then(jsonResult),
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -596,6 +608,58 @@ const writeTools: ToolDef[] = [
     },
     handler: (args, client) =>
       client.delete(`/issue-links/${args.linkId}`).then(jsonResult),
+  },
+  {
+    name: 'create_label',
+    group: 'write',
+    description:
+      'Create a label in a project (name + optional hex color). Returns the new ' +
+      'label including its id, which add_issue_label needs. Requires MEMBER+.',
+    inputSchema: {
+      projectId: z.string().describe('Project the label belongs to.'),
+      name: z.string().min(1).max(50).describe('Label name.'),
+      color: z
+        .string()
+        .regex(/^#[0-9a-fA-F]{6}$/)
+        .optional()
+        .describe('Optional 6-digit hex color, e.g. #ef4444.'),
+    },
+    handler: (args, client) =>
+      client
+        .post(`/projects/${args.projectId}/labels`, {
+          name: args.name,
+          color: args.color,
+        })
+        .then(jsonResult),
+  },
+  {
+    name: 'add_issue_label',
+    group: 'write',
+    description:
+      'Attach an existing label to an issue. Find the labelId with list_labels ' +
+      '(or create_label first). Requires MEMBER+.',
+    inputSchema: {
+      issueId: z.string().describe('Issue to label.'),
+      labelId: z.string().describe('Label id to attach.'),
+    },
+    handler: (args, client) =>
+      client
+        .post(`/issues/${args.issueId}/labels`, { labelId: args.labelId })
+        .then(jsonResult),
+  },
+  {
+    name: 'remove_issue_label',
+    group: 'write',
+    description:
+      'Remove a label from an issue (issueId + labelId). Requires MEMBER+.',
+    inputSchema: {
+      issueId: z.string().describe('Issue to unlabel.'),
+      labelId: z.string().describe('Label id to remove.'),
+    },
+    handler: (args, client) =>
+      client
+        .delete(`/issues/${args.issueId}/labels/${args.labelId}`)
+        .then(jsonResult),
   },
 ];
 
