@@ -310,9 +310,11 @@ test.describe('Inline card status transition (mobile)', () => {
     const menu = page.getByTestId('card-status-menu').first();
     await expect(menu).toBeVisible({ timeout: 5_000 });
 
-    // Click the "Done" option by its text within the status menu to avoid
-    // potential data-testid conflicts from other open pickers.
-    const doneOption = menu.getByText(/^done$/i).first();
+    // Click the "Done" option by its STABLE per-status testid (not by text):
+    // realtime re-renders can shift the menu layout mid-interaction, so a text
+    // locator's hit-test may land on an adjacent row. The id-scoped locator
+    // re-resolves to the exact element at click time.
+    const doneOption = menu.getByTestId(`card-status-option-${done!.id}`);
     await expect(doneOption).toBeVisible({ timeout: 3_000 });
     await doneOption.click();
     await expect(page.getByTestId('card-status-menu')).toHaveCount(0, {
@@ -324,12 +326,22 @@ test.describe('Inline card status transition (mobile)', () => {
       timeout: 5_000,
     });
 
-    // Verify via API.
-    const res = await request.get(`${API_URL}/api/issues/${issue.id}`, {
-      headers: { Authorization: `Bearer ${ctx.token}` },
-    });
-    const body = (await res.json()) as { statusId: string };
-    expect(body.statusId).toBe(done!.id);
+    // Verify via API. The move is fired asynchronously when the option is
+    // clicked (the menu closes synchronously, before the PATCH resolves), so
+    // poll until the server reflects the new status rather than reading once
+    // and racing the in-flight mutation.
+    await expect
+      .poll(
+        async () => {
+          const res = await request.get(`${API_URL}/api/issues/${issue.id}`, {
+            headers: { Authorization: `Bearer ${ctx.token}` },
+          });
+          const body = (await res.json()) as { statusId: string };
+          return body.statusId;
+        },
+        { timeout: 5_000 },
+      )
+      .toBe(done!.id);
   });
 
   test('VIEWER sees no status picker on mobile', async ({ page, request }) => {
