@@ -97,10 +97,14 @@ current build** (see [`docs/ROADMAP.md`](./docs/ROADMAP.md) for status and what'
 | **Reports** | Burndown · velocity · cumulative-flow diagram (CFD) · roadmap / timeline view · personal analytics · team pulse analytics |
 | **Find** | **Full-text search** (Postgres `tsvector`) · ⌘K command palette · cross-project search · multi-field filtering |
 | **Collaboration** | Comments & activity history · realtime updates (Socket.io) · in-app notifications & @mentions · "My Work" + Team Pulse dashboards |
+| **Workflows (SDLC)** | **Configurable workflows** — per-project enforcement **and reusable named workflows assigned per board** · transition graph with **visual node/edge editor** · gates (require assignee/description/field/link/no-open-blockers) · seed from templates (simple / kanban / scrum / bug-triage) |
+| **Agent-native (MCP)** | **MCP server** (`apps/mcp`) — read **and write** workflows, boards, statuses, issues from Claude Desktop, Claude Code, or any MCP client over a PAT (18 tools). Edit a board's SDLC straight from your agent. See [`apps/mcp/README.md`](./apps/mcp/README.md) |
+| **Estimation & tracking** | Story points · **original estimate + work logs** (time spent vs estimate rollup) · **checklists** (sub-items + progress) · **WIP limits** per column |
 | **Automation** | **Glass Box engine** — trigger → condition → action rules · NLQL-based conditions · unlimited runs · full **run log** (audit trail per execution) |
 | **Rituals** | **Planning poker** (real-time estimation via Socket.io) · **async standups** (per-member responses + team digest) |
+| **Organize** | **Components** (with default assignee) · **versions / releases** (M:N, lifecycle) · **issue templates** (create-from-template) |
 | **Personal** | **Personal boards** (private Kanban) · personal analytics · shared board links |
-| **Bulk & export** | **Bulk edit** (multi-select in Backlog + Triage; update assignee/status/priority/labels/sprint) · **CSV export** |
+| **Bulk & import/export** | **Bulk edit** (multi-select in Backlog + Triage) · **CSV export** · **CSV import** (dry-run preview) |
 | **Workspace** | **Branding** — custom name, accent color, logo · workspace audit log |
 | **Admin & security** | Roles & permissions (Admin / Member / Viewer) · email/password auth (JWT) · personal API tokens (PATs) · password reset over SMTP · HMAC-signed outbound webhooks (with SSRF guard) |
 | **Ops & deploy** | One-command Docker Compose · **Helm chart + Kustomize** for Kubernetes · GHCR multi-arch image builds · structured JSON logs · health/readiness probes · CI (typecheck + build + unit tests) + e2e suite |
