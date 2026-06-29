@@ -78,4 +78,13 @@ export class CreateIssueDto {
   @IsOptional()
   @IsObject()
   customFields?: Record<string, CustomFieldValue>;
+
+  /**
+   * Original time estimate in minutes. Must be >= 0 when provided. Null clears
+   * any existing estimate.
+   */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  originalEstimateMinutes?: number;
 }

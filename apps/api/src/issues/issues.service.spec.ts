@@ -1938,3 +1938,303 @@ describe('IssuesService.create — componentId validation', () => {
     expect(callData.assigneeId).toBeUndefined();
   });
 });
+
+// ---------------------------------------------------------------------------
+// originalEstimateMinutes — persisted on create and update
+// ---------------------------------------------------------------------------
+
+/** Minimal helpers reusing the component-test infrastructure. */
+function makeEstimateIssueRow(overrides: Partial<{
+  originalEstimateMinutes: number | null;
+  workLogs: Array<{ minutes: number }>;
+}> = {}) {
+  return {
+    ...makeCompIssueRow(),
+    originalEstimateMinutes: overrides.originalEstimateMinutes ?? null,
+    workLogs: overrides.workLogs ?? [],
+    // Extra relations required by listInclude:
+    labels: [],
+    versions: [],
+    checklistItems: [],
+  };
+}
+
+function makeEstimatePrisma(opts: {
+  createReturn?: ReturnType<typeof makeEstimateIssueRow>;
+  updateReturn?: ReturnType<typeof makeEstimateIssueRow>;
+  existingIssue?: { originalEstimateMinutes?: number | null };
+} = {}) {
+  const createReturn = opts.createReturn ?? makeEstimateIssueRow();
+  const updateReturn = opts.updateReturn ?? makeEstimateIssueRow();
+  const existingIssue = opts.existingIssue ?? { originalEstimateMinutes: null };
+
+  const tx = {
+    project: { update: jest.fn().mockResolvedValue({ issueSeq: 1 }) },
+    status: { findFirst: jest.fn().mockResolvedValue({ id: 'status-1', category: 'TODO' }) },
+    issue: {
+      findFirst: jest.fn().mockResolvedValue(null),
+      create: jest.fn().mockResolvedValue(createReturn),
+      update: jest.fn().mockResolvedValue(updateReturn),
+    },
+    activityLog: { create: jest.fn().mockResolvedValue({}) , createMany: jest.fn().mockResolvedValue({}) },
+    $queryRaw: jest.fn().mockResolvedValue([{ cycle_detected: false }]),
+  };
+
+  const prisma = {
+    project: {
+      findUnique: jest.fn().mockResolvedValue({
+        id: COMP_PROJECT,
+        workspaceId: COMP_WORKSPACE,
+        workspace: { id: COMP_WORKSPACE },
+      }),
+    },
+    membership: {
+      findUnique: jest.fn().mockResolvedValue({ role: Role.MEMBER }),
+    },
+    component: {
+      findUnique: jest.fn().mockResolvedValue(null),
+    },
+    issue: {
+      findUnique: jest.fn().mockResolvedValue({
+        id: 'issue-existing',
+        projectId: COMP_PROJECT,
+        type: 'TASK',
+        assigneeId: null,
+        statusId: 'status-1',
+        priority: 'MEDIUM',
+        ...existingIssue,
+      }),
+    },
+    user: {
+      findUnique: jest.fn().mockResolvedValue({ name: 'Actor' }),
+    },
+    $transaction: jest.fn((cb: (t: typeof tx) => unknown) => cb(tx)),
+    _tx: tx,
+  };
+
+  return { prisma, tx };
+}
+
+describe('IssuesService.create — originalEstimateMinutes', () => {
+  it('persists originalEstimateMinutes when provided', async () => {
+    const { prisma, tx } = makeEstimatePrisma({
+      createReturn: makeEstimateIssueRow({ originalEstimateMinutes: 120 }),
+    });
+    const service = new IssuesService(
+      prisma as unknown as PrismaService,
+      { emitToProject: jest.fn() } as unknown as RealtimeService,
+      {} as NotificationsService,
+      webhooksMock,
+      noOpCustomFields,
+      noOpEventEmitter,
+      noOpWorkflow,
+    );
+
+    const result = await service.create(COMP_USER, {
+      projectId: COMP_PROJECT,
+      title: 'Issue with estimate',
+      originalEstimateMinutes: 120,
+    });
+
+    expect(tx.issue.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ originalEstimateMinutes: 120 }),
+      }),
+    );
+    expect(result.originalEstimateMinutes).toBe(120);
+  });
+
+  it('does not set originalEstimateMinutes when not provided', async () => {
+    const { prisma, tx } = makeEstimatePrisma();
+    const service = new IssuesService(
+      prisma as unknown as PrismaService,
+      { emitToProject: jest.fn() } as unknown as RealtimeService,
+      {} as NotificationsService,
+      webhooksMock,
+      noOpCustomFields,
+      noOpEventEmitter,
+      noOpWorkflow,
+    );
+
+    await service.create(COMP_USER, { projectId: COMP_PROJECT, title: 'No estimate' });
+
+    const createData = tx.issue.create.mock.calls[0][0].data;
+    expect(createData.originalEstimateMinutes).toBeUndefined();
+  });
+});
+
+const noOpNotifications = {
+  notifyAssigned: jest.fn().mockResolvedValue(undefined),
+  notifyWatchersUpdated: jest.fn().mockResolvedValue(undefined),
+} as unknown as NotificationsService;
+
+describe('IssuesService.update — originalEstimateMinutes', () => {
+  it('persists originalEstimateMinutes when provided in the update DTO', async () => {
+    const { prisma, tx } = makeEstimatePrisma({
+      updateReturn: makeEstimateIssueRow({ originalEstimateMinutes: 60 }),
+    });
+    const service = new IssuesService(
+      prisma as unknown as PrismaService,
+      { emitToProject: jest.fn() } as unknown as RealtimeService,
+      noOpNotifications,
+      webhooksMock,
+      noOpCustomFields,
+      noOpEventEmitter,
+      noOpWorkflow,
+    );
+
+    const result = await service.update(COMP_USER, 'issue-existing', {
+      originalEstimateMinutes: 60,
+    });
+
+    expect(tx.issue.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ originalEstimateMinutes: 60 }),
+      }),
+    );
+    expect(result.originalEstimateMinutes).toBe(60);
+  });
+
+  it('clears originalEstimateMinutes when null is provided', async () => {
+    const { prisma, tx } = makeEstimatePrisma({
+      updateReturn: makeEstimateIssueRow({ originalEstimateMinutes: null }),
+      existingIssue: { originalEstimateMinutes: 120 },
+    });
+    const service = new IssuesService(
+      prisma as unknown as PrismaService,
+      { emitToProject: jest.fn() } as unknown as RealtimeService,
+      noOpNotifications,
+      webhooksMock,
+      noOpCustomFields,
+      noOpEventEmitter,
+      noOpWorkflow,
+    );
+
+    await service.update(COMP_USER, 'issue-existing', {
+      originalEstimateMinutes: null,
+    });
+
+    expect(tx.issue.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ originalEstimateMinutes: null }),
+      }),
+    );
+  });
+
+  it('does not touch originalEstimateMinutes when not in the update DTO', async () => {
+    const { prisma, tx } = makeEstimatePrisma();
+    const service = new IssuesService(
+      prisma as unknown as PrismaService,
+      { emitToProject: jest.fn() } as unknown as RealtimeService,
+      noOpNotifications,
+      webhooksMock,
+      noOpCustomFields,
+      noOpEventEmitter,
+      noOpWorkflow,
+    );
+
+    await service.update(COMP_USER, 'issue-existing', { title: 'Just a title change' });
+
+    const updateData = tx.issue.update.mock.calls[0][0].data;
+    expect(updateData.originalEstimateMinutes).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// timeSpentMinutes rollup — mapper derives sum from workLogs array
+// ---------------------------------------------------------------------------
+describe('IssuesService — timeSpentMinutes rollup via workLogs include', () => {
+  it('toIssueDto sums workLogs.minutes when workLogs are included', async () => {
+    // Import the mapper directly — this is a mapper-unit test, not a service test.
+    const { toIssueDto } = await import('./issue.mapper');
+
+    const issueWithLogs = {
+      id: 'i-1',
+      number: 1,
+      projectId: 'proj-1',
+      type: 'TASK',
+      title: 'With work logs',
+      description: null,
+      statusId: 's-1',
+      assigneeId: null,
+      reporterId: null,
+      priority: 'MEDIUM',
+      storyPoints: null,
+      parentId: null,
+      sprintId: null,
+      dueDate: null,
+      rank: 'a0',
+      componentId: null,
+      originalEstimateMinutes: 120,
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+      project: { key: 'NL' },
+      workLogs: [{ minutes: 30 }, { minutes: 45 }, { minutes: 15 }],
+    };
+
+    const dto = toIssueDto(issueWithLogs);
+    expect(dto.timeSpentMinutes).toBe(90);
+    expect(dto.originalEstimateMinutes).toBe(120);
+  });
+
+  it('toIssueDto returns timeSpentMinutes=0 when workLogs is an empty array', async () => {
+    const { toIssueDto } = await import('./issue.mapper');
+
+    const issueNoLogs = {
+      id: 'i-2',
+      number: 2,
+      projectId: 'proj-1',
+      type: 'BUG',
+      title: 'No logs',
+      description: null,
+      statusId: 's-1',
+      assigneeId: null,
+      reporterId: null,
+      priority: 'LOW',
+      storyPoints: null,
+      parentId: null,
+      sprintId: null,
+      dueDate: null,
+      rank: 'a1',
+      componentId: null,
+      originalEstimateMinutes: null,
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+      project: { key: 'NL' },
+      workLogs: [],
+    };
+
+    const dto = toIssueDto(issueNoLogs);
+    expect(dto.timeSpentMinutes).toBe(0);
+    expect(dto.originalEstimateMinutes).toBeNull();
+  });
+
+  it('toIssueDto does NOT include timeSpentMinutes when workLogs is absent', async () => {
+    const { toIssueDto } = await import('./issue.mapper');
+
+    const issueNoRelation = {
+      id: 'i-3',
+      number: 3,
+      projectId: 'proj-1',
+      type: 'TASK',
+      title: 'No workLogs relation',
+      description: null,
+      statusId: 's-1',
+      assigneeId: null,
+      reporterId: null,
+      priority: 'MEDIUM',
+      storyPoints: null,
+      parentId: null,
+      sprintId: null,
+      dueDate: null,
+      rank: 'a2',
+      componentId: null,
+      originalEstimateMinutes: null,
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+    };
+
+    const dto = toIssueDto(issueNoRelation);
+    expect(dto.timeSpentMinutes).toBeUndefined();
+  });
+});

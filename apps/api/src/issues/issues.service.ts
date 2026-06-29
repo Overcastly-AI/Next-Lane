@@ -117,6 +117,8 @@ const listInclude = {
   _count: { select: { comments: true } },
   component: { select: { id: true, name: true } },
   checklistItems: { orderBy: { order: 'asc' as const } },
+  // Work-log minutes for the timeSpentMinutes rollup (select only what the mapper needs).
+  workLogs: { select: { minutes: true } },
 } satisfies Prisma.IssueInclude;
 
 @Injectable()
@@ -228,6 +230,9 @@ export class IssuesService {
           dueDate: dto.dueDate ? new Date(dto.dueDate) : undefined,
           rank,
           componentId: dto.componentId ?? null,
+          ...(dto.originalEstimateMinutes !== undefined
+            ? { originalEstimateMinutes: dto.originalEstimateMinutes }
+            : {}),
           ...(normalizedCustomFields !== undefined
             ? { customFields: normalizedCustomFields as Prisma.InputJsonValue }
             : {}),
@@ -853,6 +858,10 @@ export class IssuesService {
           // componentId: undefined = no-op; null = clear; string = set new component
           ...(dto.componentId !== undefined
             ? { componentId: dto.componentId }
+            : {}),
+          // originalEstimateMinutes: undefined = no-op; null = clear; number = set
+          ...(dto.originalEstimateMinutes !== undefined
+            ? { originalEstimateMinutes: dto.originalEstimateMinutes }
             : {}),
           // customFields: undefined = no-op; merged object = replace stored JSON
           ...(mergedCustomFields !== undefined

@@ -19,6 +19,7 @@ export class UpdateIssueDto extends PartialType(
     'storyPoints',
     'dueDate',
     'componentId',
+    'originalEstimateMinutes',
   ] as const),
 ) {
   @IsOptional()
@@ -64,4 +65,14 @@ export class UpdateIssueDto extends PartialType(
   @IsOptional()
   @IsObject()
   customFields?: Record<string, CustomFieldValue>;
+
+  /**
+   * Original time estimate in minutes. null clears any existing estimate. Must
+   * be >= 0 when a non-null value is provided.
+   */
+  @IsOptional()
+  @ValidateIf((_o, v) => v !== null)
+  @IsInt()
+  @Min(0)
+  originalEstimateMinutes?: number | null;
 }

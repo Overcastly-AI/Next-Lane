@@ -63,6 +63,7 @@ import { CreateIssueModal } from '@/components/board/CreateIssueModal';
 import { IssueDetailDrawer } from '@/components/issue/IssueDetailDrawer';
 import { PresenceAvatars } from '@/components/board/PresenceAvatars';
 import { BoardSwitcher } from '@/components/board/BoardSwitcher';
+import { BoardWorkflowSelector } from '@/components/board/BoardWorkflowSelector';
 import { CardColorLegend } from '@/components/board/CardColorLegend';
 import { useToast } from '@/components/ui/Toast';
 import { errorMessage } from '@/lib/errorMessage';
@@ -565,6 +566,7 @@ export function BoardPage() {
         statusId: targetStatusId,
         beforeId: beforeIssue?.id ?? null,
         afterId: afterIssue?.id ?? null,
+        boardId: selectedBoardId ?? undefined,
       },
       {
         onError: (err) =>
@@ -589,6 +591,8 @@ export function BoardPage() {
         statusId,
         beforeId: lastInColumn?.id ?? null,
         afterId: null,
+        // Pass the board id so the server can check the named workflow for this board.
+        boardId: selectedBoardId ?? undefined,
       },
       {
         onError: (err) =>
@@ -715,6 +719,16 @@ export function BoardPage() {
             openColorsTab={openColorsTab}
             onColorsTabOpened={() => setOpenColorsTab(false)}
           />
+
+          {/* Board workflow assignment */}
+          {selectedBoardId && (
+            <BoardWorkflowSelector
+              projectId={projectId}
+              boardId={selectedBoardId}
+              currentWorkflowId={board?.board.workflowId}
+              isAdmin={myRole === 'ADMIN'}
+            />
+          )}
 
           {/* Search */}
           <div className="relative">

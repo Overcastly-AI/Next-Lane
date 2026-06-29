@@ -346,6 +346,12 @@ export interface MoveIssueInput {
   statusId: string;
   beforeId?: string | null;
   afterId?: string | null;
+  /**
+   * The specific board the user is viewing. Passed to the server so it can
+   * resolve the board's named workflow for enforcement. Optional for backward
+   * compat (e.g. triage / drawer moves without a board context).
+   */
+  boardId?: string;
 }
 
 interface MoveContext {
@@ -372,10 +378,10 @@ export function useMoveIssue(projectId: string, boardId?: string) {
   const boardKey = boardId ? qk.boardView(boardId) : qk.board(projectId);
 
   return useMutation<IssueDto, Error, MoveIssueInput, MoveContext>({
-    mutationFn: ({ id, statusId, beforeId, afterId }) =>
+    mutationFn: ({ id, statusId, beforeId, afterId, boardId: moveBoardId }) =>
       request<IssueDto>(`/issues/${id}/move`, {
         method: 'POST',
-        body: { statusId, beforeId, afterId },
+        body: { statusId, beforeId, afterId, ...(moveBoardId ? { boardId: moveBoardId } : {}) },
       }),
     onMutate: async (vars) => {
       await qc.cancelQueries({ queryKey: boardKey });

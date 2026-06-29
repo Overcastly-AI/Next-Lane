@@ -16,6 +16,7 @@ import { CustomFieldsSection } from '@/components/settings/CustomFieldsSection';
 import { ComponentsSection } from '@/components/settings/ComponentsSection';
 import { VersionsSection } from '@/components/settings/VersionsSection';
 import { WorkflowSection } from '@/components/settings/WorkflowSection';
+import { WorkflowsManager } from '@/components/settings/WorkflowsManager';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Textarea } from '@/components/ui/Textarea';
@@ -153,6 +154,12 @@ export function SettingsPage() {
         <CustomFieldsSection projectId={projectId} editable={editable} isAdmin={isAdmin} />
 
         <WorkflowSection
+          projectId={projectId}
+          statuses={statusesForWorkflow}
+          isAdmin={isAdmin}
+        />
+
+        <WorkflowsManager
           projectId={projectId}
           statuses={statusesForWorkflow}
           isAdmin={isAdmin}
