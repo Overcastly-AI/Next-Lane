@@ -34,6 +34,8 @@ export interface IssueWithRelations {
   dueDate: Date | null;
   rank: string;
   componentId: string | null;
+  /** Original estimate in minutes; null if not set. */
+  originalEstimateMinutes?: number | null;
   /** Raw JSONB from Prisma — typed as Prisma.JsonValue but we treat it as Record. */
   customFields?: Prisma.JsonValue | null;
   createdAt: Date;
@@ -90,6 +92,8 @@ export interface IssueWithRelations {
     order: number;
     createdAt: Date;
   }>;
+  /** Work log entries for time-spent rollup. Present when loaded with workLogs. */
+  workLogs?: Array<{ minutes: number }>;
 }
 
 /** Subset of an Issue row sufficient to build an IssueRefDto. */
@@ -150,6 +154,7 @@ export function toIssueDto(issue: IssueWithRelations): IssueDto {
     dueDate: issue.dueDate ? issue.dueDate.toISOString() : null,
     rank: issue.rank,
     componentId: issue.componentId,
+    originalEstimateMinutes: issue.originalEstimateMinutes ?? null,
     createdAt: issue.createdAt.toISOString(),
     updatedAt: issue.updatedAt.toISOString(),
   };
@@ -195,6 +200,11 @@ export function toIssueDto(issue: IssueWithRelations): IssueDto {
       done: checklist.filter((i) => i.done).length,
       total: checklist.length,
     };
+  }
+
+  // Time spent rollup — sum of all WorkLog.minutes when the relation was loaded.
+  if (issue.workLogs !== undefined) {
+    dto.timeSpentMinutes = issue.workLogs.reduce((sum, wl) => sum + wl.minutes, 0);
   }
 
   return dto;

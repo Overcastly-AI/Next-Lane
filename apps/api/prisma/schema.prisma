@@ -9,6 +9,9 @@
 // add_activitylog_status_index — applied 2026-06-28.
 // add_workspace_branding — applied 2026-06-28.
 // add_configurable_workflows — applied 2026-06-28.
+// add_per_board_workflows — applied 2026-06-29.
+// add_time_tracking — applied 2026-06-29.
+// add_issue_templates — applied 2026-06-29.
 // Deferred to feature slices (do not add here without a feature branch):
 //   - ScmConnection / IssueExternalLink / pgvector embedding column (Phase 9 / Phase 6)
 
@@ -188,6 +191,12 @@ model User {
 
   // Automation engine
   automationRulesCreated AutomationRule[]
+
+  // Time tracking
+  workLogs WorkLog[]
+
+  // Issue templates (default assignee back-relation)
+  issueTemplatesAsDefaultAssignee IssueTemplate[] @relation("templateDefaultAssignee")
 }
 
 // Personal API Token (PAT) for scripting / CI access to the REST API.
@@ -314,6 +323,12 @@ model Project {
   // Configurable workflows
   workflowTransitions    WorkflowTransition[]
 
+  // Named workflow definitions (per-board workflows)
+  workflows              Workflow[]
+
+  // Issue templates
+  issueTemplates         IssueTemplate[]
+
   @@unique([workspaceId, key])
   @@index([workspaceId])
   @@index([leadId])
@@ -377,13 +392,19 @@ model Board {
   order         Int       @default(0)
   isDefault     Boolean   @default(false)
   savedFilterId String?
+  /// Optional named Workflow this board enforces. Null = use the project-level
+  /// legacy workflowEnforced + WorkflowTransition path (backward-compat).
+  workflowId    String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
   project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
   savedFilter SavedFilter? @relation("boardFilter", fields: [savedFilterId], references: [id], onDelete: SetNull)
+  /// Named workflow associated with this board; null = project-level enforcement.
+  workflow    Workflow?    @relation(fields: [workflowId], references: [id], onDelete: SetNull)
 
   @@index([projectId])
+  @@index([workflowId])
 }
 
 // ---------------------------------------------------------------------------
@@ -510,9 +531,10 @@ model Component {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
-  project         Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  defaultAssignee User?   @relation("componentDefaultAssignee", fields: [defaultAssigneeId], references: [id], onDelete: SetNull)
+  project         Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  defaultAssignee User?           @relation("componentDefaultAssignee", fields: [defaultAssigneeId], references: [id], onDelete: SetNull)
   issues          Issue[]
+  issueTemplates  IssueTemplate[] @relation("templateComponent")
 
   @@unique([projectId, name])
   @@index([projectId])
@@ -563,6 +585,8 @@ model Issue {
   // Example: { "cldefinition_abc": "S1", "cldefinition_xyz": 42 }
   customFields Json?
   componentId  String?
+  /// Original time estimate in minutes; null = not estimated.
+  originalEstimateMinutes Int?
   // Generated tsvector for full-text search; managed entirely by Postgres
   // (GENERATED ALWAYS AS ... STORED). Prisma cannot read/write this column
   // directly — all FTS queries go through $queryRaw. The GIN index
@@ -605,6 +629,9 @@ model Issue {
 
   // Checklist items
   checklistItems        ChecklistItem[]
+
+  // Time tracking
+  workLogs              WorkLog[]
 
   @@unique([projectId, number])
   @@index([projectId, statusId])
@@ -1199,21 +1226,111 @@ model WorkflowTransition {
   /// allowed. Empty array = no gates (transition is always permitted when selected).
   /// See model-level comment for the supported gate type vocabulary.
   gates        Json       @default("[]")
+  /// Null = legacy project-level transition (workflowId path not used).
+  /// Non-null = belongs to a named Workflow; enforced via that workflow.
+  workflowId   String?
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
-  project    Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project    Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
   /// The status this transition originates FROM. Null = any/initial.
-  fromStatus Status? @relation("transitionFromStatus", fields: [fromStatusId], references: [id], onDelete: Cascade)
+  fromStatus Status?   @relation("transitionFromStatus", fields: [fromStatusId], references: [id], onDelete: Cascade)
   /// The status this transition leads INTO. Always required.
-  toStatus   Status  @relation("transitionToStatus", fields: [toStatusId], references: [id], onDelete: Cascade)
+  toStatus   Status    @relation("transitionToStatus", fields: [toStatusId], references: [id], onDelete: Cascade)
+  /// Named workflow this transition belongs to; null = legacy project-level row.
+  workflow   Workflow? @relation(fields: [workflowId], references: [id], onDelete: Cascade)
 
   /// Fast "what transitions are legal for this issue type in this project?" query.
   @@index([projectId, issueType])
   /// Fast "what transitions can leave this specific status?" query.
   @@index([projectId, fromStatusId])
-  /// Prevents exact duplicate transitions. Postgres 16 NULLS NOT DISTINCT
-  /// ensures NULL fromStatusId / NULL issueType rows collide correctly.
+  /// Workflow-scoped transitions index.
+  @@index([workflowId])
+  /// Prevents exact duplicate legacy transitions (null workflowId path).
+  /// Postgres 16 NULLS NOT DISTINCT ensures NULL rows collide correctly.
   @@unique([projectId, fromStatusId, toStatusId, issueType])
+  /// Prevents exact duplicate transitions within a named workflow.
+  /// Postgres 16 NULLS NOT DISTINCT applies here too.
+  @@unique([workflowId, fromStatusId, toStatusId, issueType])
+}
+
+// ---------------------------------------------------------------------------
+// Named Workflows (per-board workflow definitions — Feature 1)
+// ---------------------------------------------------------------------------
+
+/// A named, project-scoped workflow definition. Boards can opt into a specific
+/// Workflow rather than the legacy project-level workflowEnforced flag.
+/// Null workflowId on a Board = legacy path (backward-compatible).
+model Workflow {
+  id          String   @id @default(cuid())
+  projectId   String
+  name        String
+  description String?
+  /// When true, only transitions defined in this workflow's transitions are
+  /// legal for boards that reference it. When false, enforcement is relaxed.
+  enforced    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project     Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  transitions WorkflowTransition[]
+  boards      Board[]
+
+  @@unique([projectId, name])
+  @@index([projectId])
+}
+
+// ---------------------------------------------------------------------------
+// Time Tracking — WorkLog (Feature 2)
+// ---------------------------------------------------------------------------
+
+/// A time-log entry recording how many minutes a user spent on an issue.
+/// `workedAt` is when the work was actually performed (defaults to log time).
+/// `note` is an optional free-text description of what was done.
+model WorkLog {
+  id        String   @id @default(cuid())
+  issueId   String
+  userId    String
+  /// Duration in minutes.
+  minutes   Int
+  note      String?
+  workedAt  DateTime @default(now())
+  createdAt DateTime @default(now())
+
+  issue Issue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([issueId])
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// Issue Templates (Feature 3)
+// ---------------------------------------------------------------------------
+
+/// A project-scoped template for pre-populating new issue fields.
+/// `labelIds` is a JSONB array of Label.id strings (M:N without a join table,
+/// since templates are rarely queried by label — they are write-path helpers).
+model IssueTemplate {
+  id                  String     @id @default(cuid())
+  projectId           String
+  name                String
+  issueType           IssueType  @default(TASK)
+  titleTemplate       String?
+  descriptionTemplate String?
+  priority            Priority?
+  defaultAssigneeId   String?
+  componentId         String?
+  /// JSON array of Label.id strings to apply when creating from this template.
+  labelIds            Json       @default("[]")
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+
+  project         Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  defaultAssignee User?      @relation("templateDefaultAssignee", fields: [defaultAssigneeId], references: [id], onDelete: SetNull)
+  component       Component? @relation("templateComponent", fields: [componentId], references: [id], onDelete: SetNull)
+
+  @@unique([projectId, name])
+  @@index([projectId])
 }
 

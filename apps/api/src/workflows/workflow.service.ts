@@ -17,7 +17,7 @@ import {
 } from './dto/workflow.dto';
 import { IssueType, Role, StatusCategory } from '@next-lane/shared';
 import type {
-  WorkflowDto,
+  ProjectWorkflowConfigDto,
   WorkflowGateDto,
   WorkflowTransitionDto,
 } from '@next-lane/shared';
@@ -75,7 +75,7 @@ export class WorkflowService {
    * Returns the full workflow for a project (enforced flag + transitions).
    * Authorization: any project member (VIEWER+).
    */
-  async getWorkflow(userId: string, projectId: string): Promise<WorkflowDto> {
+  async getWorkflow(userId: string, projectId: string): Promise<ProjectWorkflowConfigDto> {
     const project = await assertProjectMember(this.prisma, userId, projectId);
 
     const transitions = await this.prisma.workflowTransition.findMany({
@@ -110,7 +110,7 @@ export class WorkflowService {
     userId: string,
     projectId: string,
     dto: PatchWorkflowDto,
-  ): Promise<WorkflowDto> {
+  ): Promise<ProjectWorkflowConfigDto> {
     await assertProjectRole(this.prisma, userId, projectId, Role.ADMIN);
 
     await this.prisma.project.update({

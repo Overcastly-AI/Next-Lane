@@ -2,8 +2,8 @@
  * Workflow API hooks — Phase 3 frontend slice.
  *
  * REST contract:
- *   GET  /projects/:projectId/workflow          → WorkflowDto
- *   PATCH /projects/:projectId/workflow          → WorkflowDto  (ADMIN)
+ *   GET  /projects/:projectId/workflow          → ProjectWorkflowConfigDto
+ *   PATCH /projects/:projectId/workflow         → ProjectWorkflowConfigDto  (ADMIN)
  *   POST /projects/:projectId/workflow/transitions → WorkflowTransitionDto (ADMIN)
  *   PATCH /workflow/transitions/:id              → WorkflowTransitionDto (ADMIN)
  *   DELETE /workflow/transitions/:id             → 204           (ADMIN)
@@ -11,7 +11,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
-  WorkflowDto,
+  ProjectWorkflowConfigDto,
   WorkflowGateDto,
   WorkflowTransitionDto,
   IssueType,
@@ -34,7 +34,7 @@ export const workflowKeys = {
 export function useWorkflow(projectId: string) {
   return useQuery({
     queryKey: workflowKeys.workflow(projectId),
-    queryFn: () => request<WorkflowDto>(`/projects/${projectId}/workflow`),
+    queryFn: () => request<ProjectWorkflowConfigDto>(`/projects/${projectId}/workflow`),
     enabled: !!projectId,
   });
 }
@@ -70,9 +70,9 @@ export interface UpdateWorkflowTransitionInput {
 /** Toggle workflow enforcement on/off. */
 export function useSetWorkflowEnforced(projectId: string) {
   const qc = useQueryClient();
-  return useMutation<WorkflowDto, Error, SetWorkflowEnforcedInput>({
+  return useMutation<ProjectWorkflowConfigDto, Error, SetWorkflowEnforcedInput>({
     mutationFn: (input) =>
-      request<WorkflowDto>(`/projects/${projectId}/workflow`, {
+      request<ProjectWorkflowConfigDto>(`/projects/${projectId}/workflow`, {
         method: 'PATCH',
         body: input,
       }),

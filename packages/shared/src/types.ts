@@ -151,6 +151,16 @@ export interface IssueDto {
    * Only present when `checklist` is loaded.
    */
   checklistProgress?: { done: number; total: number };
+  /**
+   * Original time estimate in minutes; null when not estimated.
+   * Maps directly to the `Issue.originalEstimateMinutes` DB column.
+   */
+  originalEstimateMinutes: number | null;
+  /**
+   * Total minutes logged against this issue (sum of WorkLog.minutes).
+   * Present when the issue is loaded with work logs; 0 when no logs exist.
+   */
+  timeSpentMinutes?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -345,6 +355,11 @@ export interface BoardSummaryDto {
   /** NLQL filter saved on the board (null = no saved filter). */
   filterQuery: string | null;
   colorRules: BoardColorRule[];
+  /**
+   * ID of the named Workflow this board enforces, or null to fall back to the
+   * project-level legacy workflowEnforced flag.
+   */
+  workflowId?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -1152,6 +1167,8 @@ export interface WorkflowGateDto {
  * One allowed transition in a project's workflow graph. `fromStatusId === null`
  * means "from any status" (also used for the create→initial transition).
  * `issueType === null` means the transition applies to every issue type.
+ * `workflowId` is null for legacy project-level transitions; non-null for
+ * transitions that belong to a named Workflow.
  */
 export interface WorkflowTransitionDto {
   id: string;
@@ -1161,17 +1178,143 @@ export interface WorkflowTransitionDto {
   issueType: IssueType | null;
   name: string | null;
   gates: WorkflowGateDto[];
+  /** null = legacy project-level transition; non-null = belongs to a named Workflow. */
+  workflowId?: string | null;
   createdAt: string;
   updatedAt: string;
 }
 
 /**
- * The full workflow for a project: the enforcement flag plus the transition
- * graph. When `enforced` is false, every transition is permitted regardless of
- * the list (backward-compatible default).
+ * The project-level workflow configuration: the enforcement flag plus the
+ * legacy transition graph. When `enforced` is false, every transition is
+ * permitted regardless of the list (backward-compatible default).
+ *
+ * @deprecated Prefer the named-workflow `WorkflowDto` for new work. This
+ *   alias is kept for backward compatibility with the existing
+ *   GET/PATCH /projects/:id/workflow endpoints.
  */
-export interface WorkflowDto {
+export type ProjectWorkflowConfigDto = {
   projectId: string;
   enforced: boolean;
   transitions: WorkflowTransitionDto[];
+};
+
+/**
+ * A named, project-scoped workflow definition (the new Workflow model).
+ * Boards can be associated with a named workflow instead of the legacy
+ * project-level `workflowEnforced` flag. `transitionCount` and `boardCount`
+ * are optional rollup fields present on list responses.
+ */
+export interface WorkflowDto {
+  id: string;
+  projectId: string;
+  name: string;
+  description: string | null;
+  enforced: boolean;
+  /** Number of transitions defined in this workflow (optional, list responses). */
+  transitionCount?: number;
+  /** Number of boards currently using this workflow (optional, list responses). */
+  boardCount?: number;
+  createdAt: string;
+}
+
+/** Body for POST /projects/:projectId/workflows */
+export interface CreateWorkflowDto {
+  name: string;
+  description?: string;
+  enforced?: boolean;
+}
+
+/** Body for PATCH /workflows/:id */
+export interface UpdateWorkflowDto {
+  name?: string;
+  description?: string;
+  enforced?: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Time Tracking — WorkLog
+// ---------------------------------------------------------------------------
+
+/**
+ * A logged time entry for an issue. `workedAt` is when the work was performed;
+ * `note` is an optional free-text summary of what was done.
+ */
+export interface WorkLogDto {
+  id: string;
+  issueId: string;
+  userId: string;
+  /** Resolved user who logged the time. */
+  user: UserDto;
+  /** Duration in minutes. */
+  minutes: number;
+  note: string | null;
+  /** ISO 8601 datetime: when the work was performed. */
+  workedAt: string;
+  /** ISO 8601 datetime: when the log entry was created. */
+  createdAt: string;
+}
+
+/** Body for POST /issues/:issueId/worklogs */
+export interface CreateWorkLogDto {
+  /** Duration in minutes (required, must be > 0). */
+  minutes: number;
+  note?: string;
+  /** ISO 8601 datetime; defaults to now when omitted. */
+  workedAt?: string;
+}
+
+/** Body for PATCH /worklogs/:id */
+export interface UpdateWorkLogDto {
+  minutes?: number;
+  note?: string;
+  /** ISO 8601 datetime. */
+  workedAt?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Issue Templates
+// ---------------------------------------------------------------------------
+
+/**
+ * A project-scoped template for pre-populating new issue fields.
+ * `labelIds` is the list of Label IDs to apply when creating from this template.
+ */
+export interface IssueTemplateDto {
+  id: string;
+  projectId: string;
+  name: string;
+  issueType: IssueType;
+  titleTemplate: string | null;
+  descriptionTemplate: string | null;
+  priority: Priority | null;
+  defaultAssignee: UserDto | null;
+  componentId: string | null;
+  /** Label IDs to apply when creating an issue from this template. */
+  labelIds: string[];
+  createdAt: string;
+}
+
+/** Body for POST /projects/:projectId/issue-templates */
+export interface CreateIssueTemplateDto {
+  name: string;
+  issueType?: IssueType;
+  titleTemplate?: string;
+  descriptionTemplate?: string;
+  priority?: Priority;
+  defaultAssigneeId?: string | null;
+  componentId?: string | null;
+  labelIds?: string[];
+}
+
+/** Body for PATCH /issue-templates/:id */
+export interface UpdateIssueTemplateDto {
+  name?: string;
+  issueType?: IssueType;
+  titleTemplate?: string | null;
+  descriptionTemplate?: string | null;
+  priority?: Priority | null;
+  defaultAssigneeId?: string | null;
+  componentId?: string | null;
+  labelIds?: string[];
 }

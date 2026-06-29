@@ -403,6 +403,7 @@ describe('PersonalBoardsService', () => {
       dueDate: null,
       rank: 'a0',
       componentId: null,
+      originalEstimateMinutes: null,
       createdAt: new Date('2026-01-01').toISOString(),
       updatedAt: new Date('2026-01-01').toISOString(),
     };
