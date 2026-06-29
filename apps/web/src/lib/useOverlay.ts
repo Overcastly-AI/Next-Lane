@@ -19,6 +19,14 @@ export interface UseOverlayOptions {
 }
 
 /**
+ * Stack of currently-open overlays (most-recently-opened last). Used so that
+ * Escape and the Tab focus-trap only act on the TOP overlay — otherwise a
+ * lightbox opened over a drawer would have BOTH respond to Escape, closing the
+ * drawer underneath too.
+ */
+const overlayStack: symbol[] = [];
+
+/**
  * Shared overlay behavior for modal-style surfaces (Modal, drawers):
  * - Locks body scroll while open and restores it on close.
  * - Closes on Escape.
@@ -43,7 +51,15 @@ export function useOverlay({ open, onClose, containerRef }: UseOverlayOptions): 
     const container = containerRef.current;
     const previouslyFocused = document.activeElement as HTMLElement | null;
 
+    // Register this overlay as the topmost.
+    const overlayId = Symbol('overlay');
+    overlayStack.push(overlayId);
+    const isTopmost = () => overlayStack[overlayStack.length - 1] === overlayId;
+
     const onKey = (e: KeyboardEvent) => {
+      // Only the topmost overlay reacts to Escape / Tab, so a lightbox over a
+      // drawer doesn't also close the drawer beneath it.
+      if (!isTopmost()) return;
       if (e.key === 'Escape') {
         e.stopPropagation();
         onCloseRef.current();
@@ -85,6 +101,8 @@ export function useOverlay({ open, onClose, containerRef }: UseOverlayOptions): 
 
     return () => {
       document.removeEventListener('keydown', onKey);
+      const idx = overlayStack.indexOf(overlayId);
+      if (idx >= 0) overlayStack.splice(idx, 1);
       document.body.style.overflow = prevOverflow;
       // Restore focus to whatever was focused before the overlay opened.
       previouslyFocused?.focus?.();

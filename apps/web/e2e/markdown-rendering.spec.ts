@@ -308,13 +308,60 @@ test.describe('markdown rendering', () => {
     // The mermaid block becomes an inline SVG (lazy-loaded — allow time).
     const diagram = rendered.getByTestId('mermaid-diagram');
     await expect(diagram).toBeVisible({ timeout: 15000 });
-    await expect(diagram.locator('svg')).toBeVisible({ timeout: 15000 });
+    // Scope to the clickable region so the "Enlarge" affordance icon (also an
+    // <svg>) doesn't make the locator ambiguous.
+    const diagramSvg = diagram.getByRole('button', { name: /enlarge diagram/i }).locator('svg');
+    await expect(diagramSvg).toBeVisible({ timeout: 15000 });
     // A node label from the diagram should appear in the rendered SVG text.
     await expect(diagram).toContainText('Ship');
 
     // The surrounding markdown still renders normally.
     await expect(rendered.locator('h2')).toContainText('Architecture');
     await expect(rendered).toContainText('End of diagram.');
+  });
+
+  test('clicking a diagram opens the zoom view instead of the description editor', async ({
+    page,
+    request,
+  }) => {
+    const ctx = await setupIsolatedProject(page, request, {
+      label: 'md-mermaid-zoom',
+      projectName: 'Markdown Mermaid Zoom Test',
+    });
+
+    const mdContent = ['```mermaid', 'graph TD', '  A[Start] --> B[Done]', '```'].join('\n');
+    const issue = await createIssue(request, ctx.token, ctx.project.id, {
+      title: 'Mermaid zoom issue',
+    });
+    await request.patch(`${API_URL}/api/issues/${issue.id}`, {
+      headers: { Authorization: `Bearer ${ctx.token}` },
+      data: { description: mdContent },
+    });
+
+    await page.goto(`/projects/${ctx.project.id}/board`);
+    await expect(page.getByText('Mermaid zoom issue')).toBeVisible({ timeout: 10000 });
+    await openIssueDrawer(page, 'Mermaid zoom issue');
+
+    const rendered = page.getByTestId('description-rendered');
+    const diagram = rendered.getByTestId('mermaid-diagram');
+    await expect(diagram).toBeVisible({ timeout: 15000 });
+
+    // Click the diagram → zoom lightbox opens; the description editor must NOT.
+    await diagram.getByRole('button', { name: /enlarge diagram/i }).click();
+    const canvas = page.getByTestId('mermaid-zoom-canvas');
+    await expect(canvas).toBeVisible({ timeout: 5000 });
+    await expect(canvas.locator('svg')).toBeVisible();
+    await expect(page.getByTestId('description-editor')).toHaveCount(0);
+
+    // Zoom controls adjust the level.
+    await expect(page.getByTestId('mermaid-zoom-level')).toHaveText('100%');
+    await page.getByRole('button', { name: /zoom in/i }).click();
+    await expect(page.getByTestId('mermaid-zoom-level')).toHaveText('125%');
+
+    // Escape closes the lightbox and returns to the rendered description.
+    await page.keyboard.press('Escape');
+    await expect(canvas).toBeHidden({ timeout: 5000 });
+    await expect(diagram).toBeVisible();
   });
 
   test('invalid mermaid syntax falls back to the source, not a crash', async ({
