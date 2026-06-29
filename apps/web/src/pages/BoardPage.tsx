@@ -66,6 +66,7 @@ import { PresenceAvatars } from '@/components/board/PresenceAvatars';
 import { BoardSwitcher } from '@/components/board/BoardSwitcher';
 import { BoardWorkflowSelector } from '@/components/board/BoardWorkflowSelector';
 import { CardColorLegend } from '@/components/board/CardColorLegend';
+import { ImportCsvModal } from '@/components/ImportCsvModal';
 import { useToast } from '@/components/ui/Toast';
 import { errorMessage } from '@/lib/errorMessage';
 import { cn } from '@/lib/cn';
@@ -325,6 +326,7 @@ export function BoardPage() {
   // ── Modals ────────────────────────────────────────────────────────────────
 
   const [createForStatus, setCreateForStatus] = useState<string | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
   const [activeIssue, setActiveIssue] = useState<IssueDto | null>(null);
 
   const openIssueId = searchParams.get('issue');
@@ -887,6 +889,30 @@ export function BoardPage() {
             Export CSV
           </Button>
           {editable && (
+            <Button
+              variant="secondary"
+              size="md"
+              data-testid="import-csv"
+              aria-label="Import issues from CSV"
+              onClick={() => setImportOpen(true)}
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                aria-hidden="true"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+                <polyline strokeLinecap="round" strokeLinejoin="round" points="7 14 12 9 17 14" />
+                <line x1="12" y1="9" x2="12" y2="21" strokeLinecap="round" />
+              </svg>
+              Import CSV
+            </Button>
+          )}
+          {editable && (
             <>
               <FromTemplateMenu
                 projectId={projectId}
@@ -1005,6 +1031,13 @@ export function BoardPage() {
           viewerRole={myRole ?? undefined}
           onClose={closeIssue}
           onOpenIssue={openIssue}
+        />
+      )}
+
+      {importOpen && (
+        <ImportCsvModal
+          projectId={projectId}
+          onClose={() => setImportOpen(false)}
         />
       )}
     </Shell>

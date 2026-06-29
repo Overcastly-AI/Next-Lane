@@ -46,6 +46,7 @@ import {
   BulkSelectAll,
 } from '@/components/issue/BulkActionBar';
 import { useExportCsv } from '@/api/export';
+import { ImportCsvModal } from '@/components/ImportCsvModal';
 import { errorMessage } from '@/lib/errorMessage';
 import { cn } from '@/lib/cn';
 
@@ -74,6 +75,7 @@ export function BacklogPage() {
   });
 
   const [createOpen, setCreateOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [openIssueId, setOpenIssueId] = useState<string | null>(null);
   const [completeTarget, setCompleteTarget] = useState<SprintDto | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<SprintDto | null>(null);
@@ -292,6 +294,31 @@ export function BacklogPage() {
               )}
               Export CSV
             </Button>
+            {/* Import is a write operation — only available to editors. */}
+            {editable && (
+              <Button
+                variant="secondary"
+                size="md"
+                data-testid="import-csv"
+                aria-label="Import issues from CSV"
+                onClick={() => setImportOpen(true)}
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  aria-hidden="true"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+                  <polyline strokeLinecap="round" strokeLinejoin="round" points="7 14 12 9 17 14" />
+                  <line x1="12" y1="9" x2="12" y2="21" strokeLinecap="round" />
+                </svg>
+                Import CSV
+              </Button>
+            )}
             {editable ? (
               <>
                 <Link
@@ -415,6 +442,13 @@ export function BacklogPage() {
         <CreateSprintModal
           projectId={projectId}
           onClose={() => setCreateOpen(false)}
+        />
+      )}
+
+      {importOpen && (
+        <ImportCsvModal
+          projectId={projectId}
+          onClose={() => setImportOpen(false)}
         />
       )}
 
