@@ -38,6 +38,7 @@
     "bullmq": "^5.79.1",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
+    "csv-parse": "^7.0.0",
     "file-type": "16",
     "helmet": "^8.2.0",
     "ioredis": "^5.11.1",

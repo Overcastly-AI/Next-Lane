@@ -114,8 +114,9 @@ test.describe('Per-board named workflows — Settings (desktop)', () => {
     await expect(page.getByTestId('board-workflow-badge')).toBeVisible({
       timeout: 8_000,
     });
+    // The badge names the active workflow (icon + name, optional ENFORCED chip).
     await expect(page.getByTestId('board-workflow-badge')).toContainText(
-      /workflow:/i,
+      workflow.name,
     );
   });
 

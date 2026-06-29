@@ -1273,6 +1273,35 @@ export interface UpdateWorkLogDto {
 }
 
 // ---------------------------------------------------------------------------
+// CSV Import
+// ---------------------------------------------------------------------------
+
+/**
+ * One row-level error from a CSV import. `row` is 1-based (header = row 0,
+ * first data row = row 1).
+ */
+export interface ImportIssueRowError {
+  row: number;
+  message: string;
+}
+
+/**
+ * Response from `POST /projects/:projectId/issues/import`.
+ *
+ * `created`  — number of issues successfully created.
+ * `skipped`  — number of rows skipped (header or fully empty rows).
+ * `errors`   — per-row validation / resolution errors. Invalid rows are NOT
+ *              imported; the import continues with the remaining valid rows.
+ * `dryRun`   — reflects whether the request was a dry run (no writes).
+ */
+export interface ImportIssuesResultDto {
+  created: number;
+  skipped: number;
+  errors: ImportIssueRowError[];
+  dryRun: boolean;
+}
+
+// ---------------------------------------------------------------------------
 // Issue Templates
 // ---------------------------------------------------------------------------
 
