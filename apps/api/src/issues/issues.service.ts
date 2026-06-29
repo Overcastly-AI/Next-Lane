@@ -1002,6 +1002,56 @@ export class IssuesService {
     return movedRank as string;
   }
 
+  /**
+   * Board-context-aware enforcement helper for the `move` path.
+   *
+   * Enforcement resolution order:
+   *  1. Automation bypass (opts.automated === true) → skip all enforcement.
+   *  2. Board context with a non-null workflowId where workflow.enforced = true
+   *     → enforce using the named workflow's transitions (board-specific path).
+   *  3. Fall back to the existing project-level enforceTransition (unchanged).
+   *
+   * No board context (boardId absent or board has no workflowId) → always falls
+   * through to the legacy project-level enforcement path.
+   */
+  private async enforceMove(
+    issueId: string,
+    targetStatusId: string,
+    boardId: string | undefined,
+    opts?: MutationOpts,
+  ): Promise<void> {
+    // Automation bypass applies to all paths.
+    if (opts?.automated) return;
+
+    if (boardId) {
+      // Load the board to check for a named workflow assignment.
+      const board = await this.prisma.board.findUnique({
+        where: { id: boardId },
+        select: {
+          workflowId: true,
+          workflow: { select: { enforced: true } },
+        },
+      });
+
+      if (board?.workflowId && board.workflow?.enforced) {
+        // Board-specific enforcement: use the named workflow's transitions.
+        return this.workflowSvc.enforceTransitionForWorkflow(
+          board.workflowId,
+          issueId,
+          targetStatusId,
+        );
+      }
+      // Board exists but no workflow (or workflow not enforced) → fall through
+      // to project-level enforcement below.
+    }
+
+    // Legacy project-level enforcement path (unchanged behavior).
+    await this.workflowSvc.enforceTransition(issueId, targetStatusId, {
+      automated: opts?.automated,
+      workflowEnforced: opts?.workflowEnforced,
+    });
+  }
+
   async move(
     userId: string,
     id: string,
@@ -1030,7 +1080,7 @@ export class IssuesService {
     // Enforce workflow gate BEFORE applying the status change.
     // Automation-applied moves bypass enforcement (opts.automated === true).
     if (statusChanged) {
-      await this.workflowSvc.enforceTransition(id, dto.statusId, { automated: opts?.automated });
+      await this.enforceMove(id, dto.statusId, dto.boardId, opts);
     }
 
     // Read neighbor ranks, compute the new rank, and persist inside a single

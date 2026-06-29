@@ -21,11 +21,13 @@ const noOpCustomFields = {
 
 /**
  * Minimal stub satisfying the WorkflowService dependency in IssuesService.
- * enforceTransition is a no-op by default so existing tests are unaffected.
+ * enforceTransition and enforceTransitionForWorkflow are no-ops by default
+ * so existing tests are unaffected.
  */
 const noOpWorkflow = {
   enforceTransition: jest.fn().mockResolvedValue(undefined),
   isEnforcementEnabled: jest.fn().mockResolvedValue(false),
+  enforceTransitionForWorkflow: jest.fn().mockResolvedValue(undefined),
 } as unknown as WorkflowService;
 
 const webhooksMock = { dispatch: jest.fn() } as unknown as WebhooksService;
@@ -356,6 +358,7 @@ function makeMovePrisma() {
     membership: { findUnique: jest.fn() },
     status: { findUnique: jest.fn() },
     activityLog: { create: jest.fn() },
+    board: { findUnique: jest.fn() },
     // Run the callback synchronously with the tx client.
     $transaction: jest.fn((cb: (t: typeof tx) => unknown) => cb(tx)),
   };

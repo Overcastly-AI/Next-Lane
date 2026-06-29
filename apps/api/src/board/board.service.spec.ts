@@ -30,6 +30,9 @@ function makePrisma() {
       delete: jest.fn(),
       count: jest.fn(),
     },
+    workflow: {
+      findUnique: jest.fn(),
+    },
   } as unknown as PrismaService & {
     status: { findMany: jest.Mock };
     issue: { findMany: jest.Mock };
@@ -42,6 +45,9 @@ function makePrisma() {
       update: jest.Mock;
       delete: jest.Mock;
       count: jest.Mock;
+    };
+    workflow: {
+      findUnique: jest.Mock;
     };
   };
 }

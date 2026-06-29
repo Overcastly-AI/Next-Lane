@@ -12,6 +12,16 @@ export class MoveIssueDto {
   @IsOptional()
   @IsString()
   afterId?: string;
+
+  /**
+   * Optional board context for board-aware workflow enforcement.
+   * When provided and the board has an enforced named workflow,
+   * that workflow's transitions are checked instead of the project-level path.
+   * If absent (e.g. triage / API / drawer), the legacy project-level path is used.
+   */
+  @IsOptional()
+  @IsString()
+  boardId?: string;
 }
 
 export class ListIssuesQueryDto {

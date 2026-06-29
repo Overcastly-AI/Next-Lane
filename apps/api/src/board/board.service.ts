@@ -18,6 +18,7 @@ import type { BoardDto, BoardSummaryDto, BoardColorRule, ValidateCustomFieldDef 
 import type { CreateBoardDto } from './dto/create-board.dto';
 import type { UpdateBoardDto } from './dto/update-board.dto';
 
+
 /**
  * Maximum number of issues returned in a single board response.
  * Prevents OOM on projects with thousands of issues. When the cap is hit,
@@ -45,6 +46,7 @@ interface BoardRow {
   order: number;
   filterQuery: string | null;
   colorRules: Prisma.JsonValue;
+  workflowId?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -76,6 +78,7 @@ export function toBoardSummaryDto(board: BoardRow): BoardSummaryDto {
     order: board.order,
     filterQuery: board.filterQuery,
     colorRules: coerceColorRules(board.colorRules),
+    workflowId: board.workflowId ?? null,
     createdAt: board.createdAt.toISOString(),
     updatedAt: board.updatedAt.toISOString(),
   };
@@ -278,6 +281,19 @@ export class BoardService {
     }
     // ── End NLQL validation ──────────────────────────────────────────────────
 
+    // ── Validate workflowId when provided ────────────────────────────────────
+    if (dto.workflowId !== undefined && dto.workflowId !== null) {
+      const wf = await this.prisma.workflow.findUnique({
+        where: { id: dto.workflowId },
+        select: { projectId: true },
+      });
+      if (!wf || wf.projectId !== existing.projectId) {
+        throw new BadRequestException(
+          'workflowId does not belong to this project',
+        );
+      }
+    }
+
     const data: Prisma.BoardUpdateInput = {};
     if (dto.name !== undefined) data.name = dto.name;
     if (dto.type !== undefined) data.type = dto.type;
@@ -285,6 +301,14 @@ export class BoardService {
     if (dto.colorRules !== undefined) {
       // Store as plain JSON — Prisma accepts any JsonValue
       data.colorRules = dto.colorRules as unknown as Prisma.InputJsonValue;
+    }
+    if (dto.workflowId !== undefined) {
+      // null clears the workflow assignment; string sets it via relation.
+      if (dto.workflowId === null) {
+        data.workflow = { disconnect: true };
+      } else {
+        data.workflow = { connect: { id: dto.workflowId } };
+      }
     }
 
     const board = await this.prisma.board.update({

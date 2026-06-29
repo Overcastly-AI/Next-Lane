@@ -55,4 +55,14 @@ export class UpdateBoardDto {
   @ValidateNested({ each: true })
   @Type(() => BoardColorRuleDto)
   colorRules?: BoardColorRuleDto[];
+
+  /**
+   * ID of the named Workflow to assign to this board, or null to clear.
+   * When set to a non-null value the workflow must belong to the board's project.
+   * null = fall back to the project-level legacy workflowEnforced enforcement.
+   */
+  @IsOptional()
+  @ValidateIf((_o, v) => v !== null)
+  @IsString()
+  workflowId?: string | null;
 }

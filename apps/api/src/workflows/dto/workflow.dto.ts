@@ -4,6 +4,8 @@ import {
   IsEnum,
   IsOptional,
   IsString,
+  MaxLength,
+  MinLength,
   ValidateIf,
   ValidateNested,
 } from 'class-validator';
@@ -75,6 +77,65 @@ export class CreateWorkflowTransitionDto {
   @ValidateNested({ each: true })
   @Type(() => WorkflowGateDtoClass)
   gates?: WorkflowGateDtoClass[];
+}
+
+// ---------------------------------------------------------------------------
+// Named workflow entity DTOs (new per-board workflow feature)
+// ---------------------------------------------------------------------------
+
+/** POST /projects/:projectId/workflows */
+export class CreateNamedWorkflowDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(120)
+  name!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  description?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  enforced?: boolean;
+}
+
+/** PATCH /workflows/:id */
+export class UpdateNamedWorkflowDto {
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(120)
+  name?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  description?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  enforced?: boolean;
+}
+
+/**
+ * POST /projects/:projectId/workflows/from-template
+ *
+ * template:
+ *  'simple'     – linear TODO→IN_PROGRESS→DONE only
+ *  'kanban'     – any status → any other status (fully permissive)
+ *  'scrum'      – linear forward + back-transitions (IN_PROGRESS↔TODO, etc.)
+ *  'bug-triage' – linear + a reopen path from DONE back to TODO
+ */
+export class CreateWorkflowFromTemplateDto {
+  @IsEnum(['simple', 'kanban', 'scrum', 'bug-triage'])
+  template!: 'simple' | 'kanban' | 'scrum' | 'bug-triage';
+
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(120)
+  name?: string;
 }
 
 // ---------------------------------------------------------------------------

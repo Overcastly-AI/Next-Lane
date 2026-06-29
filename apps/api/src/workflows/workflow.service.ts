@@ -12,6 +12,9 @@ import {
 } from '../common/membership.util';
 import {
   CreateWorkflowTransitionDto,
+  CreateNamedWorkflowDto,
+  UpdateNamedWorkflowDto,
+  CreateWorkflowFromTemplateDto,
   PatchWorkflowDto,
   PatchWorkflowTransitionDto,
 } from './dto/workflow.dto';
@@ -20,6 +23,7 @@ import type {
   ProjectWorkflowConfigDto,
   WorkflowGateDto,
   WorkflowTransitionDto,
+  WorkflowDto,
 } from '@next-lane/shared';
 
 // ---------------------------------------------------------------------------
@@ -29,11 +33,22 @@ import type {
 interface WorkflowTransitionRow {
   id: string;
   projectId: string;
+  workflowId?: string | null;
   fromStatusId: string | null;
   toStatusId: string;
   issueType: string | null;
   name: string | null;
   gates: Prisma.JsonValue;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface NamedWorkflowRow {
+  id: string;
+  projectId: string;
+  name: string;
+  description: string | null;
+  enforced: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -56,8 +71,29 @@ export function toWorkflowTransitionDto(
     issueType: (row.issueType as IssueType) ?? null,
     name: row.name,
     gates,
+    ...(row.workflowId !== undefined ? { workflowId: row.workflowId } : {}),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+function toWorkflowDto(
+  row: NamedWorkflowRow,
+  extras?: { transitionCount?: number; boardCount?: number },
+): WorkflowDto {
+  return {
+    id: row.id,
+    projectId: row.projectId,
+    name: row.name,
+    description: row.description,
+    enforced: row.enforced,
+    ...(extras?.transitionCount !== undefined
+      ? { transitionCount: extras.transitionCount }
+      : {}),
+    ...(extras?.boardCount !== undefined
+      ? { boardCount: extras.boardCount }
+      : {}),
+    createdAt: row.createdAt.toISOString(),
   };
 }
 
@@ -324,6 +360,536 @@ export class WorkflowService {
     );
 
     await this.prisma.workflowTransition.delete({ where: { id } });
+  }
+
+  // ── Named workflow entity CRUD ────────────────────────────────────────────
+
+  /**
+   * List all named workflows for a project.
+   * Each entry includes transitionCount + boardCount roll-ups.
+   * Authorization: any project member (VIEWER+).
+   */
+  async listWorkflows(userId: string, projectId: string): Promise<WorkflowDto[]> {
+    await assertProjectMember(this.prisma, userId, projectId);
+
+    const rows = await this.prisma.workflow.findMany({
+      where: { projectId },
+      orderBy: { createdAt: 'asc' },
+      include: {
+        _count: { select: { transitions: true, boards: true } },
+      },
+    });
+
+    return rows.map((r) =>
+      toWorkflowDto(r, {
+        transitionCount: r._count.transitions,
+        boardCount: r._count.boards,
+      }),
+    );
+  }
+
+  /**
+   * Create a new named workflow for a project.
+   * Authorization: project ADMIN.
+   * Throws 409 on duplicate (projectId, name).
+   */
+  async createWorkflow(
+    userId: string,
+    projectId: string,
+    dto: CreateNamedWorkflowDto,
+  ): Promise<WorkflowDto> {
+    await assertProjectRole(this.prisma, userId, projectId, Role.ADMIN);
+
+    try {
+      const row = await this.prisma.workflow.create({
+        data: {
+          projectId,
+          name: dto.name,
+          description: dto.description ?? null,
+          enforced: dto.enforced ?? false,
+        },
+      });
+      return toWorkflowDto(row, { transitionCount: 0, boardCount: 0 });
+    } catch (err) {
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2002'
+      ) {
+        throw new ConflictException(
+          `A workflow named "${dto.name}" already exists in this project`,
+        );
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Get a single named workflow by id, including its workflow-scoped transitions.
+   * Authorization: any project member (VIEWER+) — resolved via the workflow's projectId.
+   */
+  async getWorkflowById(userId: string, workflowId: string): Promise<WorkflowDto & { transitions: WorkflowTransitionDto[] }> {
+    const wf = await this.prisma.workflow.findUnique({
+      where: { id: workflowId },
+    });
+    if (!wf) throw new NotFoundException('Workflow not found');
+
+    await assertProjectMember(this.prisma, userId, wf.projectId);
+
+    const transitions = await this.prisma.workflowTransition.findMany({
+      where: { workflowId },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    return {
+      ...toWorkflowDto(wf, {
+        transitionCount: transitions.length,
+      }),
+      transitions: transitions.map(toWorkflowTransitionDto),
+    };
+  }
+
+  /**
+   * Partially update a named workflow (name, description, enforced).
+   * Authorization: project ADMIN.
+   */
+  async updateWorkflow(
+    userId: string,
+    workflowId: string,
+    dto: UpdateNamedWorkflowDto,
+  ): Promise<WorkflowDto> {
+    const existing = await this.prisma.workflow.findUnique({
+      where: { id: workflowId },
+    });
+    if (!existing) throw new NotFoundException('Workflow not found');
+
+    await assertProjectRole(this.prisma, userId, existing.projectId, Role.ADMIN);
+
+    try {
+      const row = await this.prisma.workflow.update({
+        where: { id: workflowId },
+        data: {
+          ...(dto.name !== undefined ? { name: dto.name } : {}),
+          ...(dto.description !== undefined ? { description: dto.description } : {}),
+          ...(dto.enforced !== undefined ? { enforced: dto.enforced } : {}),
+        },
+        include: {
+          _count: { select: { transitions: true, boards: true } },
+        },
+      });
+      return toWorkflowDto(row, {
+        transitionCount: row._count.transitions,
+        boardCount: row._count.boards,
+      });
+    } catch (err) {
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2002'
+      ) {
+        throw new ConflictException(
+          `A workflow with that name already exists in this project`,
+        );
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Delete a named workflow.
+   * Cascade: its WorkflowTransitions are deleted; boards' workflowId is set null.
+   * Authorization: project ADMIN.
+   */
+  async deleteWorkflow(userId: string, workflowId: string): Promise<void> {
+    const existing = await this.prisma.workflow.findUnique({
+      where: { id: workflowId },
+    });
+    if (!existing) throw new NotFoundException('Workflow not found');
+
+    await assertProjectRole(this.prisma, userId, existing.projectId, Role.ADMIN);
+
+    await this.prisma.workflow.delete({ where: { id: workflowId } });
+  }
+
+  // ── Workflow-scoped transition CRUD ───────────────────────────────────────
+
+  /**
+   * Create a transition that belongs to a named workflow (workflowId non-null).
+   * Validates status ownership against the workflow's project.
+   * Authorization: project ADMIN.
+   * Throws 409 on (workflowId, fromStatusId, toStatusId, issueType) unique constraint.
+   */
+  async createWorkflowTransition(
+    userId: string,
+    workflowId: string,
+    dto: CreateWorkflowTransitionDto,
+  ): Promise<WorkflowTransitionDto> {
+    const wf = await this.prisma.workflow.findUnique({
+      where: { id: workflowId },
+    });
+    if (!wf) throw new NotFoundException('Workflow not found');
+
+    await assertProjectRole(this.prisma, userId, wf.projectId, Role.ADMIN);
+
+    await this.validateStatusBelongsToProject(dto.toStatusId, wf.projectId);
+    if (dto.fromStatusId != null) {
+      await this.validateStatusBelongsToProject(dto.fromStatusId, wf.projectId);
+    }
+
+    const gates = dto.gates ?? [];
+
+    try {
+      const row = await this.prisma.workflowTransition.create({
+        data: {
+          projectId: wf.projectId,
+          workflowId,
+          fromStatusId: dto.fromStatusId ?? null,
+          toStatusId: dto.toStatusId,
+          issueType: dto.issueType ?? null,
+          name: dto.name ?? null,
+          gates: gates as unknown as Prisma.InputJsonValue,
+        },
+      });
+      return toWorkflowTransitionDto(row);
+    } catch (err) {
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2002'
+      ) {
+        throw new ConflictException(
+          'A transition with this (fromStatusId, toStatusId, issueType) already exists in this workflow',
+        );
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Update a workflow-scoped transition.
+   * Authorization: project ADMIN (resolved via the transition's projectId).
+   */
+  async updateWorkflowTransition(
+    userId: string,
+    transitionId: string,
+    dto: PatchWorkflowTransitionDto,
+  ): Promise<WorkflowTransitionDto> {
+    // Reuse existing updateTransition logic since it's auth-based on projectId.
+    return this.updateTransition(userId, transitionId, dto);
+  }
+
+  /**
+   * Delete a workflow-scoped transition.
+   * Authorization: project ADMIN.
+   */
+  async deleteWorkflowTransition(
+    userId: string,
+    transitionId: string,
+  ): Promise<void> {
+    return this.deleteTransition(userId, transitionId);
+  }
+
+  // ── Seed from template ────────────────────────────────────────────────────
+
+  /**
+   * Create a named Workflow from a built-in template.
+   *
+   * Templates:
+   *  - 'simple'     Linear: TODO→IN_PROGRESS→DONE only. No back-transitions.
+   *                 Good for small teams or single-pass work.
+   *  - 'kanban'     Fully permissive: any status → any other status.
+   *                 Mirrors the default auto-seed; suited for continuous flow.
+   *  - 'scrum'      Linear forward (same as simple) PLUS back-transitions:
+   *                 IN_PROGRESS→TODO (blocked/deprioritised) and
+   *                 DONE→IN_PROGRESS (re-open after QA). Suits sprints.
+   *  - 'bug-triage' Adds a reopen path: DONE→TODO (reopen after report).
+   *                 Otherwise linear. Suited for support or bug queues.
+   *
+   * Statuses are matched by category (TODO, IN_PROGRESS, DONE). If a category
+   * is absent in the project, those template transitions are silently skipped
+   * (instead of failing) so templates work on any status configuration.
+   *
+   * Authorization: project ADMIN.
+   */
+  async createWorkflowFromTemplate(
+    userId: string,
+    projectId: string,
+    dto: CreateWorkflowFromTemplateDto,
+  ): Promise<WorkflowDto & { transitions: WorkflowTransitionDto[] }> {
+    await assertProjectRole(this.prisma, userId, projectId, Role.ADMIN);
+
+    // Load the project's statuses grouped by category.
+    const statuses = await this.prisma.status.findMany({
+      where: { projectId },
+      orderBy: { order: 'asc' },
+      select: { id: true, category: true, name: true },
+    });
+
+    // Group statuses by category (take the first per category as canonical).
+    const byCategory = new Map<string, typeof statuses[number]>();
+    for (const s of statuses) {
+      if (!byCategory.has(s.category)) {
+        byCategory.set(s.category, s);
+      }
+    }
+
+    const todo = byCategory.get(StatusCategory.TODO);
+    const inProgress = byCategory.get(StatusCategory.IN_PROGRESS);
+    const done = byCategory.get(StatusCategory.DONE);
+
+    const workflowName = dto.name ?? `${dto.template.charAt(0).toUpperCase()}${dto.template.slice(1)} Workflow`;
+
+    // Create the workflow entity first.
+    let wf: NamedWorkflowRow;
+    try {
+      wf = await this.prisma.workflow.create({
+        data: {
+          projectId,
+          name: workflowName,
+          description: this.templateDescription(dto.template),
+          enforced: false, // off by default; admin can enable after reviewing
+        },
+      });
+    } catch (err) {
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2002'
+      ) {
+        throw new ConflictException(
+          `A workflow named "${workflowName}" already exists in this project`,
+        );
+      }
+      throw err;
+    }
+
+    // Build transition data according to the template.
+    const transData = this.buildTemplateTransitions(
+      wf.id,
+      projectId,
+      dto.template,
+      statuses,
+      { todo, inProgress, done },
+    );
+
+    if (transData.length > 0) {
+      await this.prisma.workflowTransition.createMany({
+        data: transData,
+        skipDuplicates: true,
+      });
+    }
+
+    const created = await this.prisma.workflowTransition.findMany({
+      where: { workflowId: wf.id },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    return {
+      ...toWorkflowDto(wf, {
+        transitionCount: created.length,
+        boardCount: 0,
+      }),
+      transitions: created.map(toWorkflowTransitionDto),
+    };
+  }
+
+  private templateDescription(template: string): string {
+    switch (template) {
+      case 'simple':
+        return 'Linear workflow: TODO → IN_PROGRESS → DONE. No back-transitions.';
+      case 'kanban':
+        return 'Fully permissive workflow: any status to any other status. Ideal for continuous-flow boards.';
+      case 'scrum':
+        return 'Sprint workflow: linear forward plus back-transitions for blocked/re-opened items.';
+      case 'bug-triage':
+        return 'Bug triage workflow: linear with a reopen path from DONE back to TODO.';
+      default:
+        return '';
+    }
+  }
+
+  /**
+   * Build the transition create-many payload for a given template.
+   *
+   * Status resolution:
+   *  - Only statuses whose category matches are used.
+   *  - For 'kanban' every status pair is added (all-to-all).
+   *  - For others, transitions target the first status of each category.
+   */
+  private buildTemplateTransitions(
+    workflowId: string,
+    projectId: string,
+    template: string,
+    allStatuses: { id: string; category: string }[],
+    canonical: {
+      todo: { id: string } | undefined;
+      inProgress: { id: string } | undefined;
+      done: { id: string } | undefined;
+    },
+  ): Prisma.WorkflowTransitionCreateManyInput[] {
+    const { todo, inProgress, done } = canonical;
+    const data: Prisma.WorkflowTransitionCreateManyInput[] = [];
+
+    const base = (from: string | null, to: string, name?: string) => ({
+      projectId,
+      workflowId,
+      fromStatusId: from,
+      toStatusId: to,
+      issueType: null,
+      name: name ?? null,
+      gates: [] as unknown as Prisma.InputJsonValue,
+    });
+
+    switch (template) {
+      case 'simple':
+        // TODO → IN_PROGRESS → DONE (strict linear, no back-transitions)
+        if (todo && inProgress) data.push(base(todo.id, inProgress.id, 'Start Work'));
+        if (inProgress && done) data.push(base(inProgress.id, done.id, 'Complete'));
+        // Also allow starting from any status (null) → first status (initial creation)
+        break;
+
+      case 'kanban':
+        // All statuses → all other statuses (fully permissive)
+        for (const from of allStatuses) {
+          for (const to of allStatuses) {
+            if (from.id !== to.id) {
+              data.push(base(from.id, to.id));
+            }
+          }
+        }
+        break;
+
+      case 'scrum':
+        // Forward: TODO → IN_PROGRESS → DONE
+        if (todo && inProgress) data.push(base(todo.id, inProgress.id, 'Start Work'));
+        if (inProgress && done) data.push(base(inProgress.id, done.id, 'Complete'));
+        // Back-transitions: IN_PROGRESS → TODO (blocked), DONE → IN_PROGRESS (re-open for fixes)
+        if (inProgress && todo) data.push(base(inProgress.id, todo.id, 'Block / Deprioritize'));
+        if (done && inProgress) data.push(base(done.id, inProgress.id, 'Reopen for Fix'));
+        break;
+
+      case 'bug-triage':
+        // Forward: TODO → IN_PROGRESS → DONE
+        if (todo && inProgress) data.push(base(todo.id, inProgress.id, 'Start Investigation'));
+        if (inProgress && done) data.push(base(inProgress.id, done.id, 'Resolve'));
+        // Reopen path: DONE → TODO (re-reported / not fixed)
+        if (done && todo) data.push(base(done.id, todo.id, 'Reopen'));
+        break;
+    }
+
+    return data;
+  }
+
+  // ── Board-context enforcement ─────────────────────────────────────────────
+
+  /**
+   * Enforce transitions for a named workflow (board-scoped path).
+   *
+   * Mirrors the logic of `enforceTransition` but operates against the transitions
+   * belonging to the given workflowId rather than the project-level legacy set.
+   * Only called when `opts.automated` is false and the board carries a non-null
+   * `workflowId` with `enforced = true`.
+   *
+   * @param workflowId      The named workflow to enforce.
+   * @param issueId         The issue being moved.
+   * @param targetStatusId  The destination status.
+   */
+  async enforceTransitionForWorkflow(
+    workflowId: string,
+    issueId: string,
+    targetStatusId: string,
+  ): Promise<void> {
+    // Load the issue with all gate-relevant fields.
+    const issue = await this.prisma.issue.findUnique({
+      where: { id: issueId },
+      select: {
+        id: true,
+        projectId: true,
+        type: true,
+        statusId: true,
+        assigneeId: true,
+        description: true,
+        customFields: true,
+        linksFrom: {
+          select: {
+            type: true,
+            target: { select: { status: { select: { category: true } } } },
+          },
+        },
+        linksTo: {
+          select: {
+            type: true,
+            source: { select: { status: { select: { category: true } } } },
+          },
+        },
+      },
+    });
+    if (!issue) return; // Update path will 404.
+
+    // Same-status → allow.
+    if (targetStatusId === issue.statusId) return;
+
+    // Find matching transitions scoped to this workflow.
+    const transitions = await this.prisma.workflowTransition.findMany({
+      where: {
+        workflowId,
+        toStatusId: targetStatusId,
+        OR: [
+          { fromStatusId: issue.statusId },
+          { fromStatusId: null },
+        ],
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const matching = transitions.filter(
+      (t) => t.issueType === null || t.issueType === issue.type,
+    );
+
+    if (matching.length === 0) {
+      // Build a helpful error listing allowed next statuses from this workflow.
+      const allowed = await this.getAllowedTargetStatusesForWorkflow(
+        workflowId,
+        issue.statusId,
+        issue.type,
+      );
+      const names = allowed.map((s) => `"${s.name}"`).join(', ');
+      throw new UnprocessableEntityException(
+        `Transition from current status to the requested status is not allowed by the board workflow. ` +
+        `Allowed next statuses from here: ${names || 'none'}`,
+      );
+    }
+
+    const transition = matching[0];
+    const gates = Array.isArray(transition.gates)
+      ? (transition.gates as unknown as { type: string; field?: string; linkType?: string }[])
+      : [];
+
+    for (const gate of gates) {
+      await this.evaluateGate(gate, issue);
+    }
+  }
+
+  private async getAllowedTargetStatusesForWorkflow(
+    workflowId: string,
+    fromStatusId: string,
+    issueType: string,
+  ): Promise<{ name: string }[]> {
+    const transitions = await this.prisma.workflowTransition.findMany({
+      where: {
+        workflowId,
+        OR: [{ fromStatusId }, { fromStatusId: null }],
+      },
+    });
+
+    const typeMatching = transitions.filter(
+      (t) => t.issueType === null || t.issueType === issueType,
+    );
+
+    if (typeMatching.length === 0) return [];
+
+    const toStatusIds = [...new Set(typeMatching.map((t) => t.toStatusId))];
+    return this.prisma.status.findMany({
+      where: { id: { in: toStatusIds } },
+      select: { name: true },
+      orderBy: { order: 'asc' },
+    });
   }
 
   // ── Enforcement (called by IssuesService) ─────────────────────────────────
