@@ -39,6 +39,7 @@ describe('tool registry', () => {
       'get_workflow',
       'list_issues',
       'get_issue',
+      'list_issue_links',
       'create_workflow',
       'create_workflow_from_template',
       'update_workflow',
@@ -49,6 +50,8 @@ describe('tool registry', () => {
       'assign_board_workflow',
       'create_issue',
       'move_issue',
+      'link_issues',
+      'unlink_issues',
     ];
     for (const name of expected) expect(names).toContain(name);
     // No duplicate names.
@@ -129,6 +132,38 @@ describe('tool registry', () => {
       statusId: 's3',
       boardId: 'b1',
     });
+  });
+
+  it('link_issues POSTs target + type to /issues/:id/links', async () => {
+    const { client, fetchImpl } = clientWith(201, { id: 'lk1' });
+    await tool('link_issues').handler(
+      { issueId: 'i1', target: 'NL-5', type: 'BLOCKS' },
+      client,
+    );
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toBe('http://localhost:4000/api/issues/i1/links');
+    expect((init as RequestInit).method).toBe('POST');
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({
+      target: 'NL-5',
+      type: 'BLOCKS',
+    });
+  });
+
+  it('list_issue_links GETs /issues/:id/links', async () => {
+    const { client, fetchImpl } = clientWith(200, [{ id: 'lk1', type: 'BLOCKED_BY' }]);
+    const res = await tool('list_issue_links').handler({ issueId: 'i1' }, client);
+    expect(fetchImpl.mock.calls[0][0]).toBe(
+      'http://localhost:4000/api/issues/i1/links',
+    );
+    expect(res.content[0].text).toContain('BLOCKED_BY');
+  });
+
+  it('unlink_issues DELETEs /issue-links/:linkId', async () => {
+    const { client, fetchImpl } = clientWith(200, null);
+    await tool('unlink_issues').handler({ linkId: 'lk1' }, client);
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toBe('http://localhost:4000/api/issue-links/lk1');
+    expect((init as RequestInit).method).toBe('DELETE');
   });
 
   it('handlers propagate API errors so the server wrapper can mark isError', async () => {

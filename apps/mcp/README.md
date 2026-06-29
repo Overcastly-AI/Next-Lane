@@ -123,6 +123,7 @@ Then run `claude mcp list` to confirm it is connected.
 | `get_workflow`      | Get one workflow including its transitions (`workflowId`).              |
 | `list_issues`       | List issues with optional project/sprint/assignee/type/status/`q` filters + cursor paging. |
 | `get_issue`         | Get one issue by id (`issueId`).                                        |
+| `list_issue_links`  | List an issue's typed links/dependencies (`issueId`); includes link ids. |
 
 ### Write (SDLC)
 
@@ -138,6 +139,8 @@ Then run `claude mcp list` to confirm it is connected.
 | `assign_board_workflow`         | Attach a workflow to a board (`workflowId` null detaches).        |
 | `create_issue`                  | Create an issue (`projectId`, `title`, …).                         |
 | `move_issue`                    | Move an issue to a status (`boardId` applies enforced workflow).  |
+| `link_issues`                   | Link two issues (`issueId`, `target`, `type` BLOCKS/BLOCKED_BY/RELATES_TO/DUPLICATES/DUPLICATED_BY/CLONES). |
+| `unlink_issues`                 | Remove an issue link by id (`linkId`).                            |
 
 ## Development
 

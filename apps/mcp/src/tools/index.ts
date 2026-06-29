@@ -67,6 +67,21 @@ const issueTypeEnum = z
 
 const priorityEnum = z.enum(['LOWEST', 'LOW', 'MEDIUM', 'HIGH', 'HIGHEST']);
 
+const linkTypeEnum = z
+  .enum([
+    'BLOCKS',
+    'BLOCKED_BY',
+    'RELATES_TO',
+    'DUPLICATES',
+    'DUPLICATED_BY',
+    'CLONES',
+  ])
+  .describe(
+    'Relationship from the SOURCE issue to the TARGET, e.g. BLOCKS means the ' +
+      'source blocks the target; BLOCKED_BY means the source is blocked by the ' +
+      'target. The reverse link is maintained automatically.',
+  );
+
 const templateEnum = z
   .enum(['simple', 'kanban', 'scrum', 'bug-triage'])
   .describe(
@@ -213,6 +228,19 @@ const readTools: ToolDef[] = [
     },
     handler: (args, client) =>
       client.get(`/issues/${args.issueId}`).then(jsonResult),
+  },
+  {
+    name: 'list_issue_links',
+    group: 'read',
+    description:
+      'List the typed links (dependencies / relations) for an issue, resolved ' +
+      "from that issue's perspective — e.g. an issue it blocks, or is blocked " +
+      'by. Each entry includes the link id (needed for unlink_issues).',
+    inputSchema: {
+      issueId: z.string().describe('Issue id to list links for.'),
+    },
+    handler: (args, client) =>
+      client.get(`/issues/${args.issueId}/links`).then(jsonResult),
   },
 ];
 
@@ -444,6 +472,41 @@ const writeTools: ToolDef[] = [
           boardId: args.boardId,
         })
         .then(jsonResult),
+  },
+  {
+    name: 'link_issues',
+    group: 'write',
+    description:
+      'Create a typed dependency/relation from a source issue to a target ' +
+      "issue — e.g. type BLOCKS to mark that the source blocks the target, or " +
+      'BLOCKED_BY for the reverse. The target may be an issue key (e.g. "NL-5") ' +
+      'or an id; both issues must be in the same project. Requires MEMBER+.',
+    inputSchema: {
+      issueId: z.string().describe('Source issue id (the link is from this issue).'),
+      target: z
+        .string()
+        .describe('Target issue: a key like "NL-5" or an issue id.'),
+      type: linkTypeEnum,
+    },
+    handler: (args, client) =>
+      client
+        .post(`/issues/${args.issueId}/links`, {
+          target: args.target,
+          type: args.type,
+        })
+        .then(jsonResult),
+  },
+  {
+    name: 'unlink_issues',
+    group: 'write',
+    description:
+      'Delete an issue link by its link id (get it from list_issue_links). The ' +
+      'reverse link is removed automatically. Requires MEMBER+.',
+    inputSchema: {
+      linkId: z.string().describe('Issue-link id to delete.'),
+    },
+    handler: (args, client) =>
+      client.delete(`/issue-links/${args.linkId}`).then(jsonResult),
   },
 ];
 
