@@ -397,8 +397,33 @@ export function BoardPage() {
     for (const s of statuses) map.set(s.id, []);
     const term = search.trim().toLowerCase();
 
+    const users = (usersQuery.data ?? []).map((u) => ({
+      id: u.id,
+      name: u.name,
+      email: u.email,
+    }));
+
+    // Board-level default scope: the board's own NLQL filter, ALWAYS applied
+    // first so e.g. an "Epics" board only ever shows epics. The user's pill /
+    // NLQL / preset filters then compose on top. A broken stored filter shows
+    // everything rather than crashing the board.
+    const boardFilter = board.board?.filterQuery?.trim() ?? '';
+    let baseIssues = board.issues;
+    if (boardFilter) {
+      try {
+        baseIssues = filterIssues(board.issues, boardFilter, {
+          currentUserId: currentUser?.id,
+          users,
+          customFieldDefs,
+          now: new Date(),
+        });
+      } catch {
+        baseIssues = board.issues;
+      }
+    }
+
     // Pill-filtered issues first.
-    const pillFiltered = board.issues.filter((issue) => {
+    const pillFiltered = baseIssues.filter((issue) => {
       if (term && !issue.title.toLowerCase().includes(term)) return false;
       if (assigneeFilter) {
         if (assigneeFilter === 'unassigned' && issue.assigneeId) return false;
@@ -419,11 +444,6 @@ export function BoardPage() {
     const trimmedQuery = nlqlQuery.trim();
     let finalIssues: IssueDto[];
     if (trimmedQuery && nlqlValidation?.ok) {
-      const users = (usersQuery.data ?? []).map((u) => ({
-        id: u.id,
-        name: u.name,
-        email: u.email,
-      }));
       try {
         finalIssues = filterIssues(pillFiltered, trimmedQuery, {
           currentUserId: currentUser?.id,
@@ -808,6 +828,22 @@ export function BoardPage() {
             customFieldDefs={customFieldDefs}
           />
         </div>
+
+        {/* Active board default-filter indicator — explains why the board is scoped. */}
+        {board?.board?.filterQuery?.trim() && (
+          <div
+            data-testid="board-filter-indicator"
+            className="flex items-center gap-1.5 text-[11px] text-ink-500"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 4h18l-7 8v6l-4 2v-8z" />
+            </svg>
+            <span>Board filter:</span>
+            <code className="rounded bg-ink-50 px-1.5 py-0.5 font-mono text-[11px] text-ink-700 ring-1 ring-inset ring-ink-200">
+              {board.board.filterQuery}
+            </code>
+          </div>
+        )}
 
         {/* Card color legend — only when there are labeled rules */}
         {colorRules.length > 0 && (

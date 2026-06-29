@@ -1,5 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
-import { BoardType, BOARD_TYPES, type BoardColorRule, type BoardSummaryDto } from '@next-lane/shared';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  BoardType,
+  BOARD_TYPES,
+  validateQuery,
+  type BoardColorRule,
+  type BoardSummaryDto,
+} from '@next-lane/shared';
 import { cn } from '@/lib/cn';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -11,6 +17,7 @@ import { errorMessage } from '@/lib/errorMessage';
 import { useBoards, useCreateBoard, useUpdateBoard, useDeleteBoard } from '@/api/boards';
 import { useCustomFields } from '@/api/custom-fields';
 import { CardColorsManager } from './CardColorsManager';
+import { NlqlInput } from './NlqlInput';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -183,21 +190,45 @@ function BoardSettingsModal({
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab);
   const [name, setName] = useState(board.name);
   const [type, setType] = useState<BoardType>(board.type);
+  const [filterQuery, setFilterQuery] = useState(board.filterQuery ?? '');
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   // Keep form in sync when the board prop changes (e.g. switcher navigates).
   useEffect(() => {
     setName(board.name);
     setType(board.type);
+    setFilterQuery(board.filterQuery ?? '');
     setActiveTab(initialTab);
-  }, [board.id, board.name, board.type, initialTab]);
+  }, [board.id, board.name, board.type, board.filterQuery, initialTab]);
+
+  const cfDefs = useMemo(
+    () =>
+      (customFieldsQuery.data ?? []).map((d) => ({
+        id: d.id,
+        key: d.key,
+        name: d.name,
+        type: d.type,
+      })),
+    [customFieldsQuery.data],
+  );
+
+  // Validate the board's default filter live so we never persist a broken query.
+  const filterError = useMemo(() => {
+    const q = filterQuery.trim();
+    if (!q) return null;
+    const res = validateQuery(q, { customFieldDefs: cfDefs });
+    return res.ok ? null : (res.error?.message ?? 'Invalid query');
+  }, [filterQuery, cfDefs]);
 
   function handleSave(e: React.FormEvent) {
     e.preventDefault();
     const trimmed = name.trim();
-    if (!trimmed) return;
+    if (!trimmed || filterError) return;
     updateBoard.mutate(
-      { boardId: board.id, patch: { name: trimmed, type } },
+      {
+        boardId: board.id,
+        patch: { name: trimmed, type, filterQuery: filterQuery.trim() || null },
+      },
       {
         onSuccess: () => {
           toast.success('Board updated.');
@@ -283,7 +314,7 @@ function BoardSettingsModal({
                   type="submit"
                   form="board-settings-form"
                   loading={updateBoard.isPending}
-                  disabled={!name.trim()}
+                  disabled={!name.trim() || !!filterError}
                 >
                   Save
                 </Button>
@@ -355,6 +386,32 @@ function BoardSettingsModal({
                   </option>
                 ))}
               </Select>
+            </div>
+            <div className="space-y-1.5">
+              <p className="block text-xs font-semibold text-slate-600" aria-hidden="true">
+                Default filter{' '}
+                <span className="font-normal text-slate-400">(NLQL — always applied to this board)</span>
+              </p>
+              <NlqlInput
+                value={filterQuery}
+                onChange={setFilterQuery}
+                projectId={projectId}
+                customFieldDefs={cfDefs}
+                aria-label="Board default filter (NLQL)"
+                aria-invalid={!!filterError}
+                placeholder="e.g. type = EPIC"
+                data-testid="board-default-filter"
+              />
+              {filterError ? (
+                <p role="alert" className="text-xs text-red-600">
+                  {filterError}
+                </p>
+              ) : (
+                <p className="text-[11px] text-slate-400">
+                  Only issues matching this query appear on the board (your other
+                  filters still apply on top). Leave empty to show everything.
+                </p>
+              )}
             </div>
             {board.isDefault && (
               <p className="text-xs text-slate-400">
