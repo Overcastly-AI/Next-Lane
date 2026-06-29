@@ -44,6 +44,22 @@ spec:
           securityContext:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+          env:
+            # The root FS is read-only, so the entrypoint writes the runtime
+            # config.js to this writable volume instead of the image's html dir;
+            # nginx serves /config.js from here (see the web-nginx ConfigMap).
+            - name: NL_RUNTIME_DIR
+              value: /usr/share/nginx/runtime
+            {{- if eq .Values.web.apiMode "same-origin" }}
+            # Same-origin: the SPA must issue RELATIVE requests (nginx proxies
+            # /api + /socket.io). An explicit empty value selects that mode.
+            - name: API_URL
+              value: ""
+            {{- else if .Values.web.apiUrl }}
+            # External API origin injected at runtime (no rebuild required).
+            - name: API_URL
+              value: {{ .Values.web.apiUrl | quote }}
+            {{- end }}
           ports:
             - name: http
               containerPort: {{ .Values.web.port }}
@@ -75,6 +91,10 @@ spec:
               mountPath: /var/run
             - name: tmp
               mountPath: /tmp
+            # Writable dir for the entrypoint-generated config.js (the html dir
+            # is read-only). nginx serves /config.js from here via `alias`.
+            - name: web-runtime
+              mountPath: /usr/share/nginx/runtime
             {{- if eq .Values.web.apiMode "same-origin" }}
             # Override the image's default server block with the reverse-proxy
             # config so the SPA + /api + /socket.io share one origin.
@@ -88,6 +108,8 @@ spec:
         - name: nginx-run
           emptyDir: {}
         - name: tmp
+          emptyDir: {}
+        - name: web-runtime
           emptyDir: {}
         {{- if eq .Values.web.apiMode "same-origin" }}
         - name: nginx-conf

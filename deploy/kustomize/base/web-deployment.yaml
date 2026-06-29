@@ -33,6 +33,15 @@ spec:
             readOnlyRootFilesystem: true
             capabilities:
               drop: ["ALL"]
+          env:
+            # The root FS is read-only, so the entrypoint writes config.js to
+            # this writable volume; nginx serves /config.js from here.
+            - name: NL_RUNTIME_DIR
+              value: /usr/share/nginx/runtime
+            # Same-origin mode: the SPA issues relative requests that nginx
+            # reverse-proxies to the API. The explicit empty value selects it.
+            - name: API_URL
+              value: ""
           ports:
             - name: http
               containerPort: 80
@@ -62,6 +71,9 @@ spec:
               mountPath: /var/run
             - name: tmp
               mountPath: /tmp
+            # Writable dir for the entrypoint-generated config.js (html is RO).
+            - name: web-runtime
+              mountPath: /usr/share/nginx/runtime
             - name: nginx-conf
               mountPath: /etc/nginx/conf.d
               readOnly: true
@@ -71,6 +83,8 @@ spec:
         - name: nginx-run
           emptyDir: {}
         - name: tmp
+          emptyDir: {}
+        - name: web-runtime
           emptyDir: {}
         - name: nginx-conf
           configMap:
