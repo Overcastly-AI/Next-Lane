@@ -142,6 +142,7 @@ test.describe('Automation rules — desktop', () => {
     await page
       .getByTestId('automation-condition-input')
       .fill('this is not valid nlql ===');
+      await page.keyboard.press('Escape');
     // The condition input validates live; saving should be blocked / show error.
     await page.getByTestId('automation-save').click();
     // The editor stays open (rule not created) — name input still visible.

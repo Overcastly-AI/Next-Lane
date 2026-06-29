@@ -95,8 +95,16 @@ export function NlqlInput({
   // Unique ids for ARIA
   const listboxId = useId();
 
-  // Dropdown state
-  const [open, setOpen] = useState(false);
+  // Dropdown state. `openRef` mirrors `open` so the keydown handler can read the
+  // live value synchronously — right after a programmatic value change (test
+  // `.fill()` / paste) the open=true render may not have committed yet, so the
+  // `open` closure would be stale.
+  const [open, setOpenState] = useState(false);
+  const openRef = useRef(false);
+  const setOpen = useCallback((v: boolean) => {
+    openRef.current = v;
+    setOpenState(v);
+  }, []);
   const [highlighted, setHighlighted] = useState<number>(-1);
   const [suggestions, setSuggestions] = useState<NlqlSuggestion[]>([]);
   const [replaceRange, setReplaceRange] = useState<{ from: number; to: number }>({ from: 0, to: 0 });
@@ -202,6 +210,22 @@ export function NlqlInput({
   // Keyboard handler on the input
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
+      // Escape — handled BEFORE the `open` guard, reading the live `openRef` so
+      // a stale `open` closure (e.g. right after a programmatic `.fill()`) can't
+      // swallow it. When the list IS open, Escape closes ONLY the list and stops
+      // propagation, so it does not also dismiss a surrounding dialog (the board
+      // settings modal, the automation rule editor). When the list is already
+      // closed, Escape is left to bubble so the dialog can close as usual.
+      if (e.key === 'Escape') {
+        if (openRef.current) {
+          e.preventDefault();
+          e.stopPropagation();
+          setOpen(false);
+          setHighlighted(-1);
+        }
+        return;
+      }
+
       if (!open) return;
 
       if (e.key === 'ArrowDown') {
@@ -218,10 +242,6 @@ export function NlqlInput({
           // No highlight: close the dropdown
           setOpen(false);
         }
-      } else if (e.key === 'Escape') {
-        e.preventDefault();
-        setOpen(false);
-        setHighlighted(-1);
       }
     },
     [open, suggestions, highlighted, acceptSuggestion],
@@ -255,6 +275,13 @@ export function NlqlInput({
         value={value}
         onChange={(e) => {
           onChange(e.target.value);
+        }}
+        onBlur={() => {
+          // Close the dropdown when focus leaves the input. Option clicks use
+          // onMouseDown+preventDefault (focus stays), so selection still works;
+          // this stops the open list from overlaying controls below the input
+          // (e.g. the color picker in CardColorsManager, the Save button).
+          setOpen(false);
         }}
         onInput={computeSuggestions}
         onKeyUp={(e) => {

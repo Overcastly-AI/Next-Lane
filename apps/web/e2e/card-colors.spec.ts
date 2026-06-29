@@ -98,6 +98,7 @@ test.describe('Card colors — desktop', () => {
     await expect(queryInput).toBeVisible();
     await queryInput.click();
     await queryInput.pressSequentially('priority = HIGH', { delay: 20 });
+    await queryInput.press('Escape');
 
     // No inline error should appear (valid query).
     await expect(ruleRow.locator('[role="alert"]')).toHaveCount(0);
@@ -175,12 +176,14 @@ test.describe('Card colors — desktop', () => {
     await addRuleBtn.click();
     const rule1 = page.getByTestId('color-rule-row').nth(0);
     await rule1.getByTestId('color-rule-query').fill('priority = HIGH');
+    await page.keyboard.press('Escape');
     await rule1.getByTestId('color-rule-color').getByRole('button', { name: /red/i }).click();
 
     // Add Rule 2 (Blue)
     await addRuleBtn.click();
     const rule2 = page.getByTestId('color-rule-row').nth(1);
     await rule2.getByTestId('color-rule-query').fill('priority = HIGH');
+    await page.keyboard.press('Escape');
     await rule2.getByTestId('color-rule-color').getByRole('button', { name: /blue/i }).click();
 
     // Save.
@@ -234,6 +237,7 @@ test.describe('Card colors — desktop', () => {
     await page.getByTestId('color-rule-add').click();
     const rule = page.getByTestId('color-rule-row').first();
     await rule.getByTestId('color-rule-query').fill('priority = HIGH');
+    await page.keyboard.press('Escape');
     await rule.getByTestId('color-rule-color').getByRole('button', { name: /red/i }).click();
 
     await page.getByRole('button', { name: /save colors/i }).click();
@@ -315,6 +319,7 @@ test.describe('Card colors — mobile', () => {
     await page.getByTestId('color-rule-add').click();
     const rule = page.getByTestId('color-rule-row').first();
     await rule.getByTestId('color-rule-query').fill('priority = HIGH');
+    await page.keyboard.press('Escape');
     await rule.getByTestId('color-rule-color').getByRole('button', { name: /red/i }).click();
 
     // Save.
@@ -364,11 +369,13 @@ test.describe('Card colors — mobile', () => {
     await addBtn.click();
     const rule1 = page.getByTestId('color-rule-row').nth(0);
     await rule1.getByTestId('color-rule-query').fill('priority = HIGH');
+    await page.keyboard.press('Escape');
 
     // Rule 2
     await addBtn.click();
     const rule2 = page.getByTestId('color-rule-row').nth(1);
     await rule2.getByTestId('color-rule-query').fill('priority = LOW');
+    await page.keyboard.press('Escape');
 
     // Move rule 2 up — it should become rule 1.
     await page.getByTestId('color-rule-row').nth(1).getByTestId('color-rule-up').click();

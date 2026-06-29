@@ -389,7 +389,9 @@ export function AutomationRuleEditor({
             setCondition(val);
             setConditionError(err);
           }}
+          projectId={projectId}
           customFieldDefs={cfDefs}
+          statuses={statuses.map((s) => s.name)}
           error={conditionError}
           disabled={isPending}
         />

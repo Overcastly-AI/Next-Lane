@@ -25,7 +25,9 @@ import {
 import { cn } from '@/lib/cn';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { NlqlInput } from '@/components/board/NlqlInput';
 import { PRESET_COLORS, invalidateAstCache } from '@/lib/cardColors';
+import { useStatuses } from '@/api/meta';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -125,7 +127,10 @@ interface RuleRowEditorProps {
   rule: RuleRow;
   index: number;
   total: number;
+  projectId: string;
   customFieldDefs: { id: string; key: string; name: string; type: import('@next-lane/shared').CustomFieldType }[];
+  /** Status names for NLQL autocomplete suggestions. */
+  statusNames: string[];
   onChange: (updated: RuleRow) => void;
   onDelete: () => void;
   onMoveUp: () => void;
@@ -136,7 +141,9 @@ function RuleRowEditor({
   rule,
   index,
   total,
+  projectId,
   customFieldDefs,
+  statusNames,
   onChange,
   onDelete,
   onMoveUp,
@@ -231,23 +238,20 @@ function RuleRowEditor({
 
       {/* NLQL query */}
       <div className="mb-2 space-y-1">
-        <label htmlFor={queryId} className="block text-xs font-semibold text-slate-500">
+        <p className="block text-xs font-semibold text-slate-500" aria-hidden="true">
           Condition (NLQL)
-        </label>
-        <Input
-          id={queryId}
-          data-testid="color-rule-query"
+        </p>
+        <NlqlInput
           value={rule.query}
-          onChange={(e) => updateQuery(e.target.value)}
-          placeholder="priority = HIGH"
-          className={cn(
-            'font-mono text-xs',
-            rule.queryError && 'border-red-400 focus:border-red-500 focus:ring-red-200',
-          )}
-          spellCheck={false}
-          autoComplete="off"
+          onChange={updateQuery}
+          projectId={projectId}
+          customFieldDefs={customFieldDefs}
+          statuses={statusNames}
+          data-testid="color-rule-query"
+          aria-label="Color rule NLQL condition"
           aria-invalid={!!rule.queryError}
           aria-describedby={rule.queryError ? `${queryId}-err` : undefined}
+          placeholder="priority = HIGH"
         />
         {rule.queryError && (
           <p id={`${queryId}-err`} role="alert" className="text-xs text-red-600">
@@ -307,11 +311,14 @@ export interface CardColorsManagerProps {
 }
 
 export function CardColorsManager({
+  projectId,
   initialRules,
   customFieldDefs,
   onSave,
   isSaving,
 }: CardColorsManagerProps) {
+  // Fetch statuses for NLQL autocomplete vocab in rule rows.
+  const statusesQuery = useStatuses(projectId);
   const [rows, setRows] = useState<RuleRow[]>(() =>
     initialRules.map((r) => ({
       id: r.id,
@@ -350,6 +357,11 @@ export function CardColorsManager({
         type: d.type,
       })),
     [customFieldDefs],
+  );
+
+  const statusNames = useMemo(
+    () => (statusesQuery.data ?? []).map((s) => s.name),
+    [statusesQuery.data],
   );
 
   function addRule() {
@@ -430,7 +442,9 @@ export function CardColorsManager({
               rule={row}
               index={i}
               total={rows.length}
+              projectId={projectId}
               customFieldDefs={cfDefs}
+              statusNames={statusNames}
               onChange={(updated) => updateRow(i, updated)}
               onDelete={() => deleteRow(i)}
               onMoveUp={() => moveUp(i)}
