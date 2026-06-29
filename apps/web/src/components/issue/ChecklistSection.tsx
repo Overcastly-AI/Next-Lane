@@ -14,6 +14,7 @@ import {
 } from '@/api/checklist';
 import { useToast } from '@/components/ui/Toast';
 import { errorMessage } from '@/lib/errorMessage';
+import { cn } from '@/lib/cn';
 
 interface Props {
   issueId: string;
@@ -51,7 +52,7 @@ export function ChecklistSection({
 
       {/* Progress bar — hidden when total is 0 */}
       {progress.total > 0 && (
-        <div className="mb-3">
+        <div className="mb-3 flex items-center gap-2">
           <div
             id={progressBarId}
             role="progressbar"
@@ -59,10 +60,13 @@ export function ChecklistSection({
             aria-valuemin={0}
             aria-valuemax={progress.total}
             aria-label={`Checklist progress: ${progress.done} of ${progress.total} items done`}
-            className="h-1.5 w-full overflow-hidden rounded-full bg-ink-100 motion-reduce:transition-none"
+            className="flex-1 h-1.5 overflow-hidden rounded-full bg-ink-100"
           >
             <div
-              className="h-full rounded-full bg-emerald-500 transition-all duration-300 motion-reduce:transition-none"
+              className={cn(
+                'h-full rounded-full transition-all duration-300 motion-reduce:transition-none',
+                progress.done === progress.total ? 'bg-emerald-500' : 'bg-signal-500',
+              )}
               style={{
                 width:
                   progress.total === 0
@@ -71,6 +75,9 @@ export function ChecklistSection({
               }}
             />
           </div>
+          <span className="font-mono text-[9px] text-ink-400 tabular-nums">
+            {Math.round((progress.done / progress.total) * 100)}%
+          </span>
         </div>
       )}
 

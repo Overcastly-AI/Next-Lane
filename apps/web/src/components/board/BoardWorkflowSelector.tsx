@@ -92,12 +92,13 @@ function WorkflowBadge({ name, enforced }: { name: string; enforced: boolean }) 
     <span
       data-testid="board-workflow-badge"
       className={cn(
-        'inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-semibold',
+        'inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-[10px] font-semibold transition-colors duration-[120ms]',
         enforced
-          ? 'bg-signal-50 text-signal-700 border border-signal-100'
-          : 'bg-slate-100 text-slate-600',
+          ? 'bg-signal-50 text-signal-700 ring-1 ring-inset ring-signal-200'
+          : 'bg-ink-100 text-ink-600 ring-1 ring-inset ring-ink-200',
       )}
     >
+      {/* Flow arrow icon */}
       <svg
         width="9"
         height="9"
@@ -109,7 +110,12 @@ function WorkflowBadge({ name, enforced }: { name: string; enforced: boolean }) 
       >
         <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M12 5l7 7-7 7" />
       </svg>
-      Workflow: {name}
+      {name}
+      {enforced && (
+        <span className="rounded-sm bg-signal-100 px-1 py-px text-[9px] font-bold text-signal-800">
+          ENFORCED
+        </span>
+      )}
     </span>
   );
 }

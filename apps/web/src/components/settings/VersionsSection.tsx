@@ -41,8 +41,8 @@ function VersionStateBadge({ state }: { state: VersionState }) {
     state === VersionState.RELEASED
       ? 'bg-emerald-50 text-emerald-700 ring-emerald-200'
       : state === VersionState.ARCHIVED
-        ? 'bg-ink-100 text-ink-400 ring-ink-200'
-        : 'bg-slate-50 text-slate-500 ring-slate-200';
+        ? 'bg-ink-100 text-ink-500 ring-ink-200'
+        : 'bg-ink-50 text-ink-600 ring-ink-200';
 
   return (
     <span
@@ -117,17 +117,16 @@ export function VersionsSection({
 
   return (
     <section
-      className="rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:p-5"
+      className="rounded-xl border border-ink-200 bg-white p-4 shadow-card sm:p-5"
       data-testid="versions-section"
     >
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold text-slate-900">
+          <h2 className="text-sm font-semibold text-ink-900">
             Versions / Releases
           </h2>
-          <p className="mt-0.5 text-xs text-slate-500">
-            Track planned and shipped releases. Assign issues to target
-            versions.
+          <p className="mt-0.5 text-xs text-ink-500">
+            Track planned and shipped releases. Assign issues to target versions.
           </p>
         </div>
         {isAdmin && (
@@ -136,7 +135,7 @@ export function VersionsSection({
             data-testid="version-add"
             onClick={() => setAddOpen(true)}
           >
-            + Add version
+            Add version
           </Button>
         )}
       </div>
@@ -151,9 +150,17 @@ export function VersionsSection({
           onRetry={() => versionsQuery.refetch()}
         />
       ) : versions.length === 0 ? (
-        <p className="py-4 text-sm text-slate-400">No versions yet.</p>
+        <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-ink-200 py-10 text-center">
+          <svg className="h-8 w-8 text-ink-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 13.5l3 3m0 0l3-3m-3 3v-6m1.06-4.19l-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 0-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z" />
+          </svg>
+          <p className="text-sm font-medium text-ink-600">No versions yet</p>
+          {isAdmin && (
+            <p className="text-xs text-ink-400">Add a version to track milestones and planned releases for your project.</p>
+          )}
+        </div>
       ) : (
-        <ul className="divide-y divide-slate-100">
+        <ul className="divide-y divide-ink-100">
           {versions.map((version) => (
             <li
               key={version.id}
@@ -162,11 +169,11 @@ export function VersionsSection({
             >
               {/* Name + description */}
               <div className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-medium text-slate-800">
+                <span className="block truncate text-sm font-medium text-ink-800">
                   {version.name}
                 </span>
                 {version.description && (
-                  <span className="text-xs text-slate-400">
+                  <span className="text-xs text-ink-400">
                     {version.description}
                   </span>
                 )}
@@ -177,14 +184,13 @@ export function VersionsSection({
                 <VersionStateBadge state={version.state} />
 
                 {typeof version.issueCount === 'number' && (
-                  <span className="text-xs text-slate-400">
-                    {version.issueCount} issue
-                    {version.issueCount !== 1 ? 's' : ''}
+                  <span className="font-mono text-[10px] text-ink-400">
+                    {version.issueCount}i
                   </span>
                 )}
 
                 {version.releaseDate && (
-                  <span className="text-xs text-slate-400">
+                  <span className="text-xs text-ink-400">
                     {new Date(version.releaseDate).toLocaleDateString(
                       undefined,
                       { year: 'numeric', month: 'short', day: 'numeric' },
@@ -451,7 +457,7 @@ function AddVersionModal({
             aria-label="Release date"
             value={releaseDate}
             onChange={(e) => setReleaseDate(e.target.value)}
-            className="rounded border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-700 transition-colors focus:outline-none focus:ring-2 focus:ring-brand-400"
+            className="rounded border border-ink-200 bg-white px-2 py-1.5 text-sm text-ink-800 transition-colors duration-[120ms] hover:border-ink-300 focus:border-signal-400 focus:outline-none focus:ring-2 focus:ring-signal-200"
           />
         </Field>
       </form>
@@ -564,7 +570,7 @@ function EditVersionModal({
             aria-label="Release date"
             value={releaseDate}
             onChange={(e) => setReleaseDate(e.target.value)}
-            className="rounded border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-700 transition-colors focus:outline-none focus:ring-2 focus:ring-brand-400"
+            className="rounded border border-ink-200 bg-white px-2 py-1.5 text-sm text-ink-800 transition-colors duration-[120ms] hover:border-ink-300 focus:border-signal-400 focus:outline-none focus:ring-2 focus:ring-signal-200"
           />
         </Field>
       </form>
@@ -599,12 +605,12 @@ function VersionIconButton({
       disabled={disabled}
       onClick={onClick}
       className={cn(
-        'rounded p-1.5 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300',
+        'rounded p-1.5 transition-colors duration-[120ms] focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-400',
         disabled
-          ? 'cursor-not-allowed text-slate-300'
+          ? 'cursor-not-allowed text-ink-300'
           : danger
-            ? 'text-slate-400 hover:bg-red-50 hover:text-red-600'
-            : 'text-slate-400 hover:bg-slate-100 hover:text-slate-700',
+            ? 'text-ink-400 hover:bg-red-50 hover:text-red-600'
+            : 'text-ink-400 hover:bg-ink-100 hover:text-ink-700',
       )}
     >
       {children}

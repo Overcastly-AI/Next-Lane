@@ -50,12 +50,12 @@ export function NotificationPreferencesSection() {
     >
       <div className="mb-4">
         <h2 className="text-sm font-semibold text-ink-900">Notifications</h2>
-        <p className="mt-0.5 text-sm text-ink-500">
-          Choose how Next Lane reaches you. In-app notifications are always on.
+        <p className="mt-0.5 text-xs text-ink-500">
+          In-app notifications are always on. Control additional delivery below.
         </p>
       </div>
 
-      <div className="flex items-start gap-3 rounded-lg border border-ink-100 bg-ink-50/60 p-3.5">
+      <div className="flex items-start gap-3 rounded-lg border border-ink-200 bg-ink-50 p-3.5 transition-colors duration-[120ms]">
         <button
           type="button"
           role="switch"

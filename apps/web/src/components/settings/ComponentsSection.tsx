@@ -65,15 +65,14 @@ export function ComponentsSection({
 
   return (
     <section
-      className="rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:p-5"
+      className="rounded-xl border border-ink-200 bg-white p-4 shadow-card sm:p-5"
       data-testid="components-section"
     >
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold text-slate-900">Components</h2>
-          <p className="mt-0.5 text-xs text-slate-500">
-            Group issues by functional area. Optionally assign a default
-            assignee to each component.
+          <h2 className="text-sm font-semibold text-ink-900">Components</h2>
+          <p className="mt-0.5 text-xs text-ink-500">
+            Group issues by functional area. Optionally assign a default assignee to each component.
           </p>
         </div>
         {isAdmin && (
@@ -82,7 +81,7 @@ export function ComponentsSection({
             data-testid="component-add"
             onClick={() => setAddOpen(true)}
           >
-            + Add component
+            Add component
           </Button>
         )}
       </div>
@@ -95,9 +94,17 @@ export function ComponentsSection({
           onRetry={() => componentsQuery.refetch()}
         />
       ) : components.length === 0 ? (
-        <p className="py-4 text-sm text-slate-400">No components yet.</p>
+        <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-ink-200 py-10 text-center">
+          <svg className="h-8 w-8 text-ink-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M21 7.5l-9-5.25L3 7.5m18 0l-9 5.25m9-5.25v9l-9 5.25M3 7.5l9 5.25M3 7.5v9l9 5.25m0-9v9" />
+          </svg>
+          <p className="text-sm font-medium text-ink-600">No components yet</p>
+          {isAdmin && (
+            <p className="text-xs text-ink-400">Add a component to group issues by functional area of your project.</p>
+          )}
+        </div>
       ) : (
-        <ul className="divide-y divide-slate-100">
+        <ul className="divide-y divide-ink-100">
           {components.map((component) => (
             <li
               key={component.id}
@@ -105,15 +112,15 @@ export function ComponentsSection({
               data-testid="component-row"
             >
               <div className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-medium text-slate-800">
+                <span className="block truncate text-sm font-medium text-ink-800">
                   {component.name}
                 </span>
                 {(component.description || component.defaultAssignee) && (
-                  <span className="text-xs text-slate-400">
+                  <span className="text-xs text-ink-400">
                     {component.description}
                     {component.description && component.defaultAssignee && ' · '}
                     {component.defaultAssignee && (
-                      <>Default: {component.defaultAssignee.name}</>
+                      <>{component.defaultAssignee.name}</>
                     )}
                   </span>
                 )}
@@ -299,7 +306,7 @@ function AddComponentModal({
             id="comp-assignee"
             value={defaultAssigneeId}
             onChange={(e) => setDefaultAssigneeId(e.target.value)}
-            className="w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-700 transition-colors focus:outline-none focus:ring-2 focus:ring-brand-400"
+            className="w-full rounded border border-ink-200 bg-white px-2 py-1.5 text-sm text-ink-800 transition-colors duration-[120ms] hover:border-ink-300 focus:border-signal-400 focus:outline-none focus:ring-2 focus:ring-signal-200"
           >
             <option value="">None</option>
             {users.map((u) => (
@@ -420,7 +427,7 @@ function EditComponentModal({
             id="ecomp-assignee"
             value={defaultAssigneeId}
             onChange={(e) => setDefaultAssigneeId(e.target.value)}
-            className="w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-700 transition-colors focus:outline-none focus:ring-2 focus:ring-brand-400"
+            className="w-full rounded border border-ink-200 bg-white px-2 py-1.5 text-sm text-ink-800 transition-colors duration-[120ms] hover:border-ink-300 focus:border-signal-400 focus:outline-none focus:ring-2 focus:ring-signal-200"
           >
             <option value="">None</option>
             {users.map((u) => (
@@ -459,12 +466,12 @@ function ComponentIconButton({
       disabled={disabled}
       onClick={onClick}
       className={cn(
-        'rounded p-1.5 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300',
+        'rounded p-1.5 transition-colors duration-[120ms] focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-400',
         disabled
-          ? 'cursor-not-allowed text-slate-300'
+          ? 'cursor-not-allowed text-ink-300'
           : danger
-            ? 'text-slate-400 hover:bg-red-50 hover:text-red-600'
-            : 'text-slate-400 hover:bg-slate-100 hover:text-slate-700',
+            ? 'text-ink-400 hover:bg-red-50 hover:text-red-600'
+            : 'text-ink-400 hover:bg-ink-100 hover:text-ink-700',
       )}
     >
       {children}

@@ -20,9 +20,14 @@ Each item below is redesigned design-skill-led, then ✅ when shipped + verified
 
 **Phase B — Core shell + board + drawer** (highest-traffic surfaces)
 - [ ] `AppHeader` · `Logo` · `NotificationBell` · `project/ProjectNav`
-- [ ] `board/BoardColumn` · `board/IssueCard` · `board/SortableIssueCard` · `board/CardStatusPicker` · `board/PresenceAvatars`
+- [x] `board/BoardColumn` — WIP indicator polish ✅ 2026-06-29
+- [ ] `board/IssueCard` · `board/SortableIssueCard` · `board/CardStatusPicker` · `board/PresenceAvatars`
 - [ ] `board/CreateIssueModal` · `board/ColumnFormModal`
+- [x] `board/BoardWorkflowSelector` — badge ring-inset + ENFORCED chip ✅ 2026-06-29
+- [x] `board/FromTemplateMenu` — system animation applied ✅ 2026-06-29
 - [ ] `issue/IssueDetailDrawer` · `issue/CommentsPanel` · `issue/AttachmentsPanel` · `issue/ActivityPanel` · `issue/LabelPicker` · `issue/MentionComposer` · `issue/ParentSubtasks` · `issue/issueMeta`
+- [x] `issue/TimeTrackingSection` — progress % label + signal/red token ✅ 2026-06-29
+- [x] `issue/ChecklistSection` — progress % label + emerald-complete / signal-in-progress ✅ 2026-06-29
 
 **Phase C — Pages**
 - [ ] Auth: `AuthShell` · `LoginPage` · `RegisterPage` · `ForgotPasswordPage` · `ResetPasswordPage`
@@ -30,8 +35,14 @@ Each item below is redesigned design-skill-led, then ✅ when shipped + verified
 - [ ] `BoardPage` · `BacklogPage` · `TriagePage`
 - [ ] `ReportsPage` (+ `reports/BurndownChart` · `VelocityChart` · `CumulativeFlowChart`)
 - [ ] `RoadmapPage` (+ `roadmap/RoadmapTimeline`)
-- [ ] `SettingsPage` (+ `settings/WebhooksSection` · `WebhookFormModal` · `ShareSection` · `ApiTokensSection`)
+- [x] `SettingsPage` / `settings/WorkflowsManager` + `WorkflowGraph` — dot-grid canvas, node shadow, ink tokens, empty states ✅ 2026-06-29
+- [x] `settings/TemplatesManager` — ink tokens, empty state, doc-plus icon ✅ 2026-06-29
+- [x] `settings/ComponentsSection` — ink tokens, empty state, cube icon ✅ 2026-06-29
+- [x] `settings/VersionsSection` — ink tokens, empty state, badge fix ✅ 2026-06-29
+- [x] `settings/NotificationPreferencesSection` — copy + ink token tighten ✅ 2026-06-29
+- [ ] `settings/WebhooksSection` · `WebhookFormModal` · `ShareSection` · `ApiTokensSection`
 - [ ] `ProfileSettingsPage` · `WorkspaceMembersPage` · `WorkspaceAuditLogPage` · `SharedBoardPage`
+- [x] `NotificationsPage` — nl-issue-key chip + animated unread dot ✅ 2026-06-29
 
 **Phase D — Cross-cutting components**
 - [ ] `CommandPalette` / `CommandPaletteProvider` · `project/OnboardingPanel` · `project/ProjectCard` · `project/CreateProjectModal` · `workspace/CreateWorkspaceModal`
@@ -755,6 +766,69 @@ Recommended fix: `<nav aria-label="Project navigation">`.
 - `ActionParamsEditor.tsx` DATE: raw `<input>` → `ui/Input`; CHECKBOX: `focus-visible:ring` added (RESOLVED 2026-06-28)
 - `ProjectNav.tsx` `<nav>` gets `aria-label="Project navigation"` (RESOLVED 2026-06-28)
 
+
+---
+
+## 2026-06-29 — Design Elevation Polish Pass: Settings + Issue Drawer + Board surfaces
+
+**Scope:** 11 files across three surface areas — Settings (WorkflowsManager, WorkflowGraph, TemplatesManager, ComponentsSection, VersionsSection, NotificationPreferencesSection), Issue Drawer (TimeTrackingSection, ChecklistSection), Board (BoardWorkflowSelector, BoardColumn, FromTemplateMenu), Notifications (NotificationsPage). All within the existing Dispatch token system — no identity change.
+
+**Build:** `tsc --noEmit` clean. `pnpm --filter @next-lane/web build` clean (CSS 86.63 kB, JS 982.69 kB). All `data-testid`/`role`/`aria-label` hooks preserved.
+
+**E2e note:** All 40 touched-surface e2e tests report `ECONNREFUSED 127.0.0.1:4000` — the API is not running and Docker daemon is unavailable in this build sandbox. These are infrastructure failures, not code regressions. TypeScript and bundle compilation confirm no code regressions.
+
+---
+
+### What changed
+
+**Settings — token migration (`slate-*` → `ink-*`)**
+`WorkflowsManager`, `TemplatesManager`, `ComponentsSection`, `VersionsSection` were all using the old pre-Dispatch `slate-*` palette for borders, text, backgrounds, and dividers. All migrated to `ink-*` to match the Dispatch reference implementation (`AutomationsPage`).
+
+**Settings — empty states (inviting, icon-led)**
+Bare text fallbacks ("No workflows yet.", "No templates yet.", etc.) replaced with the `EmptyState`-style dashed-border icon+heading+description pattern consistent with the shared primitives. Icon choice is domain-appropriate: directed-graph icon for workflows, document-plus for templates, cube for components, folder-download for versions.
+
+**WorkflowsManager — enforcement toggle affordance**
+The enforcement toggle row now uses a dynamic background: `bg-signal-50/50 border-signal-200` when enforced, `bg-white border-ink-200` when off. The "Enforced" badge uses `ring-1 ring-inset ring-signal-200` (crisper than a plain border). Transition rows get `shadow-xs` container lift.
+
+**WorkflowGraph — dot-grid canvas + node depth**
+Graph canvas gains a dot-grid background pattern via CSS `radial-gradient` (same technique as the board's drop-zone treatment). Nodes get SVG `feDropShadow` filter for subtle lift. Node/edge color classes updated from raw values to Dispatch `ink-*/signal-*/emerald-*` tokens. Removed an unused `CATEGORY_EDGE_CLASS` constant that caused TS6133.
+
+**VersionsSection — state badge**
+`UNRELEASED` state badge updated from `slate-*` to `bg-ink-50 text-ink-600 ring-ink-200` (consistent with Dispatch neutral chips). `RELEASED` stays `emerald-*`; `ARCHIVED` stays muted ink.
+
+**TimeTrackingSection + ChecklistSection — progress bar %**
+Both progress bars now show a monospace percentage label (`text-[9px] font-mono tabular-nums text-ink-400`) alongside the bar, giving the user an exact reading without requiring them to eyeball the fill. ChecklistSection fill uses `bg-emerald-500` when complete (100%) and `bg-signal-500` in progress.
+
+**BoardWorkflowSelector — badge refinement**
+Badge uses `ring-1 ring-inset` (crisp, no 1px border gap). When enforced, an inner `ENFORCED` micro-chip appears inside the badge (`bg-signal-100 text-signal-800`). Non-enforced state uses `bg-ink-100 text-ink-600`.
+
+**BoardColumn — WIP over-limit indicator**
+Over-limit chip now includes a warning triangle SVG icon (8×8) for immediate visual triage, with `ring-1 ring-inset ring-red-200`. Chip uses `inline-flex items-center gap-0.5`.
+
+**FromTemplateMenu — animation**
+Dropdown animation changed from `motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-top-1` (non-existent system animation) to `motion-safe:animate-nl-fade-in` (the actual registered keyframe in `index.css`).
+
+**NotificationsPage — issue key chips**
+Issue key spans now use the `.nl-issue-key` signature class with `bg-signal-50 ring-1 ring-inset ring-signal-100` — matching the established issue-key visual contract across the whole app. Unread dot gains `motion-safe:animate-pulse`.
+
+**NotificationPreferencesSection — copy**
+Description tightened to `text-xs` (consistent with sibling section headers). Toggle row uses `border-ink-200 bg-ink-50`.
+
+---
+
+### What was intentionally left unchanged
+
+- All `data-testid`, `role`, `aria-label`, visible user-facing text strings that e2e tests assert on — fully preserved.
+- Layout and component structure (elevation only, no redesign).
+- Any backend calls or API contracts.
+
+---
+
+### Known gaps (not in scope of this pass)
+
+- Screenshots with authenticated content — requires live API. Only login-redirect screenshots were capturable in this build sandbox.
+- ARIA tab pattern in AutomationsPage — tracked in backlog.
+- Personal board column accent color variation — tracked in backlog.
 
 ---
 

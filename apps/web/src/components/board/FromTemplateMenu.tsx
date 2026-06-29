@@ -114,8 +114,8 @@ export function FromTemplateMenu({
           role="menu"
           aria-label="Issue templates"
           className={cn(
-            'absolute right-0 z-50 mt-1.5 min-w-[200px] max-w-[280px] overflow-hidden rounded-lg border border-ink-200 bg-white shadow-lg',
-            'motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-top-1',
+            'absolute right-0 z-50 mt-1.5 min-w-[200px] max-w-[280px] overflow-hidden rounded-lg border border-ink-200 bg-white shadow-dropdown',
+            'motion-safe:animate-nl-fade-in',
           )}
         >
           <p className="border-b border-ink-100 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-ink-400">

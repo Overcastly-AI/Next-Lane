@@ -296,22 +296,27 @@ function TimeProgress({
 
       {/* Progress bar — only when estimate exists */}
       {hasEstimate && (
-        <div
-          data-testid="time-progress"
-          role="progressbar"
-          aria-valuenow={timeSpent}
-          aria-valuemin={0}
-          aria-valuemax={estimate}
-          aria-label={`Time logged: ${spentLabel} of ${estimateLabel ?? 'unestimated'}`}
-          className="h-1.5 w-full overflow-hidden rounded-full bg-ink-100"
-        >
+        <div className="flex items-center gap-2">
           <div
-            className={[
-              'h-full rounded-full transition-all duration-300 motion-reduce:transition-none',
-              isOver ? 'bg-red-500' : 'bg-signal-500',
-            ].join(' ')}
-            style={{ width: `${pct}%` }}
-          />
+            data-testid="time-progress"
+            role="progressbar"
+            aria-valuenow={timeSpent}
+            aria-valuemin={0}
+            aria-valuemax={estimate}
+            aria-label={`Time logged: ${spentLabel} of ${estimateLabel ?? 'unestimated'}`}
+            className="flex-1 h-1.5 overflow-hidden rounded-full bg-ink-100"
+          >
+            <div
+              className={[
+                'h-full rounded-full transition-all duration-300 motion-reduce:transition-none',
+                isOver ? 'bg-red-500' : 'bg-signal-500',
+              ].join(' ')}
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+          <span className="font-mono text-[9px] tabular-nums text-ink-400">
+            {Math.round(pct)}%
+          </span>
         </div>
       )}
     </div>

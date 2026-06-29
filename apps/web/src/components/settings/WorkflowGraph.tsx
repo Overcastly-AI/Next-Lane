@@ -48,16 +48,19 @@ const CATEGORY_DOT_CLASS: Record<string, string> = {
 };
 
 const CATEGORY_STROKE_CLASS: Record<string, string> = {
-  TODO: 'stroke-ink-300',
-  IN_PROGRESS: 'stroke-signal-300',
-  DONE: 'stroke-emerald-300',
+  TODO: 'stroke-ink-400',
+  IN_PROGRESS: 'stroke-signal-400',
+  DONE: 'stroke-emerald-400',
 };
 
 const CATEGORY_BG_CLASS: Record<string, string> = {
-  TODO: 'fill-white stroke-ink-200',
-  IN_PROGRESS: 'fill-white stroke-signal-200',
-  DONE: 'fill-white stroke-emerald-200',
+  TODO: 'fill-ink-50 stroke-ink-200',
+  IN_PROGRESS: 'fill-signal-50/60 stroke-signal-200',
+  DONE: 'fill-emerald-50 stroke-emerald-200',
 };
+
+// Note: edge color by source category is not currently used;
+// all edges use the neutral ink-400 / signal-500 (hovered) scheme.
 
 const CATEGORY_ORDER: Record<string, number> = {
   TODO: 0,
@@ -432,13 +435,20 @@ export function WorkflowGraph({
   return (
     <div
       data-testid="workflow-graph"
-      className="relative rounded-xl border border-slate-200 bg-white"
+      className="relative overflow-hidden rounded-xl border border-ink-200 bg-ink-50"
+      style={{
+        backgroundImage: 'radial-gradient(circle, #c4cad6 1px, transparent 1px)',
+        backgroundSize: '20px 20px',
+      }}
     >
       {/* Graph area with horizontal scroll containment on mobile */}
       <div className="w-full overflow-x-auto">
         {!hasNodes ? (
-          <div className="flex h-40 items-center justify-center text-sm text-slate-400">
-            No statuses defined for this project.
+          <div className="flex h-40 flex-col items-center justify-center gap-2 text-center">
+            <svg className="h-6 w-6 text-ink-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 9.776c.112-.017.227-.026.344-.026h15.812c.117 0 .232.009.344.026m-16.5 0a2.25 2.25 0 0 0-1.883 2.542l.857 6a2.25 2.25 0 0 0 2.227 1.932H19.05a2.25 2.25 0 0 0 2.227-1.932l.857-6a2.25 2.25 0 0 0-1.883-2.542m-16.5 0V6A2.25 2.25 0 0 1 6 3.75h3.879a1.5 1.5 0 0 1 1.06.44l2.122 2.12a1.5 1.5 0 0 0 1.06.44H18A2.25 2.25 0 0 1 20.25 9v.776" />
+            </svg>
+            <p className="text-sm text-ink-500">No statuses defined for this project.</p>
           </div>
         ) : (
           <svg
@@ -458,6 +468,7 @@ export function WorkflowGraph({
                 refX={ARROW_SIZE - 1}
                 refY={ARROW_SIZE / 2}
                 orient="auto"
+                markerUnits="strokeWidth"
               >
                 <path
                   d={`M 0 0 L ${ARROW_SIZE} ${ARROW_SIZE / 2} L 0 ${ARROW_SIZE} z`}
@@ -471,12 +482,17 @@ export function WorkflowGraph({
                 refX={ARROW_SIZE - 1}
                 refY={ARROW_SIZE / 2}
                 orient="auto"
+                markerUnits="strokeWidth"
               >
                 <path
                   d={`M 0 0 L ${ARROW_SIZE} ${ARROW_SIZE / 2} L 0 ${ARROW_SIZE} z`}
                   className="fill-signal-500"
                 />
               </marker>
+              {/* Drop shadow filter for nodes */}
+              <filter id={`wg-shadow-${workflowId}`} x="-20%" y="-20%" width="140%" height="140%">
+                <feDropShadow dx="0" dy="1" stdDeviation="1.5" floodColor="rgb(17 24 39)" floodOpacity="0.08" />
+              </filter>
             </defs>
 
             {/* Edges (drawn first so they appear behind nodes) */}
@@ -618,16 +634,17 @@ export function WorkflowGraph({
                   )}
 
                   {node.isStart ? (
-                    /* Start node: filled circle */
+                    /* Start node: filled circle with shadow */
                     <circle
                       cx={node.cx}
                       cy={node.cy}
                       r={START_R}
                       className="fill-ink-800 stroke-ink-700"
                       strokeWidth={1.5}
+                      filter={`url(#wg-shadow-${workflowId})`}
                     />
                   ) : (
-                    /* Status node: rounded rect */
+                    /* Status node: rounded rect with shadow */
                     <rect
                       x={node.cx - NODE_W / 2}
                       y={node.cy - NODE_H / 2}
@@ -641,6 +658,7 @@ export function WorkflowGraph({
                           (CATEGORY_STROKE_CLASS[catKey] ?? 'stroke-ink-400'),
                         'motion-safe:transition-all',
                       )}
+                      filter={`url(#wg-shadow-${workflowId})`}
                     />
                   )}
 
@@ -736,9 +754,9 @@ export function WorkflowGraph({
       {/* Empty transitions hint */}
       {hasNodes && transitions.length === 0 && !isConnecting && (
         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-          <p className="text-xs text-slate-400 mt-2">
+          <p className="rounded-md bg-white/80 px-3 py-1.5 text-xs text-ink-500 shadow-xs">
             {isAdmin
-              ? 'Click a node\'s "+" handle to draw a transition.'
+              ? 'Click a node\'s \"+\" handle to draw a transition arrow.'
               : 'No transitions defined yet.'}
           </p>
         </div>

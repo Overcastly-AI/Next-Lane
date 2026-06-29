@@ -106,15 +106,14 @@ export function TemplatesManager({
 
   return (
     <section
-      className="rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:p-5"
+      className="rounded-xl border border-ink-200 bg-white p-4 shadow-card sm:p-5"
       data-testid="templates-manager"
     >
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold text-slate-900">Issue Templates</h2>
-          <p className="mt-0.5 text-xs text-slate-500">
-            Pre-fill new issues with a fixed type, priority, assignee, and
-            description. Members can use templates; only admins can manage them.
+          <h2 className="text-sm font-semibold text-ink-900">Issue Templates</h2>
+          <p className="mt-0.5 text-xs text-ink-500">
+            Pre-fill new issues with a fixed type, priority, assignee, and description. Members can use templates; only admins can manage them.
           </p>
         </div>
         {isAdmin && (
@@ -123,7 +122,7 @@ export function TemplatesManager({
             data-testid="template-add"
             onClick={() => setAddOpen(true)}
           >
-            + Add template
+            Add template
           </Button>
         )}
       </div>
@@ -136,9 +135,17 @@ export function TemplatesManager({
           onRetry={() => templatesQuery.refetch()}
         />
       ) : templates.length === 0 ? (
-        <p className="py-4 text-sm text-slate-400">No templates yet.</p>
+        <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-ink-200 py-10 text-center">
+          <svg className="h-8 w-8 text-ink-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
+          </svg>
+          <p className="text-sm font-medium text-ink-600">No templates yet</p>
+          {isAdmin && (
+            <p className="text-xs text-ink-400">Add a template to let your team create issues from a pre-filled starting point.</p>
+          )}
+        </div>
       ) : (
-        <ul className="divide-y divide-slate-100">
+        <ul className="divide-y divide-ink-100">
           {templates.map((tpl) => (
             <li
               key={tpl.id}
@@ -150,7 +157,7 @@ export function TemplatesManager({
 
               {/* Name + meta */}
               <div className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-medium text-slate-800">
+                <span className="block truncate text-sm font-medium text-ink-800">
                   {tpl.name}
                 </span>
                 <div className="mt-0.5 flex flex-wrap items-center gap-1">
@@ -163,8 +170,8 @@ export function TemplatesManager({
                     </Badge>
                   )}
                   {tpl.defaultAssignee && (
-                    <span className="text-xs text-slate-400">
-                      Assignee: {tpl.defaultAssignee.name}
+                    <span className="text-xs text-ink-400">
+                      {tpl.defaultAssignee.name}
                     </span>
                   )}
                 </div>
@@ -307,7 +314,7 @@ function TemplateFormFields({
             id={`${formId}-type`}
             value={issueType}
             onChange={(e) => onIssueTypeChange(e.target.value as IssueType)}
-            className="w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-700 transition-colors focus:outline-none focus:ring-2 focus:ring-brand-400"
+            className="w-full rounded border border-ink-200 bg-white px-2 py-1.5 text-sm text-ink-800 transition-colors duration-[120ms] hover:border-ink-300 focus:border-signal-400 focus:outline-none focus:ring-2 focus:ring-signal-200"
           >
             {ISSUE_TYPES.map((t) => (
               <option key={t} value={t}>
@@ -322,7 +329,7 @@ function TemplateFormFields({
             id={`${formId}-priority`}
             value={priority}
             onChange={(e) => onPriorityChange(e.target.value)}
-            className="w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-700 transition-colors focus:outline-none focus:ring-2 focus:ring-brand-400"
+            className="w-full rounded border border-ink-200 bg-white px-2 py-1.5 text-sm text-ink-800 transition-colors duration-[120ms] hover:border-ink-300 focus:border-signal-400 focus:outline-none focus:ring-2 focus:ring-signal-200"
           >
             <option value="">No default</option>
             {PRIORITIES.map((p) => (
@@ -360,7 +367,7 @@ function TemplateFormFields({
           id={`${formId}-assignee`}
           value={defaultAssigneeId}
           onChange={(e) => onDefaultAssigneeIdChange(e.target.value)}
-          className="w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-700 transition-colors focus:outline-none focus:ring-2 focus:ring-brand-400"
+          className="w-full rounded border border-ink-200 bg-white px-2 py-1.5 text-sm text-ink-800 transition-colors duration-[120ms] hover:border-ink-300 focus:border-signal-400 focus:outline-none focus:ring-2 focus:ring-signal-200"
         >
           <option value="">None</option>
           {users.map((u) => (
@@ -377,7 +384,7 @@ function TemplateFormFields({
             id={`${formId}-component`}
             value={componentId}
             onChange={(e) => onComponentIdChange(e.target.value)}
-            className="w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-700 transition-colors focus:outline-none focus:ring-2 focus:ring-brand-400"
+            className="w-full rounded border border-ink-200 bg-white px-2 py-1.5 text-sm text-ink-800 transition-colors duration-[120ms] hover:border-ink-300 focus:border-signal-400 focus:outline-none focus:ring-2 focus:ring-signal-200"
           >
             <option value="">None</option>
             {components.map((c) => (
@@ -391,7 +398,7 @@ function TemplateFormFields({
 
       {labels.length > 0 && (
         <fieldset>
-          <legend className="mb-1.5 block text-sm font-medium text-slate-700">
+          <legend className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.08em] text-ink-500">
             Labels (optional)
           </legend>
           <div className="flex flex-wrap gap-2">
@@ -401,10 +408,10 @@ function TemplateFormFields({
                 <label
                   key={lbl.id}
                   className={cn(
-                    'flex cursor-pointer items-center gap-1.5 rounded-md border px-2 py-1 text-xs transition-colors',
+                    'flex cursor-pointer items-center gap-1.5 rounded border px-2 py-1 text-xs transition-colors duration-[120ms]',
                     checked
-                      ? 'border-brand-300 bg-brand-50 text-brand-700'
-                      : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300',
+                      ? 'border-signal-300 bg-signal-50 text-signal-700'
+                      : 'border-ink-200 bg-white text-ink-600 hover:border-ink-300',
                   )}
                 >
                   <input
@@ -719,12 +726,12 @@ function TemplateIconButton({
       disabled={disabled}
       onClick={onClick}
       className={cn(
-        'rounded p-1.5 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300',
+        'rounded p-1.5 transition-colors duration-[120ms] focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-400',
         disabled
-          ? 'cursor-not-allowed text-slate-300'
+          ? 'cursor-not-allowed text-ink-300'
           : danger
-            ? 'text-slate-400 hover:bg-red-50 hover:text-red-600'
-            : 'text-slate-400 hover:bg-slate-100 hover:text-slate-700',
+            ? 'text-ink-400 hover:bg-red-50 hover:text-red-600'
+            : 'text-ink-400 hover:bg-ink-100 hover:text-ink-700',
       )}
     >
       {children}

@@ -179,7 +179,7 @@ function NotificationRow({ notification: n, onAction }: RowProps) {
           </span>
           <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-ink-500">
             {n.issueKey && (
-              <span className="rounded-sm bg-ink-100 px-1.5 py-px font-mono font-medium text-ink-700">
+              <span className="nl-issue-key rounded-sm bg-signal-50 px-1.5 py-px ring-1 ring-inset ring-signal-100">
                 {n.issueKey}
               </span>
             )}
@@ -199,10 +199,10 @@ function NotificationRow({ notification: n, onAction }: RowProps) {
           <span className="hidden sm:inline">{TYPE_LABEL[n.type]}</span>
         </span>
 
-        {/* Unread dot */}
+        {/* Unread dot — pulse draws the eye, motion-safe keeps it accessible */}
         {!n.read && (
           <span
-            className="mt-2 h-2 w-2 shrink-0 rounded-full bg-signal-500"
+            className="mt-2 h-2 w-2 shrink-0 rounded-full bg-signal-500 motion-safe:animate-pulse"
             aria-label="unread"
           />
         )}
@@ -450,8 +450,7 @@ export function NotificationsPage() {
 
             {/* Footer note about the 50-item cap */}
             <p className="border-t border-ink-100 px-4 py-2.5 text-center text-xs text-ink-400 sm:px-6">
-              Showing up to 50 most recent notifications.
-              Older history and pagination require a backend update.
+              Showing up to 50 most recent notifications
             </p>
           </div>
         )}

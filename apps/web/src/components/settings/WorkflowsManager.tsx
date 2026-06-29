@@ -114,14 +114,14 @@ export function WorkflowsManager({
   return (
     <section
       data-testid="workflows-manager"
-      className="rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:p-5"
+      className="rounded-xl border border-ink-200 bg-white p-4 shadow-card sm:p-5"
     >
       {/* Section header */}
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold text-slate-900">Named Workflows</h2>
-          <p className="mt-0.5 text-xs text-slate-500">
-            Define reusable SDLC workflow graphs and assign them to boards.
+          <h2 className="text-sm font-semibold text-ink-900">Named Workflows</h2>
+          <p className="mt-0.5 text-xs text-ink-500">
+            Define reusable workflow graphs and assign them to boards.
           </p>
         </div>
         {isAdmin && (
@@ -139,7 +139,7 @@ export function WorkflowsManager({
               data-testid="workflow-create"
               onClick={() => setCreateOpen(true)}
             >
-              + New workflow
+              New workflow
             </Button>
           </div>
         )}
@@ -154,10 +154,15 @@ export function WorkflowsManager({
           onRetry={() => workflowsQuery.refetch()}
         />
       ) : workflows.length === 0 ? (
-        <p className="py-3 text-sm text-slate-400">
-          No workflows yet.
-          {isAdmin && ' Create one or start from a template.'}
-        </p>
+        <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-ink-200 py-10 text-center">
+          <svg className="h-8 w-8 text-ink-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
+          </svg>
+          <p className="text-sm font-medium text-ink-600">No workflows yet</p>
+          {isAdmin && (
+            <p className="text-xs text-ink-400">Create one or start from a template to control which status transitions are allowed on boards.</p>
+          )}
+        </div>
       ) : (
         <div className="space-y-1.5">
           {workflows.map((wf) => (
@@ -167,28 +172,28 @@ export function WorkflowsManager({
               data-testid="workflow-row"
               onClick={() => setSelectedId(wf.id === selectedId ? null : wf.id)}
               className={cn(
-                'group w-full rounded-lg border px-3 py-2.5 text-left transition-colors',
+                'group w-full rounded-lg border px-3 py-2.5 text-left transition-colors duration-[120ms]',
                 'focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-400',
                 selectedId === wf.id
-                  ? 'border-signal-300 bg-signal-50'
-                  : 'border-slate-100 bg-slate-50 hover:border-slate-200 hover:bg-white',
+                  ? 'border-signal-200 bg-signal-50 shadow-xs'
+                  : 'border-ink-150 bg-ink-50 hover:border-ink-200 hover:bg-white hover:shadow-xs',
               )}
             >
               <div className="flex items-center gap-2.5">
-                <span className="min-w-0 flex-1 text-sm font-medium text-slate-800 truncate">
+                <span className="min-w-0 flex-1 text-sm font-medium text-ink-800 truncate">
                   {wf.name}
                 </span>
                 {wf.enforced && (
-                  <span className="inline-flex items-center rounded-sm bg-signal-50 px-1.5 py-0.5 text-[10px] font-semibold text-signal-700 border border-signal-100">
+                  <span className="inline-flex items-center rounded-sm bg-signal-50 px-1.5 py-0.5 text-[10px] font-semibold text-signal-700 ring-1 ring-inset ring-signal-200">
                     Enforced
                   </span>
                 )}
-                <span className="text-xs text-slate-400 tabular-nums shrink-0">
-                  {wf.transitionCount ?? 0} transition{(wf.transitionCount ?? 0) !== 1 && 's'}
+                <span className="font-mono text-[10px] text-ink-400 tabular-nums shrink-0">
+                  {wf.transitionCount ?? 0}T
                 </span>
                 {typeof wf.boardCount === 'number' && wf.boardCount > 0 && (
-                  <span className="text-xs text-slate-400 tabular-nums shrink-0">
-                    {wf.boardCount} board{wf.boardCount !== 1 && 's'}
+                  <span className="font-mono text-[10px] text-ink-400 tabular-nums shrink-0">
+                    {wf.boardCount}B
                   </span>
                 )}
                 {/* Chevron */}
@@ -201,7 +206,7 @@ export function WorkflowsManager({
                   strokeWidth="2.5"
                   aria-hidden="true"
                   className={cn(
-                    'shrink-0 text-slate-400 transition-transform',
+                    'shrink-0 text-ink-400 transition-transform duration-[120ms]',
                     selectedId === wf.id && 'rotate-180',
                   )}
                 >
@@ -209,7 +214,7 @@ export function WorkflowsManager({
                 </svg>
               </div>
               {wf.description && (
-                <p className="mt-0.5 text-xs text-slate-500 truncate">{wf.description}</p>
+                <p className="mt-0.5 text-xs text-ink-500 truncate">{wf.description}</p>
               )}
             </button>
           ))}
@@ -342,7 +347,7 @@ function WorkflowDetailPanel({
   const grouped = groupTransitions(transitions);
 
   return (
-    <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
+    <div className="mt-3 rounded-xl border border-ink-200 bg-ink-50 p-4">
       {detailQuery.isLoading ? (
         <LoadingState label="Loading workflow…" />
       ) : detailQuery.isError ? (
@@ -354,7 +359,7 @@ function WorkflowDetailPanel({
         <>
           {/* Header */}
           <div className="mb-4 flex items-start justify-between gap-3">
-            <h3 className="text-sm font-semibold text-slate-800">{workflowName}</h3>
+            <h3 className="text-sm font-semibold text-ink-800">{workflowName}</h3>
             <div className="flex shrink-0 items-center gap-2">
               {/* View toggle: List / Graph */}
               <div
@@ -443,11 +448,16 @@ function WorkflowDetailPanel({
           {viewMode === 'list' && (
             <div className="mt-4">
               {grouped.length === 0 ? (
-                <p className="py-3 text-sm text-slate-400">
-                  {detail.enforced
-                    ? 'No transitions defined. Add one to restrict status moves.'
-                    : 'No transitions — all moves are allowed while enforcement is off.'}
-                </p>
+                <div className="flex flex-col items-center gap-1.5 rounded-lg border border-dashed border-ink-200 py-8 text-center">
+                  <svg className="h-6 w-6 text-ink-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M12 5l7 7-7 7" />
+                  </svg>
+                  <p className="text-xs text-ink-500">
+                    {detail.enforced
+                      ? 'No transitions yet. Add one to restrict which status moves are allowed.'
+                      : 'No transitions — all status moves are allowed while enforcement is off.'}
+                  </p>
+                </div>
               ) : (
                 <div className="space-y-4">
                   {grouped.map((group) => (
@@ -539,7 +549,10 @@ function EnforcementToggle({
   onToggle: () => void;
 }) {
   return (
-    <div className="rounded-lg border border-slate-100 bg-white px-4 py-3">
+    <div className={cn(
+      'rounded-lg border px-4 py-3 transition-colors duration-[120ms]',
+      enforced ? 'border-signal-200 bg-signal-50/50' : 'border-ink-200 bg-white',
+    )}>
       <div className="flex items-start gap-3">
         <button
           type="button"
@@ -552,7 +565,7 @@ function EnforcementToggle({
           className={cn(
             'relative mt-0.5 inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full',
             'transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-400 focus-visible:ring-offset-1',
-            enforced ? 'bg-signal-600' : 'bg-slate-300',
+            enforced ? 'bg-signal-600' : 'bg-ink-300',
             (!isAdmin || loading) && 'cursor-not-allowed opacity-50',
           )}
         >
@@ -565,16 +578,16 @@ function EnforcementToggle({
           />
         </button>
         <div className="min-w-0">
-          <p className="text-sm font-medium text-slate-800">
+          <p className="text-sm font-medium text-ink-800">
             {enforced ? 'Enforcement on' : 'Enforcement off'}
           </p>
-          <p className="mt-0.5 text-xs text-slate-500">
+          <p className="mt-0.5 text-xs text-ink-500">
             {enforced
               ? 'Only the transitions below are allowed on boards using this workflow.'
               : 'Any status transition is permitted regardless of the list below.'}
           </p>
           {!isAdmin && (
-            <p className="mt-1 text-xs text-slate-400">Only admins can change enforcement.</p>
+            <p className="mt-1 text-xs text-ink-400">Only admins can change enforcement.</p>
           )}
         </div>
       </div>
@@ -633,15 +646,15 @@ function TransitionGroupView({
       <div className="mb-1.5 flex items-center gap-2">
         <span
           className={cn(
-            'inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-xs font-semibold',
+            'inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-xs font-semibold',
             fromStatusId
-              ? 'bg-slate-100 text-slate-700'
-              : 'bg-signal-50 text-signal-700 border border-signal-100',
+              ? 'bg-ink-100 text-ink-700'
+              : 'bg-signal-50 text-signal-700 ring-1 ring-inset ring-signal-200',
           )}
         >
           {fromStatusId ? (
             <>
-              <span className="h-1.5 w-1.5 rounded-full bg-slate-400" aria-hidden="true" />
+              <span className="h-1.5 w-1.5 rounded-full bg-ink-400" aria-hidden="true" />
               {fromStatusName}
             </>
           ) : (
@@ -653,11 +666,11 @@ function TransitionGroupView({
             </>
           )}
         </span>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true" className="text-slate-300">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true" className="text-ink-300">
           <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M12 5l7 7-7 7" />
         </svg>
       </div>
-      <ul className="divide-y divide-slate-100 rounded-lg border border-slate-100 bg-white">
+      <ul className="divide-y divide-ink-100 rounded-lg border border-ink-150 bg-white shadow-xs">
         {transitions.map((t) => {
           const toStatus = statusById.get(t.toStatusId);
           return (
@@ -667,13 +680,13 @@ function TransitionGroupView({
               data-testid="workflow-transition-row"
             >
               <span className="min-w-0 flex-1">
-                <span className="block text-sm font-medium text-slate-800 truncate">
+                <span className="block text-sm font-medium text-ink-800 truncate">
                   {toStatus?.name ?? t.toStatusId}
                   {t.name && (
-                    <span className="ml-1.5 font-normal text-slate-500">"{t.name}"</span>
+                    <span className="ml-1.5 font-normal text-ink-500">"{t.name}"</span>
                   )}
                 </span>
-                <span className="mt-0.5 block text-xs text-slate-400">
+                <span className="mt-0.5 block text-xs text-ink-400">
                   {t.issueType ? ISSUE_TYPE_LABELS[t.issueType] : 'All types'}
                   {t.gates.length > 0 && (
                     <span className="ml-1.5 inline-flex flex-wrap gap-1">
@@ -717,7 +730,7 @@ function GateChip({ gate }: { gate: WorkflowGateDto }) {
   const label = WORKFLOW_GATE_LABELS[gate.type] ?? gate.type;
   const extra = gate.field ?? gate.linkType;
   return (
-    <span className="inline-flex items-center gap-0.5 rounded-sm bg-brand-50 px-1.5 py-0.5 text-[10px] font-medium text-brand-700 border border-brand-100">
+    <span className="inline-flex items-center gap-0.5 rounded-sm bg-signal-50 px-1.5 py-0.5 text-[10px] font-medium text-signal-700 ring-1 ring-inset ring-signal-100">
       {label}
       {extra && <span className="font-normal opacity-75">: {extra}</span>}
     </span>
@@ -1171,7 +1184,7 @@ function GateEditor({
   onRemove: () => void;
 }) {
   return (
-    <li className="flex flex-col gap-2 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2.5">
+    <li className="flex flex-col gap-2 rounded-lg border border-ink-200 bg-ink-50 px-3 py-2.5">
       <div className="flex items-center gap-2">
         <select
           aria-label="Gate type"
@@ -1246,12 +1259,12 @@ function WfIconButton({
       disabled={disabled}
       onClick={onClick}
       className={cn(
-        'rounded p-1.5 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300',
+        'rounded p-1.5 transition-colors duration-[120ms] focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-400',
         disabled
-          ? 'cursor-not-allowed text-slate-300'
+          ? 'cursor-not-allowed text-ink-300'
           : danger
-            ? 'text-slate-400 hover:bg-red-50 hover:text-red-600'
-            : 'text-slate-400 hover:bg-slate-100 hover:text-slate-700',
+            ? 'text-ink-400 hover:bg-red-50 hover:text-red-600'
+            : 'text-ink-400 hover:bg-ink-100 hover:text-ink-700',
       )}
     >
       {children}
