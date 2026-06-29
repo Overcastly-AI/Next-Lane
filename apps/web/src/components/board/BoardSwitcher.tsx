@@ -648,10 +648,12 @@ export function BoardSwitcher({
                         aria-label={`Board settings for ${board.name}`}
                         data-testid="board-settings-button"
                         className={cn(
-                          'flex-shrink-0 rounded p-1 text-slate-400 opacity-0 transition-opacity',
+                          // Always visible (was opacity-0 until hover, which made
+                          // it undiscoverable and unreachable on touch devices —
+                          // hiding Board settings, incl. the default filter).
+                          'flex-shrink-0 rounded p-1 text-slate-400 transition-colors',
                           'hover:bg-slate-200 hover:text-slate-600',
                           'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300',
-                          'group-hover:opacity-100 focus:opacity-100',
                         )}
                         onClick={(e) => {
                           e.stopPropagation();
