@@ -55,6 +55,19 @@ it directly:
 NEXT_LANE_TOKEN=nlp_xxx NEXT_LANE_API_URL=http://localhost:4000 node /absolute/path/to/Next-Lane/apps/mcp/dist/index.js
 ```
 
+### Run without cloning (once published)
+
+The package is publish-ready (`publishConfig.access: public`, no `workspace:*`
+runtime deps). After a maintainer runs `npm publish` from `apps/mcp`, anyone can
+run it with **no clone or build**:
+
+```bash
+NEXT_LANE_TOKEN=nlp_xxx NEXT_LANE_API_URL=https://your-next-lane.example.com npx @next-lane/mcp
+```
+
+…and the Claude Desktop / Claude Code configs below become `"command": "npx"`,
+`"args": ["-y", "@next-lane/mcp"]`.
+
 ## Connect to Claude Desktop
 
 Edit your Claude Desktop config file:

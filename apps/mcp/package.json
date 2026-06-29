@@ -1,7 +1,7 @@
 {
   "name": "@next-lane/mcp",
   "version": "0.1.0",
-  "private": true,
+  "private": false,
   "description": "Model Context Protocol (MCP) server for Next Lane — read & write a project's workflows/SDLC and core entities from external agents (Claude Desktop, Claude Code, etc.).",
   "license": "MIT",
   "type": "commonjs",
@@ -10,16 +10,22 @@
     "next-lane-mcp": "./dist/index.js"
   },
   "files": ["dist", "README.md"],
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "dev": "tsc -p tsconfig.json --watch",
     "lint": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "prepublishOnly": "pnpm build"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.29.0",
-    "@next-lane/shared": "workspace:*",
     "zod": "3.25.76"
   },
   "devDependencies": {
