@@ -36,6 +36,7 @@ import { NlqlConditionInput } from './NlqlConditionInput';
 import { ActionParamsEditor, type ActionParams } from './ActionParamsEditor';
 import { useToast } from '@/components/ui/Toast';
 import { errorMessage } from '@/lib/errorMessage';
+import { randomId } from '@/lib/uuid';
 import { cn } from '@/lib/cn';
 
 // ---------------------------------------------------------------------------
@@ -67,7 +68,7 @@ function defaultParams(type: AutomationActionType): ActionParams {
 }
 
 function newActionRow(type: AutomationActionType = AutomationActionType.ASSIGN): ActionRow {
-  return { _key: crypto.randomUUID(), type, params: defaultParams(type) };
+  return { _key: randomId(), type, params: defaultParams(type) };
 }
 
 function toActionDto(row: ActionRow): AutomationActionDto {
@@ -136,7 +137,7 @@ export function AutomationRuleEditor({
       setActions(
         rule.actions.length > 0
           ? rule.actions.map((a) => ({
-              _key: crypto.randomUUID(),
+              _key: randomId(),
               type: a.type,
               params: a.params as ActionParams,
             }))

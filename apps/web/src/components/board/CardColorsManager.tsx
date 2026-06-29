@@ -27,6 +27,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { NlqlInput } from '@/components/board/NlqlInput';
 import { PRESET_COLORS, invalidateAstCache } from '@/lib/cardColors';
+import { randomId } from '@/lib/uuid';
 import { useStatuses } from '@/api/meta';
 
 // ---------------------------------------------------------------------------
@@ -365,7 +366,7 @@ export function CardColorsManager({
   );
 
   function addRule() {
-    const id = crypto.randomUUID();
+    const id = randomId();
     setRows((prev) => [
       ...prev,
       { id, query: '', color: PRESET_COLORS[0].hex, label: '', queryError: null },
