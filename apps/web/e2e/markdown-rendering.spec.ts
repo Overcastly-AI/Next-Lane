@@ -262,6 +262,136 @@ test.describe('markdown rendering', () => {
     await expect(commentBody.locator('strong')).toContainText('important');
   });
 
+  test('description renders a ```mermaid block as an SVG diagram', async ({
+    page,
+    request,
+  }) => {
+    const ctx = await setupIsolatedProject(page, request, {
+      label: 'md-mermaid',
+      projectName: 'Markdown Mermaid Test',
+    });
+
+    // Surrounding markdown + a fenced mermaid flowchart.
+    const mdContent = [
+      '## Architecture',
+      '',
+      'The flow:',
+      '',
+      '```mermaid',
+      'graph TD',
+      '  A[Start] --> B{Ready?}',
+      '  B -->|Yes| C[Ship]',
+      '  B -->|No| A',
+      '```',
+      '',
+      'End of diagram.',
+    ].join('\n');
+
+    const issue = await createIssue(request, ctx.token, ctx.project.id, {
+      title: 'Mermaid description issue',
+    });
+    const patchRes = await request.patch(`${API_URL}/api/issues/${issue.id}`, {
+      headers: { Authorization: `Bearer ${ctx.token}` },
+      data: { description: mdContent },
+    });
+    expect(patchRes.ok(), `patch failed: ${patchRes.status()}`).toBeTruthy();
+
+    await page.goto(`/projects/${ctx.project.id}/board`);
+    await expect(page.getByText('Mermaid description issue')).toBeVisible({
+      timeout: 10000,
+    });
+    await openIssueDrawer(page, 'Mermaid description issue');
+
+    const rendered = page.getByTestId('description-rendered');
+    await expect(rendered).toBeVisible({ timeout: 8000 });
+
+    // The mermaid block becomes an inline SVG (lazy-loaded — allow time).
+    const diagram = rendered.getByTestId('mermaid-diagram');
+    await expect(diagram).toBeVisible({ timeout: 15000 });
+    await expect(diagram.locator('svg')).toBeVisible({ timeout: 15000 });
+    // A node label from the diagram should appear in the rendered SVG text.
+    await expect(diagram).toContainText('Ship');
+
+    // The surrounding markdown still renders normally.
+    await expect(rendered.locator('h2')).toContainText('Architecture');
+    await expect(rendered).toContainText('End of diagram.');
+  });
+
+  test('invalid mermaid syntax falls back to the source, not a crash', async ({
+    page,
+    request,
+  }) => {
+    const ctx = await setupIsolatedProject(page, request, {
+      label: 'md-mermaid-bad',
+      projectName: 'Markdown Mermaid Error Test',
+    });
+
+    const mdContent = ['```mermaid', 'graph TD', '  A --> ', 'this is not valid', '```'].join('\n');
+
+    const issue = await createIssue(request, ctx.token, ctx.project.id, {
+      title: 'Bad mermaid issue',
+    });
+    await request.patch(`${API_URL}/api/issues/${issue.id}`, {
+      headers: { Authorization: `Bearer ${ctx.token}` },
+      data: { description: mdContent },
+    });
+
+    await page.goto(`/projects/${ctx.project.id}/board`);
+    await expect(page.getByText('Bad mermaid issue')).toBeVisible({ timeout: 10000 });
+    await openIssueDrawer(page, 'Bad mermaid issue');
+
+    const rendered = page.getByTestId('description-rendered');
+    await expect(rendered).toBeVisible({ timeout: 8000 });
+
+    // Graceful fallback shows the raw source rather than throwing.
+    await expect(rendered.getByTestId('mermaid-error')).toBeVisible({ timeout: 15000 });
+    await expect(rendered).toContainText('graph TD');
+  });
+
+  test('mermaid XSS: a script in a node label does not execute', async ({
+    page,
+    request,
+  }) => {
+    const ctx = await setupIsolatedProject(page, request, {
+      label: 'md-mermaid-xss',
+      projectName: 'Markdown Mermaid XSS Test',
+    });
+
+    // A node label carrying an injection payload — mermaid securityLevel:strict
+    // must neutralise it (no script execution, no live <img onerror>).
+    const mdContent = [
+      '```mermaid',
+      'graph TD',
+      '  A["<img src=x onerror=window.__xssMermaid=true>"] --> B[Safe]',
+      '```',
+    ].join('\n');
+
+    const issue = await createIssue(request, ctx.token, ctx.project.id, {
+      title: 'Mermaid XSS issue',
+    });
+    await request.patch(`${API_URL}/api/issues/${issue.id}`, {
+      headers: { Authorization: `Bearer ${ctx.token}` },
+      data: { description: mdContent },
+    });
+
+    await page.goto(`/projects/${ctx.project.id}/board`);
+    await expect(page.getByText('Mermaid XSS issue')).toBeVisible({ timeout: 10000 });
+    await openIssueDrawer(page, 'Mermaid XSS issue');
+
+    const rendered = page.getByTestId('description-rendered');
+    await expect(rendered).toBeVisible({ timeout: 8000 });
+    // Allow the diagram (or its error fallback) to settle.
+    await page.waitForTimeout(1500);
+
+    // The payload must NOT have run, and no live <img onerror> may remain.
+    const ran = await page.evaluate(
+      () => (window as typeof window & { __xssMermaid?: boolean }).__xssMermaid,
+    );
+    expect(ran).toBeFalsy();
+    const liveImg = await rendered.locator('img[onerror]').count();
+    expect(liveImg).toBe(0);
+  });
+
   test('typing in composer preserves markdown input (pressSequentially)', async ({
     page,
     request,

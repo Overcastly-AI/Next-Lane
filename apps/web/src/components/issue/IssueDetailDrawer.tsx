@@ -380,7 +380,7 @@ function DrawerBody({
                   <MarkdownRenderer content={description} />
                   {editable && (
                     <p className="mt-1.5 text-[11px] text-ink-400">
-                      Markdown supported
+                      Markdown &amp; Mermaid diagrams supported
                     </p>
                   )}
                 </div>

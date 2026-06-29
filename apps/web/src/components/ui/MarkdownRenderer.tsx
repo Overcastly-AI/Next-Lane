@@ -13,9 +13,10 @@
  * the DOMPurify pass unchanged, so they render as plain readable text.
  */
 
-import { useMemo } from 'react';
+import { Fragment, useMemo } from 'react';
 import { marked } from 'marked';
 import DOMPurify, { type Config as DOMPurifyConfig } from 'dompurify';
+import { Mermaid } from './Mermaid';
 
 // Configure marked once: no HTML passthrough, gfm + line breaks enabled.
 const renderer = new marked.Renderer();
@@ -69,8 +70,41 @@ export function renderMarkdown(raw: string): string {
 }
 
 /**
- * Renders a markdown string as sanitized HTML inside a styled prose container.
- * Use in read/view mode; edit mode should use a plain textarea.
+ * A parsed markdown segment: either a run of normal markdown (rendered to
+ * sanitized HTML) or a ```mermaid code fence (rendered as a diagram).
+ */
+type Segment =
+  | { kind: 'markdown'; value: string }
+  | { kind: 'mermaid'; value: string };
+
+// Fenced `mermaid` block: ```mermaid\n ... \n```. Matched anywhere; the body is
+// captured so it can be rendered by the Mermaid component instead of marked.
+const MERMAID_FENCE = /```mermaid[ \t]*\r?\n([\s\S]*?)```/g;
+
+/** Split raw markdown into ordered markdown / mermaid segments. */
+export function splitMermaidSegments(raw: string): Segment[] {
+  const segments: Segment[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  MERMAID_FENCE.lastIndex = 0;
+  while ((match = MERMAID_FENCE.exec(raw)) !== null) {
+    if (match.index > lastIndex) {
+      segments.push({ kind: 'markdown', value: raw.slice(lastIndex, match.index) });
+    }
+    segments.push({ kind: 'mermaid', value: match[1] });
+    lastIndex = match.index + match[0].length;
+  }
+  if (lastIndex < raw.length) {
+    segments.push({ kind: 'markdown', value: raw.slice(lastIndex) });
+  }
+  return segments;
+}
+
+/**
+ * Renders a markdown string inside a styled prose container. Normal markdown is
+ * converted to sanitized HTML; fenced ```mermaid blocks are rendered as
+ * diagrams. Use in read/view mode; edit mode should use a plain textarea.
  */
 export function MarkdownRenderer({
   content,
@@ -80,16 +114,22 @@ export function MarkdownRenderer({
   /** Additional Tailwind classes appended to the wrapper div. */
   className?: string;
 }) {
-  const html = useMemo(() => renderMarkdown(content), [content]);
+  const segments = useMemo(
+    () => (content ? splitMermaidSegments(content) : []),
+    [content],
+  );
 
-  if (!html) {
+  // Nothing to show (and no diagram blocks) → render nothing, matching prior
+  // behaviour where empty markdown produced no node.
+  const hasRenderable = segments.some((s) =>
+    s.kind === 'mermaid' ? s.value.trim() : renderMarkdown(s.value),
+  );
+  if (!hasRenderable) {
     return null;
   }
 
   return (
     <div
-      // biome-ignore lint/security/noDangerouslySetInnerHtml: sanitized by DOMPurify above
-      dangerouslySetInnerHTML={{ __html: html }}
       className={[
         // Prose-style typography for rendered markdown.
         'markdown-body text-sm text-slate-700',
@@ -97,6 +137,22 @@ export function MarkdownRenderer({
       ]
         .filter(Boolean)
         .join(' ')}
-    />
+    >
+      {segments.map((seg, i) => {
+        if (seg.kind === 'mermaid') {
+          return <Mermaid key={`mermaid-${i}`} code={seg.value} />;
+        }
+        const html = renderMarkdown(seg.value);
+        if (!html) return null;
+        return (
+          <Fragment key={`md-${i}`}>
+            <div
+              // biome-ignore lint/security/noDangerouslySetInnerHtml: sanitized by DOMPurify in renderMarkdown
+              dangerouslySetInnerHTML={{ __html: html }}
+            />
+          </Fragment>
+        );
+      })}
+    </div>
   );
 }
