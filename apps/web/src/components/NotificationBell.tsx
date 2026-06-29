@@ -51,7 +51,7 @@ export function NotificationBell() {
         }
         aria-haspopup="menu"
         aria-expanded={open}
-        className="relative rounded p-2 text-ink-500 transition-colors duration-[120ms] hover:bg-ink-100 hover:text-ink-700"
+        className="relative rounded p-2 text-ink-500 transition-colors duration-[120ms] hover:bg-ink-100 hover:text-ink-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal-500 focus-visible:ring-offset-1"
       >
         <svg
           className="h-5 w-5"
@@ -97,7 +97,7 @@ export function NotificationBell() {
                   type="button"
                   onClick={() => markAll.mutate()}
                   disabled={markAll.isPending}
-                  className="text-xs font-medium text-signal-700 hover:text-signal-800 disabled:opacity-50 transition-colors duration-[120ms]"
+                  className="rounded text-xs font-medium text-signal-700 hover:text-signal-800 disabled:opacity-50 transition-colors duration-[120ms] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal-500 focus-visible:ring-offset-1"
                 >
                   Mark all read
                 </button>
@@ -150,7 +150,7 @@ export function NotificationBell() {
                     <button
                       type="button"
                       onClick={() => onOpenItem(n)}
-                      className={`flex w-full items-start gap-2.5 px-3 py-2.5 text-left transition-colors duration-[120ms] hover:bg-ink-50 ${
+                      className={`flex w-full items-start gap-2.5 px-3 py-2.5 text-left transition-colors duration-[120ms] hover:bg-ink-50 focus-visible:outline-none focus-visible:bg-ink-50 ${
                         n.read ? '' : 'bg-signal-50/60'
                       }`}
                     >

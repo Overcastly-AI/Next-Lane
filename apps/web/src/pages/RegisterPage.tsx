@@ -42,9 +42,9 @@ export function RegisterPage() {
       title="Create your account"
       subtitle="Get started with Next Lane"
       footer={
-        <p className="text-sm text-slate-500">
+        <p className="text-sm text-ink-500">
           Already have an account?{' '}
-          <Link to="/login" className="font-medium text-brand-600 hover:text-brand-700">
+          <Link to="/login" className="font-medium text-signal-600 hover:text-signal-700 transition-colors duration-[120ms]">
             Sign in
           </Link>
         </p>
@@ -85,7 +85,7 @@ export function RegisterPage() {
           />
         </Field>
         {error && (
-          <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
+          <p role="alert" className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
             {error}
           </p>
         )}

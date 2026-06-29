@@ -123,10 +123,10 @@ export const IssueCard = forwardRef<HTMLDivElement, IssueCardProps>(
               <span
                 aria-label={`Due ${formatDueDate(issue.dueDate)}${isOverdue(issue) ? ' (overdue)' : ''}`}
                 className={cn(
-                  'inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-[10px] font-semibold',
+                  'inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-[10px] font-semibold ring-1 ring-inset',
                   isOverdue(issue)
-                    ? 'bg-amber-100 text-amber-800'
-                    : 'bg-ink-100 text-ink-500',
+                    ? 'bg-amber-50 text-amber-700 ring-amber-200'
+                    : 'bg-ink-100 text-ink-500 ring-ink-200',
                 )}
               >
                 <svg
@@ -172,7 +172,7 @@ export const IssueCard = forwardRef<HTMLDivElement, IssueCardProps>(
               {issue.storyPoints != null && (
                 <span
                   title={`${issue.storyPoints} story points`}
-                  className="nl-data-chip inline-flex min-w-[18px] items-center justify-center rounded-sm bg-ink-100 px-1.5 py-0.5 text-ink-600"
+                  className="nl-data-chip inline-flex min-w-[18px] items-center justify-center rounded-sm bg-ink-100 px-1.5 py-0.5 text-ink-600 ring-1 ring-inset ring-ink-200"
                 >
                   {issue.storyPoints}
                 </span>

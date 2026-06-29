@@ -54,6 +54,7 @@ import { ErrorState, LoadingState, EmptyState } from '@/components/ui/States';
 import { ProjectNav } from '@/components/project/ProjectNav';
 import { BoardColumn } from '@/components/board/BoardColumn';
 import { IssueCard } from '@/components/board/IssueCard';
+import { NlqlInput } from '@/components/board/NlqlInput';
 import {
   BoardSwimlanesView,
   computeLanes,
@@ -803,6 +804,8 @@ export function BoardPage() {
             projectId={projectId}
             savedFilters={savedFiltersQuery.data ?? []}
             currentUserId={currentUser?.id ?? ''}
+            statuses={statuses.map((s) => s.name)}
+            customFieldDefs={customFieldDefs}
           />
         </div>
 
@@ -1565,6 +1568,8 @@ interface NlqlQueryBarProps {
   projectId: string;
   savedFilters: SavedFilterDto[];
   currentUserId: string;
+  statuses?: string[];
+  customFieldDefs?: Array<{ id: string; key: string; name: string; type: string }>;
 }
 
 function NlqlQueryBar({
@@ -1574,6 +1579,8 @@ function NlqlQueryBar({
   projectId,
   savedFilters,
   currentUserId,
+  statuses,
+  customFieldDefs,
 }: NlqlQueryBarProps) {
   const toast = useToast();
   const [helpOpen, setHelpOpen] = useState(false);
@@ -1783,29 +1790,24 @@ function NlqlQueryBar({
             )}
           </div>
 
-          {/* Query input */}
+          {/* Query input — smart autocomplete */}
           <div className="relative flex-1 sm:min-w-[18rem]">
-            <Input
-              data-testid="nlql-query-input"
+            <NlqlInput
               value={value}
-              onChange={(e) => onChange(e.target.value)}
-              placeholder='Filter: priority = HIGH AND assignee = me()'
-              className={cn(
-                'pr-7 font-mono text-xs',
-                isInvalid && 'border-red-400 focus:border-red-500 focus:ring-red-200',
-              )}
-              aria-label="NLQL filter query"
+              onChange={onChange}
+              projectId={projectId}
+              statuses={statuses}
+              customFieldDefs={customFieldDefs}
               aria-describedby={isInvalid ? 'nlql-error-msg' : undefined}
               aria-invalid={isInvalid}
-              spellCheck={false}
-              autoComplete="off"
+              className={cn('pr-7', isInvalid && 'border-red-400 focus:border-red-500 focus:ring-red-200')}
             />
             {hasQuery && (
               <button
                 type="button"
                 aria-label="Clear query"
                 onClick={() => onChange('')}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+                className="absolute right-2 top-1/2 -translate-y-1/2 z-10 text-slate-400 hover:text-slate-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
               >
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
                   <path strokeLinecap="round" d="M6 6l12 12M6 18L18 6" />

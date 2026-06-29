@@ -36,8 +36,8 @@ export function RoadmapPage() {
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 p-4 sm:p-6">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h1 className="text-lg font-semibold text-slate-900">Roadmap</h1>
-            <p className="text-sm text-slate-500">
+            <h1 className="text-lg font-semibold text-ink-900">Roadmap</h1>
+            <p className="text-sm text-ink-500">
               Epics and sprints across time. Click an epic to open it.
             </p>
           </div>
@@ -56,7 +56,7 @@ export function RoadmapPage() {
         </div>
 
         <section
-          className="rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:p-5"
+          className="rounded-xl border border-ink-200 bg-white p-4 shadow-card sm:p-5"
           aria-label="Roadmap timeline"
         >
           {roadmapQuery.isLoading ? (
@@ -92,22 +92,22 @@ function Shell({
   return (
     <div className="flex h-screen flex-col overflow-x-clip">
       <AppHeader>
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 items-center gap-2 overflow-hidden">
           <Link
             to="/"
-            className="text-sm text-slate-400 hover:text-slate-600"
+            className="shrink-0 text-sm text-ink-400 hover:text-ink-600 transition-colors duration-[120ms]"
             aria-label="Back to projects"
           >
             Projects
           </Link>
-          <span className="text-slate-300">/</span>
-          <span className="truncate text-sm font-semibold text-slate-900">
+          <span className="shrink-0 text-ink-300">/</span>
+          <span className="min-w-0 truncate text-sm font-semibold text-ink-900">
             {projectName ?? 'Project'}
           </span>
         </div>
       </AppHeader>
       <ProjectNav projectId={projectId} />
-      <main className="flex-1 overflow-y-auto bg-slate-50">{children}</main>
+      <main className="flex-1 overflow-y-auto bg-ink-50">{children}</main>
     </div>
   );
 }

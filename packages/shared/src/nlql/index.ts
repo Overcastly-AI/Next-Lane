@@ -61,3 +61,12 @@ export type {
   ValidateOptions,
   ValidateCustomFieldDef,
 } from './validate';
+
+// Autocomplete suggestion engine
+export { suggestNlql } from './suggest';
+export type {
+  NlqlSuggestion,
+  NlqlSuggestContext,
+  NlqlSuggestResult,
+  SuggestionKind,
+} from './suggest';

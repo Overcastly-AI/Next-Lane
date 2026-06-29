@@ -48,9 +48,9 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
       <NavLink
         to="/my-work"
         className={({ isActive }) =>
-          `shrink-0 rounded px-2.5 py-1.5 text-sm font-medium transition-colors duration-[120ms] ${
+          `shrink-0 rounded px-2.5 py-1.5 text-sm font-medium transition-colors duration-[120ms] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal-500 focus-visible:ring-offset-1 ${
             isActive
-              ? 'bg-signal-50 text-signal-700 font-semibold'
+              ? 'bg-signal-50 text-signal-700 font-semibold ring-1 ring-inset ring-signal-100'
               : 'text-ink-600 hover:bg-ink-100 hover:text-ink-900'
           }`
         }
@@ -60,9 +60,9 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
       <NavLink
         to="/my-board"
         className={({ isActive }) =>
-          `shrink-0 rounded px-2.5 py-1.5 text-sm font-medium transition-colors duration-[120ms] ${
+          `shrink-0 rounded px-2.5 py-1.5 text-sm font-medium transition-colors duration-[120ms] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal-500 focus-visible:ring-offset-1 ${
             isActive
-              ? 'bg-signal-50 text-signal-700 font-semibold'
+              ? 'bg-signal-50 text-signal-700 font-semibold ring-1 ring-inset ring-signal-100'
               : 'text-ink-600 hover:bg-ink-100 hover:text-ink-900'
           }`
         }
@@ -72,9 +72,9 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
       <NavLink
         to="/me/analytics"
         className={({ isActive }) =>
-          `shrink-0 rounded px-2.5 py-1.5 text-sm font-medium transition-colors duration-[120ms] ${
+          `shrink-0 rounded px-2.5 py-1.5 text-sm font-medium transition-colors duration-[120ms] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal-500 focus-visible:ring-offset-1 ${
             isActive
-              ? 'bg-signal-50 text-signal-700 font-semibold'
+              ? 'bg-signal-50 text-signal-700 font-semibold ring-1 ring-inset ring-signal-100'
               : 'text-ink-600 hover:bg-ink-100 hover:text-ink-900'
           }`
         }
@@ -88,7 +88,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
         onClick={openPalette}
         aria-label="Open command palette"
         aria-keyshortcuts="Meta+K Control+K"
-        className="hidden shrink-0 items-center gap-2 rounded border border-ink-200 bg-ink-50 px-2.5 py-1.5 text-sm text-ink-400 transition-all duration-[120ms] hover:border-ink-300 hover:bg-ink-100 hover:text-ink-600 sm:flex"
+        className="hidden shrink-0 items-center gap-2 rounded border border-ink-200 bg-ink-50 px-2.5 py-1.5 text-sm text-ink-400 transition-all duration-[120ms] hover:border-ink-300 hover:bg-ink-100 hover:text-ink-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal-500 focus-visible:ring-offset-1 sm:flex"
       >
         <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
           <circle cx="11" cy="11" r="7" />
@@ -104,7 +104,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
         type="button"
         onClick={openPalette}
         aria-label="Open command palette"
-        className="shrink-0 rounded p-2 text-ink-500 transition-colors duration-[120ms] hover:bg-ink-100 hover:text-ink-700 sm:hidden"
+        className="shrink-0 rounded p-2 text-ink-500 transition-colors duration-[120ms] hover:bg-ink-100 hover:text-ink-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal-500 focus-visible:ring-offset-1 sm:hidden"
       >
         <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
           <circle cx="11" cy="11" r="7" />
@@ -116,7 +116,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
       <div className="relative shrink-0">
         <button
           onClick={() => setMenuOpen((v) => !v)}
-          className="flex items-center gap-2 rounded-full p-0.5 transition-all duration-[120ms] hover:bg-ink-100"
+          className="flex items-center gap-2 rounded-full p-0.5 transition-all duration-[120ms] hover:bg-ink-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal-500 focus-visible:ring-offset-1"
           aria-haspopup="menu"
           aria-expanded={menuOpen}
           data-testid="user-menu-button"
@@ -144,13 +144,13 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
                   setMenuOpen(false);
                   navigate('/me/settings');
                 }}
-                className="w-full px-3 py-2 text-left text-sm text-ink-700 transition-colors duration-[120ms] hover:bg-ink-50 hover:text-ink-900"
+                className="w-full px-3 py-2 text-left text-sm text-ink-700 transition-colors duration-[120ms] hover:bg-ink-50 hover:text-ink-900 focus-visible:outline-none focus-visible:bg-ink-50"
               >
                 Profile settings
               </button>
               <button
                 onClick={logout}
-                className="w-full px-3 py-2 text-left text-sm text-ink-700 transition-colors duration-[120ms] hover:bg-ink-50 hover:text-ink-900"
+                className="w-full px-3 py-2 text-left text-sm text-ink-700 transition-colors duration-[120ms] hover:bg-ink-50 hover:text-ink-900 focus-visible:outline-none focus-visible:bg-ink-50"
               >
                 Sign out
               </button>
