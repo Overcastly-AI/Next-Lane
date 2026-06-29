@@ -18,7 +18,8 @@
  *    <pre> so the author can see (and fix) what they wrote.
  */
 import { useEffect, useRef, useState } from 'react';
-import { Modal } from './Modal';
+import { createPortal } from 'react-dom';
+import { useOverlay } from '@/lib/useOverlay';
 
 // Lazy singleton: import + initialize mermaid exactly once.
 let mermaidReady: Promise<typeof import('mermaid').default> | null = null;
@@ -54,6 +55,15 @@ export function Mermaid({ code }: { code: string }) {
   const [scale, setScale] = useState(1);
   // Stable per-instance id fragment so concurrent diagrams never collide.
   const idRef = useRef(`nl-mermaid-${(renderSeq += 1)}`);
+  const lightboxRef = useRef<HTMLDivElement>(null);
+
+  // Accessible overlay behaviour for the lightbox (Escape/focus-trap/scroll
+  // lock); the overlay stack means Escape closes only this, not the drawer.
+  useOverlay({
+    open: zoomOpen,
+    onClose: () => setZoomOpen(false),
+    containerRef: lightboxRef,
+  });
 
   function openZoom() {
     setScale(1);
@@ -165,56 +175,90 @@ export function Mermaid({ code }: { code: string }) {
         </span>
       </div>
 
-      <Modal
-        open={zoomOpen}
-        onClose={() => setZoomOpen(false)}
-        title="Diagram"
-        size="max-w-[95vw]"
-        footer={
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              aria-label="Zoom out"
-              onClick={() => setScale((s) => Math.max(ZOOM_MIN, +(s - ZOOM_STEP).toFixed(2)))}
-              disabled={scale <= ZOOM_MIN}
-              className="rounded-md border border-ink-200 px-2 py-1 text-sm font-semibold text-ink-700 transition-colors hover:bg-ink-50 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              −
-            </button>
-            <span className="w-12 text-center font-mono text-xs text-ink-500" data-testid="mermaid-zoom-level">
-              {Math.round(scale * 100)}%
-            </span>
-            <button
-              type="button"
-              aria-label="Zoom in"
-              onClick={() => setScale((s) => Math.min(ZOOM_MAX, +(s + ZOOM_STEP).toFixed(2)))}
-              disabled={scale >= ZOOM_MAX}
-              className="rounded-md border border-ink-200 px-2 py-1 text-sm font-semibold text-ink-700 transition-colors hover:bg-ink-50 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              +
-            </button>
-            <button
-              type="button"
-              onClick={() => setScale(1)}
-              className="ml-1 rounded-md border border-ink-200 px-2 py-1 text-xs font-medium text-ink-600 transition-colors hover:bg-ink-50"
-            >
-              Reset
-            </button>
-          </div>
-        }
-      >
-        <div
-          data-testid="mermaid-zoom-canvas"
-          className="max-h-[78vh] overflow-auto rounded-lg border border-ink-100 bg-white p-4"
-        >
+      {zoomOpen &&
+        createPortal(
           <div
-            className="inline-block origin-top-left transition-transform duration-100"
-            style={{ transform: `scale(${scale})` }}
-            // biome-ignore lint/security/noDangerouslySetInnerHtml: same SVG, sanitized by mermaid securityLevel:'strict'
-            dangerouslySetInnerHTML={{ __html: svg }}
-          />
-        </div>
-      </Modal>
+            className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Diagram"
+          >
+            {/* Backdrop */}
+            <div
+              className="fixed inset-0 bg-ink-900/40 backdrop-blur-[2px] animate-nl-fade-in"
+              onClick={() => setZoomOpen(false)}
+              aria-hidden="true"
+            />
+            {/* Panel — nearly full height so large diagrams have room. */}
+            <div
+              ref={lightboxRef}
+              tabIndex={-1}
+              className="nl-modal-animate relative z-10 flex h-[92vh] w-full max-w-[96vw] flex-col overflow-hidden rounded-xl border border-ink-200 bg-white shadow-modal outline-none"
+            >
+              <div className="flex items-center justify-between border-b border-ink-100 px-4 py-3">
+                <h2 className="font-display text-sm font-semibold tracking-[-0.01em] text-ink-900">
+                  Diagram
+                </h2>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    aria-label="Zoom out"
+                    onClick={() => setScale((s) => Math.max(ZOOM_MIN, +(s - ZOOM_STEP).toFixed(2)))}
+                    disabled={scale <= ZOOM_MIN}
+                    className="rounded-md border border-ink-200 px-2 py-1 text-sm font-semibold text-ink-700 transition-colors hover:bg-ink-50 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    −
+                  </button>
+                  <span
+                    className="w-12 text-center font-mono text-xs text-ink-500"
+                    data-testid="mermaid-zoom-level"
+                  >
+                    {Math.round(scale * 100)}%
+                  </span>
+                  <button
+                    type="button"
+                    aria-label="Zoom in"
+                    onClick={() => setScale((s) => Math.min(ZOOM_MAX, +(s + ZOOM_STEP).toFixed(2)))}
+                    disabled={scale >= ZOOM_MAX}
+                    className="rounded-md border border-ink-200 px-2 py-1 text-sm font-semibold text-ink-700 transition-colors hover:bg-ink-50 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    +
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setScale(1)}
+                    className="ml-1 rounded-md border border-ink-200 px-2 py-1 text-xs font-medium text-ink-600 transition-colors hover:bg-ink-50"
+                  >
+                    Reset
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Close"
+                    onClick={() => setZoomOpen(false)}
+                    className="ml-1 rounded p-1.5 text-ink-400 transition-colors duration-[120ms] hover:bg-ink-100 hover:text-ink-700"
+                  >
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                      <path strokeLinecap="round" d="M6 6l12 12M6 18L18 6" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+              {/* Canvas fills the remaining height and scrolls. */}
+              <div
+                data-testid="mermaid-zoom-canvas"
+                className="flex-1 overflow-auto bg-white p-4"
+              >
+                <div
+                  className="inline-block origin-top-left transition-transform duration-100"
+                  style={{ transform: `scale(${scale})` }}
+                  // biome-ignore lint/security/noDangerouslySetInnerHtml: same SVG, sanitized by mermaid securityLevel:'strict'
+                  dangerouslySetInnerHTML={{ __html: svg }}
+                />
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }
