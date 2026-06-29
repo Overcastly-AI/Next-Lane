@@ -21,7 +21,7 @@
     "docker:logs": "docker compose logs -f"
   },
   "devDependencies": {
-    "prettier": "^3.3.3"
+    "prettier": "^3.9.3"
   },
   "pnpm": {
     "neverBuiltDependencies": ["@prisma/engines"]
