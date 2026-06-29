@@ -8,13 +8,14 @@
  *  - Create a blank workflow or seed one from a template.
  *  - Select a workflow to open its detail panel:
  *    - Toggle enforced
+ *    - View toggle: "List" (classic transition list) or "Graph" (visual SVG editor)
  *    - Add / edit / delete transitions (mirrors WorkflowSection UI)
  *    - Delete the entire workflow (confirm dialog)
  *  - Members/viewers: read-only list.
  *
  * testids:
  *   workflows-manager, workflow-create, workflow-from-template,
- *   workflow-row, workflow-enforce-toggle-2
+ *   workflow-row, workflow-enforce-toggle-2, workflow-graph-toggle
  */
 import { useState, type FormEvent } from 'react';
 import {
@@ -50,6 +51,7 @@ import { useToast } from '@/components/ui/Toast';
 import { errorMessage } from '@/lib/errorMessage';
 import { ApiError } from '@/api/client';
 import { cn } from '@/lib/cn';
+import { WorkflowGraph } from './WorkflowGraph';
 
 // ---------------------------------------------------------------------------
 // Constants (mirrors WorkflowSection)
@@ -277,6 +279,8 @@ export function WorkflowsManager({
 // Workflow detail panel (shown inline below the list row)
 // ---------------------------------------------------------------------------
 
+type ViewMode = 'list' | 'graph';
+
 function WorkflowDetailPanel({
   workflowId,
   workflowName,
@@ -300,6 +304,7 @@ function WorkflowDetailPanel({
   const [addOpen, setAddOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<WorkflowTransitionDto | null>(null);
   const [deleteTransTarget, setDeleteTransTarget] = useState<WorkflowTransitionDto | null>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>('list');
 
   const detail = detailQuery.data;
   const statusById = new Map(statuses.map((s) => [s.id, s]));
@@ -351,7 +356,46 @@ function WorkflowDetailPanel({
           <div className="mb-4 flex items-start justify-between gap-3">
             <h3 className="text-sm font-semibold text-slate-800">{workflowName}</h3>
             <div className="flex shrink-0 items-center gap-2">
-              {isAdmin && (
+              {/* View toggle: List / Graph */}
+              <div
+                role="group"
+                aria-label="Workflow view mode"
+                data-testid="workflow-graph-toggle"
+                className="flex rounded-lg border border-ink-200 bg-white overflow-hidden"
+              >
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={viewMode === 'list'}
+                  onClick={() => setViewMode('list')}
+                  className={cn(
+                    'px-2.5 py-1 text-xs font-medium transition-colors',
+                    'focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-400 focus-visible:ring-inset',
+                    viewMode === 'list'
+                      ? 'bg-signal-600 text-white'
+                      : 'text-ink-600 hover:bg-ink-50',
+                  )}
+                >
+                  List
+                </button>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={viewMode === 'graph'}
+                  onClick={() => setViewMode('graph')}
+                  className={cn(
+                    'px-2.5 py-1 text-xs font-medium border-l border-ink-200 transition-colors',
+                    'focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-400 focus-visible:ring-inset',
+                    viewMode === 'graph'
+                      ? 'bg-signal-600 text-white'
+                      : 'text-ink-600 hover:bg-ink-50',
+                  )}
+                >
+                  Graph
+                </button>
+              </div>
+
+              {isAdmin && viewMode === 'list' && (
                 <Button
                   size="sm"
                   onClick={() => setAddOpen(true)}
@@ -382,35 +426,50 @@ function WorkflowDetailPanel({
             onToggle={handleToggleEnforced}
           />
 
-          {/* Transitions */}
-          <div className="mt-4">
-            {grouped.length === 0 ? (
-              <p className="py-3 text-sm text-slate-400">
-                {detail.enforced
-                  ? 'No transitions defined. Add one to restrict status moves.'
-                  : 'No transitions — all moves are allowed while enforcement is off.'}
-              </p>
-            ) : (
-              <div className="space-y-4">
-                {grouped.map((group) => (
-                  <TransitionGroupView
-                    key={group.fromStatusId ?? ANY_STATUS}
-                    fromStatusId={group.fromStatusId}
-                    fromStatusName={
-                      group.fromStatusId
-                        ? (statusById.get(group.fromStatusId)?.name ?? 'Unknown status')
-                        : 'Any status'
-                    }
-                    transitions={group.transitions}
-                    statusById={statusById}
-                    isAdmin={isAdmin}
-                    onEdit={(t) => setEditTarget(t)}
-                    onDelete={(t) => setDeleteTransTarget(t)}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
+          {/* Graph view */}
+          {viewMode === 'graph' && (
+            <div className="mt-4">
+              <WorkflowGraph
+                workflowId={workflowId}
+                statuses={statuses}
+                transitions={transitions}
+                isAdmin={isAdmin}
+                onEditTransition={(t) => setEditTarget(t)}
+              />
+            </div>
+          )}
+
+          {/* List view — Transitions */}
+          {viewMode === 'list' && (
+            <div className="mt-4">
+              {grouped.length === 0 ? (
+                <p className="py-3 text-sm text-slate-400">
+                  {detail.enforced
+                    ? 'No transitions defined. Add one to restrict status moves.'
+                    : 'No transitions — all moves are allowed while enforcement is off.'}
+                </p>
+              ) : (
+                <div className="space-y-4">
+                  {grouped.map((group) => (
+                    <TransitionGroupView
+                      key={group.fromStatusId ?? ANY_STATUS}
+                      fromStatusId={group.fromStatusId}
+                      fromStatusName={
+                        group.fromStatusId
+                          ? (statusById.get(group.fromStatusId)?.name ?? 'Unknown status')
+                          : 'Any status'
+                      }
+                      transitions={group.transitions}
+                      statusById={statusById}
+                      isAdmin={isAdmin}
+                      onEdit={(t) => setEditTarget(t)}
+                      onDelete={(t) => setDeleteTransTarget(t)}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </>
       ) : null}
 
