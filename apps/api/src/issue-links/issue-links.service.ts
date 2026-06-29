@@ -166,41 +166,55 @@ export class IssueLinksService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
-   * Resolve the target string to an Issue row within the source issue's project.
-   * Accepts either a human-readable key (e.g. "NL-5") or a CUID id.
+   * Resolve the target string to an Issue row. Accepts either a human-readable
+   * issue key (e.g. "NL-5") or a CUID id.
+   *
+   * The key is parsed by splitting on the LAST hyphen — the trailing segment is
+   * the issue number and everything before it is the project key. Project keys
+   * are only constrained to be 1–10 chars, so they may themselves contain
+   * hyphens/digits/underscores (e.g. "NEXT-LANE-5"); a stricter pattern would
+   * wrongly reject those. The project key is resolved within the SOURCE issue's
+   * workspace (keys are unique per workspace, not globally).
    */
   private async resolveTarget(
     target: string,
-    projectId: string,
+    sourceProject: { id: string; key: string; workspaceId: string },
   ): Promise<{ id: string; projectId: string }> {
-    // Key pattern: <PROJECT_KEY>-<number>  e.g. "NL-5"
-    const keyMatch = /^([A-Z][A-Z0-9]*)-(\d+)$/i.exec(target);
-    if (keyMatch) {
-      const projectKey = keyMatch[1].toUpperCase();
-      const number = parseInt(keyMatch[2], 10);
+    const trimmed = target.trim();
 
-      // Find the project by key, then look for the issue by (projectId, number).
-      const project = await this.prisma.project.findFirst({
-        where: { key: projectKey },
-        select: { id: true },
-      });
-      if (!project) {
-        throw new NotFoundException(`Issue "${target}" not found`);
-      }
+    const lastDash = trimmed.lastIndexOf('-');
+    const numPart = lastDash > 0 ? trimmed.slice(lastDash + 1) : '';
+    if (lastDash > 0 && /^\d+$/.test(numPart)) {
+      const projectKey = trimmed.slice(0, lastDash).toUpperCase();
+      const number = parseInt(numPart, 10);
 
-      const issue = await this.prisma.issue.findUnique({
-        where: { projectId_number: { projectId: project.id, number } },
-        select: { id: true, projectId: true },
-      });
-      if (!issue) {
-        throw new NotFoundException(`Issue "${target}" not found`);
+      // Prefer the source project when the key matches it; otherwise look it up
+      // within the same workspace.
+      const targetProjectId =
+        projectKey === sourceProject.key.toUpperCase()
+          ? sourceProject.id
+          : (
+              await this.prisma.project.findFirst({
+                where: { workspaceId: sourceProject.workspaceId, key: projectKey },
+                select: { id: true },
+              })
+            )?.id;
+
+      if (targetProjectId) {
+        const issue = await this.prisma.issue.findUnique({
+          where: { projectId_number: { projectId: targetProjectId, number } },
+          select: { id: true, projectId: true },
+        });
+        if (issue) return issue;
       }
-      return issue;
+      // A CUID id never matches the "<key>-<digits>" shape (cuids have no
+      // hyphens), so a parsed-but-unresolved key is a genuine not-found.
+      throw new NotFoundException(`Issue "${target}" not found`);
     }
 
     // Fallback: treat as a CUID id.
     const issue = await this.prisma.issue.findUnique({
-      where: { id: target },
+      where: { id: trimmed },
       select: { id: true, projectId: true },
     });
     if (!issue) {
@@ -214,12 +228,19 @@ export class IssueLinksService {
     sourceIssueId: string,
     dto: CreateIssueLinkDto,
   ): Promise<IssueLinkDto> {
-    // Load the source issue.
+    // Load the source issue with the project key + workspace needed to resolve a
+    // target issue key.
     const sourceIssue = await this.prisma.issue.findUnique({
       where: { id: sourceIssueId },
-      select: { id: true, projectId: true },
+      select: {
+        id: true,
+        projectId: true,
+        project: { select: { id: true, key: true, workspaceId: true } },
+      },
     });
-    if (!sourceIssue) throw new NotFoundException('Issue not found');
+    if (!sourceIssue || !sourceIssue.project) {
+      throw new NotFoundException('Issue not found');
+    }
 
     // Caller must be MEMBER+ on the project.
     await assertProjectRole(
@@ -230,7 +251,7 @@ export class IssueLinksService {
     );
 
     // Resolve the target.
-    const targetIssue = await this.resolveTarget(dto.target, sourceIssue.projectId);
+    const targetIssue = await this.resolveTarget(dto.target, sourceIssue.project);
 
     // Both issues must belong to the same project.
     if (targetIssue.projectId !== sourceIssue.projectId) {

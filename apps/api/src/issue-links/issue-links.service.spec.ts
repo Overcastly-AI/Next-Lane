@@ -131,7 +131,15 @@ function makePrisma(opts: {
     existingSwapped = null,
   } = opts;
 
-  const sourceRow = { id: SOURCE_ID, projectId: sourceProjId };
+  const sourceRow = {
+    id: SOURCE_ID,
+    projectId: sourceProjId,
+    project: {
+      id: sourceProjId,
+      key: sourceProjId === PROJ_ID ? PROJ_KEY : 'OTHER',
+      workspaceId: WS_ID,
+    },
+  };
   const targetRow = { id: resolvedTargetId, projectId: targetProjId };
 
   const issueFindUnique =
@@ -156,8 +164,9 @@ function makePrisma(opts: {
     return Promise.resolve(null);
   });
 
-  const projectFindFirst = jest.fn().mockImplementation(({ where }: { where: { key?: string } }) => {
+  const projectFindFirst = jest.fn().mockImplementation(({ where }: { where: { key?: string; workspaceId?: string } }) => {
     if (where.key === PROJ_KEY) return Promise.resolve({ id: PROJ_ID });
+    if (where.key === 'OTHER') return Promise.resolve({ id: OTHER_PROJ_ID });
     return Promise.resolve(null);
   });
 
@@ -371,7 +380,11 @@ describe('IssueLinksService', () => {
 
     it('throws BadRequestException for self-link', async () => {
       const prisma = makePrisma({
-        issueFindUnique: jest.fn().mockResolvedValue({ id: SOURCE_ID, projectId: PROJ_ID }),
+        issueFindUnique: jest.fn().mockResolvedValue({
+          id: SOURCE_ID,
+          projectId: PROJ_ID,
+          project: { id: PROJ_ID, key: PROJ_KEY, workspaceId: WS_ID },
+        }),
       });
       const svc = makeService(prisma);
 
@@ -419,7 +432,12 @@ describe('IssueLinksService', () => {
     it('throws NotFoundException when target id does not exist', async () => {
       const prisma = makePrisma({
         issueFindUnique: jest.fn().mockImplementation(({ where }: { where: { id?: string; projectId_number?: object } }) => {
-          if (where.id === SOURCE_ID) return Promise.resolve({ id: SOURCE_ID, projectId: PROJ_ID });
+          if (where.id === SOURCE_ID)
+            return Promise.resolve({
+              id: SOURCE_ID,
+              projectId: PROJ_ID,
+              project: { id: PROJ_ID, key: PROJ_KEY, workspaceId: WS_ID },
+            });
           return Promise.resolve(null);
         }),
       });
@@ -430,21 +448,80 @@ describe('IssueLinksService', () => {
       ).rejects.toThrow(NotFoundException);
     });
 
-    it('resolves target by issue key (e.g. "NL-2")', async () => {
+    it('resolves target by issue key matching the source project (e.g. "NL-2")', async () => {
       const prisma = makePrisma();
       const svc = makeService(prisma);
 
       await svc.create(MEMBER_ID, SOURCE_ID, { target: 'NL-2', type: IssueLinkType.BLOCKS });
 
-      // projectFindFirst was called with the key
-      expect((prisma.project.findFirst as jest.Mock)).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { key: 'NL' } }),
-      );
-      // issueFindUnique was called with projectId_number
+      // The key matches the source project, so no cross-project lookup is needed.
+      expect(prisma.project.findFirst as jest.Mock).not.toHaveBeenCalled();
+      // issueFindUnique was called with projectId_number scoped to the source project.
       expect(prisma.issue.findUnique as jest.Mock).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { projectId_number: { projectId: PROJ_ID, number: 2 } },
         }),
+      );
+    });
+
+    it('resolves a lowercase issue key ("nl-2")', async () => {
+      const prisma = makePrisma();
+      const svc = makeService(prisma);
+
+      await svc.create(MEMBER_ID, SOURCE_ID, { target: 'nl-2', type: IssueLinkType.BLOCKS });
+
+      expect(prisma.issue.findUnique as jest.Mock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { projectId_number: { projectId: PROJ_ID, number: 2 } },
+        }),
+      );
+    });
+
+    it('resolves a key whose PROJECT KEY itself contains hyphens (e.g. "NEXT-LANE-2")', async () => {
+      // Project keys are only length-constrained, so they can contain hyphens;
+      // the resolver must split on the LAST hyphen, not the first.
+      const issueFindUnique = jest
+        .fn()
+        .mockImplementation(
+          ({ where }: { where: { id?: string; projectId_number?: { projectId: string; number: number } } }) => {
+            if (where.id === SOURCE_ID)
+              return Promise.resolve({
+                id: SOURCE_ID,
+                projectId: PROJ_ID,
+                project: { id: PROJ_ID, key: 'NEXT-LANE', workspaceId: WS_ID },
+              });
+            if (where.projectId_number?.projectId === PROJ_ID && where.projectId_number?.number === 2)
+              return Promise.resolve({ id: TARGET_ID, projectId: PROJ_ID });
+            return Promise.resolve(null);
+          },
+        );
+      const prisma = makePrisma({ issueFindUnique });
+      const svc = makeService(prisma);
+
+      await expect(
+        svc.create(MEMBER_ID, SOURCE_ID, { target: 'NEXT-LANE-2', type: IssueLinkType.BLOCKS }),
+      ).resolves.toBeDefined();
+
+      expect(issueFindUnique).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { projectId_number: { projectId: PROJ_ID, number: 2 } },
+        }),
+      );
+    });
+
+    it('resolves a same-workspace cross-project key via a workspace-scoped lookup', async () => {
+      // A key for a different project in the same workspace is resolved through
+      // project.findFirst (scoped to the workspace); the same-project guard then
+      // rejects it as not in the source project.
+      const prisma = makePrisma();
+      const svc = makeService(prisma);
+
+      await expect(
+        svc.create(MEMBER_ID, SOURCE_ID, { target: 'OTHER-2', type: IssueLinkType.BLOCKS }),
+      ).rejects.toThrow(NotFoundException);
+
+      expect(prisma.project.findFirst as jest.Mock).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { workspaceId: WS_ID, key: 'OTHER' } }),
       );
     });
 
