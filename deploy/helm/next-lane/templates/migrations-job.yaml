@@ -25,7 +25,19 @@ spec:
         {{- include "next-lane.componentSelectorLabels" (dict "ctx" . "component" "migrate") | nindent 8 }}
     spec:
       restartPolicy: Never
-      serviceAccountName: {{ include "next-lane.serviceAccountName" . }}
+      {{- /*
+        This Job is a pre-install/pre-upgrade HOOK, so it runs BEFORE the chart's
+        ServiceAccount (a normal resource) exists — referencing it here fails with
+        "serviceaccount not found" and aborts the release. The migration only
+        needs database access (DATABASE_URL secret), not the Kubernetes API, so it
+        runs under the namespace "default" ServiceAccount with no token mounted.
+        Set `migrations.serviceAccountName` only to pin a PRE-EXISTING SA (e.g.
+        IRSA / Workload Identity for IAM database auth).
+      */ -}}
+      {{- with .Values.migrations.serviceAccountName }}
+      serviceAccountName: {{ . }}
+      {{- end }}
+      automountServiceAccountToken: false
       {{- include "next-lane.imagePullSecrets" . | nindent 6 }}
       {{- with .Values.api.podSecurityContext }}
       securityContext:

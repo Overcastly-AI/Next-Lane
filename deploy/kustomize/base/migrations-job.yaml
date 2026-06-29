@@ -25,7 +25,10 @@ spec:
         app.kubernetes.io/component: migrate
     spec:
       restartPolicy: Never
-      serviceAccountName: next-lane
+      # The migration only needs database access (DATABASE_URL), not the
+      # Kubernetes API, so it runs under the namespace "default" ServiceAccount
+      # with no token mounted — avoiding any ordering dependency on the app SA.
+      automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000

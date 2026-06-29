@@ -317,6 +317,14 @@ externalRedis:
 # rolls out, so schema changes apply safely on every upgrade. Uses the api image.
 migrations:
   enabled: true
+  # The migration runs as a Helm pre-install/pre-upgrade HOOK, which executes
+  # before the chart's ServiceAccount is created. It only needs database access
+  # (the DATABASE_URL secret), not the Kubernetes API, so by default it runs
+  # under the namespace "default" ServiceAccount (no token mounted). Only set
+  # this to pin a PRE-EXISTING ServiceAccount — e.g. IRSA (AWS) / Workload
+  # Identity (GCP) for IAM database auth — which must already exist when the
+  # hook runs. Leave empty for the normal password-auth (DATABASE_URL) setup.
+  serviceAccountName: ""
   # Hook weight orders the job before the workloads.
   hookWeight: "-5"
   # delete-policy: clean up old hook Jobs. before-hook-creation keeps the last
