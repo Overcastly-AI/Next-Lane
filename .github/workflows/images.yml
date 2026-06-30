@@ -137,3 +137,43 @@ jobs:
           name: trivy-${{ matrix.app }}
           path: trivy-${{ matrix.app }}.sarif
           if-no-files-found: warn
+
+  # ───────────────────────────── smoke test ──────────────────────────────────
+  # Regression guard for the CSP/connect-src bug class. The published web image
+  # substitutes the `__NL_CONNECT_SRC__` placeholder in nginx.conf and writes
+  # config.js at container start (apps/web/docker-entrypoint.sh). A past prod bug
+  # shipped because that substitution broke and CI never STARTED the container.
+  #
+  # This job builds the web image locally (single-arch, loaded into the daemon —
+  # not pushed) and actually runs it, asserting the served CSP header + config.js
+  # are correct for BOTH the external-API-origin and same-origin deployments.
+  # It is independent of build-push so it gates on PRs/branches too and does not
+  # depend on registry access. Dependency-light: bash + curl + docker only.
+  smoke-test:
+    name: Web image CSP smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build web image (amd64, load into local daemon)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          platforms: linux/amd64
+          load: true
+          push: false
+          tags: next-lane-web:smoke
+          # Mirror the publish build: the web image must NOT bake an API URL —
+          # runtime config.js / CSP substitution handle it at container start.
+          build-args: |
+            VITE_API_URL=
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,scope=web,mode=max
+
+      - name: Run CSP smoke assertions
+        run: ./scripts/smoke-web-csp.sh next-lane-web:smoke
