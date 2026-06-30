@@ -41,6 +41,17 @@ describe('tool registry', () => {
       'get_issue',
       'list_issue_links',
       'list_labels',
+      'list_users',
+      'search_issues',
+      'list_sprints',
+      'list_components',
+      'list_versions',
+      'list_custom_fields',
+      'list_comments',
+      'list_worklogs',
+      'list_checklist',
+      'list_saved_filters',
+      'list_automations',
       'create_workflow',
       'create_workflow_from_template',
       'update_workflow',
@@ -58,6 +69,23 @@ describe('tool registry', () => {
       'create_label',
       'add_issue_label',
       'remove_issue_label',
+      'add_comment',
+      'delete_issue',
+      'create_sprint',
+      'update_sprint',
+      'create_component',
+      'create_version',
+      'set_issue_versions',
+      'add_worklog',
+      'add_checklist_item',
+      'update_checklist_item',
+      'create_status',
+      'update_status',
+      'create_board',
+      'update_board',
+      'create_saved_filter',
+      'create_custom_field',
+      'create_automation',
     ];
     for (const name of expected) expect(names).toContain(name);
     // No duplicate names.
@@ -226,6 +254,60 @@ describe('tool registry', () => {
       name: 'bug',
       color: '#ef4444',
     });
+  });
+
+  it('add_comment POSTs body to /issues/:id/comments', async () => {
+    const { client, fetchImpl } = clientWith(201, { id: 'c1' });
+    await tool('add_comment').handler({ issueId: 'i1', body: 'looks good' }, client);
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toBe('http://localhost:4000/api/issues/i1/comments');
+    expect((init as RequestInit).method).toBe('POST');
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({ body: 'looks good' });
+  });
+
+  it('create_sprint POSTs to /projects/:id/sprints', async () => {
+    const { client, fetchImpl } = clientWith(201, { id: 's1' });
+    await tool('create_sprint').handler(
+      { projectId: 'p1', name: 'Sprint 1', goal: 'ship' },
+      client,
+    );
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toBe('http://localhost:4000/api/projects/p1/sprints');
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({
+      name: 'Sprint 1',
+      goal: 'ship',
+    });
+  });
+
+  it('set_issue_versions PUTs versionIds to /issues/:id/versions', async () => {
+    const { client, fetchImpl } = clientWith(200, { id: 'i1' });
+    await tool('set_issue_versions').handler(
+      { issueId: 'i1', versionIds: ['v1', 'v2'] },
+      client,
+    );
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toBe('http://localhost:4000/api/issues/i1/versions');
+    expect((init as RequestInit).method).toBe('PUT');
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({
+      versionIds: ['v1', 'v2'],
+    });
+  });
+
+  it('search_issues GETs /search with q + projectId query', async () => {
+    const { client, fetchImpl } = clientWith(200, []);
+    await tool('search_issues').handler({ q: 'login bug', projectId: 'p1' }, client);
+    const url = fetchImpl.mock.calls[0][0] as string;
+    expect(url).toContain('http://localhost:4000/api/search?');
+    expect(url).toContain('q=login+bug');
+    expect(url).toContain('projectId=p1');
+  });
+
+  it('add_worklog POSTs minutes to /issues/:id/worklogs', async () => {
+    const { client, fetchImpl } = clientWith(201, { id: 'wl1' });
+    await tool('add_worklog').handler({ issueId: 'i1', minutes: 30, note: 'fix' }, client);
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toBe('http://localhost:4000/api/issues/i1/worklogs');
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({ minutes: 30, note: 'fix' });
   });
 
   it('handlers propagate API errors so the server wrapper can mark isError', async () => {

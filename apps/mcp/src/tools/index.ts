@@ -82,6 +82,39 @@ const linkTypeEnum = z
       'target. The reverse link is maintained automatically.',
   );
 
+const statusCategoryEnum = z
+  .enum(['TODO', 'IN_PROGRESS', 'DONE'])
+  .describe('Lifecycle category a status belongs to.');
+
+const boardTypeEnum = z.enum(['KANBAN', 'SCRUM']).describe('Board type.');
+
+const sprintStateEnum = z
+  .enum(['PLANNED', 'ACTIVE', 'COMPLETED'])
+  .describe('Sprint lifecycle state.');
+
+const customFieldTypeEnum = z
+  .enum(['TEXT', 'NUMBER', 'SELECT', 'MULTI_SELECT', 'DATE', 'CHECKBOX', 'URL'])
+  .describe('Custom field data type (immutable once created).');
+
+const automationTriggerEnum = z
+  .enum(['ISSUE_CREATED', 'ISSUE_UPDATED', 'ISSUE_TRANSITIONED', 'ISSUE_COMMENTED'])
+  .describe('Event that fires an automation rule.');
+
+const automationActionSchema = z
+  .object({
+    type: z
+      .enum(['ASSIGN', 'SET_PRIORITY', 'TRANSITION', 'ADD_LABEL', 'ADD_COMMENT', 'SET_CUSTOM_FIELD'])
+      .describe('Action to perform when the rule matches.'),
+    params: z
+      .record(z.unknown())
+      .describe(
+        'Action parameters, shape depends on type — e.g. ASSIGN {assigneeId}, ' +
+          'SET_PRIORITY {priority}, TRANSITION {statusId}, ADD_LABEL {labelId}, ' +
+          'ADD_COMMENT {body}, SET_CUSTOM_FIELD {fieldId, value}.',
+      ),
+  })
+  .describe('A single automation action.');
+
 const templateEnum = z
   .enum(['simple', 'kanban', 'scrum', 'bug-triage'])
   .describe(
@@ -253,6 +286,104 @@ const readTools: ToolDef[] = [
     },
     handler: (args, client) =>
       client.get(`/projects/${args.projectId}/labels`).then(jsonResult),
+  },
+  {
+    name: 'list_users',
+    group: 'read',
+    description:
+      'List users the caller can see (workspace members). Use to find an ' +
+      'assigneeId / default-assignee id for create_issue, update_issue, etc.',
+    inputSchema: {},
+    handler: (_args, client) => client.get('/users').then(jsonResult),
+  },
+  {
+    name: 'search_issues',
+    group: 'read',
+    description:
+      'Full-text search issues by title/key/description. Scope to one project ' +
+      'with projectId, or omit it to search everything the caller can access.',
+    inputSchema: {
+      q: z.string().describe('Search text.'),
+      projectId: z.string().optional().describe('Restrict to this project.'),
+    },
+    handler: (args, client) =>
+      client
+        .get('/search', { q: args.q as string, projectId: args.projectId as string | undefined })
+        .then(jsonResult),
+  },
+  {
+    name: 'list_sprints',
+    group: 'read',
+    description: 'List a project’s sprints (with state, dates, goal).',
+    inputSchema: { projectId: z.string().describe('Project id.') },
+    handler: (args, client) =>
+      client.get(`/projects/${args.projectId}/sprints`).then(jsonResult),
+  },
+  {
+    name: 'list_components',
+    group: 'read',
+    description: 'List a project’s components with their ids.',
+    inputSchema: { projectId: z.string().describe('Project id.') },
+    handler: (args, client) =>
+      client.get(`/projects/${args.projectId}/components`).then(jsonResult),
+  },
+  {
+    name: 'list_versions',
+    group: 'read',
+    description: 'List a project’s versions/releases with their ids and state.',
+    inputSchema: { projectId: z.string().describe('Project id.') },
+    handler: (args, client) =>
+      client.get(`/projects/${args.projectId}/versions`).then(jsonResult),
+  },
+  {
+    name: 'list_custom_fields',
+    group: 'read',
+    description:
+      'List a project’s custom field definitions (key, name, type, options). ' +
+      'Needed to set customFields on issues.',
+    inputSchema: { projectId: z.string().describe('Project id.') },
+    handler: (args, client) =>
+      client.get(`/projects/${args.projectId}/custom-fields`).then(jsonResult),
+  },
+  {
+    name: 'list_comments',
+    group: 'read',
+    description: 'List the comments on an issue (newest-relevant order).',
+    inputSchema: { issueId: z.string().describe('Issue id.') },
+    handler: (args, client) =>
+      client.get(`/issues/${args.issueId}/comments`).then(jsonResult),
+  },
+  {
+    name: 'list_worklogs',
+    group: 'read',
+    description: 'List the time-tracking work logs on an issue.',
+    inputSchema: { issueId: z.string().describe('Issue id.') },
+    handler: (args, client) =>
+      client.get(`/issues/${args.issueId}/worklogs`).then(jsonResult),
+  },
+  {
+    name: 'list_checklist',
+    group: 'read',
+    description: 'List an issue’s checklist items (with done state + ids).',
+    inputSchema: { issueId: z.string().describe('Issue id.') },
+    handler: (args, client) =>
+      client.get(`/issues/${args.issueId}/checklist`).then(jsonResult),
+  },
+  {
+    name: 'list_saved_filters',
+    group: 'read',
+    description: 'List a project’s saved NLQL filters (own + shared).',
+    inputSchema: { projectId: z.string().describe('Project id.') },
+    handler: (args, client) =>
+      client.get(`/projects/${args.projectId}/saved-filters`).then(jsonResult),
+  },
+  {
+    name: 'list_automations',
+    group: 'read',
+    description: 'List a project’s automation rules (trigger, condition, actions).',
+    inputSchema: { projectId: z.string().describe('Project id.') },
+    handler: (args, client) =>
+      client.get(`/projects/${args.projectId}/automations`).then(jsonResult),
   },
 ];
 
@@ -514,6 +645,14 @@ const writeTools: ToolDef[] = [
         .nullable()
         .optional()
         .describe('ISO-8601 date string, or null to clear.'),
+      customFields: z
+        .record(z.unknown())
+        .optional()
+        .describe(
+          'Partial custom-field update keyed by field id (from ' +
+            'list_custom_fields): only the keys present are changed; set a key to ' +
+            'null to clear that field.',
+        ),
     },
     handler: (args, client) =>
       client
@@ -528,6 +667,7 @@ const writeTools: ToolDef[] = [
           componentId: args.componentId,
           storyPoints: args.storyPoints,
           dueDate: args.dueDate,
+          customFields: args.customFields,
         })
         .then(jsonResult),
   },
@@ -659,6 +799,348 @@ const writeTools: ToolDef[] = [
     handler: (args, client) =>
       client
         .delete(`/issues/${args.issueId}/labels/${args.labelId}`)
+        .then(jsonResult),
+  },
+  {
+    name: 'add_comment',
+    group: 'write',
+    description:
+      'Add a comment to an issue (markdown supported). Requires MEMBER+.',
+    inputSchema: {
+      issueId: z.string().describe('Issue to comment on.'),
+      body: z.string().min(1).max(10000).describe('Comment body (markdown).'),
+    },
+    handler: (args, client) =>
+      client
+        .post(`/issues/${args.issueId}/comments`, { body: args.body })
+        .then(jsonResult),
+  },
+  {
+    name: 'delete_issue',
+    group: 'write',
+    description: 'Delete an issue permanently. Requires MEMBER+. Irreversible.',
+    inputSchema: { issueId: z.string().describe('Issue id to delete.') },
+    handler: (args, client) =>
+      client.delete(`/issues/${args.issueId}`).then(jsonResult),
+  },
+  {
+    name: 'create_sprint',
+    group: 'write',
+    description: 'Create a sprint in a project. Requires MEMBER+.',
+    inputSchema: {
+      projectId: z.string().describe('Project the sprint belongs to.'),
+      name: z.string().min(1).max(120).describe('Sprint name.'),
+      goal: z.string().max(500).optional(),
+      startDate: z.string().optional().describe('ISO-8601 date.'),
+      endDate: z.string().optional().describe('ISO-8601 date.'),
+    },
+    handler: (args, client) =>
+      client
+        .post(`/projects/${args.projectId}/sprints`, {
+          name: args.name,
+          goal: args.goal,
+          startDate: args.startDate,
+          endDate: args.endDate,
+        })
+        .then(jsonResult),
+  },
+  {
+    name: 'update_sprint',
+    group: 'write',
+    description:
+      'Update a sprint — rename, change dates/goal, or set state (PLANNED → ' +
+      'ACTIVE to start, ACTIVE → COMPLETED to close). Requires MEMBER+.',
+    inputSchema: {
+      sprintId: z.string().describe('Sprint id.'),
+      name: z.string().min(1).max(120).optional(),
+      goal: z.string().max(500).optional(),
+      startDate: z.string().optional(),
+      endDate: z.string().optional(),
+      state: sprintStateEnum.optional(),
+    },
+    handler: (args, client) =>
+      client
+        .patch(`/sprints/${args.sprintId}`, {
+          name: args.name,
+          goal: args.goal,
+          startDate: args.startDate,
+          endDate: args.endDate,
+          state: args.state,
+        })
+        .then(jsonResult),
+  },
+  {
+    name: 'create_component',
+    group: 'write',
+    description: 'Create a project component. Requires MEMBER+.',
+    inputSchema: {
+      projectId: z.string().describe('Project id.'),
+      name: z.string().min(1).max(100).describe('Component name.'),
+      description: z.string().optional(),
+      defaultAssigneeId: z
+        .string()
+        .nullable()
+        .optional()
+        .describe('Default assignee user id, or null.'),
+    },
+    handler: (args, client) =>
+      client
+        .post(`/projects/${args.projectId}/components`, {
+          name: args.name,
+          description: args.description,
+          defaultAssigneeId: args.defaultAssigneeId,
+        })
+        .then(jsonResult),
+  },
+  {
+    name: 'create_version',
+    group: 'write',
+    description: 'Create a project version/release. Requires MEMBER+.',
+    inputSchema: {
+      projectId: z.string().describe('Project id.'),
+      name: z.string().min(1).describe('Version name, e.g. v1.2.0.'),
+      description: z.string().nullable().optional(),
+      releaseDate: z.string().nullable().optional().describe('ISO-8601 date.'),
+    },
+    handler: (args, client) =>
+      client
+        .post(`/projects/${args.projectId}/versions`, {
+          name: args.name,
+          description: args.description,
+          releaseDate: args.releaseDate,
+        })
+        .then(jsonResult),
+  },
+  {
+    name: 'set_issue_versions',
+    group: 'write',
+    description:
+      "Set the full list of versions (fix-versions) on an issue, replacing any " +
+      'existing. Pass an empty array to clear. Requires MEMBER+.',
+    inputSchema: {
+      issueId: z.string().describe('Issue id.'),
+      versionIds: z.array(z.string()).describe('Version ids to set (replaces all).'),
+    },
+    handler: (args, client) =>
+      client
+        .put(`/issues/${args.issueId}/versions`, { versionIds: args.versionIds })
+        .then(jsonResult),
+  },
+  {
+    name: 'add_worklog',
+    group: 'write',
+    description: 'Log time spent on an issue. Requires MEMBER+.',
+    inputSchema: {
+      issueId: z.string().describe('Issue id.'),
+      minutes: z.number().int().min(1).describe('Minutes spent.'),
+      note: z.string().max(2000).optional(),
+      workedAt: z.string().optional().describe('ISO-8601 datetime; defaults to now.'),
+    },
+    handler: (args, client) =>
+      client
+        .post(`/issues/${args.issueId}/worklogs`, {
+          minutes: args.minutes,
+          note: args.note,
+          workedAt: args.workedAt,
+        })
+        .then(jsonResult),
+  },
+  {
+    name: 'add_checklist_item',
+    group: 'write',
+    description: 'Add a checklist item to an issue. Requires MEMBER+.',
+    inputSchema: {
+      issueId: z.string().describe('Issue id.'),
+      text: z.string().min(1).max(2000).describe('Checklist item text.'),
+    },
+    handler: (args, client) =>
+      client
+        .post(`/issues/${args.issueId}/checklist`, { text: args.text })
+        .then(jsonResult),
+  },
+  {
+    name: 'update_checklist_item',
+    group: 'write',
+    description:
+      'Update a checklist item — rename and/or toggle done. Requires MEMBER+.',
+    inputSchema: {
+      itemId: z.string().describe('Checklist item id (from list_checklist).'),
+      text: z.string().min(1).max(2000).optional(),
+      done: z.boolean().optional().describe('Mark complete/incomplete.'),
+    },
+    handler: (args, client) =>
+      client
+        .patch(`/checklist/${args.itemId}`, { text: args.text, done: args.done })
+        .then(jsonResult),
+  },
+  {
+    name: 'create_status',
+    group: 'write',
+    description:
+      'Create a workflow status (column) in a project. Requires project ADMIN.',
+    inputSchema: {
+      projectId: z.string().describe('Project id.'),
+      name: z.string().min(1).max(60).describe('Status name.'),
+      category: statusCategoryEnum,
+      order: z.number().int().optional(),
+      wipLimit: z.number().int().min(1).nullable().optional(),
+    },
+    handler: (args, client) =>
+      client
+        .post(`/projects/${args.projectId}/statuses`, {
+          name: args.name,
+          category: args.category,
+          order: args.order,
+          wipLimit: args.wipLimit,
+        })
+        .then(jsonResult),
+  },
+  {
+    name: 'update_status',
+    group: 'write',
+    description:
+      'Update a status — name, category, order, or WIP limit (null clears). ' +
+      'Requires project ADMIN.',
+    inputSchema: {
+      statusId: z.string().describe('Status id.'),
+      name: z.string().min(1).max(60).optional(),
+      category: statusCategoryEnum.optional(),
+      order: z.number().int().optional(),
+      wipLimit: z.number().int().min(1).nullable().optional(),
+    },
+    handler: (args, client) =>
+      client
+        .patch(`/statuses/${args.statusId}`, {
+          name: args.name,
+          category: args.category,
+          order: args.order,
+          wipLimit: args.wipLimit,
+        })
+        .then(jsonResult),
+  },
+  {
+    name: 'create_board',
+    group: 'write',
+    description: 'Create a board in a project. Requires MEMBER+.',
+    inputSchema: {
+      projectId: z.string().describe('Project id.'),
+      name: z.string().min(1).max(80).describe('Board name.'),
+      type: boardTypeEnum,
+    },
+    handler: (args, client) =>
+      client
+        .post(`/projects/${args.projectId}/boards`, { name: args.name, type: args.type })
+        .then(jsonResult),
+  },
+  {
+    name: 'update_board',
+    group: 'write',
+    description:
+      'Update a board — rename, change type, or set its default NLQL filter ' +
+      '(filterQuery; null clears so the board shows everything). Requires ' +
+      'MEMBER+. (Use assign_board_workflow for the workflow.)',
+    inputSchema: {
+      boardId: z.string().describe('Board id.'),
+      name: z.string().min(1).max(80).optional(),
+      type: boardTypeEnum.optional(),
+      filterQuery: z
+        .string()
+        .nullable()
+        .optional()
+        .describe('Default board-scope NLQL, or null to clear.'),
+    },
+    handler: (args, client) =>
+      client
+        .patch(`/boards/${args.boardId}`, {
+          name: args.name,
+          type: args.type,
+          filterQuery: args.filterQuery,
+        })
+        .then(jsonResult),
+  },
+  {
+    name: 'create_saved_filter',
+    group: 'write',
+    description:
+      'Save a reusable NLQL filter on a project (optionally shared with the ' +
+      'team). Requires MEMBER+.',
+    inputSchema: {
+      projectId: z.string().describe('Project id.'),
+      name: z.string().min(1).max(80).describe('Filter name.'),
+      query: z.string().describe('NLQL query string.'),
+      shared: z.boolean().optional().describe('Share with the whole project.'),
+    },
+    handler: (args, client) =>
+      client
+        .post(`/projects/${args.projectId}/saved-filters`, {
+          name: args.name,
+          query: args.query,
+          shared: args.shared,
+        })
+        .then(jsonResult),
+  },
+  {
+    name: 'create_custom_field',
+    group: 'write',
+    description:
+      'Create a project custom field definition. type is immutable. SELECT / ' +
+      'MULTI_SELECT need options. Requires project ADMIN.',
+    inputSchema: {
+      projectId: z.string().describe('Project id.'),
+      name: z.string().min(1).max(60).describe('Field name.'),
+      type: customFieldTypeEnum,
+      options: z
+        .array(z.string())
+        .optional()
+        .describe('Allowed values for SELECT / MULTI_SELECT.'),
+      appliesToTypes: z
+        .array(issueTypeEnum)
+        .optional()
+        .describe('Restrict to these issue types (omit = all).'),
+      required: z.boolean().optional(),
+    },
+    handler: (args, client) =>
+      client
+        .post(`/projects/${args.projectId}/custom-fields`, {
+          name: args.name,
+          type: args.type,
+          options: args.options,
+          appliesToTypes: args.appliesToTypes,
+          required: args.required,
+        })
+        .then(jsonResult),
+  },
+  {
+    name: 'create_automation',
+    group: 'write',
+    description:
+      'Create an automation rule (trigger → optional NLQL condition → actions). ' +
+      'Requires project ADMIN.',
+    inputSchema: {
+      projectId: z.string().describe('Project id.'),
+      name: z.string().min(1).describe('Rule name.'),
+      trigger: automationTriggerEnum,
+      actions: z.array(automationActionSchema).describe('Ordered actions to run.'),
+      description: z.string().optional(),
+      condition: z
+        .string()
+        .nullable()
+        .optional()
+        .describe('NLQL condition the issue must match (omit = always).'),
+      enabled: z.boolean().optional().describe('Default true.'),
+      order: z.number().int().optional(),
+    },
+    handler: (args, client) =>
+      client
+        .post(`/projects/${args.projectId}/automations`, {
+          name: args.name,
+          trigger: args.trigger,
+          actions: args.actions,
+          description: args.description,
+          condition: args.condition,
+          enabled: args.enabled,
+          order: args.order,
+        })
         .then(jsonResult),
   },
 ];

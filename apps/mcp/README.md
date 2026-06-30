@@ -125,6 +125,17 @@ Then run `claude mcp list` to confirm it is connected.
 | `get_issue`         | Get one issue by id (`issueId`).                                        |
 | `list_issue_links`  | List an issue's typed links/dependencies (`issueId`); includes link ids. |
 | `list_labels`       | List a project's labels with ids + colors (`projectId`).               |
+| `list_users`        | List users (workspace members) — for assignee ids.                     |
+| `search_issues`     | Full-text issue search (`q`, optional `projectId`).                     |
+| `list_sprints`      | List a project's sprints (`projectId`).                                |
+| `list_components`   | List a project's components (`projectId`).                             |
+| `list_versions`     | List a project's versions/releases (`projectId`).                     |
+| `list_custom_fields`| List a project's custom field definitions (`projectId`).              |
+| `list_comments`     | List an issue's comments (`issueId`).                                  |
+| `list_worklogs`     | List an issue's time-tracking logs (`issueId`).                        |
+| `list_checklist`    | List an issue's checklist items (`issueId`).                           |
+| `list_saved_filters`| List a project's saved NLQL filters (`projectId`).                    |
+| `list_automations`  | List a project's automation rules (`projectId`).                       |
 
 ### Write (SDLC)
 
@@ -147,6 +158,20 @@ Then run `claude mcp list` to confirm it is connected.
 | `create_label`                  | Create a project label (`projectId`, `name`, optional hex `color`). |
 | `add_issue_label`               | Attach a label to an issue (`issueId`, `labelId`).                |
 | `remove_issue_label`            | Remove a label from an issue (`issueId`, `labelId`).             |
+| `add_comment`                   | Comment on an issue (`issueId`, `body` markdown).                |
+| `delete_issue`                  | Delete an issue (`issueId`). Irreversible.                       |
+| `create_sprint` / `update_sprint` | Create a sprint; update name/dates/goal/state (start/complete). |
+| `create_component`              | Create a project component.                                     |
+| `create_version` / `set_issue_versions` | Create a release; set an issue's fix-versions.          |
+| `add_worklog`                   | Log time on an issue (`minutes`, `note?`, `workedAt?`).         |
+| `add_checklist_item` / `update_checklist_item` | Add / rename / toggle-done a checklist item.    |
+| `create_status` / `update_status` | Create/update a workflow status (column) incl. WIP limit.     |
+| `create_board` / `update_board` | Create a board; rename/retype/set default `filterQuery`.        |
+| `create_saved_filter`           | Save a reusable NLQL filter (optionally shared).               |
+| `create_custom_field`           | Define a project custom field.                                 |
+| `create_automation`             | Create an automation rule (trigger → condition → actions).     |
+
+`update_issue` also accepts `customFields` (partial, keyed by field id).
 
 ## Development
 

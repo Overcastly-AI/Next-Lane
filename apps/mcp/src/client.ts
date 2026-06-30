@@ -131,6 +131,10 @@ export class NextLaneClient {
     return this.request<T>(path, { method: 'PATCH', body });
   }
 
+  put<T = unknown>(path: string, body?: unknown): Promise<T> {
+    return this.request<T>(path, { method: 'PUT', body });
+  }
+
   delete<T = unknown>(path: string): Promise<T> {
     return this.request<T>(path, { method: 'DELETE' });
   }
