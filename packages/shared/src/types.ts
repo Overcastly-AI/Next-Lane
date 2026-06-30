@@ -673,6 +673,10 @@ export interface QuickLinkDto {
   id: string;
   label: string;
   url: string;
+  /** Optional hex accent color (e.g. "#2563eb"); null when unset. */
+  color: string | null;
+  /** Optional group name; links sharing one render together. null = ungrouped. */
+  group: string | null;
   /** Display order (lower = first). */
   order: number;
   createdAt: string;

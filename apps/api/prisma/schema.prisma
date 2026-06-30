@@ -209,6 +209,11 @@ model QuickLink {
   userId    String
   label     String
   url       String
+  /// Optional hex accent color (e.g. "#2563eb") shown as a dot/left-border.
+  color     String?
+  /// Optional free-text group name; links sharing a name render under one
+  /// collapsible header. Null/empty = ungrouped.
+  group     String?
   /// Fractional/integer ordering for display (lower = first).
   order     Int      @default(0)
   createdAt DateTime @default(now())

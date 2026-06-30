@@ -60,6 +60,46 @@ describe('CreateQuickLinkDto', () => {
       }),
     ).toHaveLength(0);
   });
+
+  it('accepts a valid hex color and a group name', async () => {
+    expect(
+      await errorsFor(CreateQuickLinkDto, {
+        label: 'Grafana',
+        url: 'https://grafana.example.com',
+        color: '#2563eb',
+        group: 'Monitoring',
+      }),
+    ).toHaveLength(0);
+  });
+
+  it('treats empty color/group strings as unset (no error)', async () => {
+    expect(
+      await errorsFor(CreateQuickLinkDto, {
+        label: 'Grafana',
+        url: 'https://grafana.example.com',
+        color: '',
+        group: '   ',
+      }),
+    ).toHaveLength(0);
+  });
+
+  it('rejects a non-hex color', async () => {
+    const errors = await errorsFor(CreateQuickLinkDto, {
+      label: 'Grafana',
+      url: 'https://grafana.example.com',
+      color: 'blue',
+    });
+    expect(errors.join(' ')).toContain('hex color');
+  });
+
+  it('rejects an over-long group name', async () => {
+    const errors = await errorsFor(CreateQuickLinkDto, {
+      label: 'Grafana',
+      url: 'https://grafana.example.com',
+      group: 'x'.repeat(41),
+    });
+    expect(errors.length).toBeGreaterThan(0);
+  });
 });
 
 describe('UpdateQuickLinkDto', () => {

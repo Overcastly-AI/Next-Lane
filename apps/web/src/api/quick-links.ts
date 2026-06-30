@@ -21,6 +21,10 @@ export function useQuickLinks() {
 export interface CreateQuickLinkInput {
   label: string;
   url: string;
+  /** Hex accent color (#rrggbb) or null for none. */
+  color?: string | null;
+  /** Group name, or null/empty for ungrouped. */
+  group?: string | null;
 }
 
 export function useCreateQuickLink() {
@@ -37,6 +41,8 @@ export function useCreateQuickLink() {
 export interface UpdateQuickLinkInput {
   label?: string;
   url?: string;
+  color?: string | null;
+  group?: string | null;
   order?: number;
 }
 

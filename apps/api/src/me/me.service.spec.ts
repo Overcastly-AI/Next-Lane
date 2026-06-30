@@ -166,6 +166,8 @@ describe('MeService quick links', () => {
     userId: 'user-1',
     label: 'Grafana',
     url: 'https://grafana.example.com',
+    color: '#2563eb',
+    group: 'Monitoring',
     order: 0,
     createdAt: new Date('2026-06-01T00:00:00.000Z'),
     updatedAt: new Date('2026-06-02T00:00:00.000Z'),
@@ -185,6 +187,8 @@ describe('MeService quick links', () => {
         id: 'ql-1',
         label: 'Grafana',
         url: 'https://grafana.example.com',
+        color: '#2563eb',
+        group: 'Monitoring',
         order: 0,
         createdAt: '2026-06-01T00:00:00.000Z',
         updatedAt: '2026-06-02T00:00:00.000Z',
@@ -199,6 +203,8 @@ describe('MeService quick links', () => {
     await service.createQuickLink('user-1', {
       label: 'Docs',
       url: 'https://docs.example.com',
+      color: '#16a34a',
+      group: 'Docs',
     });
 
     expect(prisma.quickLink.create).toHaveBeenCalledWith({
@@ -206,6 +212,8 @@ describe('MeService quick links', () => {
         userId: 'user-1',
         label: 'Docs',
         url: 'https://docs.example.com',
+        color: '#16a34a',
+        group: 'Docs',
         order: 5,
       },
     });

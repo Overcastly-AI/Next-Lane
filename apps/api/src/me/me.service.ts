@@ -111,7 +111,14 @@ export class MeService {
     const nextOrder = last ? last.order + 1 : 0;
 
     const link = await this.prisma.quickLink.create({
-      data: { userId, label: dto.label, url: dto.url, order: nextOrder },
+      data: {
+        userId,
+        label: dto.label,
+        url: dto.url,
+        color: dto.color ?? null,
+        group: dto.group ?? null,
+        order: nextOrder,
+      },
     });
     return toQuickLinkDto(link);
   }
@@ -127,6 +134,8 @@ export class MeService {
     const data: Prisma.QuickLinkUpdateInput = {};
     if (dto.label !== undefined) data.label = dto.label;
     if (dto.url !== undefined) data.url = dto.url;
+    if (dto.color !== undefined) data.color = dto.color;
+    if (dto.group !== undefined) data.group = dto.group;
     if (dto.order !== undefined) data.order = dto.order;
 
     const link = await this.prisma.quickLink.update({ where: { id }, data });
@@ -160,6 +169,8 @@ function toQuickLinkDto(l: QuickLink): QuickLinkDto {
     id: l.id,
     label: l.label,
     url: l.url,
+    color: l.color,
+    group: l.group,
     order: l.order,
     createdAt: l.createdAt.toISOString(),
     updatedAt: l.updatedAt.toISOString(),
