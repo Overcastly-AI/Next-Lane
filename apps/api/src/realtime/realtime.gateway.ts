@@ -58,7 +58,21 @@ type ProjectPresenceMap = Map<string, Map<string, PresenceViewer>>;
  */
 type SocketProjectsMap = Map<string, Set<string>>;
 
-@WebSocketGateway({ cors: true })
+// Parse CORS_ORIGINS the same way main.ts does. In production with an
+// allowlist set, restrict to it; otherwise keep the dev default (allow all).
+const _corsOrigins = process.env.CORS_ORIGINS;
+const _wsCorsOption: boolean | { origin: string[]; credentials: true } =
+  _corsOrigins
+    ? {
+        origin: _corsOrigins
+          .split(',')
+          .map((o) => o.trim())
+          .filter((o) => o.length > 0),
+        credentials: true,
+      }
+    : true;
+
+@WebSocketGateway({ cors: _wsCorsOption })
 export class RealtimeGateway
   implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
 {

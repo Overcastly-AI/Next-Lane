@@ -1234,11 +1234,14 @@ export class IssuesService {
    *
    * Rows are ordered by issue number ascending.
    */
+  /** Hard upper bound on rows returned by {@link exportCsv}. */
+  static readonly CSV_ROW_CAP = 10_000;
+
   async exportCsv(
     userId: string,
     projectId: string,
     q?: string,
-  ): Promise<{ csv: string; projectKey: string }> {
+  ): Promise<{ csv: string; projectKey: string; truncated: boolean }> {
     // Resolve project + assert membership.
     const project = await this.prisma.project.findUnique({
       where: { id: projectId },
@@ -1269,7 +1272,8 @@ export class IssuesService {
       }
     }
 
-    // Fetch all issues for the project with the relations needed for columns.
+    // Fetch issues for the project with a hard cap to prevent unbounded queries.
+    // Fetch one extra to detect truncation without a separate COUNT query.
     const rows = await this.prisma.issue.findMany({
       where: { projectId },
       include: {
@@ -1281,7 +1285,12 @@ export class IssuesService {
         sprint: { select: { name: true } },
       },
       orderBy: { number: 'asc' },
+      take: IssuesService.CSV_ROW_CAP + 1,
     });
+    const truncated = rows.length > IssuesService.CSV_ROW_CAP;
+    if (truncated) {
+      rows.splice(IssuesService.CSV_ROW_CAP);
+    }
 
     // Map to IssueDto for NLQL evaluation.
     let issueDtos: IssueDto[] = rows.map(toIssueDto);
@@ -1347,7 +1356,7 @@ export class IssuesService {
       );
     }
 
-    return { csv: lines.join(''), projectKey: project.key };
+    return { csv: lines.join(''), projectKey: project.key, truncated };
   }
 
   /**

@@ -147,17 +147,23 @@ export class WorkLogsService {
   ): Promise<WorkLogDto> {
     const workLogRef = await this.getWorkLog(workLogId);
 
-    // Resolve the caller's membership role for author-or-admin check.
+    // assertProjectMember throws ForbiddenException when not a member (404/403)
+    // and returns the project (with workspace) so we can look up the role.
+    const project = await assertProjectMember(
+      this.prisma,
+      userId,
+      workLogRef.projectId,
+    );
+
     const membership = await this.prisma.membership.findUnique({
       where: {
-        userId_workspaceId: {
-          userId,
-          workspaceId: await this.resolveWorkspaceId(workLogRef.projectId),
-        },
+        userId_workspaceId: { userId, workspaceId: project.workspaceId },
       },
       select: { role: true },
     });
 
+    // membership cannot be null here (assertProjectMember already confirmed it),
+    // but guard defensively to satisfy TypeScript and preserve 403 semantics.
     if (!membership) {
       throw new ForbiddenException('Not a member of this project');
     }
@@ -189,12 +195,17 @@ export class WorkLogsService {
   async remove(userId: string, workLogId: string): Promise<void> {
     const workLogRef = await this.getWorkLog(workLogId);
 
+    // assertProjectMember throws ForbiddenException when not a member (404/403)
+    // and returns the project (with workspace) so we can look up the role.
+    const project = await assertProjectMember(
+      this.prisma,
+      userId,
+      workLogRef.projectId,
+    );
+
     const membership = await this.prisma.membership.findUnique({
       where: {
-        userId_workspaceId: {
-          userId,
-          workspaceId: await this.resolveWorkspaceId(workLogRef.projectId),
-        },
+        userId_workspaceId: { userId, workspaceId: project.workspaceId },
       },
       select: { role: true },
     });
@@ -213,19 +224,5 @@ export class WorkLogsService {
     }
 
     await this.prisma.workLog.delete({ where: { id: workLogId } });
-  }
-
-  // ---------------------------------------------------------------------------
-  // Private helpers
-  // ---------------------------------------------------------------------------
-
-  /** Look up the workspaceId for a project (needed for membership check). */
-  private async resolveWorkspaceId(projectId: string): Promise<string> {
-    const project = await this.prisma.project.findUnique({
-      where: { id: projectId },
-      select: { workspaceId: true },
-    });
-    if (!project) throw new NotFoundException('Project not found');
-    return project.workspaceId;
   }
 }

@@ -32,7 +32,7 @@ export class IssuesCsvController {
     @Query('q') q: string | undefined,
     @Res() res: Response,
   ): Promise<void> {
-    const { csv, projectKey } = await this.issues.exportCsv(user.id, projectId, q);
+    const { csv, projectKey, truncated } = await this.issues.exportCsv(user.id, projectId, q);
 
     // Sanitize the project key for use in the filename: keep only safe chars.
     const safeKey = projectKey.replace(/[^\w-]/g, '_');
@@ -43,6 +43,9 @@ export class IssuesCsvController {
       'Content-Disposition',
       `attachment; filename="${filename}"`,
     );
+    if (truncated) {
+      res.setHeader('X-Next-Lane-Truncated', 'true');
+    }
     res.send(csv);
   }
 }

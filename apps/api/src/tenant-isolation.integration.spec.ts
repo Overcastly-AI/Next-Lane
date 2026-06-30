@@ -69,6 +69,11 @@ interface Tenant {
   apiTokenId: string; // personal API token record id (NOT the raw token)
   automationRuleId: string;
   workflowTransitionId: string;
+  // Additional resource IDs for extended isolation coverage
+  workLogId: string;
+  pokerSessionId: string;
+  personalColumnId: string;
+  issueTemplateId: string;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -281,7 +286,7 @@ async function setupTenant(
   const automationRuleResp = await req(
     server,
     'POST',
-    `/projects/${projectId}/automation-rules`,
+    `/projects/${projectId}/automations`,
     token,
     {
       name: `rule-${suffix}`,
@@ -311,6 +316,58 @@ async function setupTenant(
           .transitions[0]?.id ?? 'nonexistent-transition-id')
       : 'nonexistent-transition-id';
 
+  // ── Work Log ──────────────────────────────────────────────────────────────
+  const workLogResp = await req(
+    server,
+    'POST',
+    `/issues/${issueId}/worklogs`,
+    token,
+    { minutes: 30 },
+  );
+  const workLogId =
+    workLogResp.status === 201
+      ? (JSON.parse(workLogResp.body) as { id: string }).id
+      : 'nonexistent-worklog-id';
+
+  // ── Planning Poker Session ────────────────────────────────────────────────
+  const pokerResp = await req(
+    server,
+    'POST',
+    `/projects/${projectId}/poker-sessions`,
+    token,
+    { issueIds: [issueId] },
+  );
+  const pokerSessionId =
+    pokerResp.status === 201
+      ? (JSON.parse(pokerResp.body) as { id: string }).id
+      : 'nonexistent-poker-session-id';
+
+  // ── Personal Column (user-owned; other users can't access by id) ──────────
+  const colResp = await req(
+    server,
+    'POST',
+    '/me/personal-columns',
+    token,
+    { name: `Col-${suffix}` },
+  );
+  const personalColumnId =
+    colResp.status === 201
+      ? (JSON.parse(colResp.body) as { id: string }).id
+      : 'nonexistent-personal-column-id';
+
+  // ── Issue Template ────────────────────────────────────────────────────────
+  const templateResp = await req(
+    server,
+    'POST',
+    `/projects/${projectId}/issue-templates`,
+    token,
+    { name: `Template-${suffix}` },
+  );
+  const issueTemplateId =
+    templateResp.status === 201
+      ? (JSON.parse(templateResp.body) as { id: string }).id
+      : 'nonexistent-issue-template-id';
+
   return {
     token,
     userId,
@@ -325,6 +382,10 @@ async function setupTenant(
     apiTokenId,
     automationRuleId,
     workflowTransitionId,
+    workLogId,
+    pokerSessionId,
+    personalColumnId,
+    issueTemplateId,
   };
 }
 
@@ -637,12 +698,12 @@ function buildMatrix(a: Tenant): Array<MatrixRow & { resolvedPath: string; resol
     {
       label: 'GET automation rules for project A',
       method: 'GET',
-      path: (t) => `/projects/${t.projectId}/automation-rules`,
+      path: (t) => `/projects/${t.projectId}/automations`,
     },
     {
       label: 'POST automation rule for project A',
       method: 'POST',
-      path: (t) => `/projects/${t.projectId}/automation-rules`,
+      path: (t) => `/projects/${t.projectId}/automations`,
       body: () => ({
         name: 'injected-rule',
         trigger: 'ISSUE_CREATED',
@@ -652,28 +713,28 @@ function buildMatrix(a: Tenant): Array<MatrixRow & { resolvedPath: string; resol
     {
       label: 'GET automation rule A',
       method: 'GET',
-      path: (t) => `/automation-rules/${t.automationRuleId}`,
+      path: (t) => `/projects/${t.projectId}/automations/${t.automationRuleId}`,
     },
     {
       label: 'PATCH automation rule A',
       method: 'PATCH',
-      path: (t) => `/automation-rules/${t.automationRuleId}`,
+      path: (t) => `/projects/${t.projectId}/automations/${t.automationRuleId}`,
       body: () => ({ name: 'hijacked-rule' }),
     },
     {
       label: 'DELETE automation rule A',
       method: 'DELETE',
-      path: (t) => `/automation-rules/${t.automationRuleId}`,
+      path: (t) => `/projects/${t.projectId}/automations/${t.automationRuleId}`,
     },
     {
       label: 'GET automation runs for project A',
       method: 'GET',
-      path: (t) => `/projects/${t.projectId}/automation-runs`,
+      path: (t) => `/projects/${t.projectId}/automations/runs`,
     },
     {
       label: 'GET automation runs for rule A',
       method: 'GET',
-      path: (t) => `/automation-rules/${t.automationRuleId}/runs`,
+      path: (t) => `/projects/${t.projectId}/automations/${t.automationRuleId}/runs`,
     },
 
     // ── Analytics ───────────────────────────────────────────────────────────
@@ -697,6 +758,110 @@ function buildMatrix(a: Tenant): Array<MatrixRow & { resolvedPath: string; resol
       label: 'DELETE workspace A logo (cross-tenant mutation)',
       method: 'DELETE',
       path: (t) => `/workspaces/${t.workspaceId}/logo`,
+    },
+
+    // ── Work Logs ────────────────────────────────────────────────────────────
+    {
+      label: 'GET work logs on issue A',
+      method: 'GET',
+      path: (t) => `/issues/${t.issueId}/worklogs`,
+    },
+    {
+      label: 'POST work log on issue A',
+      method: 'POST',
+      path: (t) => `/issues/${t.issueId}/worklogs`,
+      body: () => ({ minutes: 60 }),
+    },
+    {
+      label: 'PATCH work log A',
+      method: 'PATCH',
+      path: (t) => `/worklogs/${t.workLogId}`,
+      body: () => ({ minutes: 90 }),
+    },
+    {
+      label: 'DELETE work log A',
+      method: 'DELETE',
+      path: (t) => `/worklogs/${t.workLogId}`,
+    },
+
+    // ── Standups ─────────────────────────────────────────────────────────────
+    {
+      label: 'GET standup digest for project A',
+      method: 'GET',
+      path: (t) => `/projects/${t.projectId}/standups`,
+    },
+    {
+      label: 'POST standup entry for project A',
+      method: 'POST',
+      path: (t) => `/projects/${t.projectId}/standups`,
+      body: () => ({
+        today: 'Injected standup today',
+        yesterday: 'Injected standup yesterday',
+        blockers: '',
+      }),
+    },
+
+    // ── Issue Templates ──────────────────────────────────────────────────────
+    {
+      label: 'GET issue templates for project A',
+      method: 'GET',
+      path: (t) => `/projects/${t.projectId}/issue-templates`,
+    },
+    {
+      label: 'POST issue template for project A',
+      method: 'POST',
+      path: (t) => `/projects/${t.projectId}/issue-templates`,
+      body: () => ({ name: 'Injected template' }),
+    },
+    {
+      label: 'PATCH issue template A',
+      method: 'PATCH',
+      path: (t) => `/issue-templates/${t.issueTemplateId}`,
+      body: () => ({ name: 'Hijacked template' }),
+    },
+    {
+      label: 'DELETE issue template A',
+      method: 'DELETE',
+      path: (t) => `/issue-templates/${t.issueTemplateId}`,
+    },
+
+    // ── Personal Boards ──────────────────────────────────────────────────────
+    // /me/personal-board is always caller-scoped so GET is implicitly isolated,
+    // but PATCH/DELETE by column or card id must reject cross-user access.
+    {
+      label: "PATCH personal column A (cross-user column id)",
+      method: 'PATCH',
+      path: (t) => `/me/personal-columns/${t.personalColumnId}`,
+      body: () => ({ name: 'Hijacked column' }),
+    },
+    {
+      label: "DELETE personal column A (cross-user column id)",
+      method: 'DELETE',
+      path: (t) => `/me/personal-columns/${t.personalColumnId}`,
+    },
+
+    // ── Planning Poker ───────────────────────────────────────────────────────
+    {
+      label: 'GET poker sessions for project A',
+      method: 'GET',
+      path: (t) => `/projects/${t.projectId}/poker-sessions`,
+    },
+    {
+      label: 'POST poker session for project A',
+      method: 'POST',
+      path: (t) => `/projects/${t.projectId}/poker-sessions`,
+      body: (t) => ({ issueIds: [t.issueId] }),
+    },
+    {
+      label: 'GET poker session A by id',
+      method: 'GET',
+      path: (t) => `/poker-sessions/${t.pokerSessionId}`,
+    },
+    {
+      label: 'PATCH poker session A by id',
+      method: 'PATCH',
+      path: (t) => `/poker-sessions/${t.pokerSessionId}`,
+      body: () => ({ name: 'Hijacked session' }),
     },
   ];
 
@@ -768,7 +933,9 @@ function buildMatrix(a: Tenant): Array<MatrixRow & { resolvedPath: string; resol
       });
 
       it('matrix is populated (sanity check)', () => {
-        expect(matrix.length).toBeGreaterThan(45);
+        // Threshold updated to reflect the 5 additional feature families
+        // (work-logs, standups, issue-templates, personal-boards, planning-poker).
+        expect(matrix.length).toBeGreaterThan(65);
       });
 
       /**

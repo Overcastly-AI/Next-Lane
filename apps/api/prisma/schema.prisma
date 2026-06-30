@@ -1244,6 +1244,8 @@ model WorkflowTransition {
   @@index([projectId, issueType])
   /// Fast "what transitions can leave this specific status?" query.
   @@index([projectId, fromStatusId])
+  /// Fast "what transitions lead INTO a specific status for a project?" query.
+  @@index([projectId, toStatusId])
   /// Workflow-scoped transitions index.
   @@index([workflowId])
   /// Prevents exact duplicate legacy transitions (null workflowId path).

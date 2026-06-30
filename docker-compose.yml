@@ -47,6 +47,9 @@ services:
       REDIS_URL: redis://redis:6379
       API_PORT: 4000
       NODE_ENV: production
+      # Seed demo data on first boot of the local/demo stack. Production deployments
+      # should omit this (or set AUTO_SEED=false) to prevent auto-seeding.
+      AUTO_SEED: "true"
     ports:
       - "${API_PORT:-4000}:4000"
     volumes:
