@@ -13,9 +13,25 @@ function makePrisma() {
   return {
     membership: { findMany: jest.fn() },
     issue: { findMany: jest.fn() },
+    quickLink: {
+      findMany: jest.fn(),
+      findFirst: jest.fn(),
+      findUnique: jest.fn(),
+      create: jest.fn(),
+      update: jest.fn(),
+      delete: jest.fn(),
+    },
   } as unknown as PrismaService & {
     membership: { findMany: jest.Mock };
     issue: { findMany: jest.Mock };
+    quickLink: {
+      findMany: jest.Mock;
+      findFirst: jest.Mock;
+      findUnique: jest.Mock;
+      create: jest.Mock;
+      update: jest.Mock;
+      delete: jest.Mock;
+    };
   };
 }
 
@@ -133,5 +149,119 @@ describe('MeService.getMyWork', () => {
 
     expect(result).toEqual({ assigned: [], reported: [] });
     expect(prisma.issue.findMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('MeService quick links', () => {
+  let prisma: MockPrisma;
+  let service: MeService;
+
+  beforeEach(() => {
+    prisma = makePrisma();
+    service = new MeService(prisma);
+  });
+
+  const linkRow = {
+    id: 'ql-1',
+    userId: 'user-1',
+    label: 'Grafana',
+    url: 'https://grafana.example.com',
+    order: 0,
+    createdAt: new Date('2026-06-01T00:00:00.000Z'),
+    updatedAt: new Date('2026-06-02T00:00:00.000Z'),
+  };
+
+  it('lists only the caller links, ordered, mapped to the DTO shape', async () => {
+    prisma.quickLink.findMany.mockResolvedValue([linkRow]);
+
+    const result = await service.listQuickLinks('user-1');
+
+    expect(prisma.quickLink.findMany).toHaveBeenCalledWith({
+      where: { userId: 'user-1' },
+      orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
+    });
+    expect(result).toEqual([
+      {
+        id: 'ql-1',
+        label: 'Grafana',
+        url: 'https://grafana.example.com',
+        order: 0,
+        createdAt: '2026-06-01T00:00:00.000Z',
+        updatedAt: '2026-06-02T00:00:00.000Z',
+      },
+    ]);
+  });
+
+  it('appends a new link after the caller existing max order', async () => {
+    prisma.quickLink.findFirst.mockResolvedValue({ order: 4 });
+    prisma.quickLink.create.mockResolvedValue({ ...linkRow, order: 5 });
+
+    await service.createQuickLink('user-1', {
+      label: 'Docs',
+      url: 'https://docs.example.com',
+    });
+
+    expect(prisma.quickLink.create).toHaveBeenCalledWith({
+      data: {
+        userId: 'user-1',
+        label: 'Docs',
+        url: 'https://docs.example.com',
+        order: 5,
+      },
+    });
+  });
+
+  it('starts ordering at 0 when the caller has no links yet', async () => {
+    prisma.quickLink.findFirst.mockResolvedValue(null);
+    prisma.quickLink.create.mockResolvedValue(linkRow);
+
+    await service.createQuickLink('user-1', {
+      label: 'Grafana',
+      url: 'https://grafana.example.com',
+    });
+
+    expect(prisma.quickLink.create.mock.calls[0][0].data.order).toBe(0);
+  });
+
+  it('updates a link owned by the caller', async () => {
+    prisma.quickLink.findUnique.mockResolvedValue({ userId: 'user-1' });
+    prisma.quickLink.update.mockResolvedValue({ ...linkRow, label: 'Renamed' });
+
+    await service.updateQuickLink('user-1', 'ql-1', { label: 'Renamed' });
+
+    expect(prisma.quickLink.update).toHaveBeenCalledWith({
+      where: { id: 'ql-1' },
+      data: { label: 'Renamed' },
+    });
+  });
+
+  it('refuses to update a link owned by another user (no cross-user leak)', async () => {
+    prisma.quickLink.findUnique.mockResolvedValue({ userId: 'someone-else' });
+
+    await expect(
+      service.updateQuickLink('user-1', 'ql-1', { label: 'Hacked' }),
+    ).rejects.toThrow('Quick link not found');
+    expect(prisma.quickLink.update).not.toHaveBeenCalled();
+  });
+
+  it('refuses to delete a link owned by another user', async () => {
+    prisma.quickLink.findUnique.mockResolvedValue({ userId: 'someone-else' });
+
+    await expect(service.deleteQuickLink('user-1', 'ql-1')).rejects.toThrow(
+      'Quick link not found',
+    );
+    expect(prisma.quickLink.delete).not.toHaveBeenCalled();
+  });
+
+  it('deletes a link owned by the caller', async () => {
+    prisma.quickLink.findUnique.mockResolvedValue({ userId: 'user-1' });
+    prisma.quickLink.delete.mockResolvedValue(linkRow);
+
+    const result = await service.deleteQuickLink('user-1', 'ql-1');
+
+    expect(prisma.quickLink.delete).toHaveBeenCalledWith({
+      where: { id: 'ql-1' },
+    });
+    expect(result).toEqual({ id: 'ql-1' });
   });
 });

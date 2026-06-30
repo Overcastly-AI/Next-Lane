@@ -32,8 +32,13 @@ export const LOGO_ALLOWED_MIME_TYPES = new Set<string>([
   'image/webp',
 ]);
 
-/** Max logo size: 2 MB */
-export const LOGO_MAX_BYTES = 2 * 1024 * 1024;
+/**
+ * Max logo size: 4 MB. Kept in sync with the web upload form
+ * (apps/web/src/pages/WorkspaceBrandingPage.tsx → MAX_FILE_SIZE_BYTES) so the
+ * client and server agree — a file the form accepts must not be rejected by the
+ * multer hard limit with an opaque 413.
+ */
+export const LOGO_MAX_BYTES = 4 * 1024 * 1024;
 
 type WorkspaceRow = {
   id: string;
@@ -235,8 +240,38 @@ export class WorkspacesService {
   }
 
   /**
+   * DELETE /workspaces/:id — permanently delete a workspace. Admin-only.
+   *
+   * This is irreversible: every project, board, issue, sprint, member, and
+   * related record cascades away via the schema's onDelete: Cascade relations.
+   * We best-effort remove the stored logo file from disk afterwards (the DB row
+   * is already gone, so a leftover file would otherwise be orphaned).
+   */
+  async remove(userId: string, workspaceId: string): Promise<{ id: string }> {
+    await assertWorkspaceRole(this.prisma, userId, workspaceId, Role.ADMIN);
+
+    const existing = await this.prisma.workspace.findUnique({
+      where: { id: workspaceId },
+      select: { id: true, name: true, logoStorageKey: true },
+    });
+    if (!existing) throw new NotFoundException('Workspace not found');
+
+    await this.prisma.workspace.delete({ where: { id: workspaceId } });
+
+    if (existing.logoStorageKey) {
+      this.safeUnlink(path.join(getUploadsDir(), existing.logoStorageKey));
+    }
+
+    // No audit event is written: AuditEvent.workspaceId cascades with the
+    // workspace, so any record scoped to this workspace would be deleted along
+    // with it. The deletion is self-evident (the workspace no longer exists).
+
+    return { id: workspaceId };
+  }
+
+  /**
    * POST /workspaces/:id/logo — upload a logo image. Admin-only.
-   * Validates MIME type (png/jpeg/webp only) and size (<= 2 MB).
+   * Validates MIME type (png/jpeg/webp only) and size (<= 4 MB).
    * Replaces any previously stored logo file.
    */
   async uploadLogo(

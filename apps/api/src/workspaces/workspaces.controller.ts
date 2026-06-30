@@ -71,6 +71,12 @@ export class WorkspacesController {
     return this.workspaces.update(user.id, id, dto);
   }
 
+  /** DELETE /workspaces/:id — permanently delete a workspace. Admin-only. */
+  @Delete(':id')
+  remove(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.workspaces.remove(user.id, id);
+  }
+
   @Get(':id/members')
   members(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.workspaces.members(user.id, id);

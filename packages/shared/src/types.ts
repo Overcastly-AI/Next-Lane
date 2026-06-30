@@ -665,6 +665,21 @@ export interface MyWorkDto {
 }
 
 /**
+ * A user-defined quick link: a personal shortcut to an external URL (their own
+ * apps/tools), shown in the header Quick Links menu. Personal to the caller and
+ * persisted server-side so it follows them across devices.
+ */
+export interface QuickLinkDto {
+  id: string;
+  label: string;
+  url: string;
+  /** Display order (lower = first). */
+  order: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
  * A single notification (inbox item) for the current user. Carries denormalized
  * snapshot fields (issueKey, projectId) so the bell can render and navigate
  * without extra lookups. `actor` may be null if the user who caused it was

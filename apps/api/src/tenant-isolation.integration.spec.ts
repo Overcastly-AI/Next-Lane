@@ -422,6 +422,11 @@ function buildMatrix(a: Tenant): Array<MatrixRow & { resolvedPath: string; resol
       method: 'GET',
       path: (t) => `/workspaces/${t.workspaceId}/audit-log`,
     },
+    {
+      label: 'DELETE workspace A (cross-tenant mutation)',
+      method: 'DELETE',
+      path: (t) => `/workspaces/${t.workspaceId}`,
+    },
 
     // ── Project ────────────────────────────────────────────────────────────
     {

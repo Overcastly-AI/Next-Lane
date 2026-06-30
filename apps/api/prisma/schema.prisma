@@ -197,6 +197,26 @@ model User {
 
   // Issue templates (default assignee back-relation)
   issueTemplatesAsDefaultAssignee IssueTemplate[] @relation("templateDefaultAssignee")
+
+  // Personal quick links (user-defined shortcuts to external apps)
+  quickLinks QuickLink[]
+}
+
+/// A user-defined shortcut to an external URL (their own apps/tools), shown in
+/// the header Quick Links menu. Personal to the user; persists across devices.
+model QuickLink {
+  id        String   @id @default(cuid())
+  userId    String
+  label     String
+  url       String
+  /// Fractional/integer ordering for display (lower = first).
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 // Personal API Token (PAT) for scripting / CI access to the REST API.

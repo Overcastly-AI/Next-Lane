@@ -69,6 +69,7 @@ function makePrisma(wsOverrides: Partial<ReturnType<typeof makeWorkspaceRow>> = 
   workspace: {
     findUnique: jest.Mock;
     update: jest.Mock;
+    delete: jest.Mock;
   };
   membership: {
     findUnique: jest.Mock;
@@ -93,9 +94,10 @@ function makePrisma(wsOverrides: Partial<ReturnType<typeof makeWorkspaceRow>> = 
       update: jest.fn().mockImplementation(({ data }: { data: Record<string, unknown> }) =>
         Promise.resolve({ ...ws, ...data }),
       ),
+      delete: jest.fn().mockResolvedValue(ws),
     },
   } as unknown as PrismaService & {
-    workspace: { findUnique: jest.Mock; update: jest.Mock };
+    workspace: { findUnique: jest.Mock; update: jest.Mock; delete: jest.Mock };
     membership: { findUnique: jest.Mock };
   };
 }
@@ -237,6 +239,37 @@ describe('WorkspacesService.update()', () => {
   });
 });
 
+describe('WorkspacesService.remove()', () => {
+  it('allows an admin to delete the workspace', async () => {
+    const prisma = makePrisma();
+    const svc = makeService(prisma);
+    const result = await svc.remove(ADMIN_ID, WS_ID);
+    expect(result).toEqual({ id: WS_ID });
+    expect(
+      (prisma as { workspace: { delete: jest.Mock } }).workspace.delete,
+    ).toHaveBeenCalledWith({ where: { id: WS_ID } });
+  });
+
+  it('throws ForbiddenException for a non-admin member', async () => {
+    const prisma = makePrisma();
+    const svc = makeService(prisma);
+    await expect(svc.remove(MEMBER_ID, WS_ID)).rejects.toThrow(
+      ForbiddenException,
+    );
+    expect(
+      (prisma as { workspace: { delete: jest.Mock } }).workspace.delete,
+    ).not.toHaveBeenCalled();
+  });
+
+  it('throws ForbiddenException for a viewer', async () => {
+    const prisma = makePrisma();
+    const svc = makeService(prisma);
+    await expect(svc.remove(VIEWER_ID, WS_ID)).rejects.toThrow(
+      ForbiddenException,
+    );
+  });
+});
+
 // Real PNG magic bytes: 8-byte signature
 const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 // Real JPEG magic bytes: SOI marker (2 bytes) + JFIF/EXIF app marker prefix
@@ -358,7 +391,7 @@ describe('WorkspacesService.uploadLogo()', () => {
     await expect(svc.uploadLogo(ADMIN_ID, WS_ID, file)).rejects.toThrow(BadRequestException);
   });
 
-  it('rejects files over 2 MB', async () => {
+  it('rejects files over the size cap', async () => {
     const prisma = makePrisma();
     const svc = makeService(prisma);
     const file = makeTmpFile('data', 'logo.png', 'image/png', LOGO_MAX_BYTES + 1);

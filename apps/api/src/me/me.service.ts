@@ -1,5 +1,5 @@
-import { Injectable } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma, QuickLink } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type {
   MyWorkDto,
@@ -8,7 +8,9 @@ import type {
   Priority,
   StatusCategory,
   SprintState,
+  QuickLinkDto,
 } from '@next-lane/shared';
+import { CreateQuickLinkDto, UpdateQuickLinkDto } from './dto/quick-link.dto';
 
 /** Max issues returned per group (assigned / reported). */
 const RESULT_CAP = 100;
@@ -80,6 +82,88 @@ export class MeService {
       reported: reported.map(toMyWorkIssue),
     };
   }
+
+  // ── Quick links ───────────────────────────────────────────────────────────
+  //
+  // Personal shortcuts to external apps, shown in the header. Every query is
+  // scoped to the caller's userId, so a user can only ever see or mutate their
+  // own links.
+
+  /** List the caller's quick links, ordered for display. */
+  async listQuickLinks(userId: string): Promise<QuickLinkDto[]> {
+    const links = await this.prisma.quickLink.findMany({
+      where: { userId },
+      orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
+    });
+    return links.map(toQuickLinkDto);
+  }
+
+  /** Create a quick link, appended after the caller's existing links. */
+  async createQuickLink(
+    userId: string,
+    dto: CreateQuickLinkDto,
+  ): Promise<QuickLinkDto> {
+    const last = await this.prisma.quickLink.findFirst({
+      where: { userId },
+      orderBy: { order: 'desc' },
+      select: { order: true },
+    });
+    const nextOrder = last ? last.order + 1 : 0;
+
+    const link = await this.prisma.quickLink.create({
+      data: { userId, label: dto.label, url: dto.url, order: nextOrder },
+    });
+    return toQuickLinkDto(link);
+  }
+
+  /** Update one of the caller's quick links. */
+  async updateQuickLink(
+    userId: string,
+    id: string,
+    dto: UpdateQuickLinkDto,
+  ): Promise<QuickLinkDto> {
+    await this.assertOwnedQuickLink(userId, id);
+
+    const data: Prisma.QuickLinkUpdateInput = {};
+    if (dto.label !== undefined) data.label = dto.label;
+    if (dto.url !== undefined) data.url = dto.url;
+    if (dto.order !== undefined) data.order = dto.order;
+
+    const link = await this.prisma.quickLink.update({ where: { id }, data });
+    return toQuickLinkDto(link);
+  }
+
+  /** Delete one of the caller's quick links. */
+  async deleteQuickLink(userId: string, id: string): Promise<{ id: string }> {
+    await this.assertOwnedQuickLink(userId, id);
+    await this.prisma.quickLink.delete({ where: { id } });
+    return { id };
+  }
+
+  /** Throws NotFound unless the quick link exists and belongs to the caller. */
+  private async assertOwnedQuickLink(
+    userId: string,
+    id: string,
+  ): Promise<void> {
+    const existing = await this.prisma.quickLink.findUnique({
+      where: { id },
+      select: { userId: true },
+    });
+    if (!existing || existing.userId !== userId) {
+      throw new NotFoundException('Quick link not found');
+    }
+  }
+}
+
+function toQuickLinkDto(l: QuickLink): QuickLinkDto {
+  return {
+    id: l.id,
+    label: l.label,
+    url: l.url,
+    order: l.order,
+    createdAt: l.createdAt.toISOString(),
+    updatedAt: l.updatedAt.toISOString(),
+  };
 }
 
 function toMyWorkIssue(r: MyWorkRow): MyWorkIssueDto {
