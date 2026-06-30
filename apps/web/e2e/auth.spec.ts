@@ -5,8 +5,9 @@ test.describe('Authentication', () => {
   test('demo user can log in and reach the dashboard', async ({ page }) => {
     await login(page);
     await expect(page).not.toHaveURL(/\/login/);
-    // Dashboard shows the seeded project somewhere
-    await expect(page.getByText(/next lane/i).first()).toBeVisible();
+    // The authenticated app shell rendered — the user menu is always present in
+    // the header (on every breakpoint, unlike the responsive-hidden wordmark).
+    await expect(page.getByTestId('user-menu-button')).toBeVisible();
   });
 
   test('wrong password shows an error and stays on login', async ({ page }) => {

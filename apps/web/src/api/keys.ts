@@ -50,4 +50,6 @@ export const qk = {
   workflow: (workflowId: string) => ['workflow', workflowId] as const,
   /** Issue templates for a project. */
   issueTemplates: (projectId: string) => ['issueTemplates', projectId] as const,
+  /** Personal quick links for the current user. */
+  quickLinks: ['quickLinks'] as const,
 };

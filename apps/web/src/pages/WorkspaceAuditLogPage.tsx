@@ -10,10 +10,11 @@
  * Route: /workspaces/:workspaceId/audit-log
  */
 import { useMemo } from 'react';
-import { Link, NavLink, useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { Role } from '@next-lane/shared';
 import type { AuditEventDto } from '@next-lane/shared';
 import { AppHeader } from '@/components/AppHeader';
+import { WorkspaceSettingsNav } from '@/components/WorkspaceSettingsNav';
 import { Button } from '@/components/ui/Button';
 import { ErrorState, LoadingState, EmptyState } from '@/components/ui/States';
 import { useAuditLog } from '@/api/audit';
@@ -338,49 +339,7 @@ function Shell({
           </span>
         </div>
       </AppHeader>
-      {/* Workspace sub-nav */}
-      <nav
-        className="flex items-center gap-1 border-b border-ink-100 bg-white px-4 py-1"
-        aria-label="Workspace navigation"
-      >
-        <NavLink
-          to={`/workspaces/${workspaceId}/members`}
-          className={({ isActive }) =>
-            `rounded-md px-3 py-1.5 text-sm font-medium ${
-              isActive
-                ? 'bg-signal-50 text-signal-700'
-                : 'text-ink-600 hover:bg-ink-100 hover:text-ink-900'
-            }`
-          }
-        >
-          Members
-        </NavLink>
-        <NavLink
-          to={`/workspaces/${workspaceId}/audit-log`}
-          className={({ isActive }) =>
-            `rounded-md px-3 py-1.5 text-sm font-medium ${
-              isActive
-                ? 'bg-signal-50 text-signal-700'
-                : 'text-ink-600 hover:bg-ink-100 hover:text-ink-900'
-            }`
-          }
-          aria-current="page"
-        >
-          Audit log
-        </NavLink>
-        <NavLink
-          to={`/workspaces/${workspaceId}/branding`}
-          className={({ isActive }) =>
-            `rounded-md px-3 py-1.5 text-sm font-medium ${
-              isActive
-                ? 'bg-signal-50 text-signal-700'
-                : 'text-ink-600 hover:bg-ink-100 hover:text-ink-900'
-            }`
-          }
-        >
-          Branding
-        </NavLink>
-      </nav>
+      <WorkspaceSettingsNav workspaceId={workspaceId} />
       <main className="flex flex-1 flex-col overflow-y-auto">{children}</main>
     </div>
   );

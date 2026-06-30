@@ -25,7 +25,9 @@ test.describe('Runtime config (window.__NL_CONFIG__)', () => {
     // VITE_API_URL baked in at preview-build time.
     await login(page);
     await expect(page).not.toHaveURL(/\/login/);
-    await expect(page.getByText(/next lane/i).first()).toBeVisible();
+    // The app shell rendered — assert the always-present user menu (the header
+    // wordmark is responsive-hidden on mobile, so it's not a reliable anchor).
+    await expect(page.getByTestId('user-menu-button')).toBeVisible();
   });
 
   test('window.__NL_CONFIG__.apiUrl is readable when injected via addInitScript', async ({

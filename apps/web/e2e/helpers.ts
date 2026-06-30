@@ -15,6 +15,28 @@ export async function login(page: Page, creds = DEMO): Promise<void> {
   await expect(page).not.toHaveURL(/\/login/, { timeout: 15_000 });
 }
 
+/**
+ * Navigate to a primary section (My Work / My Board / Insights) via the header.
+ *
+ * The header nav links are visible on desktop but collapse into the user-menu
+ * dropdown on mobile (so the bar fits a phone viewport without clipping). This
+ * helper clicks whichever surface is active for the current viewport, so specs
+ * pass on both the desktop and mobile Playwright projects.
+ */
+export async function gotoSection(
+  page: Page,
+  name: RegExp | string,
+): Promise<void> {
+  const headerLink = page.getByRole('link', { name }).first();
+  if (await headerLink.isVisible().catch(() => false)) {
+    await headerLink.click();
+    return;
+  }
+  // Mobile: the links live inside the user menu as buttons.
+  await page.getByTestId('user-menu-button').click();
+  await page.getByRole('button', { name }).first().click();
+}
+
 /** Open the seeded "Next Lane" (NL) project board.
  *
  * READ-ONLY callers only: this lands on the SHARED demo project. Any spec that

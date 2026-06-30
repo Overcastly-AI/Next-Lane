@@ -35,6 +35,7 @@ import { PersonalAnalyticsPage } from '@/pages/PersonalAnalyticsPage';
 import { ProjectAnalyticsPage } from '@/pages/ProjectAnalyticsPage';
 import { AutomationsPage } from '@/pages/AutomationsPage';
 import { WorkspaceBrandingPage } from '@/pages/WorkspaceBrandingPage';
+import { WorkspaceSettingsPage } from '@/pages/WorkspaceSettingsPage';
 import { NotificationsPage } from '@/pages/NotificationsPage';
 
 const queryClient = new QueryClient({
@@ -217,6 +218,14 @@ export default function App() {
               element={
                 <RequireAuth>
                   <WorkspaceBrandingPage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/workspaces/:workspaceId/settings"
+              element={
+                <RequireAuth>
+                  <WorkspaceSettingsPage />
                 </RequireAuth>
               }
             />

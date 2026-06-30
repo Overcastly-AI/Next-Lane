@@ -1,5 +1,5 @@
 import { test, expect, type APIRequestContext } from '@playwright/test';
-import { login, DEMO } from './helpers';
+import { login, DEMO, gotoSection } from './helpers';
 
 /**
  * "My Work" personal dashboard.
@@ -71,8 +71,8 @@ test.describe('My Work', () => {
 
     await login(page, DEMO);
 
-    // Reach My Work from the top header (next to Search).
-    await page.getByRole('link', { name: /my work/i }).click();
+    // Reach My Work from the header (desktop link) or user menu (mobile).
+    await gotoSection(page, /my work/i);
     await expect(page).toHaveURL(/\/my-work/);
     await expect(
       page.getByRole('heading', { name: /^my work$/i }),

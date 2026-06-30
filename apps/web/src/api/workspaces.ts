@@ -131,6 +131,49 @@ export function useDeleteWorkspaceLogo(workspaceId: string) {
 }
 
 /**
+ * POST /workspaces/:id/members — invite by email or change an existing member's
+ * role (the backend upserts). Admin-only.
+ * Invalidates the membership list so the page reflects the change immediately.
+ */
+export interface AddMemberInput {
+  email: string;
+  role?: Role;
+}
+
+export function useAddMember(workspaceId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: AddMemberInput) =>
+      request<MembershipDto>(`/workspaces/${workspaceId}/members`, {
+        method: 'POST',
+        body: input,
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({
+        queryKey: qk.workspaceMembers(workspaceId),
+      });
+    },
+  });
+}
+
+/**
+ * DELETE /workspaces/:id — permanently removes the workspace and all its
+ * contents. Admin-only. Invalidates the workspaces list.
+ */
+export function useDeleteWorkspace(workspaceId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      request<{ id: string }>(`/workspaces/${workspaceId}`, {
+        method: 'DELETE',
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: qk.workspaces });
+    },
+  });
+}
+
+/**
  * Remove a workspace member by membershipId.
  * Only available to ADMINs; the server rejects any attempt that would leave the
  * workspace with no administrators (returns 400/403 surfaced as a toast).
