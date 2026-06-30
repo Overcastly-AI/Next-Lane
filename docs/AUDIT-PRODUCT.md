@@ -1480,3 +1480,303 @@ items to maintain shipping momentum and address the most visible UX gaps.
 - Sprint retrospective UI (retro JSON field on Sprint; modal from completed sprint row; What went well / improve / actions) · P3 · M · closes the sprint lifecycle; teams currently use external docs; no schema support today
 - SSO / OIDC (passport-oidc strategy; provider config in workspace settings; Google/GitHub at minimum) · P3 · L · self-hosted teams with managed identity providers cannot adopt without SSO; table-stakes for enterprise evaluation
 - Issue scoring / priority matrix view (business-value field on Issue; 2x2 matrix page; drag to update) · P3 · M · no comparable self-hosted tracker ships this; surfaces obvious "do first" candidates from the backlog
+
+---
+
+## 2026-06-30 — Pass 9 (current-state deep audit)
+
+**Method.** Read docs/ROADMAP.md (all phases), docs/BACKLOG.md, all 27 web pages,
+all 40 API modules, the Prisma schema, and the enums/types packages. Cross-checked
+every previously "open" gap against the actual module list, service implementations,
+and frontend pages to confirm shipped vs. absent. The mandate below explicitly notes
+items the system prompt listed as done — this pass verifies that claim with code.
+
+**Verification of claimed completions.** Every item the ROADMAP marks ✅ in Phase 5
+and below was verified against source files:
+- Multiple boards: `apps/api/src/board/board.service.ts` + `BoardSwitcher.tsx` — confirmed.
+- Custom fields: `apps/api/src/custom-fields/` module + `CustomFieldsSection.tsx` — confirmed.
+- NLQL + autocomplete: `packages/shared/src/nlql/suggest.ts` + `NlqlInput.tsx` — confirmed.
+- Saved filters: `apps/api/src/saved-filters/` + `saved-filters.ts` hooks — confirmed.
+- Conditional card colors: `CardColorsManager.tsx` + `resolveCardColor` in `lib/cardColors.ts` — confirmed.
+- Per-board default filters: `Board.filterQuery` in schema + `board-default-filter` testid — confirmed.
+- Swimlanes: `BoardSwimlanesView.tsx` — confirmed.
+- Planning poker: `apps/api/src/poker/` + `PokerSessionPage.tsx` — confirmed.
+- Automation engine: `apps/api/src/automations/` + `AutomationsPage.tsx` — confirmed.
+- Configurable workflows (incl. per-board named workflows): `apps/api/src/workflows/` + `WorkflowsManager.tsx` — confirmed.
+- Components: `apps/api/src/components/` + `ComponentsSection.tsx` — confirmed.
+- Versions/releases: `apps/api/src/versions/` + `VersionsSection.tsx` — confirmed.
+- WIP limits: `wipLimit` on Status model + `column-wip-indicator` testid in `BoardColumn.tsx` — confirmed.
+- Checklists: `apps/api/src/checklist/` + `ChecklistSection` in drawer — confirmed.
+- Time tracking: `apps/api/src/work-logs/` + `TimeTrackingSection` in drawer — confirmed.
+- Issue templates: `apps/api/src/issue-templates/` + `TemplatesManager.tsx` — confirmed.
+- CSV import/export: `issues-import.controller.ts` + `ImportCsvModal.tsx` — confirmed.
+- Tracker importers: `?source=jira|github|linear` in `issues-import.controller.ts` (file-based only) — confirmed.
+- Issue links: `apps/api/src/issue-links/` + `LinkedIssuesSection` in drawer — confirmed.
+- Watch/notifications/email: `NotificationsModule`, `MailModule`, `emailNotifications` toggle — confirmed.
+- MCP server: `apps/mcp/` package with 18 tools — confirmed.
+- Mermaid in markdown: `MarkdownRenderer` splits mermaid blocks, lazy-imports mermaid — confirmed.
+- Bulk edit: `BulkActionBar.tsx` in both BacklogPage and TriagePage — confirmed.
+- Share links (public read-only board): `share-tokens.service.ts` + `SharedBoardPage.tsx` — confirmed.
+
+**Remaining genuine gaps confirmed after source verification:**
+
+1. Roles are workspace-level only. `membership.util.ts` `assertProjectRole` derives the
+   role from `prisma.membership` which is workspace-scoped (userId_workspaceId unique key,
+   no project-level role column in schema). There is no `ProjectMembership` model. A user
+   who is ADMIN in one project is ADMIN in all projects in the same workspace. Project-level
+   role overrides are explicitly called out in `ROADMAP.md` Phase 5 remaining gaps.
+
+2. Automation triggers have no time/schedule dimension. `AutomationTrigger` enum has only
+   four event-driven values (ISSUE_CREATED, ISSUE_UPDATED, ISSUE_TRANSITIONED,
+   ISSUE_COMMENTED). No cron, no "issue stale for N days", no SLA escalation path exists
+   in the schema or engine.
+
+3. Configurable dashboards do not exist. `ReportsPage.tsx` is a fixed three-chart layout
+   (velocity + burndown + CFD). No drag/drop gadget grid, no user-defined layout, no widget
+   library. This is the only item still listed as a remaining parity gap in ROADMAP Phase 5
+   alongside project-level role overrides.
+
+4. SSO / OIDC: no passport-oidc strategy, no OAuth2 provider model in schema, no provider
+   config UI. Email+password + PATs are the only auth paths.
+
+5. Automation scheduled/time-based triggers: no `@Cron` usage in any automation file,
+   no "stale issue" or "SLA breach" trigger type.
+
+6. PAT scopes are stored but enforcement is thin: `ScopeGuard` exists and `@RequireScope`
+   is used on a handful of routes (`issues:write` on import, `webhooks:write` on webhooks)
+   but the vast majority of API endpoints have no `@RequireScope` decoration, meaning a
+   scoped PAT is functionally unscoped for most operations.
+
+7. Sprint retrospective: no `retro` field on Sprint model, no retro UI surface, no
+   retrospective data structure anywhere. Captured as P3 in backlog.
+
+8. `SharedBoardPage.tsx` uses legacy `slate-*` token classes
+   (`bg-slate-100/70`, `text-slate-600`, `text-slate-400`) — it was not included in the
+   design elevation passes. Minor but visible to external stakeholders who receive share links.
+
+---
+
+### Ratings (Pass 9)
+
+| Area | Score | Note |
+|---|---|---|
+| Auth (register/login/reset/PAT) | 4 | Solid email/password + PAT; password reset SMTP wired; no SSO/OIDC; JWTs in localStorage (not httpOnly). |
+| Projects | 5 | Create/edit/archive, project key, components, versions, templates, settings UI — complete. |
+| Board (kanban/scrum) | 5 | Multiple boards, board types, swimlanes, quick filters, card colors, WIP limits, inline status picker, presence avatars, DnD. Fully feature-complete. |
+| Issues (CRUD + depth) | 5 | Full field set: type/status/priority/assignee/reporter/due date/story points/sprint/labels/components/versions/custom fields, checklists, time tracking, links, watchers, attachments, markdown. Nothing missing. |
+| Comments / activity | 5 | Flat comments + @mentions + markdown + attachments, activity log, realtime, email fan-out. |
+| Search / filter | 5 | NLQL with autocomplete, saved/shareable filters, URL persistence, quick presets, full-text Postgres search, cross-project command palette. |
+| Sprints / backlog | 4 | Sprints CRUD, start/complete, backlog view, bulk move, velocity/burndown; no retrospective UI (schema absent). |
+| Labels | 5 | Create/edit/delete/color/rename, M:N assign, filter, board filter, bulk assign. |
+| Reports | 3 | Velocity, burndown, CFD, and project/personal analytics are all good. Gap: fixed layout only, no configurable dashboards or gadgets. |
+| Notifications | 5 | In-app bell + notifications page, email opt-in, @mentions, watch, realtime Socket.io, all event types covered. |
+| Roles / permissions | 3 | Admin/Member/Viewer enforced throughout; workspace-level only — no per-project role overrides, meaning one workspace member role applies to all projects. Real teams with multi-project trust boundaries need project-level roles. |
+| Automation | 4 | Event-driven rules engine with NLQL conditions and 6 action types; Glass Box audit trail. Gap: no scheduled/time-based triggers (no cron, no SLA escalation). |
+| Workflow | 5 | Configurable statuses, transitions, gates, named workflows per board, visual graph builder, templates, MCP-accessible. |
+| Custom fields | 5 | 7 types, project-level, issue-type targeted, usable in NLQL and on cards. |
+| Mobile experience | 4 | Responsive throughout; ProjectNav "More" dropdown for mobile; some dense surfaces (triage, analytics) less comfortable on 390px. |
+| Onboarding / empty states | 4 | Team Pulse home, onboarding panel, empty states elevated. Gap: no product tour or "setup checklist" for first admin. |
+| SSO / OIDC | 1 | Entirely absent. Enterprise adoption blocker. |
+| Configurable dashboards | 1 | Fixed report layout only; no user-arranged gadget grid. |
+| Automation (scheduled triggers) | 1 | No time-based triggers; SLA/stale-issue automation unavailable. |
+| Project-level role overrides | 1 | Roles are workspace-granular only; membership.util.ts confirms no project-level role model. |
+
+---
+
+### Parity Scorecard (Pass 9)
+
+All items from Pass 8 that were parity gaps have been verified as shipped or remain open.
+
+| Capability | Our Depth (1–5) | Leader Baseline | Gap Size | Parity Gap? | Evidence |
+|---|---|---|---|---|---|
+| Multiple boards per project | 5 | 5 | None | No | `Board` model + `BoardSwitcher.tsx`, KANBAN/SCRUM types, lazy-create default |
+| Board types (Kanban/Scrum) | 5 | 5 | None | No | `BoardType` enum; SCRUM scopes to active sprint issues |
+| Configurable columns/swimlanes | 5 | 5 | None | No | `StatusCategory` + reorder; `BoardSwimlanesView` group-by 4 dimensions |
+| Quick filters | 5 | 5 | None | No | Quick-filter preset chips + NLQL bar + pill filters, all composable |
+| Query language (NLQL) | 5 | 4 | Ahead | No | `packages/shared/src/nlql/` — full tokenizer/parser/evaluator + autocomplete |
+| Saved filters | 5 | 5 | None | No | `SavedFiltersModule` + UI with personal + shared badges |
+| Sharable filters | 5 | 4 | Ahead | No | Filter state in URL params; saved filters have `isShared` flag |
+| Custom fields | 5 | 5 | None | No | 7 types, JSONB storage, NLQL filterable, `CustomFieldsSection` |
+| Card color rules | 5 | 4 | Ahead | No | `CardColorsManager` + `resolveCardColor` + per-board ordered rules |
+| Configurable workflow statuses | 5 | 5 | None | No | `WorkflowsManager` + named workflows + visual graph builder |
+| Workflow transitions + gates | 5 | 5 | None | No | `WorkflowTransition` model + 5 gate types + enforcement in move/update |
+| Automation rule engine | 4 | 5 | Small | YES — scheduled triggers absent | 4 event triggers + 6 action types; no cron/time-based trigger |
+| Configurable dashboards | 1 | 4 | Large | YES | Fixed 3-chart `ReportsPage`; no user-arranged gadget grid |
+| Components | 5 | 4 | Ahead | No | `ComponentsModule` + `ComponentsSection` + drawer picker + default-assignee wiring |
+| Versions/releases | 5 | 5 | None | No | `VersionsModule` + `VersionsSection` + issue M:N assignment |
+| Bulk edit | 5 | 5 | None | No | `BulkActionBar` in BacklogPage + TriagePage; `POST /issues/bulk` |
+| Issue links/dependencies | 5 | 5 | None | No | `IssueLinksModule` + `LinkedIssuesSection` + 6 link types |
+| Watchers | 5 | 5 | None | No | `Watcher` model + watch toggle + `WATCHED_UPDATED` notifications |
+| Time tracking | 5 | 5 | None | No | `WorkLogsModule` + `TimeTrackingSection` + estimate + progress bar |
+| Checklists | 5 | 4 | Ahead | No | `ChecklistModule` + `ChecklistSection` + drag-reorder |
+| Issue templates | 5 | 4 | Ahead | No | `IssueTemplatesModule` + `TemplatesManager` + board "From template" menu |
+| CSV import/export | 4 | 5 | Small | YES — live API import (Jira/GitHub/Linear live pull) absent | File-based import with source normalisation; no live API pull from trackers |
+| Per-project role overrides | 1 | 4 | Large | YES | Workspace-level roles only; `membership.util.ts` confirms no project-level model |
+| SSO / OIDC | 1 | 5 | Large | YES | Absent from schema, auth module, and UI |
+| Scheduled/time automation | 1 | 4 | Large | YES | No cron/SLA triggers in `AutomationTrigger` enum or engine |
+| Configurable reports/dashboards | 1 | 4 | Large | YES | Fixed layout only; no gadget/widget model |
+| Sprint retrospective | 1 | 3 | Medium | YES | No schema field; no UI surface |
+| PAT scope enforcement | 2 | 4 | Large | YES | `ScopeGuard` exists; only 3 routes decorated with `@RequireScope`; most API surface unscoped |
+
+---
+
+### Top Gaps (Pass 9 — prioritized backlog candidates)
+
+**1. Project-level role overrides** — size L — backend does not exist.
+Today a workspace ADMIN is ADMIN on every project in the workspace. Real teams (agencies,
+multi-team companies) need to invite a client as a VIEWER on Project A while keeping them
+off Project B entirely. Requires a `ProjectMembership` model alongside the existing
+`Membership`, with resolver fallback to workspace role. This is the most operationally
+blocking permission gap for multi-project adoption.
+
+**2. Configurable dashboards (gadget grid)** — size L — does not exist.
+The fixed three-chart Reports page is good for a starting user but cannot be arranged to
+show what a specific team cares about. A "Dashboard" entity with a gadget layout JSON
+column (velocity chart, open issue count, overdue heatmap, burndown, sprint health, custom
+NLQL result table) would let teams build a single-pane-of-glass. This is the only item
+still flagged in ROADMAP Phase 5 "remaining parity gaps" alongside project roles.
+
+**3. Scheduled / time-based automation triggers** — size M — backend does not exist.
+`AutomationTrigger` has four event-driven values; there is no cron or "issue idle for N
+days" path. Without this, teams cannot automate SLA escalation ("if an issue stays In
+Progress for 3 days without an update, add a label 'Stale' and notify the assignee") or
+compliance nudges. A `ScheduledTrigger` model with `cronExpression` + `conditionQuery`
+(reuses NLQL evaluator) + NestJS `@Cron` processor is the natural extension. This is
+explicitly called out in the Phase 7 "carry-forward" note in ROADMAP.
+
+**4. SSO / OIDC** — size L — does not exist.
+Email/password + PATs are the only auth paths. Any self-hosted team using Okta, Google
+Workspace, GitHub org identity, or an internal IdP cannot adopt Next Lane without managing
+a separate credential. Passport-oidc strategy + provider config per workspace + "Login with
+Google/GitHub" buttons are the standard shape. This is also the most commonly cited
+enterprise adoption blocker for open-source tools.
+
+**5. PAT scope enforcement completeness** — size S — partially exists.
+`ScopeGuard` and `@RequireScope` exist and work, but only three routes use them
+(`issues:write` on import, `webhooks:write` on webhooks, `webhooks:read` inferred). The
+remaining ~60 API routes have no scope gate, meaning a PAT with narrow declared scopes
+(e.g. `issues:read`) can write issues, manage members, and delete webhooks. For teams
+using PATs for CI/CD or agent integrations, this defeats the purpose of scoped tokens.
+Adding `@RequireScope` annotations to the controller layer is low-risk and completable in
+one session.
+
+**6. Sprint retrospective UI** — size M — schema absent.
+The sprint lifecycle ends at "Complete" with no structured place to capture what went well,
+what to improve, and team action items. A `retrospective JSON?` field on the Sprint model
++ a modal triggered from the completed sprint row in BacklogPage (three free-text sections
++ save) closes the Scrum loop. Teams currently maintain external docs for retros; a single
+source of truth in the tracker strengthens adoption.
+
+**7. Automation dry-run endpoint** — size S — does not exist.
+When a user builds a complex NLQL condition + action chain in the automation editor, there
+is no way to preview which issues it would match before enabling the rule. A
+`POST /projects/:projectId/automations/dry-run { condition, trigger }` endpoint that
+returns matching issues (max 20, with matchReason) would dramatically reduce "I accidentally
+spammed my team with auto-comments" incidents. The NLQL evaluator and issue list are already
+available; this is a thin controller addition.
+
+**8. Inline card status transition (right-click / long-press)** — size S — partially exists.
+`CardStatusPicker` is implemented in `apps/web/src/components/board/CardStatusPicker.tsx`
+and wired into `IssueCard.tsx`, so the component exists. However, BACKLOG.md lists "inline
+card status transition" as still open (P2, S) — it is present on the board column view but
+not on the backlog issue rows or triage list rows, requiring a drawer round-trip for status
+changes from those views.
+
+**9. Live tracker API import (Jira/GitHub/Linear)** — size M — file-based only.
+The import pipeline accepts `?source=jira|github|linear` but only processes locally-uploaded
+files. Teams migrating from a live Jira cloud instance or GitHub repository need OAuth
+authentication to the source + server-side fetch + field mapping wizard. This is the gap
+between "I can export a CSV from my old tracker and upload it" (shipped) and "click
+Connect, authorize, import all 4000 issues" (not built). The data model and parsing layer
+are ready; the integration auth and fetch layer are not.
+
+**10. Public changelog / release notes page** — size M — does not exist.
+When a `Version` is marked RELEASED, there is no public-facing output. A `Version` entity
+already carries state and a `releaseDate`; the `ShareToken` model provides the access
+control pattern. A `/changelog/:token` public route listing issues grouped by label
+(Bug / Feature / Improvement) with optional admin-edited summary text per version would
+give product teams a lightweight release notes page without a separate tool. This was
+raised as ideation item W in Pass 8; it remains entirely absent from both schema and UI.
+
+---
+
+### Ideation — 3 Ambitious New Features (Pass 9)
+
+**X. AI triage assistant (Phase 6 preview, self-hosted).**
+Surface a sidebar panel in the issue drawer: "What should I know about this issue?" The
+panel calls a configurable local LLM endpoint (Ollama by default; `OLLAMA_URL` env var)
+with the issue title, description, comments, and linked issues as context, then returns:
+suggested type/priority/component (with one-click accept), a duplicate detector (semantic
+search over existing issues using pgvector embeddings on the description tsvector column
+already in the schema), and a plain-text "risk summary". All inference runs on the
+self-hoster's own hardware — no data leaves the instance. This is the single feature that
+makes the "free, private, AI-native" positioning concrete and tangible. Size: L.
+
+**Y. Team capacity planner (sprint scoping view).**
+A dedicated view at `/projects/:projectId/capacity` showing the active or planned sprint:
+on the left, team members with their declared capacity (hours/points per sprint, editable
+here); on the right, issues dragged from backlog into their lane. Running totals per person
++ per sprint update live. Issues color-code by whether they are over/under the person's
+capacity. When a sprint is over-committed, a banner says so with the shortfall. This is the
+"should we start this sprint" decision view that scrum masters currently do in spreadsheets.
+The sprint model, story points, assignee, and fractional-rank DnD are all present. Size: M.
+
+**Z. Keyboard-first global command mode (beyond Cmd-K).**
+Extend the existing Cmd-K command palette into a full vim-inspired global command mode:
+press `:` anywhere to open a colon-command bar accepting commands like `:go NL-142`,
+`:create bug "Login breaks on Safari" p=high`, `:assign NL-200 me`, `:close NL-155`.
+Commands are parsed client-side against the NLQL grammar (already exists in shared
+package) and dispatched to the relevant mutation hooks. Power users who live in the
+keyboard can operate the entire tracker without touching the mouse. This is the kind of
+DX detail that makes developers choose a tool over a PM-optimized incumbent. Size: M.
+
+---
+
+### Direction — Next Quarter (Pass 9 view)
+
+The product has crossed a maturity threshold: the core feature set is genuinely comparable
+to (and in several areas — NLQL, automation, workflow graph, planning poker — ahead of)
+category leaders at this tier. The remaining work is not "make it work" but "make it
+enterprise-ready and AI-native."
+
+**The three axes that should drive next quarter:**
+
+**Axis 1 — Trust and adoptability.** Project-level role overrides and SSO/OIDC are the
+two features that determine whether a real company can deploy Next Lane as their primary
+tracker rather than a side experiment. Without per-project roles, a multi-team workspace
+is a security anti-pattern. Without SSO, any enterprise IT evaluation is a no. Both should
+be in the immediate backlog regardless of effort; SSO is L but high-leverage, project roles
+is L but architecturally self-contained.
+
+**Axis 2 — Close the automation loop.** Scheduled/time-based triggers are the one
+remaining gap in the automation engine that prevents automating real operational workflows
+(SLA escalation, stale-issue nudges, compliance reminders). Adding `@Cron`-driven triggers
+completes the Phase 7 Glass Box vision. Pair this with the automation dry-run endpoint (S)
+to make rule authoring safe.
+
+**Axis 3 — AI-native differentiation.** Phase 6 (Autopilot) is the structural
+differentiator no commercial incumbent can match: unlimited, private, local-LLM AI on the
+user's own hardware. The MCP server (shipped) is the foundation. The next concrete
+deliverable is the AI triage assistant panel (Ideation X above) — it makes the "private
+AI" positioning tangible to the first user who opens an issue drawer. Start with the
+simplest shape (local Ollama call, suggest fields, accept/reject) and ship it before
+building the full pgvector duplicate detector.
+
+Configurable dashboards (Axis 1-adjacent) and the public changelog page are the two
+highest-leverage "delight" features for teams who have already committed — they close
+the "why do I still need a separate tool" question.
+
+---
+
+### Backlog-Groomer Ingest — Pass 9 (title · priority · size · rationale · backend exists?)
+
+- Project-level role overrides — P1 · L · Multi-team workspaces need VIEWER on project A, ADMIN on B; workspace-only roles block multi-project adoption · backend does not exist (no ProjectMembership model)
+- Configurable dashboards (gadget grid) — P1 · L · Only remaining ROADMAP Phase 5 parity gap; fixed charts don't serve diverse team needs · does not exist
+- Scheduled / time-based automation triggers — P1 · M · SLA escalation and stale-issue automation unavailable; completes Phase 7 Glass Box vision · does not exist (AutomationTrigger enum has no cron value)
+- SSO / OIDC — P1 · L · Enterprise adoption blocker; email+password only; any IdP-managed team cannot adopt · does not exist
+- PAT scope enforcement completeness — P2 · S · ScopeGuard exists; only 3 of ~60 routes decorated; scoped PATs functionally unscoped · backend exists (ScopeGuard + @RequireScope); needs annotation pass
+- Automation dry-run endpoint — P2 · S · No preview before enabling a rule; teams accidentally trigger mass-comment events · backend partial (NLQL evaluator + issue list exist); thin controller addition
+- Sprint retrospective UI — P2 · M · Sprint lifecycle has no structured retro capture; teams use external docs; closes Scrum loop · backend does not exist (no retro field on Sprint model)
+- Live tracker import (Jira/GitHub/Linear API) — P2 · M · File-based import only; OAuth + server-side pull needed for real migration flows · backend partial (parsing layer done; auth/fetch layer absent)
+- AI triage assistant panel (Phase 6 preview) — P2 · L · Concrete embodiment of "private AI" differentiator; Ollama call from issue drawer; suggest type/priority/component · backend does not exist (pgvector not installed; Ollama client not wired)
+- Public changelog / release notes page — P3 · M · Version RELEASED state has no public output; share-token pattern already exists · backend does not exist (no changelog endpoint or public route)
