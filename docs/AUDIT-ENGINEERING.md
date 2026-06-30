@@ -2035,3 +2035,175 @@ ADMINs).
 - **Emit realtime event on workflow enforcement enable/disable** · P3 · S · Settings UI in other tabs shows stale enforcement state; `apps/api/src/workflows/workflow.service.ts`
 - **Workflow transition pre-load cache (LRU, 30s TTL, per projectId)** · P2 · M · Re-fetches enforcement flag and transitions on every `enforceTransition` call; especially costly for `bulkUpdate`; `apps/api/src/workflows/workflow.service.ts`
 - **Workflow visual debugger / audit trail (`WorkflowCheckLog` table + GET endpoint)** · P2 · M · No per-issue enforcement history; "why can't I move this?" is undiagnosable without reproduction; pairs with AutomationRun Glass Box model
+
+---
+
+## 2026-06-30 — Pass 9
+
+### What changed since Pass 8 (2026-06-28)
+
+Pass 8 items confirmed **shipped**: automation write-operations now require project ADMIN (`automations.service.ts:296`); `AnalyticsQueryDto` with `@IsInt @Min(1) @Max(366)` is in place (`analytics/dto/analytics-query.dto.ts`) with a full spec; workflow, automation, analytics, CSV export, and workspace logo DELETE rows have been added to the tenant-isolation integration matrix (`tenant-isolation.integration.spec.ts:607–700`); Kubernetes/Helm hardening (init-container migrations, vendored images, readOnlyRootFilesystem, secret hook) is confirmed deployed. New schema migrations since Pass 8: `add_per_board_workflows`, `add_time_tracking` (WorkLog model), `add_issue_templates` (IssueTemplate model). New service modules: `work-logs`, `issue-templates`, `standups` (previously confirmed in schema, now verified implemented).
+
+Pass 8 items **still open**: Docker artifact CSP smoke test (now four passes old); `@@index([projectId, toStatusId])` on `WorkflowTransition`; analytics `projectAnalytics` DB-level aggregation; `bulkUpdate` pre-load optimization; workflow visual debugger / audit trail.
+
+---
+
+### Ratings table (Pass 9)
+
+| Area | Score | Note |
+|---|---|---|
+| Architecture & module boundaries | 4 | Module-per-domain well established; `WorkLogsService.resolveWorkspaceId` duplicates the membership-lookup pattern already in `membership.util`; minor coupling debt |
+| Data model & migrations | 4 | WorkLog and IssueTemplate well-normalised; `WorkflowTransition` still missing `(projectId, toStatusId)` index; migration history is clean and sequential |
+| AuthN/AuthZ & multi-tenant isolation | 3 | Pass 8 matrix additions are good; five new feature families (work-logs, standups, issue-templates, personal boards, planning poker) are absent from the cross-tenant matrix — correctness unverified for these paths; WebSocket CORS still `cors: true`; no JWT refresh/revocation |
+| Input validation | 4 | Global ValidationPipe; analytics DTO fixed; all new DTOs use class-validator; `RegisterDto` still `@MinLength(6)` vs `ResetPasswordDto` `@MinLength(8)` — inconsistency persists |
+| Error handling | 4 | AllExceptionsFilter + pino; new WorkLogsService returns typed 404/403; pattern is consistent |
+| N+1 / query efficiency | 3 | `exportCsv` unbounded `findMany` persists; `WorkLogsService.update/remove` each call `resolveWorkspaceId` → 2 extra queries per mutation; analytics `projectAnalytics` full-issue materialization persists; `enforceTransition` missing index persists |
+| Realtime correctness | 3 | Redis adapter for fanout is correct; presence map is single-replica only (documented); WebSocket CORS still wide-open |
+| Rank / ordering integrity | 5 | Fractional indexing with `rebalanceAndPlace` batch CASE UPDATE; no regressions observed |
+| Test coverage (unit + e2e) | 3 | Good unit coverage on new modules (work-logs, issue-templates, standups each have `.spec.ts`); tenant-isolation matrix still missing five feature families; e2e still runs against `vite preview` not nginx |
+| Type safety | 4 | Strict TS; no unguarded `any` in new code; `as unknown as StandupEntryRow` cast in standups is safe but inelegant — could tighten Prisma include types |
+| Build / CI / Docker | 3 | Docker CSP smoke test gap is now four passes old; images.yml has no post-build container run; otherwise build is solid |
+| Secrets / config hygiene | 4 | `assertAuthConfig` startup guard; no secrets in code; `AUTO_SEED=true` default still a self-hoster footgun |
+| Dependency risk | 4 | SBOM + Trivy in images.yml; pnpm lockfile; no new high-risk deps introduced |
+| Debugging / QA discipline | 3 | Correlation IDs, pino, /health present; Docker artifact path remains untested in CI; no regression guard for the CSP/connect-src bug class; e2e-against-nginx gap is the largest remaining QA discipline defect |
+
+---
+
+### Top risks & debt (Pass 9 — ranked by impact × probability)
+
+**[P1-1] Docker artifact CSP smoke test — FOUR passes without a fix**
+- What: `images.yml` builds the web image and pushes to GHCR but never starts the container to verify that `docker-entrypoint.sh` correctly substitutes `__NL_CONNECT_SRC__` in `nginx.conf`. The original production bug (nginx CSP blocking login) was caused by exactly this failure mode.
+- Impact/likelihood: High/certain — any typo in `docker-entrypoint.sh` or `nginx.conf` reaches production. This is the most concrete "tests pass ≠ works for user" gap in the entire codebase.
+- Files: `.github/workflows/images.yml`, `apps/web/docker-entrypoint.sh`, `apps/web/nginx.conf`
+- Fix: Add a `smoke-test` job to `images.yml` that runs `docker run -e API_URL=https://api.example.com <built-image> &`, waits for nginx, then `curl -s -I http://localhost/` and asserts `Content-Security-Policy` header contains `api.example.com`. Total addition: ~50 shell lines. Also run `docker run -e API_URL= ...` to assert same-origin path outputs `'self'` only.
+- Size: S
+
+**[P1-2] WebSocket gateway CORS wide-open (`cors: true`)**
+- What: `@WebSocketGateway({ cors: true })` at `apps/api/src/realtime/realtime.gateway.ts:61` accepts Socket.io connections from any origin. The REST API correctly uses `app.enableCors({ origin: allowedOrigins })`. The WS handshake is authenticated (JWT/PAT required before room join), but any cross-origin page can initiate the handshake, attempt auth, and probe error messages.
+- Impact/likelihood: Medium/certain — CORS policy is incomplete; any browser-exploitable XSS in a third-party origin can reach the WS endpoint. Additionally, this mismatch is confusing for security auditors and self-hosters.
+- Files: `apps/api/src/realtime/realtime.gateway.ts:61`, `apps/api/src/main.ts`
+- Fix: Pass the parsed `CORS_ORIGINS` list to the `@WebSocketGateway` decorator: `@WebSocketGateway({ cors: { origin: allowedOrigins, credentials: true } })`. Read it from `process.env.CORS_ORIGINS` in `realtime.gateway.ts` using the same helper that `main.ts` uses, or inject it as a config value.
+- Size: S
+
+**[P1-3] Five new feature families absent from tenant-isolation matrix**
+- What: `WorkLog`, `StandupEntry`, `IssueTemplate`, `PersonalColumn/Card`, and `PokerSession` endpoints are not in the cross-tenant isolation matrix (`tenant-isolation.integration.spec.ts`). These five families added authorization calls (`assertProjectMember`, `assertProjectRole`) that have never been verified cross-tenant under the real app bootstrap.
+- Impact/likelihood: High/medium — any future refactor of these service methods could silently break isolation; there is no regression guard. The risk is compounded because `WorkLogsService.update/remove` uses a custom `resolveWorkspaceId` path rather than `assertProjectMember`, diverging from the established pattern.
+- Files: `apps/api/src/tenant-isolation.integration.spec.ts`, `apps/api/src/work-logs/work-logs.service.ts:151–213`, `apps/api/src/standups/standups.service.ts`, `apps/api/src/issue-templates/issue-templates.service.ts`, `apps/api/src/personal-boards/personal-boards.service.ts`, `apps/api/src/poker/poker.service.ts`
+- Fix: Add rows to `buildMatrix()` for each new endpoint family (GET+POST+PATCH+DELETE per resource). The existing framework handles all scaffolding; adding these rows is mechanical. Specifically validate that `GET /issues/:id/work-logs` with Tenant B's token against Tenant A's issue returns 403 or 404.
+- Size: S
+
+**[P2-1] `exportCsv` unbounded `findMany` — OOM/timeout on large projects**
+- What: `IssuesService.exportCsv()` at `apps/api/src/issues/issues.service.ts:1273` fetches all project issues with a single `prisma.issue.findMany({ where: { projectId } })` and no `take` limit. NLQL filtering is applied after full load. For a project with 10k issues this materializes the entire issue set plus six included relations into Node.js heap.
+- Impact/likelihood: Medium/medium — small self-hosted teams are unlikely to hit this soon, but it is a correctness-class bug (process OOM) not just a performance concern.
+- Files: `apps/api/src/issues/issues.service.ts:1273`
+- Fix: Add a hard cap (`take: 10_000`) with a `X-Next-Lane-Truncated: true` response header when the cap is hit. Longer-term: stream the CSV in chunks using Prisma cursor pagination to avoid accumulating the full result in memory.
+- Size: S (cap) / M (streaming)
+
+**[P2-2] No JWT refresh/revocation — 7-day compromise window**
+- What: JWTs are signed with a 7-day default TTL (`getJwtExpiresIn()` in `apps/api/src/auth/auth.config.ts`) and there is no refresh token or revocation mechanism. A stolen token is valid until expiry. PATs can be revoked individually, but the short-lived JWT session token cannot be.
+- Impact/likelihood: Medium/low for self-hosted; escalates significantly in multi-user cloud deployments.
+- Files: `apps/api/src/auth/auth.module.ts`, `apps/api/src/auth/auth.config.ts`
+- Fix (minimum): Shorten default TTL to 15m–1h and implement a refresh token endpoint (`POST /auth/refresh`) issuing new access tokens against a stored, revocable refresh token. Revocation can be a Redis SET with TTL matching the refresh window. A full Redis-backed deny-list for immediate revocation is the premium option.
+- Size: M
+
+**[P2-3] `WorkLogsService` authorization uses bespoke `resolveWorkspaceId` instead of `assertProjectMember`**
+- What: `WorkLogsService.update()` and `.remove()` at `apps/api/src/work-logs/work-logs.service.ts:151–213` resolve membership by calling a private `resolveWorkspaceId()` helper and then doing a raw `membership.findUnique`. This duplicates (and slightly diverges from) the `assertProjectMember` / `assertProjectRole` utility. If `assertProjectMember` ever gains additional checks (e.g. project archived status, workspace suspension), `WorkLogsService` will silently miss them.
+- Impact/likelihood: Medium/medium — authorization bypass risk if the utility evolves; also absence from the tenant-isolation matrix means no regression guard exists.
+- Files: `apps/api/src/work-logs/work-logs.service.ts:151–230`
+- Fix: Replace the custom membership resolution with a call to `assertProjectMember(this.prisma, userId, workLogRef.projectId)` followed by a role check using the returned/injected membership — or add `assertProjectRole` overload that accepts the projectId directly (already the pattern elsewhere). Delete `resolveWorkspaceId`.
+- Size: S
+
+**[P2-4] `@@index([projectId, toStatusId])` still missing from `WorkflowTransition`**
+- What: `enforceTransition()` at `apps/api/src/workflows/workflow.service.ts:986–993` queries `workflowTransition.findMany({ where: { projectId, toStatusId, OR: [{fromStatusId}, {fromStatusId: null}] } })`. The existing indexes are `(projectId, issueType)` and `(projectId, fromStatusId)`. Neither covers this access pattern, so each enforcement check performs a partial index scan on `projectId` then filters `toStatusId` in memory.
+- Impact/likelihood: Medium/medium — low volume for small teams, but every issue status change under enforcement adds a sequential scan over all transitions in the project.
+- Files: `apps/api/prisma/schema.prisma:1244–1255`
+- Fix: Add `@@index([projectId, toStatusId])` after the existing indexes in the `WorkflowTransition` model, then run `prisma migrate dev`.
+- Size: S
+
+**[P2-5] `bulkUpdate` per-issue automation/webhook/notification fan-out**
+- What: `IssuesService.bulkUpdate()` at `apps/api/src/issues/issues.service.ts:1444–1470` iterates issue IDs and calls the full `update()` path for each. Every call independently fires: automation engine evaluation, webhook delivery queue enqueue, watcher notification fan-out, ActivityLog write, realtime broadcast. For 100-issue bulk updates this is 100 × (automation + webhook + notification) serial calls, not a batched dispatch.
+- Impact/likelihood: Medium/low — affects teams doing bulk triage or sprint planning; each call is async but the Postgres round-trips are serial.
+- Files: `apps/api/src/issues/issues.service.ts:1444`, `apps/api/src/automations/automation-engine.service.ts`, `apps/api/src/webhooks/webhooks.service.ts`
+- Fix: Pre-collect all mutated issue IDs, then dispatch a single `webhook.deliverBatch()` call and a single `automationEngine.evaluateForBatch()` call after the loop. Reduces webhook/automation overhead from O(n) to O(1) per bulk operation. For notifications, batch the `createMany` rather than one notification per issue per watcher.
+- Size: M
+
+**[P2-6] `AUTO_SEED=true` default in production containers**
+- What: `apps/api/docker-entrypoint.sh:7` seeds demo data on every container start unless `AUTO_SEED=false` is explicitly set. Self-hosters who follow the quickstart `docker compose up` without reading the env var documentation will have demo workspaces/issues/users added to their instance on every restart.
+- Impact/likelihood: Low/medium — the seed script's `AUTO_SEED_GUARD=1` guard attempts to skip if data is already present, but the default is still surprising and the guard relies on application-level logic, not a DB constraint.
+- Files: `apps/api/docker-entrypoint.sh:7`, `docker-compose.yml`
+- Fix: Change the default to `AUTO_SEED=false` and require self-hosters to set `AUTO_SEED=true` in `docker-compose.yml` for the demo experience. Document this in README and the compose file comments. Update the compose file to set `AUTO_SEED=true` explicitly for the development/demo preset.
+- Size: S
+
+**[P3-1] Password minimum length inconsistency: 6 chars (register) vs 8 chars (reset)**
+- What: `RegisterDto` has `@MinLength(6)` and `ResetPasswordDto` has `@MinLength(8)` at `apps/api/src/auth/dto/auth.dto.ts:13` and `auth.dto.ts:41`. The inconsistency is also below modern minimum (NIST SP 800-63B recommends 8; OWASP recommends 12+).
+- Impact/likelihood: Low/certain — users registering with a 6- or 7-char password cannot use "reset to same password" without an error.
+- Files: `apps/api/src/auth/dto/auth.dto.ts:13,41`
+- Fix: Align both to `@MinLength(12)` and update the frontend registration form validation. Run the unit spec to confirm.
+- Size: S
+
+**[P3-2] In-memory presence map does not replicate across HPA replicas**
+- What: `RealtimeGateway.presence: ProjectPresenceMap` at `apps/api/src/realtime/realtime.gateway.ts:71` is per-process. Under HPA scale-out (2+ replicas) users connected to different replicas see inconsistent presence lists. The Redis adapter correctly fans out emitted events, but the presence map itself is not in Redis.
+- Impact/likelihood: Low/low — documented as a known limitation; only affects HPA deployments, which are the minority for self-hosted. Included for completeness.
+- Files: `apps/api/src/realtime/realtime.gateway.ts:50–74`
+- Fix: Store presence in Redis (hash per projectId, key = userId, value = JSON PresenceViewer). On subscribe, read from Redis hash; on disconnect, delete the key; on presence broadcast, use Redis hash to build the viewer list. Use the existing `pubClient`/`subClient` already injected into the gateway.
+- Size: M
+
+---
+
+### Debugging / QA discipline (Pass 9)
+
+Score: **3 / 5** — same as Pass 8; the Docker artifact gap is the dominant deficiency.
+
+**Gap 1 — Docker artifact never exercised in CI (four passes old).**
+The Playwright e2e suite targets `vite preview` (confirmed in `apps/web/playwright.config.ts`), not the nginx-served Docker image. `images.yml` builds and pushes but never starts the container to validate `docker-entrypoint.sh` behavior. The regression that shipped to users (CSP `connect-src` blocking login because `__NL_CONNECT_SRC__` was not substituted) would have been caught by a 50-line smoke test step. Concrete fix: add a `smoke-test` job in `images.yml` that starts the web container with `API_URL=https://api.test.internal`, waits for nginx to be ready (`curl --retry 5 --retry-delay 1`), and asserts `Content-Security-Policy` in the response headers contains `api.test.internal`. Also assert same-origin path (`API_URL=`).
+
+**Gap 2 — No regression guard for the CSP bug class.**
+There is no test that will fail if `nginx.conf` or `docker-entrypoint.sh` is edited in a way that breaks CSP substitution. The smoke test above is the regression guard. Additionally add a unit test for `docker-entrypoint.sh` (using `bats` or a simple shell script in CI) that mounts a stub nginx config and asserts the placeholder is replaced correctly for both the standalone and same-origin paths.
+
+**Gap 3 — Tenant-isolation matrix does not cover five new feature families.**
+The matrix is the regression guard for authorization bugs. Without rows for work-logs, standups, issue-templates, personal boards, and planning poker, a future change to those service methods can break cross-tenant isolation undetected. Backlog item: add the matrix rows (S).
+
+**Positive signals:** Correlation ID middleware (X-Request-Id), pino structured logging, `/health` (DB readiness ping) and `/health/live` (liveness) are all present and verified. The allExceptionsFilter maps errors to structured JSON. Diagnosability in production is adequate once a request ID is available.
+
+---
+
+### Ideation — three concrete technical investments
+
+**Investment 1: Streaming CSV export (chunked write + Prisma cursor pagination)**
+Replace the unbounded `findMany` in `exportCsv` with a streaming implementation: use Prisma cursor pagination (batches of 1,000 rows), write each batch to a `PassThrough` stream, and pipe the stream as the HTTP response body. This eliminates OOM risk, allows the client to start receiving data immediately, and unblocks large-project exports. The HTTP response should set `Content-Disposition: attachment; filename="issues.csv"` and `Transfer-Encoding: chunked`. Estimated effort: M. This would be the first streaming endpoint in the API and establishes the pattern for future large-data endpoints (e.g. audit log export, work-log export).
+
+**Investment 2: Redis-backed presence map for multi-replica correctness**
+The presence map is the only stateful per-process data structure in the API. Moving it to Redis (HSET per projectId, key = userId) turns presence into a correct cross-replica feature and removes the "known limitation" footnote. The existing `pubClient`/`subClient` are already injected. Implementation: on `subscribe`, write viewer to `HSET nl:presence:{projectId} {userId} {json}` with a TTL; on `disconnect`, `HDEL`; on `presence:subscribe` message, `HGETALL` to build the viewer list. Estimated effort: M. This is a prerequisite for any commercial multi-tenant offering where users on the same board are connected to different replicas.
+
+**Investment 3: Playwright e2e test suite running against the real Docker Compose stack**
+Create a second Playwright config (`playwright.docker.config.ts`) that sets `baseURL` to the nginx container and `API_URL` to the api container. Add a CI job (`e2e-docker.yml`) that runs `docker compose up -d --wait`, waits for `/health` to return 200, then runs the Playwright suite against it. This closes the largest remaining QA discipline gap: CSP headers, nginx routing, `docker-entrypoint.sh` substitution, and same-origin API proxying are all exercised. The existing Playwright test code runs unchanged; only the base URL differs. Estimated effort: M. Add a regression test that explicitly asserts `connect-src` contains the configured API origin.
+
+---
+
+### Direction (Pass 9)
+
+The codebase is in good structural health. The outstanding risks split cleanly into two buckets.
+
+The first bucket — **already known, still unresolved** — contains the Docker artifact CSP smoke test (four passes old), the `WorkflowTransition(projectId, toStatusId)` index (two passes old), and the analytics full-issue materialization. These are all S-sized items that have been deprioritized; they should now be treated as blocking quality debt. In particular the Docker artifact gap is a direct recurrence risk for the class of production bug that prompted the mandatory debugging/QA section of this audit.
+
+The second bucket — **new from this pass** — is the five feature families absent from the tenant-isolation matrix (work-logs, standups, issue-templates, personal boards, planning poker) and the `WorkLogsService` bespoke authorization path. These are S-sized additions that are easy to do now while the code is fresh and very hard to audit-after-the-fact when the service logic evolves.
+
+The most structurally important longer-term investment is the Playwright-against-Docker e2e harness (Investment 3 above). It collapses the Docker artifact gap, the CSP regression guard, and the nginx routing correctness into a single continuous signal.
+
+---
+
+### Backlog-groomer feed (Pass 9 — compact)
+
+- **Add Docker artifact CSP smoke test to `images.yml`** · P1 · S · Four-pass-old gap; nginx `__NL_CONNECT_SRC__` substitution untested; run container + assert CSP header in CI; `apps/web/docker-entrypoint.sh`, `.github/workflows/images.yml`
+- **Align WebSocket CORS with REST CORS allowlist** · P1 · S · `@WebSocketGateway({ cors: true })` accepts any origin; REST uses explicit `CORS_ORIGINS` allowlist; pass `{ origin: allowedOrigins }` to the decorator; `apps/api/src/realtime/realtime.gateway.ts:61`
+- **Add work-logs, standups, issue-templates, personal-boards, poker to tenant-isolation matrix** · P1 · S · Five feature families with authorization paths absent from cross-tenant regression guard; add rows to `buildMatrix()`; `apps/api/src/tenant-isolation.integration.spec.ts`
+- **Add CSV export hard cap and streaming path** · P2 · S (cap) / M (streaming) · `exportCsv` unbounded `findMany` is OOM risk on large projects; `apps/api/src/issues/issues.service.ts:1273`
+- **Implement JWT refresh token with short-lived access token TTL** · P2 · M · 7-day access token TTL means a stolen token has a 7-day window; no revocation mechanism; `apps/api/src/auth/auth.module.ts`, `apps/api/src/auth/auth.config.ts`
+- **Replace `WorkLogsService` bespoke membership resolution with `assertProjectMember`** · P2 · S · Custom `resolveWorkspaceId` diverges from `membership.util`; won't inherit future checks; `apps/api/src/work-logs/work-logs.service.ts:151`
+- **Add `@@index([projectId, toStatusId])` to `WorkflowTransition`** · P2 · S · `enforceTransition` query pattern unindexed; sequential scan on every status change under enforcement; `apps/api/prisma/schema.prisma:1244`
+- **Batch webhook/automation/notification dispatch in `bulkUpdate`** · P2 · M · 100-issue bulk = 100× serial fan-out; pre-collect mutated IDs and dispatch once; `apps/api/src/issues/issues.service.ts:1444`
+- **Change `AUTO_SEED` default to `false` in `docker-entrypoint.sh`** · P2 · S · Demo data seeded by default in production containers; self-hosters must know to set `AUTO_SEED=false`; `apps/api/docker-entrypoint.sh:7`
+- **Align password `@MinLength` to 12 across register and reset DTOs** · P3 · S · 6-char register vs 8-char reset is inconsistent and below modern minimums; `apps/api/src/auth/dto/auth.dto.ts:13,41`
+- **Move presence map to Redis HSET for multi-replica correctness** · P3 · M · Per-process presence map is incorrect under HPA; existing Redis clients already injected; `apps/api/src/realtime/realtime.gateway.ts:71`
+- **Playwright e2e suite against real Docker Compose stack** · P2 · M · Current e2e uses `vite preview`; nginx CSP headers, routing, entrypoint substitution never tested; add `playwright.docker.config.ts` + CI job
+- **Rewrite `projectAnalytics` as DB-level aggregation** · P2 · M · Full-issue `findMany` materializes all project issues; `apps/api/src/analytics/analytics.service.ts:418`
