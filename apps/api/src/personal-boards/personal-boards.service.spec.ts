@@ -32,7 +32,8 @@ function makeColumn(overrides: Partial<{
 
 function makeCard(overrides: Partial<{
   id: string; userId: string; columnId: string;
-  title: string; notes: string | null; rank: string; promotedIssueId: string | null;
+  title: string; notes: string | null; color: string | null;
+  dueDate: Date | null; rank: string; promotedIssueId: string | null;
 }> = {}) {
   return {
     id: overrides.id ?? CARD_1,
@@ -40,6 +41,8 @@ function makeCard(overrides: Partial<{
     columnId: overrides.columnId ?? COL_A,
     title: overrides.title ?? 'My card',
     notes: overrides.notes ?? null,
+    color: overrides.color ?? null,
+    dueDate: overrides.dueDate ?? null,
     rank: overrides.rank ?? 'a0',
     promotedIssueId: overrides.promotedIssueId ?? null,
     createdAt: new Date('2026-01-01'),
@@ -312,6 +315,38 @@ describe('PersonalBoardsService', () => {
       ).rejects.toBeInstanceOf(NotFoundException);
 
       expect(prisma.personalCard.create).not.toHaveBeenCalled();
+    });
+
+    it('persists color and dueDate on create (dueDate coerced to Date)', async () => {
+      prisma.personalCard.findFirst.mockResolvedValue(null);
+      prisma.personalCard.create.mockResolvedValue(
+        makeCard({ rank: 'a0', color: '#dc2626' }),
+      );
+
+      await service.createCard(USER_A, {
+        columnId: COL_A,
+        title: 'Colored',
+        color: '#dc2626',
+        dueDate: '2026-12-31T00:00:00.000Z',
+      });
+
+      const data = prisma.personalCard.create.mock.calls[0][0].data;
+      expect(data.color).toBe('#dc2626');
+      expect(data.dueDate).toBeInstanceOf(Date);
+      expect((data.dueDate as Date).toISOString()).toBe(
+        '2026-12-31T00:00:00.000Z',
+      );
+    });
+
+    it('defaults color and dueDate to null when omitted', async () => {
+      prisma.personalCard.findFirst.mockResolvedValue(null);
+      prisma.personalCard.create.mockResolvedValue(makeCard({ rank: 'a0' }));
+
+      await service.createCard(USER_A, { columnId: COL_A, title: 'Plain' });
+
+      const data = prisma.personalCard.create.mock.calls[0][0].data;
+      expect(data.color).toBeNull();
+      expect(data.dueDate).toBeNull();
     });
   });
 

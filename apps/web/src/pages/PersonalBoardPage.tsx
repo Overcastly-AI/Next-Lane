@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   DndContext,
   DragOverlay,
@@ -28,6 +28,8 @@ import { Modal } from '@/components/ui/Modal';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { ErrorState, LoadingState } from '@/components/ui/States';
 import { useToast } from '@/components/ui/Toast';
+import { ColorSwatchPicker } from '@/components/ui/ColorSwatchPicker';
+import { MarkdownRenderer } from '@/components/ui/MarkdownRenderer';
 import { errorMessage } from '@/lib/errorMessage';
 import { cn } from '@/lib/cn';
 import {
@@ -44,6 +46,59 @@ import {
 } from '@/api/personal-board';
 import { useWorkspaces } from '@/api/workspaces';
 import { useProjects } from '@/api/projects';
+
+// ---------------------------------------------------------------------------
+// Due-date helpers
+// ---------------------------------------------------------------------------
+
+type DueTone = 'overdue' | 'soon' | 'normal';
+
+/** Format a due date for the card chip and classify its urgency. */
+function formatDue(dueISO: string): { label: string; tone: DueTone } {
+  const due = new Date(dueISO);
+  const now = new Date();
+  const startOfToday = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate(),
+  );
+  const dueDay = new Date(due.getFullYear(), due.getMonth(), due.getDate());
+  const diffDays = Math.round(
+    (dueDay.getTime() - startOfToday.getTime()) / 86_400_000,
+  );
+
+  let tone: DueTone = 'normal';
+  if (diffDays < 0) tone = 'overdue';
+  else if (diffDays <= 1) tone = 'soon';
+
+  let label: string;
+  if (diffDays === 0) label = 'Today';
+  else if (diffDays === 1) label = 'Tomorrow';
+  else if (diffDays === -1) label = 'Yesterday';
+  else {
+    const sameYear = due.getFullYear() === now.getFullYear();
+    label = due.toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      ...(sameYear ? {} : { year: 'numeric' }),
+    });
+  }
+  return { label, tone };
+}
+
+/** Convert an ISO datetime to the yyyy-mm-dd value an <input type=date> expects. */
+function toDateInputValue(iso: string | null): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+const DUE_TONE_CLASSES: Record<DueTone, string> = {
+  overdue: 'bg-red-50 text-red-700 ring-1 ring-inset ring-red-200',
+  soon: 'bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-200',
+  normal: 'bg-ink-100 text-ink-600',
+};
 
 // ---------------------------------------------------------------------------
 // PersonalBoardPage
@@ -255,6 +310,28 @@ function PersonalColumn({
   const [renameValue, setRenameValue] = useState(column.name);
   const [confirmDeleteCol, setConfirmDeleteCol] = useState(false);
   const [addingCard, setAddingCard] = useState(false);
+  const [colorMenuOpen, setColorMenuOpen] = useState(false);
+  const colorMenuRef = useRef<HTMLDivElement>(null);
+
+  // Close the color popover on outside click.
+  useEffect(() => {
+    if (!colorMenuOpen) return;
+    function handler(e: MouseEvent) {
+      if (colorMenuRef.current && !colorMenuRef.current.contains(e.target as Node)) {
+        setColorMenuOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [colorMenuOpen]);
+
+  function setColumnColor(color: string | null) {
+    setColorMenuOpen(false);
+    updateColumn.mutate(
+      { id: column.id, patch: { color } },
+      { onError: (err) => toast.error(errorMessage(err, 'Could not set color.')) },
+    );
+  }
 
   const cards = (column.cards ?? [])
     .slice()
@@ -294,7 +371,11 @@ function PersonalColumn({
       <div
         data-testid="personal-column"
         data-column-id={column.id}
-        className="flex w-72 shrink-0 flex-col rounded-xl border border-ink-200 bg-ink-50 shadow-xs border-t-2 border-t-signal-300"
+        style={column.color ? { borderTopColor: column.color } : undefined}
+        className={cn(
+          'flex w-72 shrink-0 flex-col rounded-xl border border-ink-200 bg-ink-50 shadow-xs border-t-2',
+          !column.color && 'border-t-signal-300',
+        )}
       >
         {/* Column header */}
         <div className="flex items-center justify-between px-3 py-2.5">
@@ -323,7 +404,11 @@ function PersonalColumn({
             </form>
           ) : (
             <div className="flex min-w-0 flex-1 items-center gap-2">
-              <span className="h-2 w-2 rounded-full shrink-0 bg-signal-400" aria-hidden="true" />
+              <span
+                className={cn('h-2 w-2 rounded-full shrink-0', !column.color && 'bg-signal-400')}
+                style={column.color ? { backgroundColor: column.color } : undefined}
+                aria-hidden="true"
+              />
               <button
                 type="button"
                 onClick={() => {
@@ -342,6 +427,35 @@ function PersonalColumn({
             </div>
           )}
           <div className="flex shrink-0 items-center gap-0.5">
+            {/* Column color */}
+            <div className="relative" ref={colorMenuRef}>
+              <button
+                type="button"
+                onClick={() => setColorMenuOpen((v) => !v)}
+                aria-label={`Set color for ${column.name}`}
+                aria-haspopup="menu"
+                aria-expanded={colorMenuOpen}
+                className="rounded p-1 text-ink-400 transition-colors duration-[120ms] hover:bg-ink-200 hover:text-ink-700"
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                  <circle cx="12" cy="12" r="9" />
+                  <path strokeLinecap="round" d="M12 3a9 9 0 000 18" fill="currentColor" opacity="0.25" />
+                </svg>
+              </button>
+              {colorMenuOpen && (
+                <div
+                  role="menu"
+                  aria-label="Column color"
+                  className="absolute right-0 top-full z-30 mt-1 w-max rounded-lg border border-ink-200 bg-white p-2 shadow-dropdown"
+                >
+                  <ColorSwatchPicker
+                    value={column.color}
+                    onChange={setColumnColor}
+                    size="sm"
+                  />
+                </div>
+              )}
+            </div>
             <button
               type="button"
               data-testid="personal-add-card"
@@ -514,8 +628,14 @@ function PersonalCard({
       <div
         data-testid="personal-card"
         data-card-id={card.id}
+        onClick={() => setEditOpen(true)}
+        style={
+          card.color
+            ? { borderLeftColor: card.color, borderLeftWidth: '3px' }
+            : undefined
+        }
         className={cn(
-          'group relative rounded-lg border border-ink-200 bg-white px-3 py-2.5 shadow-xs',
+          'group relative cursor-pointer rounded-lg border border-ink-200 bg-white px-3 py-2.5 shadow-xs',
           'transition-shadow duration-[120ms]',
           dragging && 'shadow-cardHover opacity-50 rotate-[0.5deg]',
           !dragging && 'hover:shadow-card',
@@ -544,8 +664,48 @@ function PersonalCard({
           </p>
         )}
 
-        {/* Card actions — shown on hover or focus-within */}
-        <div className="mt-2 flex items-center gap-1 opacity-0 transition-opacity duration-[120ms] group-hover:opacity-100 group-focus-within:opacity-100">
+        {/* Meta row: due date + notes indicator */}
+        {(card.dueDate || card.notes) && (
+          <div className="mt-2 flex items-center gap-2">
+            {card.dueDate &&
+              (() => {
+                const due = formatDue(card.dueDate);
+                return (
+                  <span
+                    data-testid="personal-card-due"
+                    className={cn(
+                      'inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold',
+                      DUE_TONE_CLASSES[due.tone],
+                    )}
+                    title={new Date(card.dueDate).toLocaleDateString()}
+                  >
+                    <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M8 2v4M16 2v4M3 10h18M5 6h14a2 2 0 012 2v12a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2z" />
+                    </svg>
+                    {due.label}
+                  </span>
+                );
+              })()}
+            {card.notes && (
+              <span
+                className="inline-flex items-center text-ink-300"
+                aria-label="Has notes"
+                title="Has notes"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h10" />
+                </svg>
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Card actions — always visible on touch; hover-revealed on desktop.
+            stopPropagation so clicking an action doesn't also open the card. */}
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className="mt-2 flex items-center gap-1 opacity-100 transition-opacity duration-[120ms] sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
+        >
           {/* Edit */}
           <button
             type="button"
@@ -813,6 +973,9 @@ function EditCardModal({
 }) {
   const [title, setTitle] = useState(card.title);
   const [notes, setNotes] = useState(card.notes ?? '');
+  const [color, setColor] = useState<string | null>(card.color);
+  const [dueDate, setDueDate] = useState(toDateInputValue(card.dueDate));
+  const [previewNotes, setPreviewNotes] = useState(false);
   const updateCard = useUpdatePersonalCard();
   const toast = useToast();
 
@@ -822,6 +985,9 @@ function EditCardModal({
     prevCardId.current = card.id;
     setTitle(card.title);
     setNotes(card.notes ?? '');
+    setColor(card.color);
+    setDueDate(toDateInputValue(card.dueDate));
+    setPreviewNotes(false);
   }
 
   async function handleSave() {
@@ -833,6 +999,9 @@ function EditCardModal({
         patch: {
           title: trimmedTitle,
           notes: notes.trim() || null,
+          color,
+          // <input type=date> gives yyyy-mm-dd; store as start-of-day ISO.
+          dueDate: dueDate ? new Date(`${dueDate}T00:00:00`).toISOString() : null,
         },
       });
       onClose();
@@ -882,20 +1051,79 @@ function EditCardModal({
             }}
           />
         </div>
+
+        {/* Color + due date */}
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <span className="mb-1 block text-xs font-medium text-ink-700">
+              Color
+            </span>
+            <ColorSwatchPicker value={color} onChange={setColor} />
+          </div>
+          <div>
+            <label
+              htmlFor="edit-card-due"
+              className="mb-1 block text-xs font-medium text-ink-700"
+            >
+              Due date
+            </label>
+            <div className="flex items-center gap-1.5">
+              <Input
+                id="edit-card-due"
+                type="date"
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+                data-testid="personal-card-due-input"
+                className="w-40"
+              />
+              {dueDate && (
+                <button
+                  type="button"
+                  onClick={() => setDueDate('')}
+                  aria-label="Clear due date"
+                  className="rounded p-1 text-ink-400 hover:bg-ink-100 hover:text-ink-700"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
         <div>
-          <label
-            htmlFor="edit-card-notes"
-            className="mb-1 block text-xs font-medium text-ink-700"
-          >
-            Notes
-          </label>
-          <Textarea
-            id="edit-card-notes"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder="Optional notes…"
-            rows={3}
-          />
+          <div className="mb-1 flex items-center justify-between">
+            <label
+              htmlFor="edit-card-notes"
+              className="block text-xs font-medium text-ink-700"
+            >
+              Notes{' '}
+              <span className="font-normal text-ink-400">(markdown)</span>
+            </label>
+            {notes.trim() && (
+              <button
+                type="button"
+                onClick={() => setPreviewNotes((v) => !v)}
+                className="text-[11px] font-medium text-signal-600 hover:text-signal-700"
+              >
+                {previewNotes ? 'Edit' : 'Preview'}
+              </button>
+            )}
+          </div>
+          {previewNotes ? (
+            <div className="min-h-[76px] rounded-lg border border-ink-200 bg-ink-50/40 px-3 py-2">
+              <MarkdownRenderer content={notes} />
+            </div>
+          ) : (
+            <Textarea
+              id="edit-card-notes"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Optional notes — **markdown** supported…"
+              rows={4}
+            />
+          )}
         </div>
       </div>
     </Modal>

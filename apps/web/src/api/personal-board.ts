@@ -11,6 +11,10 @@ export interface PersonalCardDto {
   columnId: string;
   title: string;
   notes: string | null;
+  /** Optional hex accent color (#rrggbb); null when unset. */
+  color: string | null;
+  /** Optional due date (ISO 8601); null when unset. */
+  dueDate: string | null;
   rank: string;
   promotedIssueId: string | null;
   createdAt: string;
@@ -21,6 +25,8 @@ export interface PersonalColumnDto {
   id: string;
   name: string;
   order: number;
+  /** Optional hex accent color for the column header/border; null when unset. */
+  color: string | null;
   createdAt: string;
   updatedAt: string;
   cards?: PersonalCardDto[];
@@ -62,7 +68,7 @@ export function usePersonalBoard() {
 export function useCreatePersonalColumn() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: { name: string }) =>
+    mutationFn: (input: { name: string; color?: string | null }) =>
       request<PersonalColumnDto>('/me/personal-columns', {
         method: 'POST',
         body: input,
@@ -81,7 +87,7 @@ export function useUpdatePersonalColumn() {
       patch,
     }: {
       id: string;
-      patch: { name?: string; order?: number };
+      patch: { name?: string; order?: number; color?: string | null };
     }) =>
       request<PersonalColumnDto>(`/me/personal-columns/${id}`, {
         method: 'PATCH',
@@ -111,7 +117,13 @@ export function useDeletePersonalColumn() {
 export function useCreatePersonalCard() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: { columnId: string; title: string; notes?: string }) =>
+    mutationFn: (input: {
+      columnId: string;
+      title: string;
+      notes?: string;
+      color?: string | null;
+      dueDate?: string | null;
+    }) =>
       request<PersonalCardDto>('/me/personal-cards', {
         method: 'POST',
         body: input,
@@ -125,6 +137,8 @@ export function useCreatePersonalCard() {
 export interface UpdatePersonalCardInput {
   title?: string;
   notes?: string | null;
+  color?: string | null;
+  dueDate?: string | null;
   columnId?: string;
   beforeId?: string | null;
   afterId?: string | null;

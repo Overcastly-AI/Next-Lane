@@ -23,6 +23,8 @@ function toCardDto(card: {
   columnId: string;
   title: string;
   notes: string | null;
+  color: string | null;
+  dueDate: Date | null;
   rank: string;
   promotedIssueId: string | null;
   createdAt: Date;
@@ -33,6 +35,8 @@ function toCardDto(card: {
     columnId: card.columnId,
     title: card.title,
     notes: card.notes,
+    color: card.color,
+    dueDate: card.dueDate ? card.dueDate.toISOString() : null,
     rank: card.rank,
     promotedIssueId: card.promotedIssueId,
     createdAt: card.createdAt.toISOString(),
@@ -45,6 +49,7 @@ function toColumnDto(
     id: string;
     name: string;
     order: number;
+    color: string | null;
     createdAt: Date;
     updatedAt: Date;
   },
@@ -54,6 +59,7 @@ function toColumnDto(
     id: col.id,
     name: col.name,
     order: col.order,
+    color: col.color,
     createdAt: col.createdAt.toISOString(),
     updatedAt: col.updatedAt.toISOString(),
   };
@@ -160,7 +166,7 @@ export class PersonalBoardsService {
     const order = (last?.order ?? -1) + 1;
 
     const col = await this.prisma.personalColumn.create({
-      data: { userId, name: dto.name, order },
+      data: { userId, name: dto.name, order, color: dto.color ?? null },
     });
     return toColumnDto(col);
   }
@@ -177,6 +183,7 @@ export class PersonalBoardsService {
       data: {
         ...(dto.name !== undefined ? { name: dto.name } : {}),
         ...(dto.order !== undefined ? { order: dto.order } : {}),
+        ...(dto.color !== undefined ? { color: dto.color } : {}),
       },
     });
     return toColumnDto(col);
@@ -214,6 +221,8 @@ export class PersonalBoardsService {
         columnId: dto.columnId,
         title: dto.title,
         notes: dto.notes,
+        color: dto.color ?? null,
+        dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
         rank,
       },
     });
@@ -300,6 +309,10 @@ export class PersonalBoardsService {
       data: {
         ...(dto.title !== undefined ? { title: dto.title } : {}),
         ...(dto.notes !== undefined ? { notes: dto.notes } : {}),
+        ...(dto.color !== undefined ? { color: dto.color } : {}),
+        ...(dto.dueDate !== undefined
+          ? { dueDate: dto.dueDate ? new Date(dto.dueDate) : null }
+          : {}),
         ...(dto.columnId !== undefined ? { columnId: dto.columnId } : {}),
         ...(newRank !== undefined ? { rank: newRank } : {}),
       },

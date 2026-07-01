@@ -121,6 +121,42 @@ test.describe('Personal board — desktop', () => {
     ).toBeVisible({ timeout: 8_000 });
   });
 
+  test('can set a color and due date on a card', async ({ page, request }) => {
+    const user = await registerNewUser(request, 'pb-meta');
+    await login(page, { email: user.email, password: user.password });
+    await page.goto('/my-board');
+    await expect(page.getByTestId('personal-board')).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.getByTestId('personal-column').first()).toBeVisible();
+
+    // Create a card.
+    await page.getByTestId('personal-add-card').first().click();
+    await page.getByTestId('personal-add-card-input').fill('Card with meta');
+    await page.getByTestId('personal-card-save').first().click();
+    const card = page
+      .getByTestId('personal-card')
+      .filter({ hasText: 'Card with meta' })
+      .first();
+    await expect(card).toBeVisible({ timeout: 8_000 });
+
+    // Open the detail by clicking the card title.
+    await card.getByTestId('personal-card-title').click();
+    const modal = page.getByRole('dialog', { name: /edit card/i });
+    await expect(modal).toBeVisible();
+
+    // Pick the first palette color and set a due date.
+    await modal.getByTestId('color-swatch').first().click();
+    await modal.getByTestId('personal-card-due-input').fill('2026-12-31');
+    await modal.getByRole('button', { name: /save/i }).click();
+
+    // The due-date chip should now render on the card face.
+    await expect(
+      card.getByTestId('personal-card-due'),
+    ).toBeVisible({ timeout: 8_000 });
+    await expect(card.getByTestId('personal-card-due')).toContainText(/dec/i);
+  });
+
   test('can move a card to another column via the move affordance', async ({
     page,
     request,

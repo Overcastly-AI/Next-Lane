@@ -1,4 +1,12 @@
-import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import {
+  IsHexColor,
+  IsISO8601,
+  IsOptional,
+  IsString,
+  MaxLength,
+  MinLength,
+  ValidateIf,
+} from 'class-validator';
 
 export class UpdatePersonalCardDto {
   @IsOptional()
@@ -10,7 +18,19 @@ export class UpdatePersonalCardDto {
   @IsOptional()
   @IsString()
   @MaxLength(50000)
-  notes?: string;
+  notes?: string | null;
+
+  /** Hex accent color (#rrggbb) or null to clear. */
+  @IsOptional()
+  @ValidateIf((_o, v) => v !== null)
+  @IsHexColor()
+  color?: string | null;
+
+  /** Due date as an ISO 8601 string, or null to clear. */
+  @IsOptional()
+  @ValidateIf((_o, v) => v !== null)
+  @IsISO8601()
+  dueDate?: string | null;
 
   /** Move the card to a different column. */
   @IsOptional()

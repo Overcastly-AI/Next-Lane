@@ -1,4 +1,12 @@
-import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import {
+  IsHexColor,
+  IsISO8601,
+  IsOptional,
+  IsString,
+  MaxLength,
+  MinLength,
+  ValidateIf,
+} from 'class-validator';
 
 export class CreatePersonalCardDto {
   @IsString()
@@ -13,4 +21,16 @@ export class CreatePersonalCardDto {
   @IsString()
   @MaxLength(50000)
   notes?: string;
+
+  /** Hex accent color (#rrggbb) or null for none. */
+  @IsOptional()
+  @ValidateIf((_o, v) => v !== null)
+  @IsHexColor()
+  color?: string | null;
+
+  /** Due date as an ISO 8601 string, or null for none. */
+  @IsOptional()
+  @ValidateIf((_o, v) => v !== null)
+  @IsISO8601()
+  dueDate?: string | null;
 }

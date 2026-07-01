@@ -1078,6 +1078,8 @@ model PersonalColumn {
   userId    String
   name      String
   order     Int
+  /// Optional hex accent color for the column header/border.
+  color     String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1097,6 +1099,10 @@ model PersonalCard {
   columnId         String
   title            String
   notes            String?
+  /// Optional hex accent color (e.g. "#2563eb") shown as a left border/dot.
+  color            String?
+  /// Optional due date for the card.
+  dueDate          DateTime?
   rank             String
   promotedIssueId  String?
   createdAt        DateTime @default(now())

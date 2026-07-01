@@ -1056,6 +1056,10 @@ export interface PersonalCardDto {
   columnId: string;
   title: string;
   notes: string | null;
+  /** Optional hex accent color (e.g. "#2563eb"); null when unset. */
+  color: string | null;
+  /** Optional due date (ISO 8601); null when unset. */
+  dueDate: string | null;
   /** Fractional-index rank for ordering within the column (same scheme as Issue.rank). */
   rank: string;
   /** ID of the Issue this card was promoted to, or null when not yet promoted. */
@@ -1073,6 +1077,8 @@ export interface PersonalColumnDto {
   id: string;
   name: string;
   order: number;
+  /** Optional hex accent color for the column header/border; null when unset. */
+  color: string | null;
   createdAt: string;
   updatedAt: string;
   /** Cards in this column, present when loaded with the `cards` relation. */
