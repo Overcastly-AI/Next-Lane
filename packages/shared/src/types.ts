@@ -265,6 +265,8 @@ export interface CustomFieldDefinitionDto {
   /** If non-empty, the field only applies to these issue types. Empty = all types. */
   appliesToTypes: IssueType[];
   required: boolean;
+  /** When true, the field value is pinned as a chip on board cards. */
+  showOnCard: boolean;
   order: number;
   createdAt: string;
   updatedAt: string;

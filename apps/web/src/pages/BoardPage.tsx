@@ -54,6 +54,7 @@ import { ErrorState, LoadingState, EmptyState } from '@/components/ui/States';
 import { ProjectNav } from '@/components/project/ProjectNav';
 import { BoardColumn } from '@/components/board/BoardColumn';
 import { IssueCard } from '@/components/board/IssueCard';
+import { CardFieldDefsProvider } from '@/components/board/CardFieldDefsContext';
 import { NlqlInput } from '@/components/board/NlqlInput';
 import {
   BoardSwimlanesView,
@@ -358,6 +359,12 @@ export function BoardPage() {
         name: d.name,
         type: d.type,
       })),
+    [customFieldsQuery.data],
+  );
+
+  // Full definitions flagged showOnCard — rendered as pinned chips on cards.
+  const cardFieldDefs = useMemo(
+    () => (customFieldsQuery.data ?? []).filter((d) => d.showOnCard),
     [customFieldsQuery.data],
   );
 
@@ -708,6 +715,7 @@ export function BoardPage() {
   const users = usersQuery.data ?? [];
 
   return (
+    <CardFieldDefsProvider value={cardFieldDefs}>
     <Shell
       projectId={projectId}
       header={
@@ -1080,6 +1088,7 @@ export function BoardPage() {
         />
       )}
     </Shell>
+    </CardFieldDefsProvider>
   );
 }
 

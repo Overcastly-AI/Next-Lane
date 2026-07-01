@@ -32,6 +32,7 @@ interface CustomFieldRow {
   options: string[];
   appliesToTypes: string[];
   required: boolean;
+  showOnCard: boolean;
   order: number;
   createdAt: Date;
   updatedAt: Date;
@@ -53,6 +54,7 @@ export function toCustomFieldDefinitionDto(
     options: row.options,
     appliesToTypes: row.appliesToTypes as IssueType[],
     required: row.required,
+    showOnCard: row.showOnCard,
     order: row.order,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
@@ -148,6 +150,7 @@ export class CustomFieldsService {
         options: dto.options ?? [],
         appliesToTypes: dto.appliesToTypes ?? [],
         required: dto.required ?? false,
+        showOnCard: dto.showOnCard ?? false,
         order,
       },
     });
@@ -194,6 +197,7 @@ export class CustomFieldsService {
           ? { appliesToTypes: dto.appliesToTypes }
           : {}),
         ...(dto.required !== undefined ? { required: dto.required } : {}),
+        ...(dto.showOnCard !== undefined ? { showOnCard: dto.showOnCard } : {}),
         ...(dto.order !== undefined ? { order: dto.order } : {}),
       },
     });

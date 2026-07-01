@@ -42,6 +42,10 @@ export class CreateCustomFieldDto {
   @IsOptional()
   @IsBoolean()
   required?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  showOnCard?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -72,6 +76,10 @@ export class UpdateCustomFieldDto {
   @IsOptional()
   @IsBoolean()
   required?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  showOnCard?: boolean;
 
   @IsOptional()
   @IsInt()

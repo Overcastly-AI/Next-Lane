@@ -1,9 +1,16 @@
 import { forwardRef, type HTMLAttributes } from 'react';
-import { StatusCategory, type IssueDto, type StatusDto } from '@next-lane/shared';
+import {
+  StatusCategory,
+  type IssueDto,
+  type StatusDto,
+  type CustomFieldDefinitionDto,
+  type CustomFieldValue,
+} from '@next-lane/shared';
 import { Avatar } from '@/components/ui/Avatar';
 import { Badge } from '@/components/ui/Badge';
 import { IssueTypeIcon, PriorityIcon } from '@/components/issue/issueMeta';
 import { CardStatusPicker } from './CardStatusPicker';
+import { useCardFieldDefs } from './CardFieldDefsContext';
 import { cn } from '@/lib/cn';
 
 /**
@@ -46,6 +53,19 @@ export interface IssueCardProps extends HTMLAttributes<HTMLDivElement> {
   accentColor?: string;
   /** The color rule id that produced accentColor (for data-color-rule-id). */
   accentRuleId?: string;
+  /**
+   * Custom-field definitions flagged `showOnCard` for this project. Their values
+   * (from `issue.customFields`) render as pinned chips on the card.
+   */
+  cardFieldDefs?: CustomFieldDefinitionDto[];
+}
+
+/** Format a custom-field value for a compact card chip. Returns null when empty. */
+function formatFieldValue(value: CustomFieldValue | undefined): string | null {
+  if (value === null || value === undefined || value === '') return null;
+  if (Array.isArray(value)) return value.length ? value.join(', ') : null;
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  return String(value);
 }
 
 /** Presentational card. Drag wiring lives in SortableIssueCard. */
@@ -60,12 +80,31 @@ export const IssueCard = forwardRef<HTMLDivElement, IssueCardProps>(
       editable = true,
       accentColor,
       accentRuleId,
+      cardFieldDefs,
       className,
       ...rest
     },
     ref,
   ) => {
     const currentStatus = statuses?.find((s) => s.id === issue.statusId);
+
+    // Pinned custom-field chips: defs flagged showOnCard that have a value on
+    // this issue and apply to its type. Defs come from context (board root) or
+    // an explicit prop override.
+    const contextFieldDefs = useCardFieldDefs();
+    const pinnedFields = (cardFieldDefs ?? contextFieldDefs)
+      .filter(
+        (d) =>
+          d.appliesToTypes.length === 0 ||
+          d.appliesToTypes.includes(issue.type),
+      )
+      .map((d) => ({
+        def: d,
+        text: formatFieldValue(issue.customFields?.[d.id]),
+      }))
+      .filter((f): f is { def: CustomFieldDefinitionDto; text: string } =>
+        f.text !== null,
+      );
 
     return (
       <div
@@ -113,6 +152,23 @@ export const IssueCard = forwardRef<HTMLDivElement, IssueCardProps>(
                 <Badge key={l.id} color={l.color}>
                   {l.name}
                 </Badge>
+              ))}
+            </div>
+          )}
+
+          {/* Pinned custom-field chips */}
+          {pinnedFields.length > 0 && (
+            <div className="mb-2 flex flex-wrap gap-1" data-testid="card-custom-fields">
+              {pinnedFields.map(({ def, text }) => (
+                <span
+                  key={def.id}
+                  data-testid="card-custom-field"
+                  title={`${def.name}: ${text}`}
+                  className="inline-flex max-w-full items-center gap-1 rounded-sm bg-ink-100 px-1.5 py-0.5 text-[10px] font-medium text-ink-600 ring-1 ring-inset ring-ink-200"
+                >
+                  <span className="text-ink-400">{def.name}:</span>
+                  <span className="truncate text-ink-700">{text}</span>
+                </span>
               ))}
             </div>
           )}

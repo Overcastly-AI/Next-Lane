@@ -507,6 +507,8 @@ model CustomFieldDefinition {
   options        String[]        @default([]) // allowed values for SELECT/MULTI_SELECT
   appliesToTypes IssueType[]     @default([]) // empty = all types
   required       Boolean         @default(false)
+  /// When true, the field's value is pinned as a chip on board cards.
+  showOnCard     Boolean         @default(false)
   order          Int             @default(0)
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt

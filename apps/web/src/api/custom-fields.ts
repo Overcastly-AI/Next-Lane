@@ -22,6 +22,7 @@ export interface CreateCustomFieldInput {
   options?: string[];
   appliesToTypes?: IssueType[];
   required?: boolean;
+  showOnCard?: boolean;
 }
 
 export interface UpdateCustomFieldInput {
@@ -29,6 +30,7 @@ export interface UpdateCustomFieldInput {
   options?: string[];
   appliesToTypes?: IssueType[];
   required?: boolean;
+  showOnCard?: boolean;
   order?: number;
 }
 

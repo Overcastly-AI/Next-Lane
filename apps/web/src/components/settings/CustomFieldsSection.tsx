@@ -144,6 +144,7 @@ export function CustomFieldsSection({
                   {field.appliesToTypes.length > 0 &&
                     ` · ${field.appliesToTypes.map((t) => ISSUE_TYPE_LABELS[t]).join(', ')}`}
                   {field.required && ' · Required'}
+                  {field.showOnCard && ' · On card'}
                 </span>
               </div>
 
@@ -234,6 +235,7 @@ function AddCustomFieldModal({
   const [optionsRaw, setOptionsRaw] = useState('');
   const [appliesToTypes, setAppliesToTypes] = useState<IssueType[]>([]);
   const [required, setRequired] = useState(false);
+  const [showOnCard, setShowOnCard] = useState(false);
 
   function reset() {
     setName('');
@@ -271,6 +273,7 @@ function AddCustomFieldModal({
       type,
       appliesToTypes: appliesToTypes.length > 0 ? appliesToTypes : undefined,
       required: required || undefined,
+      showOnCard: showOnCard || undefined,
     };
     if (hasOptions(type)) {
       input.options = parseOptions();
@@ -386,6 +389,16 @@ function AddCustomFieldModal({
           />
           Required field
         </label>
+
+        <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            checked={showOnCard}
+            onChange={(e) => setShowOnCard(e.target.checked)}
+            className="h-4 w-4 rounded border-slate-300 accent-brand-500"
+          />
+          Show on board cards
+        </label>
       </form>
     </Modal>
   );
@@ -412,6 +425,7 @@ function EditCustomFieldModal({
     field.appliesToTypes,
   );
   const [required, setRequired] = useState(field.required);
+  const [showOnCard, setShowOnCard] = useState(field.showOnCard);
 
   function toggleIssueType(t: IssueType) {
     setAppliesToTypes((prev) =>
@@ -435,6 +449,7 @@ function EditCustomFieldModal({
       name: trimmedName,
       appliesToTypes,
       required,
+      showOnCard,
     };
     if (hasOptions(field.type)) {
       patch.options = parseOptions();
@@ -543,6 +558,16 @@ function EditCustomFieldModal({
             className="h-4 w-4 rounded border-slate-300 accent-brand-500"
           />
           Required field
+        </label>
+
+        <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            checked={showOnCard}
+            onChange={(e) => setShowOnCard(e.target.checked)}
+            className="h-4 w-4 rounded border-slate-300 accent-brand-500"
+          />
+          Show on board cards
         </label>
       </form>
     </Modal>

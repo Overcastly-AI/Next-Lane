@@ -75,4 +75,50 @@ test.describe('Kanban board', () => {
       blockerCard.getByTestId('issue-blocked-badge'),
     ).toHaveCount(0);
   });
+
+  test('pins a showOnCard custom field value as a chip', async ({
+    page,
+    request,
+  }) => {
+    const ctx = await setupIsolatedProject(page, request, {
+      label: 'cardfield',
+      openBoard: false,
+    });
+    // Create a SELECT field flagged showOnCard.
+    const fieldRes = await request.post(
+      `${API_URL}/api/projects/${ctx.project.id}/custom-fields`,
+      {
+        headers: { Authorization: `Bearer ${ctx.token}` },
+        data: {
+          name: 'Severity',
+          type: 'SELECT',
+          options: ['Low', 'High', 'Critical'],
+          showOnCard: true,
+        },
+      },
+    );
+    expect(fieldRes.ok(), `field failed: ${fieldRes.status()}`).toBeTruthy();
+    const field = await fieldRes.json();
+
+    // Create an issue carrying a value for that field.
+    const issueRes = await request.post(`${API_URL}/api/issues`, {
+      headers: { Authorization: `Bearer ${ctx.token}` },
+      data: {
+        projectId: ctx.project.id,
+        title: 'Card with field',
+        customFields: { [field.id]: 'Critical' },
+      },
+    });
+    expect(issueRes.ok(), `issue failed: ${issueRes.status()}`).toBeTruthy();
+
+    await openProjectBoard(page, ctx.project.id);
+
+    const card = page
+      .getByTestId('issue-card')
+      .filter({ hasText: 'Card with field' });
+    const chip = card.getByTestId('card-custom-field');
+    await expect(chip).toBeVisible({ timeout: 10_000 });
+    await expect(chip).toContainText('Severity');
+    await expect(chip).toContainText('Critical');
+  });
 });
