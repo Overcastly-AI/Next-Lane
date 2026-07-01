@@ -57,6 +57,19 @@ Treat each as a user story; assert on visible outcomes, not implementation:
 6. **Issue detail** — open a card; edit title/status/assignee/priority and see it persist; add a comment; activity log updates.
 7. **Search/filter** — filtering by text/assignee narrows the visible cards.
 8. **Realtime (optional)** — a change in one context appears in another without manual refresh.
+9. **Cross-page state coherence (MANDATORY for any global/stateful UI).** The
+   workspace-selector bug cluster passed every per-page test because no spec
+   ever *tracked state across navigation*. For each global selection (active
+   workspace, selected board, filters, current sprint — anything the header or
+   more than one surface displays), assert the full matrix:
+   - change it on surface A → surface B shows the same value;
+   - navigate away and back → still correct;
+   - full `page.reload()` → the selection survives;
+   - deep-link straight into a scoped page (`/projects/:id/board`) → global
+     indicators reflect where you actually landed;
+   - delete/rename the underlying entity → every surface heals, no blank state.
+   Canonical example: `e2e/workspace-switcher.spec.ts`. A feature that adds or
+   consumes global state is NOT accepted without this suite extended to it.
 
 ## Mobile-specific checks
 
