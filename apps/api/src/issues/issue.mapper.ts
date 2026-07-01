@@ -80,7 +80,7 @@ export interface IssueWithRelations {
       state: string;
     };
   }>;
-  _count?: { comments: number } | null;
+  _count?: { comments: number; linksTo?: number } | null;
   parent?: IssueRef | null;
   children?: IssueRef[];
   component?: { id: string; name: string } | null;
@@ -165,7 +165,14 @@ export function toIssueDto(issue: IssueWithRelations): IssueDto {
   if (issue.reporter !== undefined)
     dto.reporter = issue.reporter ? toUserDto(issue.reporter) : null;
   if (issue.labels) dto.labels = issue.labels.map((il) => toLabelDto(il.label));
-  if (issue._count) dto.commentCount = issue._count.comments;
+  if (issue._count) {
+    dto.commentCount = issue._count.comments;
+    // Incoming BLOCKS links (this issue is the target) = number of open
+    // blockers; present only when the caller included the filtered count.
+    if (issue._count.linksTo !== undefined) {
+      dto.blockedByCount = issue._count.linksTo;
+    }
+  }
   if (issue.parent !== undefined)
     dto.parent = issue.parent ? toIssueRefDto(issue.parent) : null;
   if (issue.children) dto.children = issue.children.map(toIssueRefDto);

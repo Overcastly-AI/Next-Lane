@@ -13,7 +13,7 @@ import {
 import { toProjectDto } from '../projects/projects.service';
 import { toStatusDto } from '../statuses/statuses.service';
 import { toIssueDto } from '../issues/issue.mapper';
-import { BoardType, Role, SprintState, validateQuery } from '@next-lane/shared';
+import { BoardType, IssueLinkType, Role, SprintState, validateQuery } from '@next-lane/shared';
 import type { BoardDto, BoardSummaryDto, BoardColorRule, ValidateCustomFieldDef } from '@next-lane/shared';
 import type { CreateBoardDto } from './dto/create-board.dto';
 import type { UpdateBoardDto } from './dto/update-board.dto';
@@ -33,7 +33,14 @@ const issueInclude = {
   reporter: true,
   labels: { include: { label: true } },
   project: { select: { key: true } },
-  _count: { select: { comments: true } },
+  // `linksTo` = links where this issue is the target; filtered to BLOCKS gives
+  // the count of issues blocking it (BLOCKS is stored canonically blocker→blocked).
+  _count: {
+    select: {
+      comments: true,
+      linksTo: { where: { type: IssueLinkType.BLOCKS } },
+    },
+  },
 } satisfies Prisma.IssueInclude;
 
 /** Prisma Board row shape (subset needed for mapping). */

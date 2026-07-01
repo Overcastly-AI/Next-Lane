@@ -126,6 +126,12 @@ export interface IssueDto {
   labels?: LabelDto[];
   commentCount?: number;
   /**
+   * Number of unresolved blockers — issues linked as BLOCKS with this issue as
+   * the target. Present on board payloads; > 0 means the card shows a "Blocked"
+   * badge. Undefined when the caller didn't request the count.
+   */
+  blockedByCount?: number;
+  /**
    * Custom field values, keyed by CustomFieldDefinition.id. Value shape depends
    * on the field type (string | number | boolean | string[] | ISO date string).
    * Absent keys mean "no value set". Only present when the issue is loaded with

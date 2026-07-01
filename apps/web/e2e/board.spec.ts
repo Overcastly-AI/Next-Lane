@@ -1,5 +1,11 @@
 import { test, expect } from '@playwright/test';
-import { openDemoBoard, setupIsolatedProject } from './helpers';
+import {
+  openDemoBoard,
+  setupIsolatedProject,
+  createIssue,
+  openProjectBoard,
+  API_URL,
+} from './helpers';
 
 test.describe('Kanban board', () => {
   test('renders columns and issue cards', async ({ page }) => {
@@ -26,5 +32,47 @@ test.describe('Kanban board', () => {
     await dialog.getByRole('button', { name: 'Create' }).click();
     // The newly created card shows up (self-contained: does not depend on seed data).
     await expect(page.getByText(title).first()).toBeVisible({ timeout: 10_000 });
+  });
+
+  test('shows a Blocked badge on a card with an unresolved blocker', async ({
+    page,
+    request,
+  }) => {
+    const ctx = await setupIsolatedProject(page, request, {
+      label: 'blocked',
+      openBoard: false,
+    });
+    const blocker = await createIssue(request, ctx.token, ctx.project.id, {
+      title: 'The blocker',
+    });
+    const blocked = await createIssue(request, ctx.token, ctx.project.id, {
+      title: 'The blocked one',
+    });
+    // blocker BLOCKS blocked → the blocked card should show the badge.
+    const res = await request.post(
+      `${API_URL}/api/issues/${blocker.id}/links`,
+      {
+        headers: { Authorization: `Bearer ${ctx.token}` },
+        data: { target: blocked.id, type: 'BLOCKS' },
+      },
+    );
+    expect(res.ok(), `link failed: ${res.status()}`).toBeTruthy();
+
+    await openProjectBoard(page, ctx.project.id);
+
+    const blockedCard = page
+      .getByTestId('issue-card')
+      .filter({ hasText: 'The blocked one' });
+    await expect(blockedCard.getByTestId('issue-blocked-badge')).toBeVisible({
+      timeout: 10_000,
+    });
+    // The blocker itself is not blocked.
+    const blockerCard = page
+      .getByTestId('issue-card')
+      .filter({ hasText: 'The blocker' })
+      .first();
+    await expect(
+      blockerCard.getByTestId('issue-blocked-badge'),
+    ).toHaveCount(0);
   });
 });

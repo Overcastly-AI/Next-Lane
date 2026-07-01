@@ -117,6 +117,24 @@ export const IssueCard = forwardRef<HTMLDivElement, IssueCardProps>(
             </div>
           )}
 
+          {/* Blocked badge — this issue has unresolved blockers */}
+          {issue.blockedByCount != null && issue.blockedByCount > 0 && (
+            <div className="mb-2">
+              <span
+                data-testid="issue-blocked-badge"
+                aria-label={`Blocked by ${issue.blockedByCount} ${issue.blockedByCount === 1 ? 'issue' : 'issues'}`}
+                title={`Blocked by ${issue.blockedByCount} ${issue.blockedByCount === 1 ? 'issue' : 'issues'}`}
+                className="inline-flex items-center gap-1 rounded-sm bg-red-50 px-1.5 py-0.5 text-[10px] font-semibold text-red-700 ring-1 ring-inset ring-red-200"
+              >
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
+                  <circle cx="12" cy="12" r="9" />
+                  <path strokeLinecap="round" d="M5.6 5.6l12.8 12.8" />
+                </svg>
+                Blocked{issue.blockedByCount > 1 ? ` · ${issue.blockedByCount}` : ''}
+              </span>
+            </div>
+          )}
+
           {/* Due date chip */}
           {issue.dueDate && (
             <div className="mb-2">
