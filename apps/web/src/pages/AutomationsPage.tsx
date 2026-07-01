@@ -18,6 +18,7 @@ import { useProject } from '@/api/projects';
 import { useStatuses, useLabels } from '@/api/meta';
 import { useCustomFields } from '@/api/custom-fields';
 import { useWorkspaceMembers } from '@/api/workspaces';
+import { useSyncActiveWorkspace } from '@/contexts/WorkspaceContext';
 import {
   useAutomations,
   useDeleteAutomation,
@@ -249,6 +250,7 @@ export function AutomationsPage() {
   const labelsQuery = useLabels(projectId);
   const customFieldsQuery = useCustomFields(projectId);
   const membersQuery = useWorkspaceMembers(project?.workspaceId);
+  useSyncActiveWorkspace(project?.workspaceId);
   const deleteRule = useDeleteAutomation(projectId);
 
   function openCreate() {

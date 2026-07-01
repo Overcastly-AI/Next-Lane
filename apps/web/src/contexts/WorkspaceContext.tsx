@@ -6,15 +6,15 @@
  *  - Rendering the workspace logo in AppHeader.
  *  - Determining admin access for branding settings.
  *
- * Strategy (simple, no router dependency):
- *  - After workspaces load, default to the user's first workspace.
- *  - Pages that are workspace-scoped (members, audit log, branding) call
- *    setActiveWorkspaceId to scope the header to their workspace.
- *  - Project-scoped pages can call it too once they know their workspaceId.
- *  - The dashboard has its own ws selector but propagates the selection here.
- *
- * This is purposely minimal — it doesn't re-implement routing or
- * create a "selected workspace" UX separate from the dashboard selector.
+ * Strategy (single source of truth):
+ *  - The active workspace id is persisted to localStorage so it survives
+ *    reloads and navigation — you land back where you left off, not on the
+ *    first workspace in the list.
+ *  - On load we restore the persisted id; if it's missing or no longer valid
+ *    (workspace deleted / not a member) we heal to the first workspace.
+ *  - The dashboard reads/writes THIS context (no separate local selector),
+ *    and project-scoped pages call setActiveWorkspaceId once they know their
+ *    workspaceId so the header chip always reflects where you actually are.
  */
 import {
   createContext,
@@ -41,20 +41,42 @@ interface WorkspaceContextValue {
 
 const WorkspaceContext = createContext<WorkspaceContextValue | null>(null);
 
+const STORAGE_KEY = 'nl.activeWorkspaceId';
+
+function readStoredId(): string | null {
+  try {
+    return localStorage.getItem(STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredId(id: string | null): void {
+  try {
+    if (id) localStorage.setItem(STORAGE_KEY, id);
+    else localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    /* private mode / storage disabled — fall back to in-memory only */
+  }
+}
+
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const { isAuthenticated } = useAuth();
   const workspacesQuery = useWorkspaces();
   // Only use workspace data when authenticated; avoids API calls on login page.
   const workspaces = isAuthenticated ? (workspacesQuery.data ?? []) : [];
 
-  const [activeId, setActiveId] = useState<string | null>(null);
+  // Restore the last-active workspace synchronously so the first render already
+  // reflects the user's choice (no flash of "first workspace" before an effect).
+  const [activeId, setActiveId] = useState<string | null>(() => readStoredId());
 
-  // Seed / maintain: default to first workspace when none is set or the
-  // previously set one disappears from the list.
+  // Seed / heal: fall back to the first workspace only when nothing is set or
+  // the persisted one is no longer in the list (deleted / access revoked).
   useEffect(() => {
     if (!workspaces.length) return;
     if (!activeId || !workspaces.some((w) => w.id === activeId)) {
       setActiveId(workspaces[0].id);
+      writeStoredId(workspaces[0].id);
     }
   }, [workspaces, activeId]);
 
@@ -71,6 +93,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
   const setActiveWorkspaceId = useCallback((id: string) => {
     setActiveId(id);
+    writeStoredId(id);
   }, []);
 
   const value = useMemo<WorkspaceContextValue>(
@@ -92,4 +115,20 @@ export function useWorkspaceContext(): WorkspaceContextValue {
     throw new Error('useWorkspaceContext must be used within a <WorkspaceProvider>.');
   }
   return ctx;
+}
+
+/**
+ * Keep the header chip honest on workspace-scoped pages: call with the
+ * workspace id of whatever you're viewing (e.g. a project's `workspaceId`)
+ * and the active workspace follows the route. Pass `undefined` while the data
+ * is still loading — it's a no-op until an id is known. This is what makes the
+ * chip reflect "the workspace you actually landed on" during navigation.
+ */
+export function useSyncActiveWorkspace(workspaceId: string | undefined): void {
+  const { activeWorkspace, setActiveWorkspaceId } = useWorkspaceContext();
+  useEffect(() => {
+    if (workspaceId && workspaceId !== activeWorkspace?.id) {
+      setActiveWorkspaceId(workspaceId);
+    }
+  }, [workspaceId, activeWorkspace?.id, setActiveWorkspaceId]);
 }

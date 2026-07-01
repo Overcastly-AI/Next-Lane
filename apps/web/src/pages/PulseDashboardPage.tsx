@@ -33,6 +33,7 @@ import { OnboardingPanel } from '@/components/project/OnboardingPanel';
 import { CreateProjectModal } from '@/components/project/CreateProjectModal';
 import { CreateWorkspaceModal } from '@/components/workspace/CreateWorkspaceModal';
 import { useWorkspaces, useCreateWorkspace, useMyRole } from '@/api/workspaces';
+import { useWorkspaceContext } from '@/contexts/WorkspaceContext';
 import { useProjects } from '@/api/projects';
 import { useMyWork } from '@/api/me';
 import { useNotifications } from '@/api/notifications';
@@ -51,7 +52,13 @@ export function PulseDashboardPage() {
   const workspacesQuery = useWorkspaces();
   const createWorkspace = useCreateWorkspace();
 
-  const [selectedWs, setSelectedWs] = useState<string | null>(null);
+  // Single source of truth for the active workspace — shared with the header
+  // chip and persisted across reloads. No separate local selection state.
+  const {
+    activeWorkspace,
+    setActiveWorkspaceId,
+  } = useWorkspaceContext();
+  const selectedWs = activeWorkspace?.id ?? null;
   const [creatingDefault, setCreatingDefault] = useState(false);
   const [projectModalOpen, setProjectModalOpen] = useState(false);
   const [workspaceModalOpen, setWorkspaceModalOpen] = useState(false);
@@ -75,18 +82,8 @@ export function PulseDashboardPage() {
     }
   }, [workspacesQuery.isSuccess, workspaces, creatingDefault, createWorkspace]);
 
-  // Keep selection in sync as workspaces load/change.
-  useEffect(() => {
-    if (!workspaces || workspaces.length === 0) return;
-    if (!selectedWs || !workspaces.some((w) => w.id === selectedWs)) {
-      setSelectedWs(workspaces[0].id);
-    }
-  }, [workspaces, selectedWs]);
-
-  const activeWorkspace = useMemo(
-    () => workspaces?.find((w) => w.id === selectedWs),
-    [workspaces, selectedWs],
-  );
+  // Selection seeding + healing lives in WorkspaceContext (persisted); the
+  // dashboard just reflects it.
 
   const myRole = useMyRole(activeWorkspace?.id);
   const isAdmin = myRole === Role.ADMIN;
@@ -136,7 +133,7 @@ export function PulseDashboardPage() {
             <select
               id="pulse-ws-select"
               value={selectedWs ?? ''}
-              onChange={(e) => setSelectedWs(e.target.value)}
+              onChange={(e) => setActiveWorkspaceId(e.target.value)}
               className="h-9 w-52 rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
             >
               {workspaces?.map((w) => (
@@ -248,7 +245,7 @@ export function PulseDashboardPage() {
         onClose={() => setWorkspaceModalOpen(false)}
         onCreated={(ws) => {
           setWorkspaceModalOpen(false);
-          setSelectedWs(ws.id);
+          setActiveWorkspaceId(ws.id);
         }}
       />
     </Shell>

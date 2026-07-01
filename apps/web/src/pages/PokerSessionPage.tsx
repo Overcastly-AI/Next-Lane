@@ -19,6 +19,7 @@ import { useIssue } from '@/api/issues';
 import { useUsers } from '@/api/meta';
 import { useBoard } from '@/api/issues';
 import { useMyRole } from '@/api/workspaces';
+import { useSyncActiveWorkspace } from '@/contexts/WorkspaceContext';
 import { canEdit } from '@/lib/permissions';
 import { AppHeader } from '@/components/AppHeader';
 import { ProjectNav } from '@/components/project/ProjectNav';
@@ -41,6 +42,7 @@ export function PokerSessionPage() {
   const toast = useToast();
 
   const myRole = useMyRole(boardQuery.data?.project.workspaceId);
+  useSyncActiveWorkspace(boardQuery.data?.project.workspaceId);
   const editable = canEdit(myRole);
 
   // Subscribe to realtime poker events.

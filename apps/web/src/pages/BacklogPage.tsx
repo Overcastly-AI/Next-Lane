@@ -24,6 +24,7 @@ import {
   useDeleteSprint,
 } from '@/api/sprints';
 import { useMyRole } from '@/api/workspaces';
+import { useSyncActiveWorkspace } from '@/contexts/WorkspaceContext';
 import { canEdit } from '@/lib/permissions';
 import { endDateStatus, formatDateRange } from '@/lib/sprintDates';
 import { AppHeader } from '@/components/AppHeader';
@@ -101,6 +102,7 @@ export function BacklogPage() {
   const labels = labelsQuery.data ?? [];
   const board = boardQuery.data;
   const myRole = useMyRole(board?.project.workspaceId);
+  useSyncActiveWorkspace(board?.project.workspaceId);
   const editable = canEdit(myRole);
 
   function handleBulkApply(changes: Parameters<typeof bulkUpdate.mutate>[0]['changes']) {

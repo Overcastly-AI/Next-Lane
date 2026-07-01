@@ -47,6 +47,7 @@ function WorkspaceChip() {
   const { activeWorkspace, workspaces, setActiveWorkspaceId } = useWorkspaceContext();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const navigate = useNavigate();
 
   // Close on outside click.
   useEffect(() => {
@@ -123,6 +124,10 @@ function WorkspaceChip() {
               onClick={() => {
                 setActiveWorkspaceId(ws.id);
                 setOpen(false);
+                // Land on the newly-active workspace's home so the content
+                // re-scopes — otherwise switching only recolors the header
+                // while you're still looking at the previous workspace.
+                if (ws.id !== activeWorkspace.id) navigate('/');
               }}
               className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors duration-[120ms] hover:bg-ink-50 focus-visible:outline-none focus-visible:bg-ink-50 ${
                 ws.id === activeWorkspace.id

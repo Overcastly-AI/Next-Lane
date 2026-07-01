@@ -37,6 +37,7 @@ import {
 import { useProjectIssues, useUpdateIssue, useBoard, useBulkUpdateIssues } from '@/api/issues';
 import { useUsers, useLabels, useSprints } from '@/api/meta';
 import { useMyRole } from '@/api/workspaces';
+import { useSyncActiveWorkspace } from '@/contexts/WorkspaceContext';
 import { useToggleIssueLabel } from '@/api/labels';
 import { canEdit } from '@/lib/permissions';
 import { errorMessage } from '@/lib/errorMessage';
@@ -91,6 +92,7 @@ export function TriagePage() {
   const bulkUpdate = useBulkUpdateIssues();
 
   const myRole = useMyRole(boardQuery.data?.project.workspaceId);
+  useSyncActiveWorkspace(boardQuery.data?.project.workspaceId);
   const editable = canEdit(myRole);
 
   // Sorted issue list
