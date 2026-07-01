@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { rankAfter, rankBetween } from '@next-lane/shared';
 import { request } from './client';
 
 // ---------------------------------------------------------------------------
@@ -192,12 +193,64 @@ export function useUpdatePersonalCard() {
         body: patch,
       }),
     onMutate: async ({ id, patch }) => {
-      // Optimistic update for move operations so the UI responds instantly.
+      // Optimistic update so the UI responds instantly. For a move we mirror the
+      // server exactly: pull the card out of its column, compute a fractional
+      // rank between the target neighbors, and drop it into the target column —
+      // the board renders cards sorted by rank, so this reflects the new order
+      // without a snap-back before the refetch confirms it.
       await qc.cancelQueries({ queryKey: personalBoardQk.board });
       const previous = qc.getQueryData<PersonalColumnDto[]>(
         personalBoardQk.board,
       );
-      if (previous && patch.columnId !== undefined) {
+      if (!previous) return { previous };
+
+      const isMove =
+        patch.columnId !== undefined ||
+        patch.beforeId !== undefined ||
+        patch.afterId !== undefined;
+
+      const dragged = previous
+        .flatMap((col) => col.cards ?? [])
+        .find((c) => c.id === id);
+
+      if (isMove && dragged) {
+        const targetColumnId = patch.columnId ?? dragged.columnId;
+        const byRank = (a: PersonalCardDto, b: PersonalCardDto) =>
+          a.rank < b.rank ? -1 : a.rank > b.rank ? 1 : 0;
+        const targetCards = (
+          previous.find((c) => c.id === targetColumnId)?.cards ?? []
+        )
+          .filter((c) => c.id !== id)
+          .slice()
+          .sort(byRank);
+
+        const beforeRank = patch.beforeId
+          ? (targetCards.find((c) => c.id === patch.beforeId)?.rank ?? null)
+          : null;
+        const afterRank = patch.afterId
+          ? (targetCards.find((c) => c.id === patch.afterId)?.rank ?? null)
+          : null;
+
+        const newRank =
+          !patch.beforeId && !patch.afterId
+            ? rankAfter(targetCards[targetCards.length - 1]?.rank ?? null)
+            : rankBetween(beforeRank, afterRank);
+
+        const moved: PersonalCardDto = {
+          ...dragged,
+          columnId: targetColumnId,
+          rank: newRank,
+        };
+        const updated = previous.map((col) => {
+          const cards = (col.cards ?? []).filter((c) => c.id !== id);
+          return {
+            ...col,
+            cards: col.id === targetColumnId ? [...cards, moved] : cards,
+          };
+        });
+        qc.setQueryData(personalBoardQk.board, updated);
+      } else if (dragged) {
+        // Content-only edit (title/notes/color/dueDate): patch in place.
         const updated = previous.map((col) => ({
           ...col,
           cards: (col.cards ?? []).map((c) =>

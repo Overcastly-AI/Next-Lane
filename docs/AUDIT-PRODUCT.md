@@ -1780,3 +1780,121 @@ the "why do I still need a separate tool" question.
 - Live tracker import (Jira/GitHub/Linear API) — P2 · M · File-based import only; OAuth + server-side pull needed for real migration flows · backend partial (parsing layer done; auth/fetch layer absent)
 - AI triage assistant panel (Phase 6 preview) — P2 · L · Concrete embodiment of "private AI" differentiator; Ollama call from issue drawer; suggest type/priority/component · backend does not exist (pgvector not installed; Ollama client not wired)
 - Public changelog / release notes page — P3 · M · Version RELEASED state has no public output; share-token pattern already exists · backend does not exist (no changelog endpoint or public route)
+
+---
+
+## 2026-07-01 — Pass 10 (hands-on audit: fresh user + live QA-polluted demo workspace)
+
+**Method.** Ran the live stack (web on :3000, API on :4000, already up from a prior
+session). Did two hands-on passes with Playwright driven manually (not the fixed e2e
+suite): (1) registered a **brand-new user** end-to-end — register → empty workspace →
+create first project → create issue → Reports → Roadmap — to judge true first-run
+experience; (2) explored the **existing demo workspace** (heavily polluted by hundreds
+of prior QA-run projects/sprints/workspaces with names like "QA Backlog 255950910" /
+"QA Sprint 1782625596211") on both desktop and Pixel-5 mobile viewport. Cross-checked
+every finding against `apps/web/src/**` and `apps/api/src/**` before writing it down.
+Read `docs/ROADMAP.md` Phase 5 and the full `docs/BACKLOG.md` Ready/Next/Done sections
+first — the shipped-feature list in the task brief is confirmed accurate; this pass
+looks for what's *still* missing or broken beneath that list, not what's already done.
+
+### Headline finding: a real, reproducible mobile bug on the single most-used screen
+
+The board toolbar's trailing button row (Colors / Export CSV / Import CSV / **+ Create
+issue**) is a plain `flex items-center gap-3` with no `flex-wrap` and no
+`overflow-x-auto` (`apps/web/src/pages/BoardPage.tsx:854`, inside the toolbar wrapper at
+line 734 that only gains `sm:flex-row sm:flex-wrap` — below the `sm:` breakpoint it's
+`flex-col` for the *rows*, but this particular row is unconditionally `flex` with no
+wrap of its own). At a 393px viewport (Pixel 5) the row overflows its container, is not
+clipped by a scroll region, and renders **the "+ Create issue" button's label directly
+on top of the column header content below it** ("issue" literally overlaps "Burndown
+chart"). This was caught by direct screenshot, not the fixed e2e suite (which likely
+uses `.click()` on a test-id locator that still hits the (invisible/overlapping)
+element regardless of visual position — a case of "tests pass, product broken" that
+CLAUDE.md explicitly warns about). Screenshot evidence: toolbar overflow at 393px width
+showed Group-by/remaining quick-filter chips clipped off-screen with no way to reach
+them, and the Create/Colors/Export/Import row overlapping board content.
+
+### Ratings (Pass 10)
+
+| Area | Score | Note |
+|---|---|---|
+| Auth / onboarding | 5 | Fresh-register → empty-workspace → "Welcome to Next Lane" panel with 3 feature callouts → "Create your first project" is genuinely well-designed; zero friction, zero dead ends observed. |
+| Projects / board (desktop) | 5 | Dense, professional Kanban board; NLQL bar, quick-filter chips, saved filters, swimlanes, card colors, WIP limits, per-board workflow selector all present and coherent together. |
+| Board (mobile) | **2** | Toolbar overflow bug above actively breaks the primary daily-driver screen at phone width — buttons unreachable or visually broken. This is a regression-class bug, not a missing feature. |
+| Issue detail drawer (mobile) | 5 | By contrast, the drawer itself (description, attachments, checklist, time tracking, activity) is flawless on the same 393px viewport — full width, correctly stacked, no overflow. |
+| Custom fields | 4 | Backend + settings + drawer + create-modal all solid, but **not surfaced on the board card face** — a user scanning the board cannot see a custom field's value without opening every card. Category leaders let you pin a custom field to the card. |
+| Issue links / dependencies | 3 | Backend + drawer UI solid, but (per the backlog's own note) "board card badge skipped" — a blocked issue looks identical to an unblocked one on the board. This is a real scanning-cost gap: the whole point of visualizing blockers is seeing them without a click. |
+| Dashboards (Pulse home) | 3 | Well-designed, useful sections (active sprints, assigned-to-me, recent activity, projects) but entirely fixed/hardcoded — no gadget/widget model, can't add a chart, can't reorder, can't remove a section you don't use. Matches the Pass-8/9 finding; still true. |
+| Roadmap / timeline | 3 | Attractive hand-rolled Gantt-style view (sprints + epics as bars, "today" marker, progress fill) but **strictly read-only** — no drag-to-reschedule an epic's dates, no cross-project roadmap, single-project scope only. |
+| Automation engine | 4 | Trigger set is issue-lifecycle-only (`ISSUE_CREATED/UPDATED/TRANSITIONED/COMMENTED`) — no time-based/scheduled trigger, so SLA escalation ("no update in 3 days") or due-date reminders aren't buildable. Confirms Pass-9 finding, still open. |
+| Reports | 4 | Velocity/burndown/cumulative-flow all present with good empty states; no export-to-image/PDF, no cross-sprint comparison view. |
+| Permissions / roles | 3 | Only 3 flat workspace-wide roles (Admin/Member/Viewer); confirmed no per-project role override — a user is Admin or nothing across every project in a workspace. Real friction for agencies/consultancies running multiple client projects in one workspace. Matches Pass-9 finding. |
+| Notifications | 4 | Center, preferences, @mentions, watch toggle all present and functional; "You're all caught up" empty state is clean. No digest/batching options (e.g., "email me a daily summary" vs. per-event) observed in preferences. |
+| Project/issue creation flow | 4 | Clean modals, sensible defaults (Task/Medium/To Do/Unassigned); no project templates (e.g., "Scrum software project" starter with pre-built statuses/board), no project icon or color at creation — every project card looks identical until you memorize keys. |
+
+### Parity Scorecard (Pass 10 — re-verified, deltas from Pass 9 noted)
+
+| Capability | Our depth | Leader baseline | Gap | Delta |
+|---|---|---|---|---|
+| Multiple boards / board types | 5 | 5 | none | unchanged |
+| Configurable columns/swimlanes | 5 | 5 | none | unchanged |
+| Query language (NLQL) + saved/shared filters | 5 | 5 | none | unchanged — verified `isShared` flag works, confirmed in code |
+| Custom fields (definition + input types) | 4 | 5 | **card-face surfacing missing** | narrowed from prior "does not exist" framing — definition/CRUD is excellent, only card display is the gap |
+| Card color rules | 5 | 5 | none | unchanged |
+| Card-level link/dependency indicator | **2** | 4 | blocked/linked issues invisible on board | **new finding this pass** |
+| Configurable statuses/transitions + gates | 5 | 5 | none | unchanged |
+| Automation rule engine | 4 | 5 | no scheduled/time trigger | confirmed still open (Pass 9) |
+| Dashboards/gadgets | 3 | 5 | fixed sections, no gadget grid | confirmed still open (Pass 8/9) |
+| Issue depth (components/versions/bulk/links/watchers/time) | 5 | 5 | none | unchanged |
+| Permissions granularity | 3 | 5 | no per-project role override | confirmed still open (Pass 9) |
+| Mobile board toolbar | **2** | 5 | **overflow/overlap bug, not a missing feature** | **new finding this pass — regression-class** |
+| Import/export | 4 | 5 | file-based only, no live OAuth pull | confirmed still open (Pass 9) |
+
+### Top gaps — prioritized backlog candidates
+
+| Rank | Item | Why it matters (user value) | Size | Area |
+|---|---|---|---|---|
+| 1 | **Fix mobile board toolbar overflow/overlap** — wrap or horizontally scroll the Colors/Export/Import/Create-issue button row (`BoardPage.tsx` ~line 854) the same way the filter-pill row already does (`overflow-x-auto` + `sm:overflow-x-visible`) | The board is the single most-visited screen; on a phone, users currently cannot reliably tap "Create issue" and see unreachable buttons overlapping column content. This is a visible, embarrassing bug a real user hits in their first minute on mobile. | S | Board / mobile |
+| 2 | **Surface blocked/linked-issue indicator on board cards** — a small icon badge (chain-link / blocked-stop icon) on `IssueCard` when the issue has any `BLOCKS`/`BLOCKED_BY` link, fetched via a lightweight per-board link-count endpoint (avoids the N+1 concern that shelved this originally) | Dependency tracking only has value if you can *see* blockers while scanning the board — right now you must open every card to know. This is the highest-leverage finish on an already-shipped feature. | M | Board / issue links |
+| 3 | **Pin a custom field onto the card face** — let a custom-field definition carry a `showOnCard: boolean` and render it as a small chip on `IssueCard`, same visual language as story points/labels | Custom fields exist end-to-end but are invisible without opening the drawer, which defeats their purpose for at-a-glance board scanning (e.g., a "Severity" or "Customer" field teams actually want visible). | M | Custom fields / board |
+| 4 | **Configurable dashboard (gadget grid) for the Pulse home page** — let a user add/remove/reorder gadgets (sprint snapshot, my issues, a saved-filter result list, a velocity chart) instead of the fixed 4-section layout | Reinforces Pass 8/9 finding with fresh evidence: the home screen is the retention surface, and every category-leading tracker lets you configure it. Users we're trying to convert judge "is this a real tool" partly on this. | L | Dashboards |
+| 5 | **Scheduled/time-based automation trigger** (e.g., `TIME_ELAPSED_SINCE_TRANSITION`, `DUE_DATE_APPROACHING`) evaluated by a cron sweep | Confirms Pass 9: today's 4 triggers are all reactive to a user action; the most valuable automations in real teams (SLA nudges, stale-issue escalation, due-date reminders) are time-based and are structurally impossible right now. | M | Automation |
+| 6 | **Per-project role override** (a `ProjectMembership` layer above the workspace-wide `Membership`) so a user can be Viewer on Project A and Admin on Project B in the same workspace | Confirms Pass 9: any team running client work, cross-functional access, or a "guest reviewer on one project only" pattern is blocked today — it's binary workspace-wide access. | L | Permissions |
+| 7 | **Project creation: template + visual identity** — a project-type preset (Kanban starter / Scrum starter with seeded statuses) and a color/icon picker at creation time, shown on the project card | Every project card in a workspace looks identical (same generic folder icon, same gray key badge) until a user memorizes the key — a small thing that compounds with >5 projects. Low cost, immediate "feels considered" payoff, and directly supports the founder's "premium, distinctive" design directive. | S | Projects / onboarding |
+| 8 | **Roadmap: drag-to-reschedule epics + cross-project view** — make the existing read-only Gantt bars draggable (reuse the fractional-rank/date-patch pattern already used for sprint bars elsewhere) and add a workspace-level "all projects" roadmap toggle | The visualization already exists and is well-built; today it's look-but-don't-touch and single-project only, so PMs doing real portfolio planning still leave the app to reschedule work. | M | Roadmap |
+
+### Ideation — 3 ambitious new features/UX improvements (Pass 10)
+
+1. **"Board health" scan on load** — a lightweight, dismissible banner on the board (or a badge in the toolbar) that surfaces board hygiene issues at a glance: N issues blocked with no comment in 7+ days, N issues with no assignee in an active sprint, N stale issues untouched 14+ days. This turns the already-shipped analytics/automation infrastructure into a proactive nudge instead of a passive report you have to remember to check — a genuinely differentiated "the tool tells you what needs attention" moment that neither the Reports page nor Automation currently deliver on their own.
+2. **Inline quick-add for sprint/epic from the board card** — right now moving an unassigned backlog issue into the active sprint, or attaching it to an epic, requires opening the drawer or using Backlog drag-and-drop. A right-click / long-press card context menu ("Add to sprint", "Set epic", "Set assignee") would remove several clicks from the most repetitive daily action power users do dozens of times.
+3. **Public/embeddable status page per project** — reusing the already-shipped share-token pattern (used for shared boards) to generate a read-only, branded, no-login "project status" page a team can send to a client or stakeholder: current sprint progress, recently completed issues, upcoming milestones. This is a strong, low-effort story for the "self-hosted but still looks professional to external stakeholders" pitch and differentiates from tools that gate this behind an expensive plan tier.
+
+### Direction — next quarter
+
+The core tracker is genuinely feature-complete and, on desktop, competitive with category
+leaders — the shipped list in this task's brief is not an exaggeration. The next quarter
+should **not** be more net-new surface area; it should be **finishing what's already
+built** so nothing shipped reads as a demo. Concretely: (a) close the mobile regression
+found this pass immediately — it is a one-file fix and directly contradicts the
+"desktop AND mobile" quality bar in CLAUDE.md; (b) spend a focused sprint making already-
+shipped features *visible where users actually look* — card-face surfacing for custom
+fields and blocked-link badges, both cheap relative to the original feature build; (c)
+tackle the one remaining structural parity gap (configurable dashboards) since it's the
+last item on the original parity benchmark that's still a flat "3"; (d) treat permissions
+granularity and scheduled automation as the two features that unlock adjacent buyer
+segments (agencies/consultancies; SLA-driven support teams) rather than deepening
+features the current buyer segment already has enough of.
+
+### Backlog-Groomer Ingest — Pass 10 (title · priority · size · rationale)
+
+- Fix mobile board toolbar overflow/overlap (Colors/Export/Import/Create-issue row) — P0 · S · Reproducible visual bug on the primary screen at 393px width; button overlaps column content; violates the desktop+mobile quality bar
+- Board card blocked/linked-issue indicator — P1 · M · Issue links exist but are invisible while scanning the board; highest-leverage finish on a shipped feature
+- Card-face custom field display (`showOnCard` flag) — P1 · M · Custom fields invisible without opening every card; defeats at-a-glance scanning value
+- Configurable dashboard / gadget grid for Pulse home — P1 · L · Last remaining flat-3 parity gap from Pass 8/9, still open; home screen drives retention
+- Scheduled/time-based automation trigger (cron sweep) — P2 · M · Reactive-only triggers block SLA/stale-issue/due-date automation patterns; reconfirms Pass 9
+- Per-project role override (ProjectMembership layer) — P2 · L · Workspace-wide-only roles block agency/consultancy multi-client usage; reconfirms Pass 9
+- Project creation template + color/icon picker — P2 · S · Every project card looks identical; cheap "feels considered" win aligned with design-elevation directive
+- Roadmap drag-to-reschedule + cross-project view — P2 · M · Visualization is built but look-only and single-project; PMs still leave the app to replan
+- "Board health" proactive nudge banner (stale/unassigned/blocked-too-long) — P3 · M · New ideation; turns existing analytics/automation data into a proactive signal
+- Inline card context menu (quick sprint/epic/assignee) — P3 · S · New ideation; removes clicks from the most repetitive daily board action
+- Public embeddable project status page (share-token reuse) — P3 · M · New ideation; strong self-hosted-but-professional story for external stakeholders

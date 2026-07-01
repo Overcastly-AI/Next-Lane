@@ -74,6 +74,9 @@ function makePrisma(wsOverrides: Partial<ReturnType<typeof makeWorkspaceRow>> = 
   membership: {
     findUnique: jest.Mock;
   };
+  attachment: {
+    findMany: jest.Mock;
+  };
 } {
   const ws = { ...makeWorkspaceRow(), ...wsOverrides };
 
@@ -96,9 +99,11 @@ function makePrisma(wsOverrides: Partial<ReturnType<typeof makeWorkspaceRow>> = 
       ),
       delete: jest.fn().mockResolvedValue(ws),
     },
+    attachment: { findMany: jest.fn().mockResolvedValue([]) },
   } as unknown as PrismaService & {
     workspace: { findUnique: jest.Mock; update: jest.Mock; delete: jest.Mock };
     membership: { findUnique: jest.Mock };
+    attachment: { findMany: jest.Mock };
   };
 }
 
@@ -248,6 +253,24 @@ describe('WorkspacesService.remove()', () => {
     expect(
       (prisma as { workspace: { delete: jest.Mock } }).workspace.delete,
     ).toHaveBeenCalledWith({ where: { id: WS_ID } });
+  });
+
+  it('collects attachment files under the workspace before deleting (no orphaned files)', async () => {
+    const prisma = makePrisma();
+    (
+      prisma as { attachment: { findMany: jest.Mock } }
+    ).attachment.findMany.mockResolvedValue([{ storageKey: 'file-1' }]);
+    const svc = makeService(prisma);
+
+    await svc.remove(ADMIN_ID, WS_ID);
+
+    // Must query attachments scoped to this workspace's issues before cascade.
+    expect(
+      (prisma as { attachment: { findMany: jest.Mock } }).attachment.findMany,
+    ).toHaveBeenCalledWith({
+      where: { issue: { project: { workspaceId: WS_ID } } },
+      select: { storageKey: true },
+    });
   });
 
   it('throws ForbiddenException for a non-admin member', async () => {

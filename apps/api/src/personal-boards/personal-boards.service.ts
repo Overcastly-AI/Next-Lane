@@ -413,10 +413,22 @@ export class PersonalBoardsService {
       description: card.notes ?? undefined,
     });
 
-    const updated = await this.prisma.personalCard.update({
-      where: { id: cardId },
-      data: { promotedIssueId: issue.id },
-    });
+    // IssuesService.create can't share a transaction with the card update
+    // without a larger refactor, so if linking the card back fails we
+    // compensate by deleting the just-created issue. That keeps the two in sync
+    // and preserves the double-promote guard (no orphaned issue left behind).
+    let updated;
+    try {
+      updated = await this.prisma.personalCard.update({
+        where: { id: cardId },
+        data: { promotedIssueId: issue.id },
+      });
+    } catch (err) {
+      await this.prisma.issue
+        .delete({ where: { id: issue.id } })
+        .catch(() => undefined);
+      throw err;
+    }
 
     return { card: toCardDto(updated), issue };
   }

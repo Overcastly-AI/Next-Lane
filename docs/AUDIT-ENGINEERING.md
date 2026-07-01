@@ -2207,3 +2207,219 @@ The most structurally important longer-term investment is the Playwright-against
 - **Move presence map to Redis HSET for multi-replica correctness** · P3 · M · Per-process presence map is incorrect under HPA; existing Redis clients already injected; `apps/api/src/realtime/realtime.gateway.ts:71`
 - **Playwright e2e suite against real Docker Compose stack** · P2 · M · Current e2e uses `vite preview`; nginx CSP headers, routing, entrypoint substitution never tested; add `playwright.docker.config.ts` + CI job
 - **Rewrite `projectAnalytics` as DB-level aggregation** · P2 · M · Full-issue `findMany` materializes all project issues; `apps/api/src/analytics/analytics.service.ts:418`
+
+---
+
+## 2026-07-01 — Pass 10 (personal-board colors/due-dates/reorder, quick-links, workspace delete/logo)
+
+Scope: focused deep-dive on the newest surface area — `apps/api/src/personal-boards/**`
+(column/card `color`, card `dueDate`, `PATCH /me/personal-columns/reorder`), `apps/api/src/me/**`
+quick-links CRUD, `apps/api/src/workspaces/**` (`DELETE /workspaces/:id` cascade, 4 MB logo cap),
+and the corresponding web surfaces (`AppHeader`/`WorkspaceChip`/`QuickLinksMenu`,
+`WorkspaceSettingsPage`, `PersonalBoardPage`, `ColorSwatchPicker`). Cross-checked all
+Pass-9 open items against current code. `tsc --noEmit` clean; targeted Jest run
+(`personal-boards`, `me.service`, `workspaces.service`) — 73/73 passing.
+
+### Pass-9 fix verification — all confirmed shipped
+
+| Fix area | Status | Evidence |
+|---|---|---|
+| Docker artifact CSP smoke test (4-pass-old gap) | **CONFIRMED FIXED** | `scripts/smoke-web-csp.sh` + `images.yml` `smoke-test` job (commit `799a393`); asserts `connect-src` in both standalone and same-origin modes, checks for leaked `__NL_CONNECT_SRC__` placeholder. |
+| WebSocket CORS wide-open | CONFIRMED FIXED | `realtime.gateway.ts:75` `@WebSocketGateway({ cors: _wsCorsOption })` mirrors `CORS_ORIGINS` allowlist (commit `daeb585`). |
+| `WorkflowTransition(projectId, toStatusId)` index | CONFIRMED FIXED | Migration adds the composite index; referenced in `daeb585`. |
+| `exportCsv` unbounded `findMany` | CONFIRMED FIXED (cap only) | `issues.service.ts:1238` `CSV_ROW_CAP = 10_000`, `take: CAP+1` sentinel, `X-Next-Lane-Truncated` header. Streaming (the long-term fix) still not done — acceptable, capped is sufficient for now. |
+| `WorkLogsService` bespoke `resolveWorkspaceId` | CONFIRMED FIXED | Now calls shared `assertProjectMember`. |
+| `AUTO_SEED` default | CONFIRMED FIXED | `docker-entrypoint.sh:11` defaults to `false`; `docker-compose.yml:52` explicitly sets `"true"` for the demo stack. |
+| Password `@MinLength` 6 vs 8 | CONFIRMED FIXED | `RegisterDto` raised to 8, matching `ResetPasswordDto`. |
+| 5 feature families missing from tenant-isolation matrix | CONFIRMED FIXED (mostly) | `daeb585` added 16 rows (work-logs, standups, issue-templates, personal-**columns**, poker); matrix now 73 rows. **Gap:** personal-**cards**, quick-links, and workspace `PATCH`/logo-upload are still absent (see Risk #4 below) — these are new-this-batch surfaces, not oversights from Pass 9. |
+| JWT refresh/revocation | STILL OPEN | No change; 7-day non-revocable access token remains (`auth.config.ts`). Carried forward, not re-ranked below top 8 this pass since nothing regressed. |
+| Redis-backed presence map | STILL OPEN | Unchanged; documented single-replica limitation. |
+
+### New-surface findings (this pass)
+
+**Positive:** Every new backend endpoint (personal-boards, quick-links, workspace
+delete/logo) has correct ownership scoping — `getOwnedColumn`/`getOwnedCard` in
+`personal-boards.service.ts` and `assertOwnedQuickLink` in `me.service.ts` both
+404 (not 403) on cross-user access, avoiding existence-leak, and both are backed
+by real unit tests (`personal-boards.service.spec.ts` 634 lines, `me.service.spec.ts`
+275 lines) asserting the 404-on-foreign-owner path. DTO validation is thorough
+(`@IsHexColor`, `@IsISO8601`, `@IsUrl` with protocol allowlist, length caps) across
+all new DTOs. Workspace logo upload correctly reuses the Pass-8 magic-byte check.
+Workspace delete has a type-to-confirm dialog client-side (`DeleteWorkspaceDialog`
+in `WorkspaceSettingsPage.tsx`) — a good safety net the API itself doesn't require.
+
+### Ratings table (Pass 10)
+
+| Area | Score | Delta | Note |
+|---|---|---|---|
+| Architecture & module boundaries | 4 | — | New modules follow the established pattern; `QuickLinksMenu.tsx` duplicates `ColorSwatchPicker` instead of reusing it (see Risk #3). |
+| Data model & migrations | 4 | — | `PersonalColumn.order`/`PersonalCard.rank` schema is sound; no `@@unique` on `(userId, order)` is intentional (app-level enforcement in `reorderColumns`), but `updateColumn` still allows an arbitrary out-of-band `order` write that can desync from the reorder invariant (Risk #5). |
+| AuthN/AuthZ & multi-tenant isolation | 3 | -1 | Ownership logic itself is correct and unit-tested, but the cross-tenant **integration** matrix does not cover personal-cards, quick-links, or workspace `PATCH`/logo-upload — the exact regression-guard gap the matrix exists to close (Risk #4). |
+| Input validation | 5 | +1 | Best-in-class this pass: hex/ISO8601/URL-protocol validation with `ValidateIf(v !== null)` clear-semantics on every new DTO. No gaps found. |
+| Error handling | 4 | — | Consistent 404-not-403 ownership pattern; `BadRequestException` messages are specific and actionable. |
+| N+1 / query efficiency | 4 | — | Minor: `getBoard` lazy-init does 3 sequential `create` calls instead of one `createMany` (`personal-boards.service.ts:132-136`) — fires once per user ever, not worth prioritizing. |
+| Realtime correctness | 4 | — | No regressions; personal boards are intentionally realtime-free (private, single-viewer). |
+| Rank / ordering integrity | **3** | -2 (for this surface) | `reorderColumns` itself is correct (whole-set validation + single transaction). But the **frontend optimistic-update bug** (Risk #1) means the fractional-rank UI can visibly desync from the true order until a refetch completes — an ordering *integrity-of-experience* regression even though the backend data is fine. |
+| Test coverage (unit + e2e) | **2** | -1 | Backend unit coverage for the new modules is strong (unit tests exist and pass for every ownership/validation path). But **zero e2e coverage** exists for `WorkspaceSettingsPage` (rename, delete-confirm dialog), `QuickLinksMenu` (add/edit/delete/group/collapse), the workspace switcher, or personal-board column color/reorder — an entire feature batch shipped with no browser-level regression guard (Risk #2). |
+| Type safety | 5 | — | Strict TS throughout; no stray `any` in any of the new files. |
+| Build / CI / Docker | 4 | +1 | Docker CSP smoke test finally landed — the longest-standing QA-discipline gap in this project's history is closed. |
+| Secrets / config hygiene | 4 | — | No new secret surfaces; `AUTO_SEED` default flip is a good hardening step. |
+| Dependency risk | 4 | — | No new dependencies introduced by this batch. |
+| Debugging / QA discipline | 3 | +1 | Docker artifact gap closed (big win). Still missing: a regression guard for the personal-board drag-reorder visual-flicker bug class (Risk #1) — the e2e suite explicitly avoids raw drag simulation, so this class of bug is structurally invisible to CI by design, not by oversight. |
+
+### Top risks & debt (Pass 10, ranked by impact × probability)
+
+**[1] Personal-board card reorder: optimistic update silently no-ops for same-column drags, and never updates `rank` for any drag**
+- What: `useUpdatePersonalCard`'s `onMutate` in `apps/web/src/api/personal-board.ts:194-209` only applies the optimistic patch `if (patch.columnId !== undefined)`. A same-column reorder (drag a card up/down within one column) sends only `beforeId`/`afterId`, no `columnId` — so the guard is `false` and **no optimistic update happens at all**: the dropped card visually snaps back to its old position and only jumps to the correct spot once the PATCH round-trips and `onSettled` invalidates the query. Even in the cross-column case where the guard does pass, the merged object is `{ ...c, ...patch }`, which spreads `beforeId`/`afterId` onto the card (fields `PersonalCardDto` doesn't have) but never computes a new `rank` — and every render re-sorts cards by `rank` (`PersonalBoardPage.tsx:388`), so the card doesn't actually move to its optimistic position in the column list until the server responds.
+- Impact/likelihood: Medium impact (visible flicker/snap-back on every personal-board drag, the same *class* of bug — visual desync surviving a green test suite — called out by name in the project's QA mandate), certain/always-reproducible.
+- Files: `apps/web/src/api/personal-board.ts:186-220`, `apps/web/src/pages/PersonalBoardPage.tsx:388`
+- Fix: Compute the optimistic `rank` client-side using the same `rankBetween`/`rankAfter` helpers from `@next-lane/shared` that the backend uses (they're already bundled for the web via the shared package), keyed off the `beforeId`/`afterId` cards in the target column, and always run the optimistic branch (drop the `columnId !== undefined` guard). This mirrors the pattern the main issue board already uses for its own drag-and-drop optimistic updates — worth checking `apps/web/src/api/issues.ts`'s `useMoveIssue` as a reference implementation to copy.
+- Size: S
+
+**[2] Zero e2e coverage for the entire new-feature batch (WorkspaceSettingsPage, QuickLinksMenu, column color/reorder)**
+- What: `apps/web/e2e/workspace-branding.spec.ts` covers only logo upload and brand color; there is no spec file for workspace rename, the type-to-confirm delete dialog (`DeleteWorkspaceDialog`), the workspace switcher (`WorkspaceChip`), or `QuickLinksMenu` at all (add/edit/delete/group/collapse/color). `personal-board.spec.ts` has no test for column color-picking or the new column drag-reorder (`PATCH /me/personal-columns/reorder`) — confirmed via `grep` for `data-testid="delete-workspace-button"`, `"quick-links-button"`, `"workspace-chip"`, `"personal-column-drag"` across all of `apps/web/e2e/`: zero matches for any of them.
+- Impact/likelihood: High impact — workspace delete is the **first hard-cascade-delete path ever shipped** in this app (previously only soft-`archive` existed for projects; nothing else supported irreversible deletion), and it has no browser-level test that a real click-through-and-confirm flow works end-to-end. Quick-links is a header-level feature every user will touch. Likelihood of a regression slipping through is high given this is exactly the pattern (feature ships, tests pass because they don't exist for the new surface, bug reaches user) the project's own QA mandate was written to prevent.
+- Files: `apps/web/e2e/` (missing: `workspace-settings.spec.ts`, `quick-links.spec.ts`; `personal-board.spec.ts` missing column-color/reorder cases)
+- Fix: Add three specs (desktop + mobile each): (a) workspace rename + delete-confirm-dialog (type mismatched name → button disabled; type correct name → workspace deleted, redirected to `/`, workspace gone from switcher); (b) quick-links CRUD + grouping + collapse; (c) personal-board column color picker + column drag-reorder end-state assertion (via the existing "avoid raw pointer drag" pattern already used for cards — call the reorder mutation path through a keyboard-accessible affordance if one exists, or assert post-drag DOM order using `dragTo()` since dnd-kit does support Playwright's native drag events for simple lists).
+- Size: M
+
+**[3] `QuickLinksMenu.tsx` duplicates the shared `ColorSwatchPicker` primitive instead of reusing it**
+- What: `apps/web/src/components/QuickLinksMenu.tsx:21-97` defines a local `PALETTE` array (8 hex colors) and a local `ColorPicker` component that is structurally identical to `apps/web/src/components/ui/ColorSwatchPicker.tsx`'s `ACCENT_PALETTE`/`ColorSwatchPicker` — same 8 colors in the same order, same "no color" affordance, same `radiogroup` pattern — just with different `data-testid` values (`quick-link-color-swatch`/`quick-link-color-none` vs `color-swatch`/`color-none`).
+- Impact/likelihood: Medium impact (direct violation of the project's own design-system mandate: "`src/components/ui/*` primitives are the single source of truth; every component derives from them"), certain (already landed, will diverge further with each independent edit).
+- Files: `apps/web/src/components/QuickLinksMenu.tsx:21-97`, `apps/web/src/components/ui/ColorSwatchPicker.tsx`
+- Fix: Delete the local `PALETTE`/`ColorPicker` in `QuickLinksMenu.tsx`; replace with `<ColorSwatchPicker value={color} onChange={setColor} />` from `ui/ColorSwatchPicker`. If the `data-testid` values differ from what existing e2e specs assert, thread a `testIdPrefix` prop through `ColorSwatchPicker` rather than forking it.
+- Size: S
+
+**[4] Personal-cards, quick-links, and workspace PATCH/logo-upload absent from the cross-tenant/cross-user isolation matrix**
+- What: `tenant-isolation.integration.spec.ts`'s Pass-9 update added personal-**columns** rows but not personal-**cards** (title/notes/color/dueDate PATCH, DELETE, move via beforeId/afterId) or quick-links (any of GET/POST/PATCH/DELETE). Workspace `PATCH :id` (rename/brandColor) and `POST :id/logo` are also missing — only `DELETE :id` and `DELETE :id/logo` are covered (confirmed via grep: only `workspaces/${t.workspaceId}` GET/PATCH-for-audit-log/DELETE and `logo` DELETE rows exist). Unit-test coverage for ownership is solid (see Positives above), but the integration matrix is what catches a *future* refactor that accidentally swaps `getOwnedCard` for a weaker check, or that adds a new mutation path that forgets the ownership call.
+- Impact/likelihood: Medium impact (the actual authorization code is correct today, verified by direct reading and passing unit tests — this is a regression-guard gap, not a live vulnerability), medium likelihood of catching a *future* regression.
+- Files: `apps/api/src/tenant-isolation.integration.spec.ts`
+- Fix: Add matrix rows for `PATCH/DELETE /me/personal-cards/:id`, all four quick-link verbs, `PATCH /workspaces/:id`, and `POST /workspaces/:id/logo`, following the existing `buildCrossWorkspaceRows`/cross-user pattern used for personal-columns.
+- Size: S
+
+**[5] `updateColumn` allows an arbitrary `order` write that can desync from the `reorderColumns` invariant**
+- What: `UpdatePersonalColumnDto.order` (`@IsInt @Min(0)`) lets a client `PATCH /me/personal-columns/:id` with any non-negative integer, independent of the atomic whole-set rewrite that `reorderColumns` performs. Two columns can end up with the same `order` value (no `@@unique` constraint, which is intentional per the code comment for `reorderColumns`, but `updateColumn` has no analogous "must be a valid permutation" check). Since Postgres does not guarantee stable ordering among rows with equal `orderBy` values and no secondary sort key is applied (`getBoard`'s `orderBy: { order: 'asc' }` has no tiebreaker), a duplicate `order` produces column ordering that is stable only by accident (likely insertion/physical order) and can visibly reshuffle between requests.
+- Impact/likelihood: Low impact (cosmetic ordering flicker, not a data-safety bug), low likelihood (the web UI never actually calls `updateColumn` with an `order` field — only `reorderColumns` does — so this is dead/unused-but-exposed API surface today).
+- Files: `apps/api/src/personal-boards/dto/update-personal-column.dto.ts:19-22`, `apps/api/src/personal-boards/personal-boards.service.ts:174-190`
+- Fix: Either remove `order` from `UpdatePersonalColumnDto` (forcing all reordering through the atomic `reorderColumns` endpoint, which is the only caller today), or add a secondary `orderBy: [{ order: 'asc' }, { createdAt: 'asc' }]` tiebreaker in `getBoard` as a defensive minimum. Prefer removing the field — smaller API surface, one invariant to maintain.
+- Size: S
+
+**[6] Workspace hard-delete cascades through `Attachment` rows without deleting the on-disk files — new orphan-file leak**
+- What: `WorkspacesService.remove()` (`workspaces.service.ts:250-270`) is, by inspection of the whole codebase, the **first-ever hard-delete cascade path** in the application — every other "delete" (`ProjectsService`) is a soft `archive`. The Prisma schema cascades `Workspace → Project → Issue → Attachment` all the way down via `onDelete: Cascade` (confirmed in `schema.prisma`), so all `Attachment` DB rows for every issue in every project in the deleted workspace disappear from Postgres. But the actual files on disk under `UPLOADS_DIR` are only ever unlinked by the explicit `DELETE /attachments/:id` path (`attachments.service.ts:294`) — there is no Prisma middleware, transaction hook, or pre-delete sweep that walks the workspace's attachments and unlinks their `storageKey` files before the cascading DB delete. Every attachment ever uploaded to a deleted workspace becomes a permanently orphaned file consuming disk (or PVC, in the K8s deploy) with no DB row left to find or clean it up by.
+- Impact/likelihood: Medium impact (disk-space leak, not a security or correctness bug — but unbounded and irreversible once the DB row is gone, since there's no longer a `storageKey` to look up), medium likelihood for any self-hoster who uploads attachments and later deletes a workspace (a natural cleanup action).
+- Files: `apps/api/src/workspaces/workspaces.service.ts:250-270`, `apps/api/prisma/schema.prisma` (`Attachment` model, cascade chain), `apps/api/src/attachments/attachments.service.ts`
+- Fix: Before the `prisma.workspace.delete()` call, fetch all `storageKey`s for attachments under the workspace (`prisma.attachment.findMany({ where: { issue: { project: { workspaceId } } }, select: { storageKey: true } })`) and unlink each file after the delete succeeds, mirroring the existing logo-cleanup pattern already in the same function. Same treatment should be applied to workspace logo (already handled) and — as future scope — any other on-disk-file model that gains a cascade-delete path from a workspace/project.
+- Size: S
+
+**[7] `promoteCard` is not atomic across the Issue-create and PersonalCard-update calls**
+- What: `PersonalBoardsService.promoteCard` (`personal-boards.service.ts:389-422`) calls `this.issues.create(...)` and then, as a separate un-transacted call, `this.prisma.personalCard.update({ data: { promotedIssueId: issue.id } })`. If the process crashes, the DB connection drops, or an unrelated exception fires between these two calls, the Issue is created and fully visible on the project board, but the personal card's `promotedIssueId` is never set — so the idempotency guard (`if (card.promotedIssueId !== null) throw ...`) never engages, and a retried promote (e.g. a user double-clicking after a timeout) creates a *second* orphaned Issue for the same card. This was flagged as a P2 item in Pass 7 ("Add idempotency guard to promoteCard") and the guard was added, but the underlying non-atomicity that can defeat the guard was not addressed.
+- Impact/likelihood: Low impact (requires a crash/exception exactly between two adjacent calls, or a request timeout with client retry), low likelihood, but easy to fix now while the surface is small.
+- Files: `apps/api/src/personal-boards/personal-boards.service.ts:389-422`
+- Fix: Wrap both writes in `this.prisma.$transaction(async (tx) => { ... })`, passing `tx` through to `IssuesService.create` (requires `IssuesService.create` to accept an optional Prisma transaction client, or extracting the minimal issue-insert logic). If threading a `tx` through `IssuesService.create` is too invasive for the win, at minimum wrap just the `personalCard.update` in a `try/catch` that logs loudly on failure so the orphan is diagnosable, and consider a periodic reconciliation job.
+- Size: S (logging) / M (full transaction threading)
+
+### Debugging & QA-discipline audit (Pass 10 — mandatory)
+
+**Closed this pass:** The Docker artifact CSP smoke test — four consecutive audit
+passes flagged as the single most concrete "tests pass ≠ works for the user" gap
+in the codebase — is now live in CI (`scripts/smoke-web-csp.sh` + `images.yml`).
+This is a genuinely significant structural fix and should be recognized as such.
+
+**New this pass:** The personal-board drag-reorder bug (Risk #1) is a fresh
+instance of exactly the same failure mode the smoke test was built to close for
+Docker/nginx — a real, always-reproducible user-visible bug that a green test
+suite cannot see because the test suite was deliberately designed to avoid the
+code path where the bug lives (`personal-board.spec.ts`'s own comment explains
+raw pointer-drag is skipped as "flaky"). This is not a criticism of that
+decision in isolation (Playwright drag simulation genuinely is flaky), but it
+means the responsibility shifts to the **data layer** (the optimistic-update
+logic) needing its own non-drag-dependent test — e.g. a component/hook-level
+test that calls `useUpdatePersonalCard`'s mutation with a same-column
+`beforeId`/`afterId` patch and asserts the query cache reflects the new order
+immediately, without waiting for `onSettled`. No such test exists today for any
+of the optimistic-update hooks in `api/personal-board.ts`.
+
+**Diagnosability:** No regressions. Correlation IDs, pino structured logs,
+`/health`/`/health/live` remain in place and are unaffected by this batch.
+
+**Concrete regression-guard proposals (new this pass):**
+1. A Vitest/Jest test for `useUpdatePersonalCard`'s `onMutate` that asserts the
+   query-cache card order changes synchronously for a same-column
+   `beforeId`/`afterId`-only patch (closes Risk #1's blind spot structurally,
+   independent of Playwright drag flakiness).
+2. `workspace-settings.spec.ts` and `quick-links.spec.ts` e2e specs (closes
+   Risk #2) — workspace delete in particular deserves a guard given it is the
+   first irreversible cascading-delete UI action in the product.
+
+### Ideation — three concrete technical investments (mandatory every pass)
+
+1. **A shared "optimistic list-reorder" hook.** The personal board is now the
+   second place in the codebase (after the main issue board) to implement
+   drag-and-drop with fractional ranks and React Query optimistic updates —
+   and the second implementation has a bug the first one (presumably) doesn't.
+   Extract a `useOptimisticReorder<T>(queryKey, computeRank)` hook that
+   encapsulates "cancel query → snapshot → compute new rank via
+   `rankBetween`/`rankAfter` → patch cache → rollback-on-error → settle-invalidate"
+   once, in `packages/shared` or a `src/hooks/` module, and have both the issue
+   board and the personal board consume it. This turns "don't forget the
+   optimistic branch" from a per-feature tax into a structural guarantee, and
+   is exactly the kind of DX investment that prevents this bug class from
+   recurring a third time in a future feature (e.g. a planned "personal
+   backlog" or "roadmap swimlane" reorder). *Priority: P1. Size: M.*
+
+2. **A workspace-export / "download before you delete" flow.** Now that
+   workspace deletion is a real, irreversible, cascading action, pair it with
+   a one-click export (issues + comments + attachments manifest as a zip or
+   the existing CSV export, offered inline in the delete-confirmation dialog)
+   so self-hosters don't lose data to a misclick or a change of mind. This is
+   cheap to build (the CSV export endpoint and streaming infra largely already
+   exist) and directly de-risks the single most destructive action a user can
+   take in the product. *Priority: P2. Size: M.*
+
+3. **A generic "cascade-delete file sweep" utility.** Risk #6 (orphaned
+   attachment files on workspace delete) is the first instance of a pattern
+   that will recur: any future on-disk-file model (avatars, exports, imports)
+   that gains a cascade-delete ancestor will silently leak files unless
+   deletion is disk-aware. Build one small `FileCleanupService` with a
+   `sweepWorkspace(workspaceId)` method that resolves every `storageKey`
+   reachable from a workspace (attachments today; logo already handled) and
+   unlinks them in a `finally` after the cascading DB delete succeeds. Wire
+   it into `WorkspacesService.remove()` now, and require any future
+   file-backed model to register a resolver with this service as a matter of
+   convention (documented in `CLAUDE.md`'s domain-module skill). *Priority:
+   P2. Size: S–M.*
+
+### Direction (Pass 10)
+
+This was a clean batch from a pure-security standpoint — every new endpoint has
+correct ownership scoping, validated inputs, and passing unit tests, and the
+project finally closed its oldest and most-cited QA-discipline gap (the Docker
+CSP smoke test). The findings this pass are concentrated in exactly the areas
+the project's own mandate calls out for special scrutiny: a real, reproducible,
+user-visible UI bug that a green test suite cannot see (Risk #1), and a brand
+new feature surface that shipped with no browser-level regression guard at all
+(Risk #2). Both are small (S/M) fixes. The workspace hard-delete file-orphan gap
+(Risk #6) is new-in-kind — it's the first time this codebase has a real
+cascading-delete path, so it's the first time the "did we clean up the
+filesystem too" question has ever mattered, and the answer today is no.
+
+Recommended sequencing for the next build-loop batch: fix the optimistic-update
+bug and the `ColorSwatchPicker` duplication together (both touch
+`PersonalBoardPage`/`personal-board.ts`, both S-sized, both easy to verify with
+one test pass); add the two missing e2e specs; close the tenant-isolation matrix
+gap (mechanical, S); and land the attachment-file-sweep-on-workspace-delete fix
+before self-hosters start relying on workspace deletion as a routine cleanup
+action.
+
+### Backlog-groomer feed (Pass 10 — compact)
+
+- **Fix personal-card optimistic reorder (same-column no-op + missing rank compute)** · P1 · S · Every personal-board drag visually snaps back or renders in the wrong slot until refetch; `apps/web/src/api/personal-board.ts:194-209`
+- **Add e2e coverage for WorkspaceSettingsPage (rename + delete-confirm) and QuickLinksMenu** · P1 · M · First-ever irreversible cascading-delete UI action, plus a header-level feature every user touches, both ship with zero browser-level tests; `apps/web/e2e/`
+- **Deduplicate QuickLinksMenu's local color picker into shared ColorSwatchPicker** · P2 · S · Violates the project's own design-system single-source-of-truth rule; `apps/web/src/components/QuickLinksMenu.tsx:21-97`
+- **Add personal-cards, quick-links, workspace PATCH/logo-upload to tenant-isolation matrix** · P2 · S · Ownership logic is correct and unit-tested but has no integration-level regression guard; `apps/api/src/tenant-isolation.integration.spec.ts`
+- **Remove (or ignore) the unused `order` field on `UpdatePersonalColumnDto`** · P3 · S · Dead API surface that can desync from the atomic `reorderColumns` invariant; `apps/api/src/personal-boards/dto/update-personal-column.dto.ts`
+- **Sweep orphaned attachment files on workspace delete** · P1 · S · First-ever hard-cascade-delete path in the app leaks on-disk files with no DB row left to clean them up by; `apps/api/src/workspaces/workspaces.service.ts:250`
+- **Make `promoteCard`'s Issue-create + card-update atomic (or at least loudly logged on partial failure)** · P3 · S/M · Crash between the two calls can produce an orphan Issue that defeats the existing double-promote guard; `apps/api/src/personal-boards/personal-boards.service.ts:389`
+- **Extract a shared `useOptimisticReorder` hook for fractional-rank drag lists** · P1 · M · Second independent DnD+optimistic-update implementation already has a bug the first one avoided; structural fix prevents a third recurrence
+- **Workspace-export-before-delete flow in the delete-confirmation dialog** · P2 · M · De-risks the single most destructive user action in the product; CSV export infra already exists
+- **Generic `FileCleanupService.sweepWorkspace()` utility** · P2 · S–M · Establishes the convention so future file-backed models don't repeat the attachment-orphan bug

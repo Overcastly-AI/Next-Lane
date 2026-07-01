@@ -852,7 +852,7 @@ export function BoardPage() {
           </div>
         )}
 
-        <div className="ml-auto flex items-center gap-3 sm:ml-auto">
+        <div className="flex flex-wrap items-center gap-2 sm:ml-auto sm:flex-nowrap sm:gap-3">
           <PresenceAvatars viewers={presenceViewers} />
 
           {/* Card colors button */}

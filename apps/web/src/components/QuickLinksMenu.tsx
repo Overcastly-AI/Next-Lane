@@ -14,20 +14,8 @@ import {
   useDeleteQuickLink,
 } from '@/api/quick-links';
 import { useToast } from '@/components/ui/Toast';
+import { ColorSwatchPicker } from '@/components/ui/ColorSwatchPicker';
 import { errorMessage } from '@/lib/errorMessage';
-
-// Curated accent palette — readable on white, distinct from each other. Stored
-// as hex; `null` means no color.
-const PALETTE: { name: string; hex: string }[] = [
-  { name: 'Slate', hex: '#64748b' },
-  { name: 'Blue', hex: '#2563eb' },
-  { name: 'Cyan', hex: '#0891b2' },
-  { name: 'Green', hex: '#16a34a' },
-  { name: 'Amber', hex: '#d97706' },
-  { name: 'Red', hex: '#dc2626' },
-  { name: 'Violet', hex: '#7c3aed' },
-  { name: 'Pink', hex: '#db2777' },
-];
 
 const inputCls =
   'h-7 w-full rounded border border-ink-200 bg-white px-2 text-xs text-ink-900 placeholder:text-ink-400 focus:border-signal-500 focus:outline-none focus:ring-1 focus:ring-signal-200';
@@ -44,56 +32,6 @@ function validateUrl(url: string): string | null {
   } catch {
     return 'Please enter a valid URL (http:// or https://)';
   }
-}
-
-// ── Color swatch picker ───────────────────────────────────────────────────────
-
-function ColorPicker({
-  value,
-  onChange,
-}: {
-  value: string | null;
-  onChange: (hex: string | null) => void;
-}) {
-  return (
-    <div className="flex flex-wrap items-center gap-1.5" role="radiogroup" aria-label="Accent color">
-      {/* None */}
-      <button
-        type="button"
-        onClick={() => onChange(null)}
-        role="radio"
-        aria-checked={value === null}
-        aria-label="No color"
-        title="No color"
-        data-testid="quick-link-color-none"
-        className={`flex h-5 w-5 items-center justify-center rounded-full border text-ink-400 ${
-          value === null
-            ? 'border-ink-400 ring-2 ring-ink-300 ring-offset-1'
-            : 'border-ink-200 hover:border-ink-300'
-        }`}
-      >
-        <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-          <path strokeLinecap="round" d="M5 19L19 5" />
-        </svg>
-      </button>
-      {PALETTE.map((c) => (
-        <button
-          key={c.hex}
-          type="button"
-          onClick={() => onChange(c.hex)}
-          role="radio"
-          aria-checked={value === c.hex}
-          aria-label={c.name}
-          title={c.name}
-          data-testid="quick-link-color-swatch"
-          className={`h-5 w-5 rounded-full ${
-            value === c.hex ? 'ring-2 ring-offset-1 ring-ink-400' : 'hover:scale-110'
-          } transition-transform`}
-          style={{ backgroundColor: c.hex }}
-        />
-      ))}
-    </div>
-  );
 }
 
 // ── Shared add/edit form ──────────────────────────────────────────────────────
@@ -194,7 +132,7 @@ function QuickLinkForm({
           <option key={g} value={g} />
         ))}
       </datalist>
-      <ColorPicker value={color} onChange={setColor} />
+      <ColorSwatchPicker value={color} onChange={setColor} />
       {error && (
         <p className="text-xs text-red-600" role="alert" data-testid="add-quick-link-error">
           {error}

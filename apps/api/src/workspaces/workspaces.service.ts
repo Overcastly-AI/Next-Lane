@@ -244,8 +244,10 @@ export class WorkspacesService {
    *
    * This is irreversible: every project, board, issue, sprint, member, and
    * related record cascades away via the schema's onDelete: Cascade relations.
-   * We best-effort remove the stored logo file from disk afterwards (the DB row
-   * is already gone, so a leftover file would otherwise be orphaned).
+   * The DB cascade does NOT touch the filesystem, so we first collect every
+   * on-disk artifact under the workspace (the logo + all issue attachments),
+   * delete the workspace, then best-effort unlink those files — otherwise they
+   * leak permanently (the rows that referenced them are gone).
    */
   async remove(userId: string, workspaceId: string): Promise<{ id: string }> {
     await assertWorkspaceRole(this.prisma, userId, workspaceId, Role.ADMIN);
@@ -256,10 +258,20 @@ export class WorkspacesService {
     });
     if (!existing) throw new NotFoundException('Workspace not found');
 
+    // Collect attachment files BEFORE the cascade removes their rows.
+    const attachments = await this.prisma.attachment.findMany({
+      where: { issue: { project: { workspaceId } } },
+      select: { storageKey: true },
+    });
+
     await this.prisma.workspace.delete({ where: { id: workspaceId } });
 
+    const uploadsDir = getUploadsDir();
     if (existing.logoStorageKey) {
-      this.safeUnlink(path.join(getUploadsDir(), existing.logoStorageKey));
+      this.safeUnlink(path.join(uploadsDir, existing.logoStorageKey));
+    }
+    for (const a of attachments) {
+      this.safeUnlink(path.join(uploadsDir, a.storageKey));
     }
 
     // No audit event is written: AuditEvent.workspaceId cascades with the
