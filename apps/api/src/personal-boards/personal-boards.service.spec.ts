@@ -18,13 +18,14 @@ const PROJ_ID = 'proj-1';
 const ISSUE_ID = 'issue-new';
 
 function makeColumn(overrides: Partial<{
-  id: string; userId: string; name: string; order: number;
+  id: string; userId: string; name: string; order: number; color: string | null;
 }> = {}) {
   return {
     id: overrides.id ?? COL_A,
     userId: overrides.userId ?? USER_A,
     name: overrides.name ?? 'To Do',
     order: overrides.order ?? 0,
+    color: overrides.color ?? null,
     createdAt: new Date('2026-01-01'),
     updatedAt: new Date('2026-01-01'),
   };
@@ -75,7 +76,9 @@ function makePrisma() {
       update: jest.fn(),
       delete: jest.fn(),
     },
-    $transaction: jest.fn((cb: (t: typeof tx) => unknown) => cb(tx)),
+    $transaction: jest.fn((arg: ((t: typeof tx) => unknown) | unknown[]) =>
+      Array.isArray(arg) ? Promise.all(arg) : arg(tx),
+    ),
     __tx: tx,
   } as unknown as PrismaService & {
     personalColumn: {
@@ -576,6 +579,56 @@ describe('PersonalBoardsService', () => {
 
       const createCall = prisma.personalColumn.create.mock.calls[0][0];
       expect(createCall.data.order).toBe(0);
+    });
+  });
+
+  // ── reorderColumns ───────────────────────────────────────────────────────
+
+  describe('reorderColumns', () => {
+    it('rewrites order to the array index and returns the board', async () => {
+      prisma.personalColumn.findMany
+        .mockResolvedValueOnce([{ id: COL_A }, { id: COL_B }]) // ownership check
+        .mockResolvedValueOnce([
+          { ...makeColumn({ id: COL_B, order: 0 }), cards: [] },
+          { ...makeColumn({ id: COL_A, order: 1 }), cards: [] },
+        ]); // getBoard reload
+      prisma.personalColumn.count.mockResolvedValue(2);
+      prisma.personalColumn.update.mockResolvedValue(makeColumn());
+
+      const result = await service.reorderColumns(USER_A, [COL_B, COL_A]);
+
+      expect(prisma.personalColumn.update).toHaveBeenCalledWith({
+        where: { id: COL_B },
+        data: { order: 0 },
+      });
+      expect(prisma.personalColumn.update).toHaveBeenCalledWith({
+        where: { id: COL_A },
+        data: { order: 1 },
+      });
+      expect(result).toHaveLength(2);
+    });
+
+    it('rejects a partial/foreign id set without touching the DB', async () => {
+      prisma.personalColumn.findMany.mockResolvedValueOnce([
+        { id: COL_A },
+        { id: COL_B },
+      ]);
+
+      await expect(
+        service.reorderColumns(USER_A, [COL_A]),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.personalColumn.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects duplicate ids', async () => {
+      prisma.personalColumn.findMany.mockResolvedValueOnce([
+        { id: COL_A },
+        { id: COL_B },
+      ]);
+
+      await expect(
+        service.reorderColumns(USER_A, [COL_A, COL_A]),
+      ).rejects.toBeInstanceOf(BadRequestException);
     });
   });
 });

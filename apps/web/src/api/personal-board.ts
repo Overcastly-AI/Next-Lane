@@ -99,6 +99,41 @@ export function useUpdatePersonalColumn() {
   });
 }
 
+/** Reorder all of the caller's columns to match the given left-to-right ids. */
+export function useReorderPersonalColumns() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (orderedIds: string[]) =>
+      request<PersonalColumnDto[]>('/me/personal-columns/reorder', {
+        method: 'PATCH',
+        body: { orderedIds },
+      }),
+    onMutate: async (orderedIds) => {
+      await qc.cancelQueries({ queryKey: personalBoardQk.board });
+      const previous = qc.getQueryData<PersonalColumnDto[]>(
+        personalBoardQk.board,
+      );
+      if (previous) {
+        const byId = new Map(previous.map((c) => [c.id, c]));
+        const reordered = orderedIds
+          .map((id, i) => {
+            const col = byId.get(id);
+            return col ? { ...col, order: i } : undefined;
+          })
+          .filter((c): c is PersonalColumnDto => c !== undefined);
+        qc.setQueryData(personalBoardQk.board, reordered);
+      }
+      return { previous };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.previous) qc.setQueryData(personalBoardQk.board, ctx.previous);
+    },
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: personalBoardQk.board });
+    },
+  });
+}
+
 export function useDeletePersonalColumn() {
   const qc = useQueryClient();
   return useMutation({

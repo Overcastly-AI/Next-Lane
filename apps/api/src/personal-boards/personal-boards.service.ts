@@ -198,6 +198,48 @@ export class PersonalBoardsService {
     return { id: columnId };
   }
 
+  /**
+   * Reorder the caller's columns to match `orderedIds` exactly.
+   *
+   * Every id must belong to the caller and the set must cover all of the
+   * caller's columns (no partial reorders, no foreign ids) — otherwise the
+   * request is rejected so a stale client can't corrupt ordering. Orders are
+   * rewritten to the array index in a single transaction, then the fresh board
+   * is returned so the client can sync.
+   */
+  async reorderColumns(
+    userId: string,
+    orderedIds: string[],
+  ): Promise<PersonalColumnDto[]> {
+    const owned = await this.prisma.personalColumn.findMany({
+      where: { userId },
+      select: { id: true },
+    });
+    const ownedIds = new Set(owned.map((c) => c.id));
+
+    const unique = new Set(orderedIds);
+    if (
+      unique.size !== orderedIds.length ||
+      orderedIds.length !== ownedIds.size ||
+      !orderedIds.every((id) => ownedIds.has(id))
+    ) {
+      throw new BadRequestException(
+        'orderedIds must be exactly the set of your columns, with no duplicates',
+      );
+    }
+
+    await this.prisma.$transaction(
+      orderedIds.map((id, index) =>
+        this.prisma.personalColumn.update({
+          where: { id },
+          data: { order: index },
+        }),
+      ),
+    );
+
+    return this.getBoard(userId);
+  }
+
   // ── Cards ─────────────────────────────────────────────────────────────────
 
   async createCard(

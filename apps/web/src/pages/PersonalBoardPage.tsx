@@ -16,6 +16,7 @@ import {
   sortableKeyboardCoordinates,
   useSortable,
   verticalListSortingStrategy,
+  horizontalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Link } from 'react-router-dom';
@@ -37,6 +38,7 @@ import {
   useCreatePersonalColumn,
   useUpdatePersonalColumn,
   useDeletePersonalColumn,
+  useReorderPersonalColumns,
   useCreatePersonalCard,
   useUpdatePersonalCard,
   useDeletePersonalCard,
@@ -110,9 +112,13 @@ export function PersonalBoardPage() {
 
   const updateCard = useUpdatePersonalCard();
   const deleteCard = useDeletePersonalCard();
+  const reorderColumns = useReorderPersonalColumns();
 
-  // Active drag state — the card being dragged.
+  // Active drag state — the card being dragged, or the column being reordered.
   const [activeCard, setActiveCard] = useState<PersonalCardDto | null>(null);
+  const [activeColumn, setActiveColumn] = useState<PersonalColumnDto | null>(
+    null,
+  );
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -126,12 +132,45 @@ export function PersonalBoardPage() {
   // Flat list of all cards for the drag overlay lookup.
   const allCards = columns.flatMap((c) => c.cards ?? []);
 
+  const sortedColumns = columns.slice().sort((a, b) => a.order - b.order);
+
   function onDragStart(event: DragStartEvent) {
+    if (event.active.data.current?.type === 'column-sortable') {
+      const colId = String(event.active.data.current.columnId);
+      setActiveColumn(columns.find((c) => c.id === colId) ?? null);
+      setActiveCard(null);
+      return;
+    }
     const card = allCards.find((c) => c.id === event.active.id);
     setActiveCard(card ?? null);
   }
 
+  function onColumnDragEnd(event: DragEndEvent) {
+    setActiveColumn(null);
+    const { active, over } = event;
+    if (!over) return;
+    const activeColId = String(active.data.current?.columnId ?? '');
+    const overColId = String(over.data.current?.columnId ?? '');
+    if (!activeColId || !overColId || activeColId === overColId) return;
+
+    const ordered = sortedColumns.map((c) => c.id);
+    const from = ordered.indexOf(activeColId);
+    const to = ordered.indexOf(overColId);
+    if (from === -1 || to === -1) return;
+    ordered.splice(from, 1);
+    ordered.splice(to, 0, activeColId);
+
+    reorderColumns.mutate(ordered, {
+      onError: (err) =>
+        toast.error(errorMessage(err, 'Could not reorder columns.')),
+    });
+  }
+
   function onDragEnd(event: DragEndEvent) {
+    if (event.active.data.current?.type === 'column-sortable') {
+      onColumnDragEnd(event);
+      return;
+    }
     setActiveCard(null);
     const { active, over } = event;
     if (!over) return;
@@ -227,16 +266,20 @@ export function PersonalBoardPage() {
         collisionDetection={closestCorners}
         onDragStart={onDragStart}
         onDragEnd={onDragEnd}
-        onDragCancel={() => setActiveCard(null)}
+        onDragCancel={() => {
+          setActiveCard(null);
+          setActiveColumn(null);
+        }}
       >
         <div
           data-testid="personal-board"
           className="nl-scroll flex flex-1 gap-0 overflow-x-auto px-4 pb-4 pt-3"
         >
-          {columns
-            .slice()
-            .sort((a, b) => a.order - b.order)
-            .map((col, idx) => (
+          <SortableContext
+            items={sortedColumns.map((c) => `col:${c.id}`)}
+            strategy={horizontalListSortingStrategy}
+          >
+            {sortedColumns.map((col, idx) => (
               <div key={col.id} className="flex items-stretch gap-0">
                 {idx > 0 && (
                   <div className="nl-lane-divider mx-2" aria-hidden="true" />
@@ -248,6 +291,7 @@ export function PersonalBoardPage() {
                 />
               </div>
             ))}
+          </SortableContext>
           <div className="flex items-stretch gap-0">
             {columns.length > 0 && (
               <div className="nl-lane-divider mx-2" aria-hidden="true" />
@@ -259,6 +303,12 @@ export function PersonalBoardPage() {
         <DragOverlay>
           {activeCard ? (
             <PersonalCardOverlay card={activeCard} />
+          ) : activeColumn ? (
+            <div className="w-72 rounded-xl border border-ink-200 border-t-2 border-t-signal-300 bg-ink-50 px-3 py-2.5 shadow-cardHover rotate-[1deg]">
+              <span className="font-display text-[10px] font-bold uppercase tracking-[0.1em] text-ink-500">
+                {activeColumn.name}
+              </span>
+            </div>
           ) : null}
         </DragOverlay>
       </DndContext>
@@ -342,6 +392,26 @@ function PersonalColumn({
     data: { type: 'column', columnId: column.id },
   });
 
+  // Column reordering: the whole column is sortable, but only the grip handle
+  // in the header activates the drag (so cards + header controls still work).
+  const {
+    setNodeRef: setColSortRef,
+    attributes: colAttributes,
+    listeners: colListeners,
+    transform: colTransform,
+    transition: colTransition,
+    isDragging: colDragging,
+  } = useSortable({
+    id: `col:${column.id}`,
+    data: { type: 'column-sortable', columnId: column.id },
+  });
+
+  const colStyle: React.CSSProperties = {
+    transform: CSS.Translate.toString(colTransform),
+    transition: colTransition,
+    ...(column.color ? { borderTopColor: column.color } : {}),
+  };
+
   async function handleRenameSubmit() {
     const trimmed = renameValue.trim();
     if (!trimmed || trimmed === column.name) {
@@ -369,16 +439,33 @@ function PersonalColumn({
   return (
     <>
       <div
+        ref={setColSortRef}
         data-testid="personal-column"
         data-column-id={column.id}
-        style={column.color ? { borderTopColor: column.color } : undefined}
+        style={colStyle}
+        {...colAttributes}
         className={cn(
           'flex w-72 shrink-0 flex-col rounded-xl border border-ink-200 bg-ink-50 shadow-xs border-t-2',
           !column.color && 'border-t-signal-300',
+          colDragging && 'opacity-40',
         )}
       >
         {/* Column header */}
         <div className="flex items-center justify-between px-3 py-2.5">
+          {/* Drag handle — the only column-reorder activator */}
+          <button
+            type="button"
+            {...colListeners}
+            aria-label={`Reorder column ${column.name}`}
+            data-testid="personal-column-drag"
+            className="mr-1 shrink-0 cursor-grab touch-none rounded p-0.5 text-ink-300 hover:bg-ink-200 hover:text-ink-600 active:cursor-grabbing"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <circle cx="9" cy="6" r="1.5" /><circle cx="15" cy="6" r="1.5" />
+              <circle cx="9" cy="12" r="1.5" /><circle cx="15" cy="12" r="1.5" />
+              <circle cx="9" cy="18" r="1.5" /><circle cx="15" cy="18" r="1.5" />
+            </svg>
+          </button>
           {renaming ? (
             <form
               className="flex flex-1 items-center gap-1.5 pr-1"

@@ -12,6 +12,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { PersonalBoardsService } from './personal-boards.service';
 import { CreatePersonalColumnDto } from './dto/create-personal-column.dto';
 import { UpdatePersonalColumnDto } from './dto/update-personal-column.dto';
+import { ReorderPersonalColumnsDto } from './dto/reorder-personal-columns.dto';
 import { CreatePersonalCardDto } from './dto/create-personal-card.dto';
 import { UpdatePersonalCardDto } from './dto/update-personal-card.dto';
 import { PromotePersonalCardDto } from './dto/promote-personal-card.dto';
@@ -48,7 +49,20 @@ export class PersonalBoardsController {
     return this.personalBoards.createColumn(user.id, dto);
   }
 
-  /** PATCH /me/personal-columns/:id — rename or reorder a column. */
+  /**
+   * PATCH /me/personal-columns/reorder — set the left-to-right column order.
+   *
+   * Declared before the `:id` route so "reorder" isn't captured as an id.
+   */
+  @Patch('personal-columns/reorder')
+  reorderColumns(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: ReorderPersonalColumnsDto,
+  ) {
+    return this.personalBoards.reorderColumns(user.id, dto.orderedIds);
+  }
+
+  /** PATCH /me/personal-columns/:id — rename, recolor, or reorder a column. */
   @Patch('personal-columns/:id')
   updateColumn(
     @CurrentUser() user: AuthUser,
