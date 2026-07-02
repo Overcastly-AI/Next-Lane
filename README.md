@@ -9,6 +9,7 @@ data, under an MIT license. Point Claude (or any MCP client) straight at it — 
 one tracker your coding agent can *read and write*, not just talk about.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
+[![Documentation](https://img.shields.io/badge/docs-overcastly--ai.github.io-0B7285.svg?logo=readthedocs&logoColor=white)](https://overcastly-ai.github.io/Next-Lane/)
 [![CI](https://github.com/Overcastly-AI/Next-Lane/actions/workflows/ci.yml/badge.svg)](https://github.com/Overcastly-AI/Next-Lane/actions/workflows/ci.yml)
 [![E2E](https://github.com/Overcastly-AI/Next-Lane/actions/workflows/e2e.yml/badge.svg)](https://github.com/Overcastly-AI/Next-Lane/actions/workflows/e2e.yml)
 [![MCP server](https://img.shields.io/badge/MCP-55%20tools-8A2BE2.svg)](./apps/mcp/README.md)
@@ -20,7 +21,7 @@ one tracker your coding agent can *read and write*, not just talk about.
 
 Built by [Overcastly AI](https://overcastly.com?utm_source=github&utm_medium=readme&utm_campaign=next-lane&utm_content=hero)
 
-[Quick Start](#-quickstart) · [Why Next Lane](#why-next-lane) · [MCP / agents](#-mcp-native-your-coding-agent-can-run-the-tracker) · [Features](#-whats-shipped) · [Architecture](#-architecture-at-a-glance) · [Roadmap](#-on-the-roadmap) · [Contributing](#-contributing) · [Docs](https://overcastly-ai.github.io/Next-Lane/) · [Changelog](./CHANGELOG.md)
+[Quick Start](#-quickstart) · [📖 Documentation](https://overcastly-ai.github.io/Next-Lane/) · [Why Next Lane](#why-next-lane) · [MCP / agents](#-mcp-native-your-coding-agent-can-run-the-tracker) · [Features](#-whats-shipped) · [Architecture](#-architecture-at-a-glance) · [Roadmap](#-on-the-roadmap) · [Contributing](#-contributing) · [Changelog](./CHANGELOG.md)
 
 </div>
 
