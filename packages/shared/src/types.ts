@@ -369,6 +369,13 @@ export interface BoardSummaryDto {
    * project-level legacy workflowEnforced flag.
    */
   workflowId?: string | null;
+  /**
+   * Default swimlane group-by dimension applied when the board loads without
+   * an explicit `?group=` URL param. One of the core dimension keys
+   * (assignee/priority/type/epic/component/label/sprint) or `cf:<fieldId>`
+   * for a project custom SELECT field. Null = flat board (no default grouping).
+   */
+  defaultGroupBy: string | null;
   createdAt: string;
   updatedAt: string;
 }

@@ -18,6 +18,7 @@ import {
   StatusCategory,
   filterIssues,
   validateQuery,
+  type CustomFieldDefinitionDto,
   type EvalContext,
   type IssueDto,
   type LabelDto,
@@ -62,6 +63,12 @@ import {
   computeLanes,
   type GroupByDimension,
 } from '@/components/board/BoardSwimlanesView';
+import {
+  CORE_GROUP_BY_OPTIONS,
+  customFieldGroupByOptions,
+  isValidGroupByDimension,
+  type GroupByOption,
+} from '@/lib/groupByDimensions';
 import { CreateIssueModal } from '@/components/board/CreateIssueModal';
 import { FromTemplateMenu } from '@/components/board/FromTemplateMenu';
 import { IssueDetailDrawer } from '@/components/issue/IssueDetailDrawer';
@@ -300,21 +307,37 @@ export function BoardPage() {
 
   // ── Group-by (swimlanes) — URL as single source of truth ─────────────────
   //
-  // URL param: ?group=assignee|priority|type|epic (omitted → None)
+  // URL param: ?group=assignee|priority|type|epic|component|sprint|label|
+  // cf:<customFieldId> (omitted → the board's per-board `defaultGroupBy`, or
+  // None if unset). The sentinel `?group=none` means "explicitly flat",
+  // distinct from "no param" — needed so a board WITH a default can still be
+  // turned off for the session (clearing the param would just re-apply the
+  // default). See `setGroupBy` below.
 
-  const VALID_GROUP_DIMS: GroupByDimension[] = ['assignee', 'priority', 'type', 'epic'];
+  const customFieldDefsForGrouping = customFieldsQuery.data ?? [];
 
   const groupBy = useMemo((): GroupByDimension | null => {
     const raw = searchParams.get('group');
-    if (raw && VALID_GROUP_DIMS.includes(raw as GroupByDimension)) {
-      return raw as GroupByDimension;
+    if (raw === 'none') return null;
+    if (raw) {
+      return isValidGroupByDimension(raw, customFieldDefsForGrouping)
+        ? (raw as GroupByDimension)
+        : null;
+    }
+    const def = board?.board?.defaultGroupBy;
+    if (def && isValidGroupByDimension(def, customFieldDefsForGrouping)) {
+      return def as GroupByDimension;
     }
     return null;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams]);
+  }, [searchParams, customFieldDefsForGrouping, board]);
 
-  const setGroupBy = (next: GroupByDimension | null) =>
-    setFilterParam('group', next, { replace: false });
+  const setGroupBy = (next: GroupByDimension | null) => {
+    if (next === null && board?.board?.defaultGroupBy) {
+      setFilterParam('group', 'none', { replace: false });
+    } else {
+      setFilterParam('group', next, { replace: false });
+    }
+  };
 
   // ── Controls opening the Card Colors tab inside the BoardSettingsModal via the toolbar button.
   const [openColorsTab, setOpenColorsTab] = useState(false);
@@ -532,8 +555,11 @@ export function BoardPage() {
 
   const swimLanes = useMemo(() => {
     if (!groupBy) return null;
-    return computeLanes(groupBy, issuesByStatus, usersQuery.data ?? []);
-  }, [groupBy, issuesByStatus, usersQuery.data]);
+    return computeLanes(groupBy, issuesByStatus, usersQuery.data ?? [], {
+      sprints: sprintsQuery.data ?? [],
+      customFieldDefs: customFieldsQuery.data ?? [],
+    });
+  }, [groupBy, issuesByStatus, usersQuery.data, sprintsQuery.data, customFieldsQuery.data]);
 
   // ── Drag and drop ─────────────────────────────────────────────────────────
 
@@ -814,7 +840,11 @@ export function BoardPage() {
           <TypeFilter selected={typeFilter} onChange={setTypeFilter} />
           <PriorityFilter selected={priorityFilter} onChange={setPriorityFilter} />
           {/* Group by selector — swimlanes */}
-          <GroupBySelector value={groupBy} onChange={setGroupBy} />
+          <GroupBySelector
+            value={groupBy}
+            onChange={setGroupBy}
+            customFieldDefs={customFieldDefsForGrouping}
+          />
         </div>
 
         {/* Quick-filter preset chips */}
@@ -2089,19 +2119,14 @@ function NlqlQueryBar({
 // GroupBySelector — swimlane group-by dimension picker
 // ---------------------------------------------------------------------------
 
-const GROUP_BY_OPTIONS: { value: GroupByDimension; label: string }[] = [
-  { value: 'assignee', label: 'Assignee' },
-  { value: 'priority', label: 'Priority' },
-  { value: 'type', label: 'Issue type' },
-  { value: 'epic', label: 'Epic' },
-];
-
 function GroupBySelector({
   value,
   onChange,
+  customFieldDefs,
 }: {
   value: GroupByDimension | null;
   onChange: (next: GroupByDimension | null) => void;
+  customFieldDefs: CustomFieldDefinitionDto[];
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -2122,7 +2147,12 @@ function GroupBySelector({
     };
   }, [open]);
 
-  const activeLabel = GROUP_BY_OPTIONS.find((o) => o.value === value)?.label;
+  const customOptions = useMemo(
+    () => customFieldGroupByOptions(customFieldDefs),
+    [customFieldDefs],
+  );
+  const allOptions: GroupByOption[] = [...CORE_GROUP_BY_OPTIONS, ...customOptions];
+  const activeLabel = allOptions.find((o) => o.value === value)?.label;
 
   return (
     <div ref={ref} className="relative">
@@ -2157,13 +2187,14 @@ function GroupBySelector({
         <div
           role="menu"
           aria-label="Group by menu"
-          className="absolute left-0 z-20 mt-2 w-44 rounded-lg border border-slate-200 bg-surface p-1.5 shadow-cardHover"
+          className="absolute left-0 z-20 mt-2 w-52 max-h-[26rem] overflow-y-auto rounded-lg border border-slate-200 bg-surface p-1.5 shadow-cardHover"
         >
           {/* None option */}
           <button
             type="button"
             role="menuitemradio"
             aria-checked={value === null}
+            data-testid="groupby-option-none"
             onClick={() => { onChange(null); setOpen(false); }}
             className={cn(
               'flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-left text-sm transition-colors',
@@ -2178,12 +2209,13 @@ function GroupBySelector({
 
           <div className="my-1 border-t border-slate-100" />
 
-          {GROUP_BY_OPTIONS.map((opt) => (
+          {CORE_GROUP_BY_OPTIONS.map((opt) => (
             <button
               key={opt.value}
               type="button"
               role="menuitemradio"
               aria-checked={value === opt.value}
+              data-testid={`groupby-option-${opt.value}`}
               onClick={() => { onChange(opt.value); setOpen(false); }}
               className={cn(
                 'flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-left text-sm transition-colors',
@@ -2196,6 +2228,37 @@ function GroupBySelector({
               {opt.label}
             </button>
           ))}
+
+          {customOptions.length > 0 && (
+            <>
+              <div className="my-1 border-t border-slate-100" />
+              <p
+                className="px-2.5 pb-1 pt-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400"
+                aria-hidden="true"
+              >
+                Custom fields
+              </p>
+              {customOptions.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={value === opt.value}
+                  data-testid={`groupby-option-${opt.value}`}
+                  onClick={() => { onChange(opt.value); setOpen(false); }}
+                  className={cn(
+                    'flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-left text-sm transition-colors',
+                    'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300',
+                    value === opt.value
+                      ? 'bg-brand-50 font-medium text-brand-700'
+                      : 'text-slate-700 hover:bg-slate-50',
+                  )}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </>
+          )}
         </div>
       )}
     </div>

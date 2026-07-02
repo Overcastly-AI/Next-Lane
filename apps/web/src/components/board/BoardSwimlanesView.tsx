@@ -23,7 +23,13 @@ import {
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import { useState } from 'react';
 import { IssueType, Priority, type IssueDto, type StatusDto } from '@next-lane/shared';
-import type { BoardColorRule, EvalContext, UserDto } from '@next-lane/shared';
+import type {
+  BoardColorRule,
+  CustomFieldDefinitionDto,
+  EvalContext,
+  SprintDto,
+  UserDto,
+} from '@next-lane/shared';
 import { Avatar } from '@/components/ui/Avatar';
 import { BoardColumn } from './BoardColumn';
 import { IssueCard } from './IssueCard';
@@ -34,11 +40,41 @@ import { EditableSafeKeyboardSensor } from '@/lib/dndSensors';
 // Types
 // ---------------------------------------------------------------------------
 
-export type GroupByDimension = 'assignee' | 'priority' | 'type' | 'epic';
+/** Core (non-custom-field) swimlane group-by dimension keys. */
+export type CoreGroupByDimension =
+  | 'assignee'
+  | 'priority'
+  | 'type'
+  | 'epic'
+  | 'component'
+  | 'label'
+  | 'sprint';
+
+/**
+ * A project custom SELECT field as a group-by dimension, encoded as
+ * `cf:<CustomFieldDefinition.id>` so it round-trips through the `?group=`
+ * URL param and the board's persisted `defaultGroupBy` the same way core
+ * dimensions do.
+ */
+export type CustomFieldGroupByDimension = `cf:${string}`;
+
+export type GroupByDimension = CoreGroupByDimension | CustomFieldGroupByDimension;
+
+/** Extracts the custom field id from a `cf:<id>` dimension, or null otherwise. */
+export function customFieldIdFromDimension(
+  dimension: GroupByDimension,
+): string | null {
+  return dimension.startsWith('cf:') ? dimension.slice(3) : null;
+}
 
 export interface SwimLane {
   id: string;
   label: string;
+  /**
+   * Optional hex color for a small dot next to the lane label — used for
+   * label lanes (label color) where the dimension's values carry color.
+   */
+  color?: string;
   /** Issues pre-grouped by the dimension (all statuses combined for this lane). */
   issues: IssueDto[];
 }
@@ -79,6 +115,10 @@ export function computeLanes(
   dimension: GroupByDimension,
   issuesByStatus: Map<string, IssueDto[]>,
   users: UserDto[],
+  extra: {
+    sprints?: SprintDto[];
+    customFieldDefs?: CustomFieldDefinitionDto[];
+  } = {},
 ): SwimLane[] {
   // Collect ALL filtered issues from the pre-filtered issuesByStatus map.
   const allIssues: IssueDto[] = [];
@@ -86,7 +126,14 @@ export function computeLanes(
     allIssues.push(...arr);
   }
 
-  switch (dimension) {
+  // Custom SELECT field dimensions (`cf:<fieldId>`) are computed generically
+  // from the field's option list rather than a hardcoded case below.
+  const customFieldId = customFieldIdFromDimension(dimension);
+  if (customFieldId) {
+    return computeCustomFieldLanes(customFieldId, allIssues, extra.customFieldDefs ?? []);
+  }
+
+  switch (dimension as CoreGroupByDimension) {
     case 'assignee': {
       // Group by assigneeId. Unassigned issues get a synthetic lane.
       const byAssignee = new Map<string | null, IssueDto[]>();
@@ -195,7 +242,152 @@ export function computeLanes(
       }
       return lanes;
     }
+
+    case 'component': {
+      // Group by componentId. Issues with no component land in "No component".
+      const byComponent = new Map<string, IssueDto[]>();
+      const names = new Map<string, string>();
+      const noComponent: IssueDto[] = [];
+
+      for (const issue of allIssues) {
+        if (issue.componentId && issue.component) {
+          if (!byComponent.has(issue.componentId)) byComponent.set(issue.componentId, []);
+          byComponent.get(issue.componentId)!.push(issue);
+          names.set(issue.componentId, issue.component.name);
+        } else {
+          noComponent.push(issue);
+        }
+      }
+
+      const lanes: SwimLane[] = [];
+      const ids = [...byComponent.keys()].sort((a, b) =>
+        (names.get(a) ?? '').localeCompare(names.get(b) ?? ''),
+      );
+      for (const id of ids) {
+        lanes.push({ id, label: names.get(id)!, issues: byComponent.get(id)! });
+      }
+      if (noComponent.length > 0) {
+        lanes.push({ id: '__no_component__', label: 'No component', issues: noComponent });
+      }
+      return lanes;
+    }
+
+    case 'label': {
+      // One lane per label; an issue with N labels appears in N lanes (matches
+      // the existing multi-label-filter mental model elsewhere in the app —
+      // cross-lane DnD stays out of scope so duplicate membership is safe).
+      // Issues with zero labels land in a single "No labels" lane.
+      const byLabel = new Map<string, IssueDto[]>();
+      const meta = new Map<string, { name: string; color: string }>();
+      const noLabel: IssueDto[] = [];
+
+      for (const issue of allIssues) {
+        const labels = issue.labels ?? [];
+        if (labels.length === 0) {
+          noLabel.push(issue);
+          continue;
+        }
+        for (const label of labels) {
+          if (!byLabel.has(label.id)) byLabel.set(label.id, []);
+          byLabel.get(label.id)!.push(issue);
+          meta.set(label.id, { name: label.name, color: label.color });
+        }
+      }
+
+      const lanes: SwimLane[] = [];
+      const ids = [...byLabel.keys()].sort((a, b) =>
+        (meta.get(a)?.name ?? '').localeCompare(meta.get(b)?.name ?? ''),
+      );
+      for (const id of ids) {
+        const m = meta.get(id)!;
+        lanes.push({ id, label: m.name, color: m.color, issues: byLabel.get(id)! });
+      }
+      if (noLabel.length > 0) {
+        lanes.push({ id: '__no_label__', label: 'No labels', issues: noLabel });
+      }
+      return lanes;
+    }
+
+    case 'sprint': {
+      // Group by sprintId. Issues with no sprint (backlog) land in "No sprint".
+      const sprints = extra.sprints ?? [];
+      const bySprint = new Map<string, IssueDto[]>();
+      const noSprint: IssueDto[] = [];
+
+      for (const issue of allIssues) {
+        if (issue.sprintId) {
+          if (!bySprint.has(issue.sprintId)) bySprint.set(issue.sprintId, []);
+          bySprint.get(issue.sprintId)!.push(issue);
+        } else {
+          noSprint.push(issue);
+        }
+      }
+
+      const lanes: SwimLane[] = [];
+      const ids = [...bySprint.keys()].sort((a, b) => {
+        const na = sprints.find((s) => s.id === a)?.name ?? '';
+        const nb = sprints.find((s) => s.id === b)?.name ?? '';
+        return na.localeCompare(nb);
+      });
+      for (const id of ids) {
+        const name = sprints.find((s) => s.id === id)?.name ?? 'Unknown sprint';
+        lanes.push({ id, label: name, issues: bySprint.get(id)! });
+      }
+      if (noSprint.length > 0) {
+        lanes.push({ id: '__no_sprint__', label: 'No sprint', issues: noSprint });
+      }
+      return lanes;
+    }
   }
+}
+
+/**
+ * Lanes for a custom SELECT field dimension (`cf:<fieldId>`): one lane per
+ * option value actually in use (in the field's configured option order),
+ * followed by any stale values (an option later removed from the field
+ * definition, so existing issue values still surface instead of vanishing),
+ * followed by a "None" lane for issues with no value set. Pure — takes the
+ * field's option list as data rather than looking anything up globally.
+ */
+function computeCustomFieldLanes(
+  fieldId: string,
+  allIssues: IssueDto[],
+  customFieldDefs: CustomFieldDefinitionDto[],
+): SwimLane[] {
+  const def = customFieldDefs.find((d) => d.id === fieldId);
+  const optionOrder = def?.options ?? [];
+
+  const byValue = new Map<string, IssueDto[]>();
+  const none: IssueDto[] = [];
+
+  for (const issue of allIssues) {
+    const raw = issue.customFields?.[fieldId];
+    const value = typeof raw === 'string' && raw.trim() !== '' ? raw : null;
+    if (value === null) {
+      none.push(issue);
+      continue;
+    }
+    if (!byValue.has(value)) byValue.set(value, []);
+    byValue.get(value)!.push(issue);
+  }
+
+  const lanes: SwimLane[] = [];
+  for (const opt of optionOrder) {
+    const issues = byValue.get(opt);
+    if (issues && issues.length > 0) {
+      lanes.push({ id: opt, label: opt, issues });
+      byValue.delete(opt);
+    }
+  }
+  // Values still present on issues but no longer in the field's option list.
+  const stale = [...byValue.keys()].sort((a, b) => a.localeCompare(b));
+  for (const value of stale) {
+    lanes.push({ id: value, label: value, issues: byValue.get(value)! });
+  }
+  if (none.length > 0) {
+    lanes.push({ id: '__none__', label: 'None', issues: none });
+  }
+  return lanes;
 }
 
 // ---------------------------------------------------------------------------
@@ -371,6 +563,14 @@ function LaneHeader({
     >
       {assignee && (
         <Avatar user={assignee} size="sm" />
+      )}
+      {lane.color && (
+        <span
+          aria-hidden="true"
+          data-testid="swimlane-lane-color-dot"
+          className="h-2.5 w-2.5 shrink-0 rounded-full ring-1 ring-inset ring-black/10"
+          style={{ backgroundColor: lane.color }}
+        />
       )}
       <h2
         className="font-display text-[11px] font-bold uppercase tracking-[0.1em] text-ink-600"

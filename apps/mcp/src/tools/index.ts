@@ -1266,9 +1266,13 @@ const writeTools: ToolDef[] = [
     name: 'update_board',
     group: 'write',
     description:
-      'Update a board — rename, change type, or set its default NLQL filter ' +
-      '(filterQuery; null clears so the board shows everything). Requires ' +
-      'MEMBER+. (Use assign_board_workflow for the workflow.)',
+      'Update a board — rename, change type, set its default NLQL filter ' +
+      '(filterQuery; null clears so the board shows everything), or set its ' +
+      'default swimlane grouping (defaultGroupBy; applied when a link to the ' +
+      "board doesn't include its own ?group= override — one of " +
+      '"assignee" | "priority" | "type" | "epic" | "component" | "sprint" | ' +
+      '"label", or "cf:<customFieldId>" for a project SELECT custom field; ' +
+      'null clears it). Requires MEMBER+. (Use assign_board_workflow for the workflow.)',
     inputSchema: {
       boardId: z.string().describe('Board id.'),
       name: z.string().min(1).max(80).optional(),
@@ -1278,6 +1282,13 @@ const writeTools: ToolDef[] = [
         .nullable()
         .optional()
         .describe('Default board-scope NLQL, or null to clear.'),
+      defaultGroupBy: z
+        .string()
+        .nullable()
+        .optional()
+        .describe(
+          'Default swimlane group-by dimension (core key or "cf:<id>"), or null to clear.',
+        ),
     },
     handler: (args, client) =>
       client
@@ -1285,6 +1296,7 @@ const writeTools: ToolDef[] = [
           name: args.name,
           type: args.type,
           filterQuery: args.filterQuery,
+          defaultGroupBy: args.defaultGroupBy,
         })
         .then(jsonResult),
   },

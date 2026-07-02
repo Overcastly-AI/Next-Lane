@@ -4,10 +4,66 @@
  * Board group-by (swimlanes): selecting a dimension splits the board into
  * horizontal lanes, the choice persists in the URL, and None restores the
  * flat board. No cross-lane corruption; no mobile page overflow.
+ *
+ * Also covers Swimlanes v2 ("Kanban sections by field"): Component, Sprint,
+ * Labels, and per-project custom SELECT fields as additional group-by
+ * dimensions, plus the per-board "Default grouping" setting.
  */
 
-import { test, expect } from '@playwright/test';
+import { test, expect, type APIRequestContext } from '@playwright/test';
 import { setupIsolatedProject, createIssue, API_URL } from './helpers';
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function authHeaders(token: string): Record<string, string> {
+  return { Authorization: `Bearer ${token}` };
+}
+
+/** Create a custom field via the API. Returns the created definition id. */
+async function createCustomField(
+  request: APIRequestContext,
+  token: string,
+  projectId: string,
+  body: { name: string; type: string; options?: string[] },
+): Promise<string> {
+  const res = await request.post(
+    `${API_URL}/api/projects/${projectId}/custom-fields`,
+    { headers: authHeaders(token), data: body },
+  );
+  expect(res.ok(), `create custom field failed: ${res.status()}`).toBeTruthy();
+  return ((await res.json()) as { id: string }).id;
+}
+
+/** Create a project component via the API. Returns its id. */
+async function createComponent(
+  request: APIRequestContext,
+  token: string,
+  projectId: string,
+  name: string,
+): Promise<string> {
+  const res = await request.post(
+    `${API_URL}/api/projects/${projectId}/components`,
+    { headers: authHeaders(token), data: { name } },
+  );
+  expect(res.ok(), `create component failed: ${res.status()}`).toBeTruthy();
+  return ((await res.json()) as { id: string }).id;
+}
+
+/** Patch an issue via the API (set componentId / customFields / etc). */
+async function patchIssue(
+  request: APIRequestContext,
+  token: string,
+  issueId: string,
+  data: Record<string, unknown>,
+): Promise<void> {
+  const res = await request.patch(`${API_URL}/api/issues/${issueId}`, {
+    headers: authHeaders(token),
+    data,
+  });
+  expect(res.ok(), `patch issue failed: ${res.status()}`).toBeTruthy();
+}
 
 test.describe('Board swimlanes (desktop)', () => {
   test.use({ viewport: { width: 1280, height: 900 } });
@@ -53,6 +109,134 @@ test.describe('Board swimlanes (desktop)', () => {
       timeout: 8_000,
     });
     await expect(page).not.toHaveURL(/[?&]group=/);
+  });
+
+  // ── Swimlanes v2: Component dimension ────────────────────────────────────
+
+  test('group by component renders a lane per component plus "No component"', async ({
+    page,
+    request,
+  }) => {
+    const ctx = await setupIsolatedProject(page, request, { label: 'swim-comp' });
+    const componentId = await createComponent(request, ctx.token, ctx.project.id, 'Backend');
+    const withComponent = await createIssue(request, ctx.token, ctx.project.id, {
+      title: 'Has a component',
+    });
+    await createIssue(request, ctx.token, ctx.project.id, { title: 'No component' });
+    await patchIssue(request, ctx.token, withComponent.id, { componentId });
+
+    await page.goto(`/projects/${ctx.project.id}/board`);
+    await expect(page.getByText(/to do/i).first()).toBeVisible({ timeout: 15_000 });
+
+    await page.getByTestId('swimlane-groupby').click();
+    await page.getByRole('menuitemradio', { name: /^component$/i }).click();
+
+    await expect(page).toHaveURL(/[?&]group=component/, { timeout: 8_000 });
+    await expect(page.getByTestId('swimlane-lane')).toHaveCount(2, { timeout: 8_000 });
+    await expect(
+      page.getByTestId('swimlane-lane-header').filter({ hasText: 'Backend' }),
+    ).toBeVisible();
+    await expect(
+      page.getByTestId('swimlane-lane-header').filter({ hasText: 'No component' }),
+    ).toBeVisible();
+
+    await page.screenshot({ path: '/tmp/nav-shots/swimlanes-component.png' });
+  });
+
+  // ── Swimlanes v2: custom SELECT field dimension ──────────────────────────
+
+  test('group by a custom SELECT field renders lanes incl. "None"', async ({
+    page,
+    request,
+  }) => {
+    const ctx = await setupIsolatedProject(page, request, { label: 'swim-cf' });
+    const fieldId = await createCustomField(request, ctx.token, ctx.project.id, {
+      name: 'Severity',
+      type: 'SELECT',
+      options: ['Low', 'High'],
+    });
+    const low = await createIssue(request, ctx.token, ctx.project.id, { title: 'Low sev' });
+    const high = await createIssue(request, ctx.token, ctx.project.id, { title: 'High sev' });
+    await createIssue(request, ctx.token, ctx.project.id, { title: 'No sev value' });
+    await patchIssue(request, ctx.token, low.id, { customFields: { [fieldId]: 'Low' } });
+    await patchIssue(request, ctx.token, high.id, { customFields: { [fieldId]: 'High' } });
+
+    await page.goto(`/projects/${ctx.project.id}/board`);
+    await expect(page.getByText(/to do/i).first()).toBeVisible({ timeout: 15_000 });
+
+    await page.getByTestId('swimlane-groupby').click();
+    await page.getByRole('menuitemradio', { name: 'Severity' }).click();
+
+    await expect(page).toHaveURL(/[?&]group=cf(%3A|:)/, { timeout: 8_000 });
+    // Low, High, and "None" (no value set) → 3 lanes.
+    await expect(page.getByTestId('swimlane-lane')).toHaveCount(3, { timeout: 8_000 });
+    await expect(
+      page.getByTestId('swimlane-lane-header').filter({ hasText: 'Low' }),
+    ).toBeVisible();
+    await expect(
+      page.getByTestId('swimlane-lane-header').filter({ hasText: 'High' }),
+    ).toBeVisible();
+    await expect(
+      page.getByTestId('swimlane-lane-header').filter({ hasText: 'None' }),
+    ).toBeVisible();
+
+    // Reload persists the cf:<id> dimension.
+    await page.reload();
+    await expect(page.getByTestId('swimlane-lane')).toHaveCount(3, { timeout: 15_000 });
+
+    await page.screenshot({ path: '/tmp/nav-shots/swimlanes-customfield.png' });
+  });
+
+  // ── Swimlanes v2: per-board default grouping ─────────────────────────────
+
+  test('per-board default grouping applies on fresh load; ?group= URL override wins; persists on reload', async ({
+    page,
+    request,
+  }) => {
+    const ctx = await setupIsolatedProject(page, request, { label: 'swim-default' });
+    await createIssue(request, ctx.token, ctx.project.id, { title: 'A task' });
+    await request.post(`${API_URL}/api/issues`, {
+      headers: authHeaders(ctx.token),
+      data: { projectId: ctx.project.id, title: 'A bug', type: 'BUG' },
+    });
+
+    // Set the board's default grouping through the real Board settings UI
+    // (exercises the "board-default-groupby" select, not just the API).
+    await page.goto(`/projects/${ctx.project.id}/board`);
+    await expect(page.getByText(/to do/i).first()).toBeVisible({ timeout: 15_000 });
+    await page.getByTestId('board-switcher').click();
+    const boardRow = page.getByTestId('board-switcher-option').first();
+    await boardRow.hover();
+    await boardRow.locator('..').getByTestId('board-settings-button').click();
+    const dialog = page.getByRole('dialog', { name: 'Board settings' });
+    await expect(dialog).toBeVisible({ timeout: 5_000 });
+    await dialog.getByTestId('board-default-groupby').selectOption('type');
+    await dialog.getByRole('button', { name: /save/i }).click();
+    await expect(dialog).toBeHidden({ timeout: 5_000 });
+
+    // Fresh load, no ?group= param → the per-board default applies.
+    await page.goto(`/projects/${ctx.project.id}/board`);
+    await expect(page.getByTestId('swimlane-lane')).toHaveCount(2, { timeout: 15_000 });
+    await expect(page).not.toHaveURL(/[?&]group=/);
+
+    // Explicit ?group= URL override wins over the board default: both
+    // seeded issues are MEDIUM priority → grouping by priority is 1 lane.
+    await page.goto(`/projects/${ctx.project.id}/board?group=priority`);
+    await expect(page.getByTestId('swimlane-lane')).toHaveCount(1, { timeout: 15_000 });
+
+    // The override persists across reload.
+    await page.reload();
+    await expect(page.getByTestId('swimlane-lane')).toHaveCount(1, { timeout: 15_000 });
+    await expect(page).toHaveURL(/[?&]group=priority/);
+
+    // Explicitly turning grouping off (None) overrides the board default too
+    // (a bare "no ?group=" would just re-apply the default).
+    await page.goto(`/projects/${ctx.project.id}/board`);
+    await expect(page.getByTestId('swimlane-lane')).toHaveCount(2, { timeout: 15_000 });
+    await page.getByTestId('swimlane-groupby').click();
+    await page.getByRole('menuitemradio', { name: /^none$/i }).click();
+    await expect(page.getByTestId('swimlane-lane')).toHaveCount(0, { timeout: 8_000 });
+    await expect(page).toHaveURL(/[?&]group=none/);
   });
 });
 

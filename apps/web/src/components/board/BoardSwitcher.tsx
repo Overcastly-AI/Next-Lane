@@ -16,6 +16,10 @@ import { useToast } from '@/components/ui/Toast';
 import { errorMessage } from '@/lib/errorMessage';
 import { useBoards, useCreateBoard, useUpdateBoard, useDeleteBoard } from '@/api/boards';
 import { useCustomFields } from '@/api/custom-fields';
+import {
+  CORE_GROUP_BY_OPTIONS,
+  customFieldGroupByOptions,
+} from '@/lib/groupByDimensions';
 import { CardColorsManager } from './CardColorsManager';
 import { NlqlInput } from './NlqlInput';
 
@@ -199,6 +203,7 @@ function BoardSettingsModal({
   const [name, setName] = useState(board.name);
   const [type, setType] = useState<BoardType>(board.type);
   const [filterQuery, setFilterQuery] = useState(board.filterQuery ?? '');
+  const [defaultGroupBy, setDefaultGroupBy] = useState(board.defaultGroupBy ?? '');
   const [confirmDelete, setConfirmDelete] = useState(false);
   const filterFieldRef = useRef<HTMLDivElement>(null);
 
@@ -207,8 +212,9 @@ function BoardSettingsModal({
     setName(board.name);
     setType(board.type);
     setFilterQuery(board.filterQuery ?? '');
+    setDefaultGroupBy(board.defaultGroupBy ?? '');
     setActiveTab(initialTab);
-  }, [board.id, board.name, board.type, board.filterQuery, initialTab]);
+  }, [board.id, board.name, board.type, board.filterQuery, board.defaultGroupBy, initialTab]);
 
   // Scroll/focus the Default filter field when opened via the toolbar chip.
   useEffect(() => {
@@ -233,6 +239,12 @@ function BoardSettingsModal({
     [customFieldsQuery.data],
   );
 
+  // Custom SELECT fields as selectable "Default grouping" options.
+  const groupByCfOptions = useMemo(
+    () => customFieldGroupByOptions(customFieldsQuery.data ?? []),
+    [customFieldsQuery.data],
+  );
+
   // Validate the board's default filter live so we never persist a broken query.
   const filterError = useMemo(() => {
     const q = filterQuery.trim();
@@ -248,7 +260,12 @@ function BoardSettingsModal({
     updateBoard.mutate(
       {
         boardId: board.id,
-        patch: { name: trimmed, type, filterQuery: filterQuery.trim() || null },
+        patch: {
+          name: trimmed,
+          type,
+          filterQuery: filterQuery.trim() || null,
+          defaultGroupBy: defaultGroupBy || null,
+        },
       },
       {
         onSuccess: () => {
@@ -433,6 +450,43 @@ function BoardSettingsModal({
                   filters still apply on top). Leave empty to show everything.
                 </p>
               )}
+            </div>
+            <div className="space-y-1.5">
+              <label
+                htmlFor="board-default-groupby"
+                className="block text-xs font-semibold text-slate-600"
+              >
+                Default grouping{' '}
+                <span className="font-normal text-slate-400">
+                  (swimlanes applied when a link doesn&apos;t override it)
+                </span>
+              </label>
+              <Select
+                id="board-default-groupby"
+                data-testid="board-default-groupby"
+                value={defaultGroupBy}
+                onChange={(e) => setDefaultGroupBy(e.target.value)}
+              >
+                <option value="">None (flat board)</option>
+                {CORE_GROUP_BY_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+                {groupByCfOptions.length > 0 && (
+                  <optgroup label="Custom fields">
+                    {groupByCfOptions.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+              </Select>
+              <p className="text-[11px] text-slate-400">
+                New visits to this board open grouped into these sections. A
+                shared link with its own <code>?group=</code> always wins.
+              </p>
             </div>
             {board.isDefault && (
               <p className="text-xs text-slate-400">

@@ -32,6 +32,9 @@ const issueInclude = {
   assignee: true,
   reporter: true,
   labels: { include: { label: true } },
+  // Needed for the "Component" swimlane dimension (Kanban sections by field)
+  // and the card's component chip.
+  component: { select: { id: true, name: true } },
   project: { select: { key: true } },
   // `linksTo` = links where this issue is the target; filtered to BLOCKS gives
   // the count of issues blocking it (BLOCKS is stored canonically blocker→blocked).
@@ -61,9 +64,25 @@ interface BoardRow {
   filterQuery: string | null;
   colorRules: Prisma.JsonValue;
   workflowId?: string | null;
+  defaultGroupBy?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
+
+/**
+ * Core (non-custom-field) swimlane group-by dimension keys. Keep in sync
+ * with `CORE_GROUP_BY_OPTIONS` in the web app
+ * (apps/web/src/lib/groupByDimensions.ts).
+ */
+const CORE_GROUP_BY_DIMENSIONS = [
+  'assignee',
+  'priority',
+  'type',
+  'epic',
+  'component',
+  'label',
+  'sprint',
+];
 
 /**
  * Coerce the raw Prisma JSON value for colorRules into a typed array.
@@ -93,6 +112,7 @@ export function toBoardSummaryDto(board: BoardRow): BoardSummaryDto {
     filterQuery: board.filterQuery,
     colorRules: coerceColorRules(board.colorRules),
     workflowId: board.workflowId ?? null,
+    defaultGroupBy: board.defaultGroupBy ?? null,
     createdAt: board.createdAt.toISOString(),
     updatedAt: board.updatedAt.toISOString(),
   };
@@ -295,6 +315,31 @@ export class BoardService {
     }
     // ── End NLQL validation ──────────────────────────────────────────────────
 
+    // ── Validate defaultGroupBy when provided ────────────────────────────────
+    // Must be a known core dimension, or `cf:<fieldId>` referencing a SELECT
+    // custom field that belongs to this board's project.
+    if (dto.defaultGroupBy !== undefined && dto.defaultGroupBy !== null) {
+      const value = dto.defaultGroupBy;
+      const isCore = CORE_GROUP_BY_DIMENSIONS.includes(value);
+      let isValidCustomField = false;
+      if (!isCore && value.startsWith('cf:')) {
+        const fieldId = value.slice(3);
+        const field = await this.prisma.customFieldDefinition.findUnique({
+          where: { id: fieldId },
+          select: { projectId: true, type: true },
+        });
+        isValidCustomField =
+          !!field &&
+          field.projectId === existing.projectId &&
+          field.type === 'SELECT';
+      }
+      if (!isCore && !isValidCustomField) {
+        throw new BadRequestException(
+          'defaultGroupBy is not a valid group-by dimension for this project',
+        );
+      }
+    }
+
     // ── Validate workflowId when provided ────────────────────────────────────
     if (dto.workflowId !== undefined && dto.workflowId !== null) {
       const wf = await this.prisma.workflow.findUnique({
@@ -323,6 +368,9 @@ export class BoardService {
       } else {
         data.workflow = { connect: { id: dto.workflowId } };
       }
+    }
+    if (dto.defaultGroupBy !== undefined) {
+      data.defaultGroupBy = dto.defaultGroupBy ?? null;
     }
 
     const board = await this.prisma.board.update({

@@ -439,6 +439,11 @@ model Board {
   /// Optional named Workflow this board enforces. Null = use the project-level
   /// legacy workflowEnforced + WorkflowTransition path (backward-compat).
   workflowId    String?
+  /// Default swimlane group-by dimension applied when the board loads without
+  /// an explicit ?group= URL param. Core dimension key (assignee/priority/
+  /// type/epic/component/label/sprint) or `cf:<CustomFieldDefinition.id>`.
+  /// Null = flat board (no default grouping).
+  defaultGroupBy String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 

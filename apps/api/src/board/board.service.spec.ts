@@ -20,7 +20,10 @@ function makePrisma() {
   return {
     status: { findMany: jest.fn() },
     issue: { findMany: jest.fn() },
-    customFieldDefinition: { findMany: jest.fn().mockResolvedValue([]) },
+    customFieldDefinition: {
+      findMany: jest.fn().mockResolvedValue([]),
+      findUnique: jest.fn().mockResolvedValue(null),
+    },
     board: {
       findMany: jest.fn(),
       findUnique: jest.fn(),
@@ -36,7 +39,7 @@ function makePrisma() {
   } as unknown as PrismaService & {
     status: { findMany: jest.Mock };
     issue: { findMany: jest.Mock };
-    customFieldDefinition: { findMany: jest.Mock };
+    customFieldDefinition: { findMany: jest.Mock; findUnique: jest.Mock };
     board: {
       findMany: jest.Mock;
       findUnique: jest.Mock;
@@ -109,6 +112,7 @@ function makeBoardRow(overrides: Partial<{
   order: number;
   filterQuery: string | null;
   colorRules: unknown;
+  defaultGroupBy: string | null;
 }> = {}) {
   return {
     id: overrides.id ?? BOARD_ID,
@@ -119,6 +123,7 @@ function makeBoardRow(overrides: Partial<{
     order: overrides.order ?? 0,
     filterQuery: overrides.filterQuery ?? null,
     colorRules: overrides.colorRules ?? null,
+    defaultGroupBy: overrides.defaultGroupBy ?? null,
     createdAt: new Date('2026-01-01T00:00:00.000Z'),
     updatedAt: new Date('2026-01-01T00:00:00.000Z'),
   };
@@ -659,6 +664,143 @@ describe('BoardService', () => {
           ]),
         }),
       );
+    });
+  });
+
+  // ── updateBoard defaultGroupBy validation (Kanban sections by field) ───────
+
+  describe('updateBoard defaultGroupBy validation', () => {
+    it('accepts a core dimension and persists it', async () => {
+      const existing = makeBoardRow({ isDefault: false });
+      prisma.board.findUnique.mockResolvedValue(existing);
+      prisma.board.update.mockResolvedValue(
+        makeBoardRow({ isDefault: false, defaultGroupBy: 'priority' }),
+      );
+
+      const dto = await service.updateBoard('user-1', BOARD_ID, {
+        defaultGroupBy: 'priority',
+      });
+
+      expect(prisma.board.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ defaultGroupBy: 'priority' }),
+        }),
+      );
+      expect(dto.defaultGroupBy).toBe('priority');
+    });
+
+    it('accepts every core dimension key', async () => {
+      const existing = makeBoardRow({ isDefault: false });
+      prisma.board.findUnique.mockResolvedValue(existing);
+      const dims = [
+        'assignee',
+        'priority',
+        'type',
+        'epic',
+        'component',
+        'label',
+        'sprint',
+      ];
+      for (const dim of dims) {
+        prisma.board.update.mockResolvedValue(
+          makeBoardRow({ isDefault: false, defaultGroupBy: dim }),
+        );
+        await service.updateBoard('user-1', BOARD_ID, { defaultGroupBy: dim });
+        expect(prisma.board.update).toHaveBeenCalledWith(
+          expect.objectContaining({
+            data: expect.objectContaining({ defaultGroupBy: dim }),
+          }),
+        );
+      }
+    });
+
+    it('null clears defaultGroupBy without hitting the DB for validation', async () => {
+      const existing = makeBoardRow({ isDefault: false });
+      prisma.board.findUnique.mockResolvedValue(existing);
+      prisma.board.update.mockResolvedValue(makeBoardRow({ isDefault: false }));
+
+      await service.updateBoard('user-1', BOARD_ID, { defaultGroupBy: null });
+
+      expect(prisma.customFieldDefinition.findUnique).not.toHaveBeenCalled();
+      expect(prisma.board.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ defaultGroupBy: null }),
+        }),
+      );
+    });
+
+    it('accepts a cf:<id> value for a SELECT custom field in the same project', async () => {
+      const existing = makeBoardRow({ isDefault: false });
+      prisma.board.findUnique.mockResolvedValue(existing);
+      prisma.customFieldDefinition.findUnique.mockResolvedValue({
+        projectId: PROJECT_ID,
+        type: 'SELECT',
+      });
+      prisma.board.update.mockResolvedValue(
+        makeBoardRow({ isDefault: false, defaultGroupBy: 'cf:cf-1' }),
+      );
+
+      await service.updateBoard('user-1', BOARD_ID, {
+        defaultGroupBy: 'cf:cf-1',
+      });
+
+      expect(prisma.customFieldDefinition.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'cf-1' } }),
+      );
+      expect(prisma.board.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ defaultGroupBy: 'cf:cf-1' }),
+        }),
+      );
+    });
+
+    it('rejects cf:<id> for a field that does not exist', async () => {
+      const existing = makeBoardRow({ isDefault: false });
+      prisma.board.findUnique.mockResolvedValue(existing);
+      prisma.customFieldDefinition.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.updateBoard('user-1', BOARD_ID, { defaultGroupBy: 'cf:missing' }),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.board.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects cf:<id> for a non-SELECT field type', async () => {
+      const existing = makeBoardRow({ isDefault: false });
+      prisma.board.findUnique.mockResolvedValue(existing);
+      prisma.customFieldDefinition.findUnique.mockResolvedValue({
+        projectId: PROJECT_ID,
+        type: 'TEXT',
+      });
+
+      await expect(
+        service.updateBoard('user-1', BOARD_ID, { defaultGroupBy: 'cf:cf-1' }),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.board.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects cf:<id> for a field belonging to a different project', async () => {
+      const existing = makeBoardRow({ isDefault: false });
+      prisma.board.findUnique.mockResolvedValue(existing);
+      prisma.customFieldDefinition.findUnique.mockResolvedValue({
+        projectId: 'other-project',
+        type: 'SELECT',
+      });
+
+      await expect(
+        service.updateBoard('user-1', BOARD_ID, { defaultGroupBy: 'cf:cf-1' }),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.board.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects a gibberish dimension string', async () => {
+      const existing = makeBoardRow({ isDefault: false });
+      prisma.board.findUnique.mockResolvedValue(existing);
+
+      await expect(
+        service.updateBoard('user-1', BOARD_ID, { defaultGroupBy: 'not-a-real-dimension' }),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.board.update).not.toHaveBeenCalled();
     });
   });
 });

@@ -83,6 +83,8 @@ export interface UpdateBoardInput {
   type?: BoardType;
   filterQuery?: string | null;
   colorRules?: BoardColorRule[];
+  /** Default swimlane group-by dimension for this board, or null to clear. */
+  defaultGroupBy?: string | null;
 }
 
 /**

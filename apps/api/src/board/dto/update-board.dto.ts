@@ -65,4 +65,17 @@ export class UpdateBoardDto {
   @ValidateIf((_o, v) => v !== null)
   @IsString()
   workflowId?: string | null;
+
+  /**
+   * Default swimlane group-by dimension for this board (Kanban sections by
+   * field), or null to clear (flat board). One of the core dimension keys
+   * (assignee/priority/type/epic/component/label/sprint) or `cf:<fieldId>`
+   * for a project custom SELECT field — validated against the project's
+   * custom fields in the service layer.
+   */
+  @IsOptional()
+  @ValidateIf((_o, v) => v !== null)
+  @IsString()
+  @MaxLength(80)
+  defaultGroupBy?: string | null;
 }
