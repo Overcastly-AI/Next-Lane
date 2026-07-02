@@ -143,6 +143,8 @@ Format: `- [ ] (P1, M) title — description [src]` · P0 critical / P1 now / P2
 
 ## Ready (top of queue)
 
+- [ ] (P2, M) **docs-site features guide refresh** — doc-syncer's first pass (2026-07-02) flagged `docs-site/guide/features.md` as needing a full rewrite, not fact-patches: checklists, time tracking, components, versions, WIP limits, swimlanes, issue templates, configurable workflows, MCP (55 tools), CSV import, SSO/OIDC, Mermaid, and email notifications are all shipped but undocumented in the user guide (~26 commits of drift). Owner: oss-curator (user-facing voice). [doc-syncer pass 1]
+
 > **Parity gaps** (mirrors `docs/VISION.md` § Better-than-Jira scorecard — kept
 > visible until each row closes, per CLAUDE.md): Dashboards/gadgets **3/5** (fixed
 > sections, no gadget grid — Pass 8/9/10/11 flat) · Permissions granularity **3/5**
