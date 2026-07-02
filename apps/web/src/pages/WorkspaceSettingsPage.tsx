@@ -21,7 +21,7 @@ import {
   useUpdateWorkspaceBranding,
   useDeleteWorkspace,
 } from '@/api/workspaces';
-import { useWorkspaceContext, useSyncActiveWorkspace } from '@/contexts/WorkspaceContext';
+import { useWorkspaceContext } from '@/contexts/WorkspaceContext';
 import { errorMessage } from '@/lib/errorMessage';
 
 // ── Delete dialog (type-to-confirm) ──────────────────────────────────────────
@@ -112,7 +112,6 @@ function DeleteWorkspaceDialog({
 
 export function WorkspaceSettingsPage() {
   const { workspaceId = '' } = useParams<{ workspaceId: string }>();
-  useSyncActiveWorkspace(workspaceId);
   const navigate = useNavigate();
   const toast = useToast();
 

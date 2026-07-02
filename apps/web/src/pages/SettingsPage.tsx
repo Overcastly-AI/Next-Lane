@@ -6,7 +6,6 @@ import { useStatuses, useLabels } from '@/api/meta';
 import { useUpdateStatus, useDeleteStatus } from '@/api/statuses';
 import { useCreateLabel, useDeleteLabel, useUpdateLabel } from '@/api/labels';
 import { useMyRole, useWorkspaceMembers } from '@/api/workspaces';
-import { useSyncActiveWorkspace } from '@/contexts/WorkspaceContext';
 import { canEdit } from '@/lib/permissions';
 import { AppHeader } from '@/components/AppHeader';
 import { ProjectNav } from '@/components/project/ProjectNav';
@@ -69,7 +68,6 @@ export function SettingsPage() {
   const projectQuery = useProject(projectId);
   const project = projectQuery.data;
   const myRole = useMyRole(project?.workspaceId);
-  useSyncActiveWorkspace(project?.workspaceId);
   const editable = canEdit(myRole);
   const isAdmin = myRole === Role.ADMIN;
 

@@ -20,7 +20,6 @@ import { ErrorState, LoadingState, EmptyState } from '@/components/ui/States';
 import { useAuditLog } from '@/api/audit';
 import { useMyRole } from '@/api/workspaces';
 import { useWorkspaces } from '@/api/workspaces';
-import { useSyncActiveWorkspace } from '@/contexts/WorkspaceContext';
 import { relativeTime } from '@/lib/relativeTime';
 
 // ── Action label map ──────────────────────────────────────────────────────────
@@ -159,7 +158,6 @@ function MetadataSnippet({
 
 export function WorkspaceAuditLogPage() {
   const { workspaceId = '' } = useParams<{ workspaceId: string }>();
-  useSyncActiveWorkspace(workspaceId);
 
   const myRole = useMyRole(workspaceId);
   const isAdmin = myRole === Role.ADMIN;

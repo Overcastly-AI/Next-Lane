@@ -205,6 +205,46 @@ test.describe('Workspace switcher — multi-workspace coherence', () => {
     await expect(chip(page)).toContainText('Bravo', { timeout: 15_000 });
   });
 
+  test('chip matches the URL’s workspace on EVERY scoped route (class guard)', async ({
+    page,
+    request,
+  }) => {
+    // The structural guarantee: any /projects/:id/* or /workspaces/:id/*
+    // route renders through a scoped layout that syncs the chip. This test
+    // sweeps every scoped route so adding route #16 without the layout
+    // fails here, not in production.
+    const ctx = await setupMultiWorkspace(page, request);
+    await expect(chip(page)).toContainText('Alpha', { timeout: 15_000 });
+
+    const projectRoutes = [
+      'board',
+      'backlog',
+      'triage',
+      'reports',
+      'analytics',
+      'roadmap',
+      'automations',
+      'settings',
+      'standups',
+      'poker',
+    ].map((p) => `/projects/${ctx.bravo.projectId}/${p}`);
+    const workspaceRoutes = ['settings', 'members', 'audit-log', 'branding'].map(
+      (p) => `/workspaces/${ctx.bravo.id}/${p}`,
+    );
+
+    for (const route of [...projectRoutes, ...workspaceRoutes]) {
+      // Force the active workspace back to Alpha so each route must re-sync.
+      await page.evaluate(
+        (id) => localStorage.setItem('nl.activeWorkspaceId', id),
+        ctx.alpha.id,
+      );
+      await page.goto(route);
+      await expect(chip(page), `chip on ${route}`).toContainText('Bravo', {
+        timeout: 15_000,
+      });
+    }
+  });
+
   test('deleting the active workspace heals to a remaining one', async ({
     page,
     request,

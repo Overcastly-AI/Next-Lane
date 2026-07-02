@@ -19,7 +19,6 @@ import {
 } from '@/api/standups';
 import { useProjectIssues } from '@/api/issues';
 import { useMyRole } from '@/api/workspaces';
-import { useSyncActiveWorkspace } from '@/contexts/WorkspaceContext';
 import { useProject } from '@/api/projects';
 import { AppHeader } from '@/components/AppHeader';
 import { ProjectNav } from '@/components/project/ProjectNav';
@@ -79,7 +78,6 @@ export function StandupsPage() {
   const digestQuery = useStandups(projectId, date);
   const myStandupQuery = useMyStandup(projectId, date);
   const myRole = useMyRole(projectQuery.data?.workspaceId);
-  useSyncActiveWorkspace(projectQuery.data?.workspaceId);
   const isViewer = myRole === Role.VIEWER;
 
   return (

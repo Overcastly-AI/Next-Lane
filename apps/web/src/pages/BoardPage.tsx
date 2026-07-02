@@ -30,7 +30,6 @@ import { useMoveIssue } from '@/api/issues';
 import { useExportCsv } from '@/api/export';
 import { useLabels, useSprints, useUsers } from '@/api/meta';
 import { useMyRole } from '@/api/workspaces';
-import { useSyncActiveWorkspace } from '@/contexts/WorkspaceContext';
 import { useCustomFields } from '@/api/custom-fields';
 import {
   useSavedFilters,
@@ -182,10 +181,6 @@ export function BoardPage() {
   const board = boardViewQuery.data;
   const myRole = useMyRole(board?.project.workspaceId);
   const editable = canEdit(myRole);
-
-  // Keep the header workspace chip in sync with the project you're viewing so
-  // it never misreports which workspace you're actually in.
-  useSyncActiveWorkspace(board?.project.workspaceId);
 
   // Move-issue mutation keyed to the selected board's cache entry.
   const moveIssue = useMoveIssue(projectId, selectedBoardId ?? undefined);

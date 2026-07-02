@@ -26,7 +26,6 @@ import {
   useUploadWorkspaceLogo,
   useDeleteWorkspaceLogo,
 } from '@/api/workspaces';
-import { useSyncActiveWorkspace } from '@/contexts/WorkspaceContext';
 import { applyBrandColor } from '@/lib/applyBrandColor';
 import { errorMessage } from '@/lib/errorMessage';
 import { getApiUrl } from '@/api/config';
@@ -401,7 +400,6 @@ function ColorSection({ workspaceId }: { workspaceId: string }) {
 
 export function WorkspaceBrandingPage() {
   const { workspaceId = '' } = useParams<{ workspaceId: string }>();
-  useSyncActiveWorkspace(workspaceId);
 
   const myRole = useMyRole(workspaceId);
   const isAdmin = myRole === Role.ADMIN;

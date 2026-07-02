@@ -11,6 +11,7 @@ import { RequireAuth } from '@/auth/RequireAuth';
 import { ToastProvider } from '@/components/ui/Toast';
 import { CommandPaletteProvider } from '@/components/CommandPaletteProvider';
 import { WorkspaceProvider } from '@/contexts/WorkspaceContext';
+import { WorkspaceScopedLayout, ProjectScopedLayout } from '@/layouts/ScopedLayouts';
 import { LoginPage } from '@/pages/LoginPage';
 import { RegisterPage } from '@/pages/RegisterPage';
 import { ForgotPasswordPage } from '@/pages/ForgotPasswordPage';
@@ -100,70 +101,6 @@ export default function App() {
               }
             />
             <Route
-              path="/projects/:projectId/board"
-              element={
-                <RequireAuth>
-                  <BoardPage />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/projects/:projectId/backlog"
-              element={
-                <RequireAuth>
-                  <BacklogPage />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/projects/:projectId/reports"
-              element={
-                <RequireAuth>
-                  <ReportsPage />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/projects/:projectId/analytics"
-              element={
-                <RequireAuth>
-                  <ProjectAnalyticsPage />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/projects/:projectId/roadmap"
-              element={
-                <RequireAuth>
-                  <RoadmapPage />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/projects/:projectId/triage"
-              element={
-                <RequireAuth>
-                  <TriagePage />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/projects/:projectId/automations"
-              element={
-                <RequireAuth>
-                  <AutomationsPage />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/projects/:projectId/settings"
-              element={
-                <RequireAuth>
-                  <SettingsPage />
-                </RequireAuth>
-              }
-            />
-            <Route
               path="/me/settings"
               element={
                 <RequireAuth>
@@ -171,64 +108,8 @@ export default function App() {
                 </RequireAuth>
               }
             />
-            <Route
-              path="/workspaces/:workspaceId/audit-log"
-              element={
-                <RequireAuth>
-                  <WorkspaceAuditLogPage />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/projects/:projectId/standups"
-              element={
-                <RequireAuth>
-                  <StandupsPage />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/projects/:projectId/poker"
-              element={
-                <RequireAuth>
-                  <PokerStartPage />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/projects/:projectId/poker/:sessionId"
-              element={
-                <RequireAuth>
-                  <PokerSessionPage />
-                </RequireAuth>
-              }
-            />
             {/* Public read-only board — no RequireAuth wrapper */}
             <Route path="/share/:token" element={<SharedBoardPage />} />
-            <Route
-              path="/workspaces/:workspaceId/members"
-              element={
-                <RequireAuth>
-                  <WorkspaceMembersPage />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/workspaces/:workspaceId/branding"
-              element={
-                <RequireAuth>
-                  <WorkspaceBrandingPage />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/workspaces/:workspaceId/settings"
-              element={
-                <RequireAuth>
-                  <WorkspaceSettingsPage />
-                </RequireAuth>
-              }
-            />
             <Route
               path="/notifications"
               element={
@@ -237,6 +118,53 @@ export default function App() {
                 </RequireAuth>
               }
             />
+
+            {/*
+              Project-scoped routes: ProjectScopedLayout resolves the
+              project's workspaceId and syncs the active-workspace context so
+              every page under here (and any future one) gets the header
+              chip in sync for free — no per-page useSyncActiveWorkspace call
+              required.
+            */}
+            <Route
+              path="/projects/:projectId"
+              element={
+                <RequireAuth>
+                  <ProjectScopedLayout />
+                </RequireAuth>
+              }
+            >
+              <Route path="board" element={<BoardPage />} />
+              <Route path="backlog" element={<BacklogPage />} />
+              <Route path="reports" element={<ReportsPage />} />
+              <Route path="analytics" element={<ProjectAnalyticsPage />} />
+              <Route path="roadmap" element={<RoadmapPage />} />
+              <Route path="triage" element={<TriagePage />} />
+              <Route path="automations" element={<AutomationsPage />} />
+              <Route path="settings" element={<SettingsPage />} />
+              <Route path="standups" element={<StandupsPage />} />
+              <Route path="poker" element={<PokerStartPage />} />
+              <Route path="poker/:sessionId" element={<PokerSessionPage />} />
+            </Route>
+
+            {/*
+              Workspace-scoped routes: WorkspaceScopedLayout syncs the
+              active-workspace context to :workspaceId structurally.
+            */}
+            <Route
+              path="/workspaces/:workspaceId"
+              element={
+                <RequireAuth>
+                  <WorkspaceScopedLayout />
+                </RequireAuth>
+              }
+            >
+              <Route path="audit-log" element={<WorkspaceAuditLogPage />} />
+              <Route path="members" element={<WorkspaceMembersPage />} />
+              <Route path="branding" element={<WorkspaceBrandingPage />} />
+              <Route path="settings" element={<WorkspaceSettingsPage />} />
+            </Route>
+
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
           </CommandPaletteProvider>
