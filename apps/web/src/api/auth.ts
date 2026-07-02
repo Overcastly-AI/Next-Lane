@@ -38,6 +38,19 @@ export async function me(): Promise<UserDto> {
   return request<UserDto>('/auth/me');
 }
 
+export interface AuthProvidersResponse {
+  oidc: { enabled: boolean; label: string };
+}
+
+/**
+ * Public capability probe — tells the LoginPage whether to render the
+ * "Continue with <label>" SSO button. Never assume a provider is configured;
+ * always check this first.
+ */
+export async function getAuthProviders(): Promise<AuthProvidersResponse> {
+  return request<AuthProvidersResponse>('/auth/providers');
+}
+
 /**
  * Update the current user's profile (name, notification preferences). Returns
  * the fresh UserDto and refreshes the cached copy used for instant UI.

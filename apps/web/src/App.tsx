@@ -13,6 +13,7 @@ import { CommandPaletteProvider } from '@/components/CommandPaletteProvider';
 import { WorkspaceProvider } from '@/contexts/WorkspaceContext';
 import { WorkspaceScopedLayout, ProjectScopedLayout } from '@/layouts/ScopedLayouts';
 import { LoginPage } from '@/pages/LoginPage';
+import { SsoCompletePage } from '@/pages/SsoCompletePage';
 import { RegisterPage } from '@/pages/RegisterPage';
 import { ForgotPasswordPage } from '@/pages/ForgotPasswordPage';
 import { ResetPasswordPage } from '@/pages/ResetPasswordPage';
@@ -65,6 +66,7 @@ export default function App() {
           <CommandPaletteProvider>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
+            <Route path="/login/sso-complete" element={<SsoCompletePage />} />
             <Route path="/register" element={<RegisterPage />} />
             <Route path="/forgot-password" element={<ForgotPasswordPage />} />
             <Route path="/reset-password" element={<ResetPasswordPage />} />

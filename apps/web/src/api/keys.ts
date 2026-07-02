@@ -52,6 +52,8 @@ export const qk = {
   issueTemplates: (projectId: string) => ['issueTemplates', projectId] as const,
   /** Personal quick links for the current user. */
   quickLinks: ['quickLinks'] as const,
+  /** Public login-surface capability probe (e.g. is SSO/OIDC configured). */
+  authProviders: ['authProviders'] as const,
 };
 
 /**

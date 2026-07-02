@@ -370,7 +370,7 @@ Redis). For a batteries-included quick-start, prefer the Helm chart.
 | `api.env.rateLimitDisabled` | `false` | Disable rate limiting (avoid in prod). |
 | `api.env.webhookAllowPrivate` | `false` | Allow webhooks to private IPs (**SSRF risk**; never on shared/internet-facing). |
 | `api.env.autoSeed` | `false` | Seed demo data on boot (API pod runs the server directly, so this mainly matters for the bundled-demo flow). |
-| `api.extraEnv` / `api.extraEnvFrom` | `[]` | Extra env / envFrom (e.g. `SMTP_*`). |
+| `api.extraEnv` / `api.extraEnvFrom` | `[]` | Extra env / envFrom (e.g. `SMTP_*`, `OIDC_ISSUER_URL`/`OIDC_CLIENT_ID`/`OIDC_CLIENT_SECRET`/`OIDC_BUTTON_LABEL`/`OIDC_REDIRECT_URI` — see `docs-site/guide/configuration.md` § SSO / OIDC). |
 | `api.resources` | 100m/256Mi → 1/512Mi | Requests/limits. |
 | `api.probes.*` | enabled | Liveness/readiness/startup on `/health`. |
 | `api.podSecurityContext` | runAsNonRoot, uid 1000, RuntimeDefault | Pod security. |

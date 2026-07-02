@@ -11,6 +11,7 @@ import { ConfigurableThrottlerGuard } from './common/configurable-throttler.guar
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
 import { AuthModule } from './auth/auth.module';
+import { OidcModule } from './auth/oidc/oidc.module';
 import { UsersModule } from './users/users.module';
 import { WorkspacesModule } from './workspaces/workspaces.module';
 import { ProjectsModule } from './projects/projects.module';
@@ -135,6 +136,7 @@ const isProd = process.env.NODE_ENV === 'production';
     RedisModule,
     RealtimeModule,
     AuthModule,
+    OidcModule,
     UsersModule,
     WorkspacesModule,
     ProjectsModule,

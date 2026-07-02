@@ -8,6 +8,7 @@ import { Public } from './public.decorator';
 import { CurrentUser, AuthUser } from './current-user.decorator';
 import { PrismaService } from '../prisma/prisma.service';
 import { PasswordResetService } from './password-reset.service';
+import { isOidcConfigured, getOidcButtonLabel } from './oidc/oidc.config';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -37,6 +38,22 @@ export class AuthController {
   @Post('login')
   login(@Body() dto: LoginDto) {
     return this.auth.login(dto);
+  }
+
+  /**
+   * Public, unauthenticated capability probe for login-surface features.
+   * The frontend uses this to decide whether to render the "Continue with
+   * SSO" button on LoginPage — never assume a provider is configured.
+   */
+  @Public()
+  @Get('providers')
+  providers(): { oidc: { enabled: boolean; label: string } } {
+    return {
+      oidc: {
+        enabled: isOidcConfigured(),
+        label: getOidcButtonLabel(),
+      },
+    };
   }
 
   /**

@@ -35,6 +35,38 @@ work for a local Docker Compose install.
 
 ---
 
+## SSO / OIDC login (Phase 1 — single generic provider)
+
+Adds a "Continue with `<label>`" button to the login page, backed by any
+standards-compliant OIDC provider (Okta, Auth0, Keycloak, Authentik, Google
+Workspace, ...). **OFF by default** — the feature only activates when all
+three required variables are set; the zero-config self-host path is
+unaffected. Users who sign in via SSO for the first time are just-in-time
+provisioned (an account is created automatically on first login, matched by
+email on subsequent logins).
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `OIDC_ISSUER_URL` | unset | The provider's issuer URL. The API fetches `${OIDC_ISSUER_URL}/.well-known/openid-configuration` to discover the provider's endpoints. Required to enable SSO. |
+| `OIDC_CLIENT_ID` | unset | OAuth2/OIDC client id registered with the provider. Required to enable SSO. |
+| `OIDC_CLIENT_SECRET` | unset | Client secret. Never logged. Required to enable SSO. |
+| `OIDC_BUTTON_LABEL` | `Single sign-on` | Label on the login button ("Continue with `<label>`"). |
+| `OIDC_REDIRECT_URI` | derived from the request | Explicit absolute callback URL to register with the provider (e.g. `https://tracker.example.com/api/auth/oidc/callback`). Recommended in production, especially behind a TLS-terminating reverse proxy. |
+
+Register `${OIDC_REDIRECT_URI or <your-api-origin>}/api/auth/oidc/callback` as
+an allowed redirect URI with your identity provider.
+
+Security notes: the authorization-code flow uses PKCE + a signed, short-lived,
+httpOnly state cookie (CSRF/nonce protected); emails the provider reports as
+unverified (`email_verified: false`) are rejected; `GET /api/auth/providers`
+is the public, unauthenticated capability probe the frontend uses to decide
+whether to render the button — it never assumes a provider is configured.
+
+SAML, multiple simultaneously-configured providers, and per-workspace/role
+JIT provisioning are a tracked Phase 2 follow-up (see `docs/BACKLOG.md`).
+
+---
+
 ## Redis
 
 Redis is optional in single-node mode but required for multi-replica HA.

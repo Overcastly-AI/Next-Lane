@@ -57,6 +57,22 @@ export class AuthService {
     return { accessToken, user: toUserDto(user) };
   }
 
+  /**
+   * Issue the same JWT session shape as `login`/`register` for an already-
+   * resolved user. Used by SSO/OIDC callback handling after JIT provisioning
+   * so every login surface (password, OIDC) shares one token contract.
+   */
+  issueSession(user: {
+    id: string;
+    email: string;
+    name: string;
+    avatarColor: string;
+    emailNotifications: boolean;
+    createdAt: Date;
+  }): AuthResponse {
+    return this.sign(user);
+  }
+
   async updateProfile(userId: string, dto: UpdateProfileDto): Promise<UserDto> {
     const data: { name?: string; emailNotifications?: boolean } = {};
     if (dto.name !== undefined) data.name = dto.name;
@@ -98,6 +114,6 @@ const COLORS = [
   '#a855f7',
   '#ec4899',
 ];
-function randomColor(): string {
+export function randomColor(): string {
   return COLORS[Math.floor(Math.random() * COLORS.length)];
 }
