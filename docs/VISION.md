@@ -87,7 +87,7 @@ materially changes.
 | Dimension | Verdict | Evidence |
 |---|---|---|
 | Board speed & feel | **Better** | The DnD board has been rated 5/5 in every product-audit pass since Pass 3 — fractional-rank optimistic drag, live presence, WIP limits, swimlanes, blocked-link and custom-field card-face chips (AUDIT-PRODUCT.md Pass 11). It also runs with zero network hop to a third-party cloud and zero per-seat automation throttling — speed the incumbent can't structurally match on your own hardware. **Honesty check (2026-07-02 founder session):** the board itself still earns "Better," but the founder independently rediscovered three shipped capabilities as "missing" — workspace branding, board default filters, and the Gantt-style roadmap timeline — because none of them live on a persistent nav surface. That is not a board-speed defect, but it is real erosion risk on the daily-driver claim: a feature nobody can find is a feature that doesn't exist to the user. See "Navigation & IA overhaul," ROADMAP.md Phase 5. |
-| Workflow flexibility | **Better** | Per-board named workflows with a visual graph editor, transition gates, and one-click templates (Phase 5, ROADMAP.md) — and, uniquely, the workflow definition is readable *and editable* over MCP by an AI agent (`@next-lane/mcp`, 18 tools). No closed per-seat tracker exposes its SDLC to an agent this way. |
+| Workflow flexibility | **Better** | Per-board named workflows with a visual graph editor, transition gates, and one-click templates (Phase 5, ROADMAP.md) — and, uniquely, the workflow definition is readable *and editable* over MCP by an AI agent (`@next-lane/mcp`, grown from 18 to 55 tools since first ship — a standing "MCP coverage parity sweep" now keeps this in lockstep with new features, ROADMAP.md § Current focus). No closed per-seat tracker exposes its SDLC to an agent this way. |
 | Keyboard-first ergonomics | **Better** | A command palette (Cmd-K) plus a dedicated keyboard triage mode (`j`/`k` navigate, `s`/`p`/`a`/`l` inline pickers, `?` help overlay) go deeper than the incumbent's shortcut set — a genuine power-user differentiator, not table stakes. |
 | Search & query power | Parity | NLQL (query language + saved/shared filters + full-text search) shows "none" gap vs. the leader baseline in the Pass-11 parity scorecard (AUDIT-PRODUCT.md). The power is there; the incumbent's 20-year JQL install base and muscle memory is a maturity/ecosystem gap that shipping more features alone won't close. |
 | Onboarding / first-hour experience | Parity | In-app onboarding is a rated strength across four consecutive audit passes ("zero dead ends," guided first-project flow, strong empty states). But self-hosting itself (Docker Compose, env config) is real setup friction a cloud incumbent's instant signup doesn't have — the two roughly cancel out today. **2026-07-02 discoverability findings sharpen this:** the founder — a power user of this exact product — independently reported three already-shipped features (branding, board default filters, roadmap/Gantt) as "lost," each 1-3 clicks deep behind a "More" menu or settings chip. First-hour onboarding gets you *in*; there is no persistent surface that keeps you oriented to *everything that's there* once you're past hour one on a many-project, many-workspace instance — the gap this scorecard row will next be judged on. |
@@ -125,17 +125,20 @@ rather than twice.
 1. **Core PM parity** *(Phase 5 — largely shipped)* — be a credible daily driver
    first: multiple boards + board types, custom fields, a real query language (NLQL)
    + saved filters, conditional card colors, planning poker, issue
-   links/dependencies, bulk edit, CSV export, workspace branding. Remaining gaps:
-   swimlanes, components/versions, and **configurable workflows** — let teams
-   bake in their full SDLC as an editable status graph (allowed transitions +
-   conditions/validators/gates + templates). This one bridges to pillar 4: the
-   workflow definition is **readable and editable over MCP**, so an agent can
-   introspect and reshape a project's SDLC the same as a human — an agent-legible,
-   self-defined process is something closed per-seat trackers don't expose.
+   links/dependencies, bulk edit, CSV export, workspace branding, components/versions,
+   and **configurable workflows** — teams bake in their full SDLC as an editable
+   status graph (allowed transitions + conditions/validators/gates + templates),
+   readable and editable over MCP so an agent can introspect and reshape a
+   project's SDLC the same as a human. Remaining gaps: **Swimlanes v2**
+   (Kanban sections keyed off Component/Labels/custom SELECT fields, not just
+   the shipped Assignee/Priority/Type/Epic dimensions) and **NLQL-native
+   configurable dashboards** — every gadget, built-in or custom, is defined
+   as an NLQL query + a visualization, not a bespoke widget type.
 2. **Autopilot — a self-hosted AI teammate** *(Phase 6)* — private, unlimited,
    $0 AI: natural-language→NLQL, auto-triage + semantic dedupe (pgvector),
    sprint risk radar & summaries, and **MCP-native** so agents read/write issues
-   (and the workflow definition) from the IDE.
+   (and the workflow definition) from the IDE — 55 tools and climbing, with MCP
+   exposure now a standing part of every new feature's definition of done.
 3. **Glass Box — unlimited automation + data ownership** *(Phase 7)* — a
    trigger→condition→action engine (conditions reuse NLQL) with **unlimited
    runs** and a full audit (shipped). Remaining: rule library/templates, true

@@ -199,7 +199,10 @@ delivered as QA'd vertical slices.
   - ⬜ **Phase 1 — persistent left sidebar framework**: collapsible left sidebar (desktop) / drawer (mobile) with a workspace section (chip + switcher relocated in, branding/admin entry points visible without a submenu), and a pinned/recent-projects list, replacing the current header-only navigation model. Must use the `frontend-design` skill (this is UI-system-wide, not a component patch) and preserve every existing `data-testid`/route/URL so no e2e breaks.
   - ⬜ **Phase 2 — surface the buried features as first-class nav**: per-project view links inside the sidebar (Board / Backlog / Roadmap-Gantt / Reports as direct links, not nested in `ProjectNav`'s "More" dropdown), a workspace admin section with Branding as a direct, visible entry (not chip → dropdown → tab), and a clickable board-toolbar default-filter affordance (the mechanism — `Board.filterQuery` + `BoardSettingsModal` — already ships; this closes the *discovery* gap, including an empty-state "+ Set default filter" prompt when a board has none).
 - ⬜ **Light / dark mode** (founder-flagged 2026-07-02) — the Dispatch token system is already CSS-custom-property-based (`--nl-signal-*` etc., runtime-theming already proven by per-workspace brand color), so this is a palette addition, not an architecture change: a dark token palette, `prefers-color-scheme` default with a manual per-user toggle (persisted), WCAG-AA contrast verified in both modes, before/after screenshots as a QA gate. Sequenced immediately after (or alongside) the nav overhaul so the design-token system is touched once, coherently, instead of twice.
-- ⬜ **Remaining parity gaps**: configurable dashboards, project-level role overrides, personal-board per-card checklists, SSO/OIDC Phase 2 (SAML + multi-provider + JIT workspace/role provisioning).
+- ⬜ **Kanban sections by field (Swimlanes v2)** (founder-flagged 2026-07-02) — extends the shipped swimlane group-by (Assignee/Priority/Issue type/Epic) to Component, Labels, and project-defined custom SELECT fields; per-board default dimension persisted via one additive nullable column; interpretation flagged for founder confirmation but scoped to proceed. See `docs/BACKLOG.md` Next (P2) for acceptance criteria.
+- ⬜ **Settings robustness pass** and **Workflows robustness pass** (founder-flagged 2026-07-02) — a `qa-tester`-driven hardening sweep (inputs/validation/error-states/persistence, per-keystroke typing, cross-page coherence matrix) across every project- and workspace-settings surface and the workflow builder/graph editor, followed by a dedicated fix batch. Not new features; the founder's post-spaces-bug quality bar applied broadly.
+- ⬜ **DB schema check-in** (founder asked "are we due for a schema overhaul?"): **no.** The current/upcoming wave is small additive tables only — `Dashboard`/`DashboardGadget` (below), `GithubIntegration`/`IssueGithubLink` (Phase 9 kickoff, mid-flight), possibly `Board.swimlaneField`, and a server-persisted theme-preference column if dark mode needs one — the existing Prisma model holds.
+- ⬜ **Remaining parity gaps**: NLQL-native configurable dashboards (every gadget — built-in or custom — is an NLQL query + a visualization, not a bespoke widget type; see `docs/BACKLOG.md`), project-level role overrides, personal-board per-card checklists, SSO/OIDC Phase 2 (SAML + multi-provider + JIT workspace/role provisioning).
 
 ## Phase 6 — Autopilot: a self-hosted AI teammate 🔭 (vision)
 
@@ -212,6 +215,7 @@ is the headline differentiator the cloud-first incumbents structurally can't mat
 - ⬜ **Auto-triage on create** — suggested type / priority / component / assignee / labels, with **semantic duplicate detection** (add `pgvector` embeddings on top of the existing Postgres FTS/GIN index).
 - ⬜ **Sprint risk radar + summaries** — "this sprint will miss by ~6 pts; blocker is NL-142"; auto standups and release notes generated from closed issues.
 - ⬜ **MCP-native** — ship Next Lane as an **MCP server** so AI coding agents (Claude Code, etc.) read & write issues directly from the IDE (file bugs, move cards, close tickets as they code). Dogfooded by this project's own agent build loop. No paid tracker is MCP-native today.
+- 🚧 **MCP coverage parity sweep** (founder-flagged 2026-07-02 — "most should be wired into the mcp") — `@next-lane/mcp` has grown organically from the 18 tools first shipped (2026-06-29, Phase 5) to **55** tools, without a standing process keeping it in lockstep with new features. Filed as a Ready backlog item (`docs/BACKLOG.md`) to close the current gap and establish a **standing rule**: every new feature's definition of done includes MCP exposure where it makes sense.
 - ⬜ **Privacy posture** — all inference local by default; a hard "no external calls" switch for regulated installs; per-workspace model/endpoint config.
 
 ## Phase 7 — Glass Box: unlimited automation + data ownership 🚧 (in progress)
@@ -303,6 +307,24 @@ order first, ahead of any new pillar or moonshot:
    in progress in parallel today; the README/first-impression surface
    overhaul is owned by `oss-curator` and in progress today (tracked there,
    not duplicated here).
+
+7. **Founder directives, 2026-07-02 (Kanban field-sections, Settings/Workflows
+   robustness, NLQL-native dashboards, MCP parity, schema check-in)** — four
+   fresh asks, each filed as a scoped `docs/BACKLOG.md` item rather than left
+   as loose direction: **Kanban sections by field ("Swimlanes v2")** extends
+   the shipped group-by to Component/Labels/custom SELECT fields; **Settings**
+   and **Workflows robustness passes** apply the founder's post-spaces-bug
+   quality bar (inputs/validation/error-states/persistence) as a dedicated
+   qa-tester audit + fix batch; **custom dashboards are NLQL-native** —
+   every gadget, built-in or custom, is an NLQL query + a visualization,
+   rescoping (not duplicating) the "Configurable dashboards — Phase 1" item
+   above; and an **MCP coverage parity sweep** closes the gap between the
+   product surface and the MCP server's 55 tools while establishing the
+   standing rule that every feature's definition of done includes MCP
+   exposure where it makes sense. The founder also asked directly whether a
+   DB schema overhaul is needed: **answered no** — see the Phase 5 "DB schema
+   check-in" bullet above; the current/upcoming wave is small additive tables
+   only.
 
 Everything below this line documents what already shipped; it is not being
 rewritten, only re-prioritized going forward per the ordering above.
