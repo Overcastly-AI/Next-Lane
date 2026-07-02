@@ -54,6 +54,8 @@ export const qk = {
   quickLinks: ['quickLinks'] as const,
   /** Public login-surface capability probe (e.g. is SSO/OIDC configured). */
   authProviders: ['authProviders'] as const,
+  /** Linked GitHub PRs/commits/branches for an issue (Development section). */
+  githubLinks: (issueId: string) => ['githubLinks', issueId] as const,
 };
 
 /**

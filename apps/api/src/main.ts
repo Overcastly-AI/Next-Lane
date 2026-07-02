@@ -17,6 +17,13 @@ async function bootstrap() {
     // the logger is initialised (rather than falling through to the default
     // console logger during bootstrap).
     bufferLogs: true,
+    // Expose the exact request bytes on `req.rawBody` alongside the normal
+    // parsed `req.body`. Required by the inbound GitHub webhook receiver
+    // (`POST /api/github/webhook/:projectId`) to verify the `X-Hub-Signature-256`
+    // HMAC against the precise bytes GitHub signed — re-serializing the parsed
+    // JSON would not reproduce byte-identical output. No behavior change for
+    // any other route; `req.body` is still populated as before.
+    rawBody: true,
   });
 
   // Route all of Nest's internal logger calls through the pino logger so every

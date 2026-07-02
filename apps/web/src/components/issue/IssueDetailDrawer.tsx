@@ -36,6 +36,7 @@ import { CustomFieldsDrawerSection } from './CustomFieldsDrawerSection';
 import { LinkedIssuesSection } from './LinkedIssuesSection';
 import { ChecklistSection } from './ChecklistSection';
 import { TimeTrackingSection } from './TimeTrackingSection';
+import { GithubLinksSection } from './GithubLinksSection';
 import { useAuth } from '@/auth/AuthContext';
 
 /** Common agile estimate values offered in the Story Points select. */
@@ -427,6 +428,8 @@ function DrawerBody({
                 onPatch('originalEstimateMinutes', minutes)
               }
             />
+
+            <GithubLinksSection issueId={issue.id} />
 
             <CommentsPanel issueId={issue.id} users={users} editable={editable} />
           </div>

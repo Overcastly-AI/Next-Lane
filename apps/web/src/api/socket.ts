@@ -104,6 +104,10 @@ export function useBoardRealtime(
           if (id) {
             void qc.invalidateQueries({ queryKey: qk.issue(id) });
             void qc.invalidateQueries({ queryKey: qk.activity(id) });
+            // The GitHub webhook handler re-uses IssueUpdated (minimal { id }
+            // payload) to signal new/changed PR/commit/branch links — refresh
+            // the Development section's own cache too.
+            void qc.invalidateQueries({ queryKey: qk.githubLinks(id) });
           }
         }
         if (event === SocketEvents.SprintUpdated) {

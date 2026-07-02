@@ -12,8 +12,10 @@
 // add_per_board_workflows — applied 2026-06-29.
 // add_time_tracking — applied 2026-06-29.
 // add_issue_templates — applied 2026-06-29.
+// add_github_integration — applied 2026-07-02.
 // Deferred to feature slices (do not add here without a feature branch):
-//   - ScmConnection / IssueExternalLink / pgvector embedding column (Phase 9 / Phase 6)
+//   - pgvector embedding column (Phase 6)
+//   - GitLab / Gitea connections, auto-link-on-PR-open (Phase 9 follow-up)
 
 generator client {
   provider = "prisma-client-js"
@@ -354,6 +356,9 @@ model Project {
   // Issue templates
   issueTemplates         IssueTemplate[]
 
+  // GitHub integration (Phase 9 — Developer Graph, v1 two-way link)
+  githubIntegration      GithubIntegration?
+
   @@unique([workspaceId, key])
   @@index([workspaceId])
   @@index([leadId])
@@ -659,6 +664,9 @@ model Issue {
 
   // Time tracking
   workLogs              WorkLog[]
+
+  // GitHub integration — linked PRs / commits / branches (Phase 9)
+  githubLinks           IssueGithubLink[]
 
   @@unique([projectId, number])
   @@index([projectId, statusId])
@@ -1367,5 +1375,73 @@ model IssueTemplate {
 
   @@unique([projectId, name])
   @@index([projectId])
+}
+
+// ---------------------------------------------------------------------------
+// GitHub integration (Phase 9 — Developer Graph, v1 two-way link)
+// ---------------------------------------------------------------------------
+
+/// The kind of GitHub object an IssueGithubLink points to.
+enum GithubLinkKind {
+  PR
+  COMMIT
+  BRANCH
+}
+
+/// Per-project GitHub repository link configuration. ADMIN-managed. One row
+/// per project (unique projectId) — v1 scope is a single repo per project.
+///
+/// `tokenEncrypted` — the GitHub PAT, AES-256-GCM encrypted at rest (never
+///   stored in plaintext, unlike a one-way hash — a future outbound
+///   GithubClient call, e.g. polling PR/CI status, needs to present the raw
+///   token to the GitHub API, so a one-way hash like ApiToken.tokenHash is
+///   not sufficient here). Encryption key is derived from
+///   GITHUB_TOKEN_ENCRYPTION_KEY (falls back to JWT_SECRET for zero-config
+///   self-host — see github-crypto.util.ts). Never returned by any API response.
+/// `webhookSecret` — HMAC signing secret the self-hoster pastes into GitHub's
+///   repo webhook settings ("Secret" field); the inbound webhook receiver
+///   verifies `X-Hub-Signature-256` against this value before processing any
+///   payload. Generated once at creation; not rotated by a plain PUT (v1).
+model GithubIntegration {
+  id             String   @id @default(cuid())
+  projectId      String   @unique
+  /// "owner/repo" — validated at the DTO layer.
+  repoFullName   String
+  tokenEncrypted String
+  webhookSecret  String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}
+
+/// A link between a tracked Issue and a GitHub object (pull request, commit,
+/// or branch), created/updated by the inbound webhook handler when a commit
+/// message or PR title/branch name references the issue's key (e.g. "NL-123").
+///
+/// `externalId` — PR number (as a string), commit SHA, or branch name
+///   depending on `kind`. Combined with `kind` this is the natural GitHub-side
+///   identity, so re-delivered webhook events upsert idempotently instead of
+///   creating duplicate rows.
+/// `state` — PR: "open" | "closed" | "merged". COMMIT/BRANCH: null (no
+///   GitHub-side lifecycle state to track for those object kinds).
+model IssueGithubLink {
+  id          String         @id @default(cuid())
+  issueId     String
+  kind        GithubLinkKind
+  externalId  String
+  title       String?
+  url         String
+  state       String?
+  authorLogin String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  issue Issue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+
+  @@unique([issueId, kind, externalId])
+  @@index([issueId])
 }
 

@@ -150,6 +150,42 @@ Then set `SMTP_HOST=localhost` and `SMTP_PORT=1025` (no auth needed).
 
 ---
 
+## GitHub integration (Phase 9 — Developer Graph, v1)
+
+Per-project two-way link to a GitHub repository: pull requests, commits, and
+branches whose title/message/name references an issue key (e.g. `NL-123`)
+automatically show up on that issue's "Development" section. Configured
+per-project from **Project Settings → GitHub** (ADMIN only) — no environment
+variables are required to turn the feature on.
+
+**Setup (self-hosted):**
+
+1. In Next Lane, open a project's **Settings → GitHub** section as an ADMIN
+   and enter the repository (`owner/repo`) and a GitHub Personal Access Token
+   (classic or fine-grained, read access is sufficient for v1 — no outbound
+   GitHub API calls are made yet). Save.
+2. Copy the generated **Payload URL** and **Secret** shown in the "Webhook
+   setup" panel.
+3. In GitHub: **Repo → Settings → Webhooks → Add webhook**. Paste the URL and
+   secret, set content type to `application/json`, and subscribe to the
+   **Push** and **Pull requests** events (or "Send me everything").
+4. Open a PR or push a commit whose title/message/branch name contains the
+   issue key (e.g. `git commit -m "Fix crash (NL-42)"`) — the link appears on
+   the issue within seconds.
+
+**Security:** every inbound delivery is verified against the
+`X-Hub-Signature-256` HMAC header using the per-project secret before any
+payload is processed; unsigned or mismatched deliveries are rejected with
+`401` and never touch the database. The PAT is encrypted at rest (AES-256-GCM)
+and is never returned by any API response after it is saved.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `GITHUB_TOKEN_ENCRYPTION_KEY` | derived from `JWT_SECRET` | Key used to encrypt stored GitHub PATs at rest. Optional — the zero-config path derives a key from the already-required `JWT_SECRET` so no extra secret is needed to self-host. Set explicitly if you want GitHub token encryption to survive a `JWT_SECRET` rotation. |
+| `GITHUB_WEBHOOK_BASE_URL` | derived from the incoming request | Explicit origin used to build the webhook URL shown in Settings (e.g. `https://tracker.example.com`). Recommended in production behind a reverse proxy; otherwise derived from the browser's request. |
+
+---
+
 ## File attachments
 
 | Variable | Default | Description |

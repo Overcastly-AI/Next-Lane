@@ -821,6 +821,61 @@ export interface WebhookEventPayload {
   data: unknown;
 }
 
+// ── GitHub integration (Phase 9 — Developer Graph, v1 two-way link) ─────────
+
+/** The kind of GitHub object an `IssueGithubLinkDto` points to. */
+export const GITHUB_LINK_KINDS = ['PR', 'COMMIT', 'BRANCH'] as const;
+export type GithubLinkKind = (typeof GITHUB_LINK_KINDS)[number];
+
+/**
+ * A project's GitHub repository link configuration.
+ *
+ * `webhookSecret` is included ONLY when the caller is an ADMIN (needed to
+ * paste into GitHub's repo webhook settings); MEMBER/VIEWER callers receive
+ * `webhookSecret: null` and `hasToken` only, never the secret or the token.
+ * The raw PAT itself is NEVER returned by any endpoint after it is saved.
+ */
+export interface GithubIntegrationDto {
+  id: string;
+  projectId: string;
+  repoFullName: string;
+  /** Non-null only for ADMIN callers. */
+  webhookSecret: string | null;
+  /** Convenience field: the full inbound webhook URL to register with GitHub. */
+  webhookUrl: string;
+  /** Always true once configured — a token is required to save the integration. */
+  hasToken: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Body for `PUT /projects/:projectId/github`. */
+export interface UpsertGithubIntegrationInput {
+  repoFullName: string;
+  /** The raw GitHub PAT. Write-only — never echoed back. */
+  token: string;
+}
+
+/**
+ * A link between a tracked issue and a GitHub PR, commit, or branch, created
+ * by the inbound webhook handler when a commit message or PR title/branch
+ * name references the issue's key (e.g. "NL-123").
+ */
+export interface IssueGithubLinkDto {
+  id: string;
+  issueId: string;
+  kind: GithubLinkKind;
+  /** PR number (string), commit SHA, or branch name — depends on `kind`. */
+  externalId: string;
+  title: string | null;
+  url: string;
+  /** PR: "open" | "closed" | "merged". COMMIT/BRANCH: null. */
+  state: string | null;
+  authorLogin: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ── Workspace Audit Log ──────────────────────────────────────────────────────
 
 /**
@@ -924,6 +979,8 @@ export interface SavedFilterDto {
  * - `webhooks:write` — POST/PATCH/DELETE on webhook subscriptions.
  * - `comments:read`  — GET issue comments.
  * - `comments:write` — POST/PATCH/DELETE on comments.
+ * - `github:read`    — GET the GitHub integration config + issue GitHub links.
+ * - `github:write`   — PUT/DELETE the GitHub integration config.
  *
  * An empty `scopes` array on a token means "unrestricted" (same as a browser
  * JWT session — all routes are accessible). Only non-empty scopes arrays are
@@ -938,6 +995,8 @@ export const PAT_SCOPES = [
   'webhooks:write',
   'comments:read',
   'comments:write',
+  'github:read',
+  'github:write',
 ] as const;
 
 export type PATScope = (typeof PAT_SCOPES)[number];

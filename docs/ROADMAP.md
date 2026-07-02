@@ -236,12 +236,12 @@ self-hosted app replaces a tracker + a wiki + a whiteboard + a feedback tool.
 - ⬜ **Public roadmap + feature-voting portal** — publish a project as a customer-facing roadmap with upvotes and status; built on the existing share-token mechanism. A whole separate SaaS, free, for OSS maintainers & product teams.
 - ⬜ **Intake forms** — public, brandable submission forms that create pre-triaged issues (support/bug/feature intake); self-serve helpdesk-lite.
 
-## Phase 9 — Developer Graph (SCM integrations) 🔭 (vision)
+## Phase 9 — Developer Graph (SCM integrations) 🚧 (in progress)
 
 The tracker that actually knows your code — and works with **self-hosted**
 forges, not just the big clouds.
 
-- ⬜ **GitHub integration** — link issues ↔ branches / commits / pull requests; show live PR + CI status on the card; auto-transition issues on PR merge; smart-commit syntax (`NL-123 #done`) in commit messages. App/PAT auth; inbound webhooks (we already have the outbound + signing substrate).
+- 🚧 **GitHub integration — v1 kickoff (two-way link)** ✅ shipped 2026-07-02 — per-project repo link (`GithubIntegration`: repoFullName + AES-256-GCM-encrypted PAT + generated HMAC webhook secret; `IssueGithubLink`: PR/COMMIT/BRANCH, unique on `[issueId, kind, externalId]` for idempotent re-delivery). Backend `GithubModule` (`apps/api/src/github/`): ADMIN-gated `PUT/GET/DELETE /projects/:projectId/github` (GET returns a role-shaped DTO — full config incl. webhook secret for ADMIN, read-only summary for MEMBER/VIEWER); public `POST /github/webhook/:projectId` verifies `X-Hub-Signature-256` HMAC (constant-time compare) against the raw request body (`main.ts` `rawBody: true`) before processing `push` (per-commit + branch-name key scan → COMMIT/BRANCH links) and `pull_request` (title + head-branch key scan → PR links, state open/closed/merged) events; issue-key extraction (`NL-123`) is regex-scoped to the target project's own key so foreign-project keys never match; `GithubClient` is the single injectable seam for any future outbound GitHub API call (unused by any v1 endpoint — webhook payloads carry everything v1 needs — but unit-tested/mockable so later PR/CI-status polling has one auditable entry point, matching the network-isolated build/test environment). `GET /issues/:issueId/github-links` (MEMBER+). Frontend: Settings "GitHub" section (ADMIN form + generated webhook URL/secret with copy buttons + paste-into-GitHub instructions; read-only "Connected to owner/repo" summary for members, hidden entirely when unconfigured) and a "Development" section in the issue drawer (PR/commit/branch rows with state badges, external links; hidden when no links); realtime — webhook-driven upserts reuse the existing `issue.updated` socket event (minimal `{id}` payload) so an open drawer refreshes live. Two new PAT scopes (`github:read`/`github:write`). 63 new unit tests (signature verification valid/invalid/missing/tampered, issue-key extraction incl. multi-key commits + wrong-project-ignored + case-insensitive + word-boundary, upsert idempotency, ADMIN gating, tenant isolation, AES round-trip, GithubClient mocked-fetch) — 1440 total API tests green; `apps/web/e2e/github-integration.spec.ts` (4 scenarios × desktop + mobile: settings save + webhook URL/secret display, signed-webhook-links-issue end-to-end via a locally-computed HMAC fixture — no GitHub egress, invalid-signature rejected 401, member read-only view) all green; `tsc --noEmit` clean both apps. Auto-transition-on-merge, live CI status, and smart-commit `#done` syntax are the tracked Phase-9 follow-up slice (not v1 scope — see `docs/BACKLOG.md`). [P1, M — VISION.md § Better-than-Jira gaps #3]
 - ⬜ **GitLab integration** — the same two-way linking, MR status, and auto-transition for GitLab (SaaS and self-managed).
 - ⬜ **Gitea / self-hosted forges** — first-class support for fully self-hosted Git, the combo the cloud incumbents can't credibly serve.
 - ⬜ **Pairs with Autopilot/MCP** — agents that open a PR can auto-link and close their own ticket on merge, completing the dogfooded build loop.
@@ -283,10 +283,12 @@ order first, ahead of any new pillar or moonshot:
    text). Still missing SAML/multi-provider SSO (Phase 2) and per-project
    role override. This remains a hard blocker for enterprise/agency
    self-hosters evaluating a switch until the remaining gaps close.
-3. **Integrations** (behind) — Phase 9 Developer Graph (GitHub/GitLab/Gitea
-   two-way linking) is still unshipped; import/export is file-based only.
-   Engineering teams — the incumbent's core segment — expect PR/commit
-   linking on day one.
+3. **Integrations** (behind, closing) — Phase 9 Developer Graph v1 kickoff
+   (GitHub two-way link: repo config, inbound webhook, PR/commit/branch
+   linking on the issue drawer) shipped 2026-07-02; import/export is still
+   file-based only. Remaining gaps: auto-transition-on-merge, live CI status
+   on the card, smart-commit syntax, and GitLab/Gitea — the incumbent's core
+   segment (engineering teams) still gets more day-one SCM depth from Jira.
 4. **Reporting** (behind) — no configurable dashboard/gadget grid (flat 3/5
    for four straight audit passes); no cross-sprint trend view.
 5. **Mobile** (behind) — no native app; the 393px project-breadcrumb
