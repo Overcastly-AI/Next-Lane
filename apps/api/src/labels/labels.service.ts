@@ -1,4 +1,5 @@
 import {
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -22,6 +23,16 @@ function toLabelDto(l: LabelRow): LabelDto {
   return { id: l.id, name: l.name, color: l.color, projectId: l.projectId };
 }
 
+/** True for a Prisma unique-constraint violation (P2002). */
+function isUniqueConstraintError(err: unknown): boolean {
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    'code' in err &&
+    (err as { code: string }).code === 'P2002'
+  );
+}
+
 @Injectable()
 export class LabelsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -41,10 +52,23 @@ export class LabelsService {
     dto: CreateLabelDto,
   ): Promise<LabelDto> {
     await assertProjectRole(this.prisma, userId, projectId, Role.MEMBER);
-    const label = await this.prisma.label.create({
-      data: { projectId, name: dto.name, color: dto.color },
-    });
-    return toLabelDto(label);
+    try {
+      const label = await this.prisma.label.create({
+        data: { projectId, name: dto.name, color: dto.color },
+      });
+      return toLabelDto(label);
+    } catch (err: unknown) {
+      // P2002 = unique constraint violation (projectId, name). Mirrors the
+      // friendly Components/Versions/Templates pattern (SETTINGS-4) instead
+      // of letting the generic AllExceptionsFilter fallback message leak
+      // through ("A record with this value already exists.").
+      if (isUniqueConstraintError(err)) {
+        throw new ConflictException(
+          `A label named "${dto.name}" already exists in this project`,
+        );
+      }
+      throw err;
+    }
   }
 
   async update(
@@ -56,14 +80,23 @@ export class LabelsService {
     if (!existing) throw new NotFoundException('Label not found');
     // ADMIN or MEMBER may edit; VIEWER is rejected.
     await assertProjectRole(this.prisma, userId, existing.projectId, Role.MEMBER);
-    const label = await this.prisma.label.update({
-      where: { id },
-      data: {
-        ...(dto.name !== undefined ? { name: dto.name } : {}),
-        ...(dto.color !== undefined ? { color: dto.color } : {}),
-      },
-    });
-    return toLabelDto(label);
+    try {
+      const label = await this.prisma.label.update({
+        where: { id },
+        data: {
+          ...(dto.name !== undefined ? { name: dto.name } : {}),
+          ...(dto.color !== undefined ? { color: dto.color } : {}),
+        },
+      });
+      return toLabelDto(label);
+    } catch (err: unknown) {
+      if (isUniqueConstraintError(err)) {
+        throw new ConflictException(
+          `A label named "${dto.name}" already exists in this project`,
+        );
+      }
+      throw err;
+    }
   }
 
   async remove(userId: string, id: string): Promise<{ id: string }> {

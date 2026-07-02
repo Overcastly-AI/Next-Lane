@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -45,12 +46,40 @@ export class StatusesService {
     return statuses.map(toStatusDto);
   }
 
+  /**
+   * Case-insensitive same-project duplicate-name guard, mirroring the
+   * Label/Component/Version pattern (SETTINGS-3). `Status` intentionally has
+   * NO `@@unique([projectId, name])` DB constraint — existing self-hosted
+   * installs may already have duplicate column names from before this check
+   * existed, and a hard migration-time unique constraint would fail to apply
+   * for them. This is a service-level check only.
+   */
+  private async assertNoDuplicateName(
+    projectId: string,
+    name: string,
+    excludeId?: string,
+  ): Promise<void> {
+    const dup = await this.prisma.status.findFirst({
+      where: {
+        projectId,
+        name: { equals: name, mode: 'insensitive' },
+        ...(excludeId ? { id: { not: excludeId } } : {}),
+      },
+    });
+    if (dup) {
+      throw new ConflictException(
+        `A column named "${name}" already exists in this project`,
+      );
+    }
+  }
+
   async create(
     userId: string,
     projectId: string,
     dto: CreateStatusDto,
   ): Promise<StatusDto> {
     await assertProjectRole(this.prisma, userId, projectId, Role.MEMBER);
+    await this.assertNoDuplicateName(projectId, dto.name);
     let order = dto.order;
     if (order === undefined) {
       const last = await this.prisma.status.findFirst({
@@ -84,6 +113,10 @@ export class StatusesService {
       existing.projectId,
       Role.MEMBER,
     );
+
+    if (dto.name !== undefined) {
+      await this.assertNoDuplicateName(existing.projectId, dto.name, id);
+    }
 
     const status = await this.prisma.status.update({
       where: { id },

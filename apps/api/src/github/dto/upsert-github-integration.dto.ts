@@ -6,7 +6,8 @@ export class UpsertGithubIntegrationDto {
   @IsNotEmpty()
   @MaxLength(200)
   @Matches(/^[\w.-]+\/[\w.-]+$/, {
-    message: 'repoFullName must be in "owner/repo" format',
+    message:
+      'Repository must be in "owner/repo" format, e.g. acme/widgets',
   })
   repoFullName!: string;
 

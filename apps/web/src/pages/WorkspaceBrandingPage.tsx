@@ -199,6 +199,30 @@ function LogoSection({ workspaceId }: { workspaceId: string }) {
   );
 }
 
+/**
+ * Normalize a hex color string to the server's required 6-digit form.
+ * Expands CSS 3-digit shorthand (`#abc` -> `#aabbcc`); 6-digit input passes
+ * through unchanged (lower-cased for consistency). Returns null if `hex` is
+ * not a valid 3- or 6-digit hex string.
+ *
+ * Client and server previously disagreed here: the client's live-preview
+ * regex accepted 3-digit shorthand (perfectly valid CSS) but the server DTO
+ * only accepted 6-digit, so Save on `#fff` round-tripped a raw 400 with the
+ * internal `brandColor` DTO field name in the message (SETTINGS-2). We pick
+ * "normalize on submit" over "reject 3-digit" since shorthand hex is
+ * standard and rejecting it would be the more surprising choice.
+ */
+export function normalizeHex(hex: string): string | null {
+  const trimmed = hex.trim();
+  if (/^#[0-9a-fA-F]{6}$/.test(trimmed)) return trimmed.toLowerCase();
+  const shortMatch = /^#([0-9a-fA-F])([0-9a-fA-F])([0-9a-fA-F])$/.exec(trimmed);
+  if (shortMatch) {
+    const [, r, g, b] = shortMatch;
+    return `#${r}${r}${g}${g}${b}${b}`.toLowerCase();
+  }
+  return null;
+}
+
 // ── Color section ─────────────────────────────────────────────────────────────
 
 function ColorSection({ workspaceId }: { workspaceId: string }) {
@@ -218,18 +242,32 @@ function ColorSection({ workspaceId }: { workspaceId: string }) {
   }, [workspace?.brandColor]);
 
   const update = useUpdateWorkspaceBranding(workspaceId);
+  const [hexError, setHexError] = useState<string | null>(null);
 
   // Live preview: apply color as user edits (without saving).
   function handleColorChange(hex: string) {
     setLocalColor(hex);
+    setHexError(null);
     applyBrandColor(hex);
   }
 
   function handleSave() {
+    // Normalize 3-digit CSS shorthand (#fff) to the 6-digit form the server
+    // requires before submitting, so a value the live preview accepted as
+    // valid never round-trips a raw server 400 (SETTINGS-2).
+    const normalized = normalizeHex(localColor);
+    if (!normalized) {
+      const msg = 'Enter a valid hex color, like #2563eb or #06f.';
+      setHexError(msg);
+      toast.error(msg);
+      return;
+    }
+    setHexError(null);
     update.mutate(
-      { brandColor: localColor },
+      { brandColor: normalized },
       {
         onSuccess: () => {
+          setLocalColor(normalized);
           toast.success('Brand color saved.');
         },
         onError: (err) => {
@@ -310,11 +348,13 @@ function ColorSection({ workspaceId }: { workspaceId: string }) {
                 onChange={(e) => {
                   const v = e.target.value;
                   setLocalColor(v);
+                  setHexError(null);
                   // Only apply if it looks like a valid hex.
                   if (/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(v)) {
                     applyBrandColor(v);
                   }
                 }}
+                aria-describedby={hexError ? 'brand-color-error' : undefined}
                 onBlur={() => {
                   // Snap to valid hex on blur; revert to saved color if invalid.
                   if (!/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(localColor)) {
@@ -332,6 +372,16 @@ function ColorSection({ workspaceId }: { workspaceId: string }) {
           </Field>
         </div>
       </div>
+
+      {hexError && (
+        <p
+          id="brand-color-error"
+          role="alert"
+          className="-mt-3 mb-5 text-sm text-red-600"
+        >
+          {hexError}
+        </p>
+      )}
 
       {/* Live preview */}
       <div className="mb-5">

@@ -14,7 +14,12 @@
  *  - resolveLogo(): returns filePath + mimeType when logo present
  */
 
-import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { Role } from '@next-lane/shared';
 import { WorkspacesService, LOGO_MAX_BYTES, LOGO_ALLOWED_MIME_TYPES, toWorkspaceDto } from './workspaces.service';
 import type { PrismaService } from '../prisma/prisma.service';
@@ -587,5 +592,317 @@ describe('WorkspacesService.create — concurrent slug collision', () => {
 
     await expect(svc.create(ADMIN_ID, { name: 'Alpha' })).rejects.toThrow('db down');
     expect(create).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// addMember / updateMemberRole / removeMember — SETTINGS-1 (admin-lockout fix)
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// A dedicated in-memory membership mock (distinct from `makePrisma()` above,
+// which only models a single fixed membership per known user id) so we can
+// exercise multi-membership scenarios: the "already a member" 409, the
+// last-admin guard on demote/remove, and that a non-last-admin demote still
+// succeeds.
+
+interface MockUser {
+  id: string;
+  email: string;
+  name: string;
+  avatarColor: string;
+  emailNotifications: boolean;
+  createdAt: Date;
+}
+
+interface MockMembership {
+  id: string;
+  userId: string;
+  workspaceId: string;
+  role: Role;
+  user: MockUser;
+  createdAt: Date;
+}
+
+function makeMockUser(id: string, email: string): MockUser {
+  return {
+    id,
+    email,
+    name: email,
+    avatarColor: '#123456',
+    emailNotifications: true,
+    createdAt: new Date('2026-01-01T00:00:00.000Z'),
+  };
+}
+
+function makeMembersPrisma(
+  seed: MockMembership[],
+  extraUsers: MockUser[] = [],
+): PrismaService & {
+  membership: {
+    findUnique: jest.Mock;
+    count: jest.Mock;
+    create: jest.Mock;
+    update: jest.Mock;
+    delete: jest.Mock;
+  };
+  user: { findUnique: jest.Mock };
+} {
+  const memberships: MockMembership[] = [...seed];
+  let nextId = memberships.length + 1;
+  // Users that exist in the system but may not yet have a membership in this
+  // workspace — needed so `create()` can attach the right user to a
+  // brand-new membership row (addMember's "new invite" happy path).
+  const userDirectory = new Map<string, MockUser>(
+    [...memberships.map((m) => m.user), ...extraUsers].map((u) => [u.id, u]),
+  );
+
+  const findUnique = jest.fn().mockImplementation(
+    ({
+      where,
+    }: {
+      where: { userId_workspaceId?: { userId: string; workspaceId: string }; id?: string };
+    }) => {
+      if (where.userId_workspaceId) {
+        const { userId, workspaceId } = where.userId_workspaceId;
+        const found = memberships.find(
+          (m) => m.userId === userId && m.workspaceId === workspaceId,
+        );
+        return Promise.resolve(found ? { ...found, workspace: {} } : null);
+      }
+      if (where.id) {
+        const found = memberships.find((m) => m.id === where.id);
+        return Promise.resolve(found ?? null);
+      }
+      return Promise.resolve(null);
+    },
+  );
+
+  const count = jest.fn().mockImplementation(
+    ({
+      where,
+    }: {
+      where: { workspaceId: string; role?: Role; id?: { not?: string } };
+    }) => {
+      const n = memberships.filter((m) => {
+        if (m.workspaceId !== where.workspaceId) return false;
+        if (where.role && m.role !== where.role) return false;
+        if (where.id?.not && m.id === where.id.not) return false;
+        return true;
+      }).length;
+      return Promise.resolve(n);
+    },
+  );
+
+  const create = jest.fn().mockImplementation(
+    ({
+      data,
+    }: {
+      data: { userId: string; workspaceId: string; role: Role };
+    }) => {
+      const user = userDirectory.get(data.userId);
+      const row: MockMembership = {
+        id: `mem-new-${nextId++}`,
+        userId: data.userId,
+        workspaceId: data.workspaceId,
+        role: data.role,
+        user: user ?? makeMockUser(data.userId, `${data.userId}@example.com`),
+        createdAt: new Date(),
+      };
+      memberships.push(row);
+      return Promise.resolve(row);
+    },
+  );
+
+  const update = jest.fn().mockImplementation(
+    ({ where, data }: { where: { id: string }; data: { role: Role } }) => {
+      const row = memberships.find((m) => m.id === where.id);
+      if (!row) throw new Error('membership not found in mock');
+      row.role = data.role;
+      return Promise.resolve(row);
+    },
+  );
+
+  const del = jest.fn().mockImplementation(({ where }: { where: { id: string } }) => {
+    const idx = memberships.findIndex((m) => m.id === where.id);
+    if (idx >= 0) memberships.splice(idx, 1);
+    return Promise.resolve({});
+  });
+
+  const userFindUnique = jest.fn().mockImplementation(
+    ({ where }: { where: { email: string } }) => {
+      const found = [...userDirectory.values()].find((u) => u.email === where.email);
+      return Promise.resolve(found ?? null);
+    },
+  );
+
+  return {
+    membership: { findUnique, count, create, update, delete: del },
+    user: { findUnique: userFindUnique },
+  } as unknown as PrismaService & {
+    membership: {
+      findUnique: jest.Mock;
+      count: jest.Mock;
+      create: jest.Mock;
+      update: jest.Mock;
+      delete: jest.Mock;
+    };
+    user: { findUnique: jest.Mock };
+  };
+}
+
+describe('WorkspacesService.addMember() — existing-member invite (SETTINGS-1a)', () => {
+  const WS = 'ws-members';
+
+  it('rejects (409) inviting an email that already belongs to a member of the workspace', async () => {
+    const admin = makeMockUser('u-admin', 'admin@example.com');
+    const prisma = makeMembersPrisma([
+      { id: 'mem-admin', userId: admin.id, workspaceId: WS, role: Role.ADMIN, user: admin, createdAt: new Date() },
+    ]);
+    const svc = makeService(prisma);
+
+    await expect(
+      svc.addMember(admin.id, WS, { email: admin.email, role: Role.MEMBER }),
+    ).rejects.toThrow(ConflictException);
+    // No upsert-demote: role change never happens via addMember.
+    expect(prisma.membership.update).not.toHaveBeenCalled();
+  });
+
+  it('creates a new membership when the email has no existing membership in this workspace', async () => {
+    const admin = makeMockUser('u-admin', 'admin@example.com');
+    const newUser = makeMockUser('u-new', 'new@example.com');
+    const prisma = makeMembersPrisma(
+      [
+        { id: 'mem-admin', userId: admin.id, workspaceId: WS, role: Role.ADMIN, user: admin, createdAt: new Date() },
+      ],
+      // newUser exists as a user in the system but has no membership in this
+      // workspace yet — the case addMember should still allow.
+      [newUser],
+    );
+
+    const svc = makeService(prisma);
+    const result = await svc.addMember(admin.id, WS, {
+      email: newUser.email,
+      role: Role.VIEWER,
+    });
+
+    expect(result.role).toBe(Role.VIEWER);
+    expect(result.user.email).toBe(newUser.email);
+  });
+});
+
+describe('WorkspacesService.updateMemberRole() — last-admin guard (SETTINGS-1b/c)', () => {
+  const WS = 'ws-members';
+
+  it('rejects (400) demoting the sole admin', async () => {
+    const admin = makeMockUser('u-admin', 'admin@example.com');
+    const prisma = makeMembersPrisma([
+      { id: 'mem-admin', userId: admin.id, workspaceId: WS, role: Role.ADMIN, user: admin, createdAt: new Date() },
+    ]);
+    const svc = makeService(prisma);
+
+    await expect(
+      svc.updateMemberRole(admin.id, WS, 'mem-admin', { role: Role.MEMBER }),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('rejects (400) a sole admin demoting THEMSELVES specifically (self-demotion path)', async () => {
+    const admin = makeMockUser('u-admin', 'admin@example.com');
+    const prisma = makeMembersPrisma([
+      { id: 'mem-admin', userId: admin.id, workspaceId: WS, role: Role.ADMIN, user: admin, createdAt: new Date() },
+    ]);
+    const svc = makeService(prisma);
+
+    // Actor === the membership being demoted, and it's the last admin.
+    await expect(
+      svc.updateMemberRole(admin.id, WS, 'mem-admin', { role: Role.VIEWER }),
+    ).rejects.toThrow(/at least one admin/i);
+  });
+
+  it('allows demoting an admin when another admin remains (non-last-admin demote still works)', async () => {
+    const admin1 = makeMockUser('u-admin1', 'admin1@example.com');
+    const admin2 = makeMockUser('u-admin2', 'admin2@example.com');
+    const prisma = makeMembersPrisma([
+      { id: 'mem-admin1', userId: admin1.id, workspaceId: WS, role: Role.ADMIN, user: admin1, createdAt: new Date() },
+      { id: 'mem-admin2', userId: admin2.id, workspaceId: WS, role: Role.ADMIN, user: admin2, createdAt: new Date() },
+    ]);
+    const svc = makeService(prisma);
+
+    const result = await svc.updateMemberRole(admin1.id, WS, 'mem-admin2', {
+      role: Role.MEMBER,
+    });
+
+    expect(result.role).toBe(Role.MEMBER);
+  });
+
+  it('allows changing a non-admin member role freely (no guard triggered)', async () => {
+    const admin = makeMockUser('u-admin', 'admin@example.com');
+    const member = makeMockUser('u-member', 'member@example.com');
+    const prisma = makeMembersPrisma([
+      { id: 'mem-admin', userId: admin.id, workspaceId: WS, role: Role.ADMIN, user: admin, createdAt: new Date() },
+      { id: 'mem-member', userId: member.id, workspaceId: WS, role: Role.MEMBER, user: member, createdAt: new Date() },
+    ]);
+    const svc = makeService(prisma);
+
+    const result = await svc.updateMemberRole(admin.id, WS, 'mem-member', {
+      role: Role.VIEWER,
+    });
+
+    expect(result.role).toBe(Role.VIEWER);
+  });
+});
+
+describe('WorkspacesService.removeMember() — last-admin guard (SETTINGS-1b/c)', () => {
+  const WS = 'ws-members';
+
+  it('rejects (400) removing the sole admin', async () => {
+    const admin = makeMockUser('u-admin', 'admin@example.com');
+    const prisma = makeMembersPrisma([
+      { id: 'mem-admin', userId: admin.id, workspaceId: WS, role: Role.ADMIN, user: admin, createdAt: new Date() },
+    ]);
+    const svc = makeService(prisma);
+
+    await expect(svc.removeMember(admin.id, WS, 'mem-admin')).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(prisma.membership.delete).not.toHaveBeenCalled();
+  });
+
+  it('rejects (400) the sole admin removing THEMSELVES specifically (self-removal path)', async () => {
+    const admin = makeMockUser('u-admin', 'admin@example.com');
+    const prisma = makeMembersPrisma([
+      { id: 'mem-admin', userId: admin.id, workspaceId: WS, role: Role.ADMIN, user: admin, createdAt: new Date() },
+    ]);
+    const svc = makeService(prisma);
+
+    await expect(
+      svc.removeMember(admin.id, WS, 'mem-admin'),
+    ).rejects.toThrow(/at least one admin/i);
+  });
+
+  it('allows removing an admin when another admin remains', async () => {
+    const admin1 = makeMockUser('u-admin1', 'admin1@example.com');
+    const admin2 = makeMockUser('u-admin2', 'admin2@example.com');
+    const prisma = makeMembersPrisma([
+      { id: 'mem-admin1', userId: admin1.id, workspaceId: WS, role: Role.ADMIN, user: admin1, createdAt: new Date() },
+      { id: 'mem-admin2', userId: admin2.id, workspaceId: WS, role: Role.ADMIN, user: admin2, createdAt: new Date() },
+    ]);
+    const svc = makeService(prisma);
+
+    const result = await svc.removeMember(admin1.id, WS, 'mem-admin2');
+    expect(result).toEqual({ id: 'mem-admin2' });
+    expect(prisma.membership.delete).toHaveBeenCalledWith({ where: { id: 'mem-admin2' } });
+  });
+
+  it('allows removing a non-admin member with no guard involved', async () => {
+    const admin = makeMockUser('u-admin', 'admin@example.com');
+    const member = makeMockUser('u-member', 'member@example.com');
+    const prisma = makeMembersPrisma([
+      { id: 'mem-admin', userId: admin.id, workspaceId: WS, role: Role.ADMIN, user: admin, createdAt: new Date() },
+      { id: 'mem-member', userId: member.id, workspaceId: WS, role: Role.MEMBER, user: member, createdAt: new Date() },
+    ]);
+    const svc = makeService(prisma);
+
+    const result = await svc.removeMember(admin.id, WS, 'mem-member');
+    expect(result).toEqual({ id: 'mem-member' });
   });
 });

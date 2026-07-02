@@ -12,10 +12,11 @@
  *   1. Green regression tests that LOCK IN currently-correct behavior found
  *      during the sweep (WIP-limit validation, webhook/GitHub format guards,
  *      custom-field option requirements, project-details persistence).
- *   2. `test.fixme()` tests that encode the CORRECT behavior for confirmed
- *      defects filed in `docs/UI-REVIEW.md` under "Settings robustness sweep
- *      — 2026-07-02". These are intentionally not run; once the matching fix
- *      lands, remove the `.fixme` to turn them into regression gates.
+ *   2. Regression tests for SETTINGS-1..4, the confirmed defects filed in
+ *      `docs/UI-REVIEW.md` under "Settings robustness sweep — 2026-07-02".
+ *      These were originally `test.fixme()` placeholders encoding the
+ *      CORRECT behavior; now that the fixes have shipped they are un-fixme'd
+ *      and run as regular regression gates.
  *
  * See docs/UI-REVIEW.md for the full findings write-up, priorities, and
  * screenshots referenced by defect id (SETTINGS-1..4).
@@ -250,13 +251,13 @@ test.describe('Settings robustness — project details persistence', () => {
 });
 
 // ===========================================================================
-// 2. test.fixme — confirmed defects (see docs/UI-REVIEW.md, "Settings
-//    robustness sweep — 2026-07-02"). Each body encodes the CORRECT behavior
-//    expected once the fix lands; un-fixme once the matching fix ships.
+// 2. SETTINGS-1..4 — confirmed defects (see docs/UI-REVIEW.md, "Settings
+//    robustness sweep — 2026-07-02"), now fixed. Each body encodes and
+//    regression-gates the CORRECT behavior.
 // ===========================================================================
 
-test.describe('Settings robustness — confirmed defects (fixme)', () => {
-  test.fixme(
+test.describe('Settings robustness — confirmed defects (fixed, regression-gated)', () => {
+  test(
     'SETTINGS-1 (P1): self-inviting your own email in the workspace Invite form must not silently strip your last admin seat',
     async ({ page, request }) => {
       // Repro: a solo workspace admin types their OWN email into the generic
@@ -300,7 +301,7 @@ test.describe('Settings robustness — confirmed defects (fixme)', () => {
     },
   );
 
-  test.fixme(
+  test(
     'SETTINGS-2 (P2): workspace branding hex validation must match between client preview and server (3-digit shorthand)',
     async ({ page, request }) => {
       // Repro: the accent-color hex input's client-side regex accepts BOTH
@@ -336,7 +337,7 @@ test.describe('Settings robustness — confirmed defects (fixme)', () => {
     },
   );
 
-  test.fixme(
+  test(
     'SETTINGS-3 (P2): board columns must reject a duplicate column name',
     async ({ page, request }) => {
       // Repro: Status has no @@unique([projectId, name]) constraint (unlike
@@ -358,8 +359,12 @@ test.describe('Settings robustness — confirmed defects (fixme)', () => {
 
       // CORRECT behavior: rejected with a friendly duplicate-name error,
       // mirroring Labels/Components/Versions — modal stays open, no second
-      // "To Do" column is created.
-      await expect(page.getByText(/already exists/i)).toBeVisible({
+      // "To Do" column is created. The column form surfaces the error BOTH
+      // as a toast and inline in the modal (a richer pattern than the
+      // Labels/Components toast-only convention), so scope to `.first()` to
+      // avoid a strict-mode ambiguous match while still asserting the
+      // message reaches the user.
+      await expect(page.getByText(/already exists/i).first()).toBeVisible({
         timeout: 10_000,
       });
       await expect(
@@ -368,7 +373,7 @@ test.describe('Settings robustness — confirmed defects (fixme)', () => {
     },
   );
 
-  test.fixme(
+  test(
     'SETTINGS-4 (P2): duplicate label name must show a friendly per-entity error, not the raw backend message',
     async ({ page, request }) => {
       // Repro: Label DOES have @@unique([projectId, name]) so the duplicate

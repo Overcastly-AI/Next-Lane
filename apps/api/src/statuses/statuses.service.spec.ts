@@ -1,4 +1,4 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { StatusCategory, Role } from '@next-lane/shared';
 import { StatusesService } from './statuses.service';
 import type { PrismaService } from '../prisma/prisma.service';
@@ -13,19 +13,28 @@ const STATUS_ID = 'status-abc';
 const USER_ID = 'user-owner';
 
 /** Build a minimal Prisma mock that satisfies StatusesService usage. */
+type StatusRow = {
+  id: string;
+  name: string;
+  category: string;
+  order: number;
+  wipLimit: number | null;
+  projectId: string;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
 function makePrisma(opts: {
-  existingStatus?: {
-    id: string;
-    name: string;
-    category: string;
-    order: number;
-    wipLimit: number | null;
-    projectId: string;
-    createdAt: Date;
-    updatedAt: Date;
-  } | null;
+  existingStatus?: StatusRow | null;
   userRole?: Role;
   issueCount?: number;
+  /**
+   * Sibling statuses already in the project, used to answer the
+   * duplicate-name `findFirst` check (SETTINGS-3). Defaults to just
+   * `existingStatus` (its "To Do" name) when omitted, matching every
+   * pre-existing test's expectation of no collision.
+   */
+  siblingStatuses?: StatusRow[];
 } = {}) {
   const role = opts.userRole !== undefined ? opts.userRole : Role.MEMBER;
   const issueCount = opts.issueCount ?? 0;
@@ -44,10 +53,37 @@ function makePrisma(opts: {
   const existingStatus =
     opts.existingStatus !== undefined ? opts.existingStatus : defaultStatus;
 
+  const siblingStatuses =
+    opts.siblingStatuses ?? (existingStatus ? [existingStatus] : []);
+
   const prisma = {
     status: {
       findMany: jest.fn().mockResolvedValue(existingStatus ? [existingStatus] : []),
-      findFirst: jest.fn().mockResolvedValue(existingStatus),
+      findFirst: jest.fn().mockImplementation(
+        ({
+          where,
+        }: {
+          where: {
+            projectId: string;
+            name?: { equals: string; mode: string };
+            id?: { not: string };
+          };
+        }) => {
+          if (where.name) {
+            // Duplicate-name check (SETTINGS-3): case-insensitive match
+            // against sibling statuses, excluding the row being updated.
+            const match = siblingStatuses.find(
+              (s) =>
+                s.projectId === where.projectId &&
+                s.name.toLowerCase() === where.name!.equals.toLowerCase() &&
+                s.id !== where.id?.not,
+            );
+            return Promise.resolve(match ?? null);
+          }
+          // Order-lookup: "last" status in the project (order desc).
+          return Promise.resolve(existingStatus);
+        },
+      ),
       findUnique: jest.fn().mockImplementation(({ where }: { where: { id: string } }) =>
         Promise.resolve(where.id === STATUS_ID ? existingStatus : null),
       ),
@@ -142,6 +178,49 @@ describe('StatusesService.create', () => {
     const createCall = (prisma.status.create as jest.Mock).mock.calls[0][0];
     expect(createCall.data.wipLimit).toBe(5);
   });
+
+  // -- SETTINGS-3: case-insensitive duplicate column name guard -------------
+
+  it('rejects (409) creating a column whose name already exists in the project (exact case)', async () => {
+    const service = new StatusesService(makePrisma());
+    await expect(
+      service.create(USER_ID, PROJECT_ID, {
+        name: 'To Do',
+        category: StatusCategory.TODO,
+      }),
+    ).rejects.toThrow(ConflictException);
+  });
+
+  it('rejects (409) creating a column whose name matches an existing one case-insensitively', async () => {
+    const service = new StatusesService(makePrisma());
+    await expect(
+      service.create(USER_ID, PROJECT_ID, {
+        name: 'to do',
+        category: StatusCategory.TODO,
+      }),
+    ).rejects.toThrow(/already exists/i);
+  });
+
+  it('does not create the column when the name is a duplicate', async () => {
+    const prisma = makePrisma();
+    const service = new StatusesService(prisma);
+    await expect(
+      service.create(USER_ID, PROJECT_ID, {
+        name: 'TO DO',
+        category: StatusCategory.TODO,
+      }),
+    ).rejects.toThrow(ConflictException);
+    expect(prisma.status.create).not.toHaveBeenCalled();
+  });
+
+  it('allows creating a column with a distinct name', async () => {
+    const service = new StatusesService(makePrisma());
+    const result = await service.create(USER_ID, PROJECT_ID, {
+      name: 'Blocked',
+      category: StatusCategory.IN_PROGRESS,
+    });
+    expect(result.name).toBe('Blocked');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -201,6 +280,49 @@ describe('StatusesService.update', () => {
     await expect(
       service.update(USER_ID, 'does-not-exist', { name: 'X' }),
     ).rejects.toThrow(NotFoundException);
+  });
+
+  // -- SETTINGS-3: duplicate-name guard on rename ----------------------------
+
+  it('rejects (409) renaming a column to match a DIFFERENT sibling column (case-insensitive)', async () => {
+    const inProgress = {
+      id: STATUS_ID,
+      name: 'In Progress',
+      category: 'IN_PROGRESS',
+      order: 1,
+      wipLimit: null,
+      projectId: PROJECT_ID,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    const toDo = {
+      id: 'status-todo',
+      name: 'To Do',
+      category: 'TODO',
+      order: 0,
+      wipLimit: null,
+      projectId: PROJECT_ID,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    const service = new StatusesService(
+      makePrisma({ existingStatus: inProgress, siblingStatuses: [inProgress, toDo] }),
+    );
+    await expect(
+      service.update(USER_ID, STATUS_ID, { name: 'to do' }),
+    ).rejects.toThrow(ConflictException);
+  });
+
+  it('allows renaming a column to its OWN existing name (excludes itself from the duplicate check)', async () => {
+    const service = new StatusesService(makePrisma());
+    const result = await service.update(USER_ID, STATUS_ID, { name: 'To Do' });
+    expect(result.name).toBe('To Do');
+  });
+
+  it('allows renaming a column to an unused name', async () => {
+    const service = new StatusesService(makePrisma());
+    const result = await service.update(USER_ID, STATUS_ID, { name: 'Blocked' });
+    expect(result.name).toBe('Blocked');
   });
 });
 

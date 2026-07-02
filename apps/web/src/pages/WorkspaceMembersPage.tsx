@@ -31,6 +31,7 @@ import {
   useMyRole,
   useRemoveMember,
   useAddMember,
+  useUpdateMemberRole,
 } from '@/api/workspaces';
 import { useAuth } from '@/auth/AuthContext';
 import { errorMessage } from '@/lib/errorMessage';
@@ -215,7 +216,7 @@ export function WorkspaceMembersPage() {
 
   const membersQuery = useWorkspaceMembers(workspaceId);
   const removeMember = useRemoveMember(workspaceId);
-  const addMember = useAddMember(workspaceId);
+  const updateMemberRole = useUpdateMemberRole(workspaceId);
 
   const [pendingRemove, setPendingRemove] = useState<MembershipDto | null>(null);
 
@@ -252,8 +253,8 @@ export function WorkspaceMembersPage() {
 
   function handleRoleChange(membership: MembershipDto, newRole: Role) {
     if (newRole === membership.role) return;
-    addMember.mutate(
-      { email: membership.user.email, role: newRole },
+    updateMemberRole.mutate(
+      { membershipId: membership.id, role: newRole },
       {
         onSuccess: () =>
           toast.success(
@@ -315,7 +316,7 @@ export function WorkspaceMembersPage() {
                     isAdmin={isAdmin}
                     onRemove={(membership) => setPendingRemove(membership)}
                     onRoleChange={handleRoleChange}
-                    roleChangePending={addMember.isPending}
+                    roleChangePending={updateMemberRole.isPending}
                   />
                 ))}
               </ul>

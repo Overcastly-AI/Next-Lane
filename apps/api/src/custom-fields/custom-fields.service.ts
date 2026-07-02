@@ -91,6 +91,22 @@ const SELECT_TYPES = new Set<CustomFieldType>([
   CustomFieldType.MULTI_SELECT,
 ]);
 
+/**
+ * User-facing labels for each CustomFieldType, mirroring the frontend's
+ * `TYPE_LABELS` (apps/web/src/components/settings/CustomFieldsSection.tsx)
+ * so validation error messages read in the same voice as the type dropdown
+ * instead of leaking the raw upper-case enum value (SETTINGS polish pass).
+ */
+const TYPE_LABELS: Record<CustomFieldType, string> = {
+  [CustomFieldType.TEXT]: 'Text',
+  [CustomFieldType.NUMBER]: 'Number',
+  [CustomFieldType.SELECT]: 'Select (single)',
+  [CustomFieldType.MULTI_SELECT]: 'Multi-select',
+  [CustomFieldType.DATE]: 'Date',
+  [CustomFieldType.CHECKBOX]: 'Checkbox',
+  [CustomFieldType.URL]: 'URL',
+};
+
 // ---------------------------------------------------------------------------
 // ISO date pattern for DATE custom field values
 // ---------------------------------------------------------------------------
@@ -395,14 +411,15 @@ export class CustomFieldsService {
     options: string[],
   ): void {
     const needsOptions = SELECT_TYPES.has(type);
+    const label = TYPE_LABELS[type] ?? type;
     if (needsOptions && options.length === 0) {
       throw new BadRequestException(
-        `Custom field type "${type}" requires at least one option`,
+        `The "${label}" field type requires at least one option`,
       );
     }
     if (!needsOptions && options.length > 0) {
       throw new BadRequestException(
-        `Custom field type "${type}" must not have options`,
+        `The "${label}" field type must not have options`,
       );
     }
   }

@@ -174,6 +174,34 @@ export function useDeleteWorkspace(workspaceId: string) {
 }
 
 /**
+ * PATCH /workspaces/:id/members/:membershipId — change an EXISTING member's
+ * role. Admin-only. Distinct from `useAddMember`, which is for inviting a
+ * brand-new member only (the server rejects re-inviting an existing email
+ * with a 409 — see SETTINGS-1 in docs/UI-REVIEW.md). The server also rejects
+ * any role change that would leave the workspace with zero admins.
+ */
+export interface UpdateMemberRoleInput {
+  membershipId: string;
+  role: Role;
+}
+
+export function useUpdateMemberRole(workspaceId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ membershipId, role }: UpdateMemberRoleInput) =>
+      request<MembershipDto>(
+        `/workspaces/${workspaceId}/members/${membershipId}`,
+        { method: 'PATCH', body: { role } },
+      ),
+    onSuccess: () => {
+      void qc.invalidateQueries({
+        queryKey: qk.workspaceMembers(workspaceId),
+      });
+    },
+  });
+}
+
+/**
  * Remove a workspace member by membershipId.
  * Only available to ADMINs; the server rejects any attempt that would leave the
  * workspace with no administrators (returns 400/403 surfaced as a toast).

@@ -1,4 +1,4 @@
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Role } from '@next-lane/shared';
 import { LabelsService } from './labels.service';
 import type { PrismaService } from '../prisma/prisma.service';
@@ -16,10 +16,19 @@ const USER_ID = 'user-owner';
 const VIEWER_ID = 'user-viewer';
 const FOREIGN_USER_ID = 'user-foreign';
 
+/** Simulate a Prisma unique-constraint violation (P2002), as thrown for the
+ * `@@unique([projectId, name])` constraint on Label. */
+function p2002(): Error & { code: string } {
+  const err = new Error('Unique constraint failed on the fields: (`projectId`,`name`)');
+  return Object.assign(err, { code: 'P2002' });
+}
+
 /** Build a minimal Prisma mock that satisfies LabelsService's usage. */
 function makePrisma(opts: {
   labelProjectId?: string;
   userRole?: Role | null;
+  createThrowsP2002?: boolean;
+  updateThrowsP2002?: boolean;
 } = {}) {
   const labelProjectId = opts.labelProjectId ?? PROJECT_ID;
   const userRole = opts.userRole !== undefined ? opts.userRole : Role.MEMBER;
@@ -37,14 +46,27 @@ function makePrisma(opts: {
         }
         return Promise.resolve(null);
       }),
+      create: jest.fn().mockImplementation(
+        ({ data }: { data: { projectId: string; name: string; color: string } }) => {
+          if (opts.createThrowsP2002) return Promise.reject(p2002());
+          return Promise.resolve({
+            id: 'label-new',
+            name: data.name,
+            color: data.color,
+            projectId: data.projectId,
+          });
+        },
+      ),
       update: jest.fn().mockImplementation(
-        ({ where, data }: { where: { id: string }; data: { name?: string; color?: string } }) =>
-          Promise.resolve({
+        ({ where, data }: { where: { id: string }; data: { name?: string; color?: string } }) => {
+          if (opts.updateThrowsP2002) return Promise.reject(p2002());
+          return Promise.resolve({
             id: where.id,
             name: data.name ?? 'original',
             color: data.color ?? '#3b82f6',
             projectId: labelProjectId,
-          }),
+          });
+        },
       ),
     },
     project: {
@@ -156,5 +178,53 @@ describe('LabelsService.update', () => {
         service.update(USER_ID, 'does-not-exist', { name: 'x' }),
       ).rejects.toThrow(NotFoundException);
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SETTINGS-4: friendly duplicate-label message (P2002 -> ConflictException)
+// ---------------------------------------------------------------------------
+
+describe('LabelsService.create — duplicate name (SETTINGS-4)', () => {
+  it('throws a friendly ConflictException (not the generic Prisma fallback) on P2002', async () => {
+    const prisma = makePrisma({ userRole: Role.MEMBER, createThrowsP2002: true });
+    const service = new LabelsService(prisma);
+    await expect(
+      service.create(USER_ID, PROJECT_ID, { name: 'bug', color: '#ef4444' }),
+    ).rejects.toThrow(ConflictException);
+    await expect(
+      service.create(USER_ID, PROJECT_ID, { name: 'bug', color: '#ef4444' }),
+    ).rejects.toThrow('A label named "bug" already exists in this project');
+  });
+
+  it('re-throws non-P2002 errors unchanged', async () => {
+    const prisma = makePrisma({ userRole: Role.MEMBER });
+    (prisma.label.create as jest.Mock).mockRejectedValueOnce(new Error('db down'));
+    const service = new LabelsService(prisma);
+    await expect(
+      service.create(USER_ID, PROJECT_ID, { name: 'bug', color: '#ef4444' }),
+    ).rejects.toThrow('db down');
+  });
+});
+
+describe('LabelsService.update — duplicate name (SETTINGS-4)', () => {
+  it('throws a friendly ConflictException (not the generic Prisma fallback) on P2002', async () => {
+    const prisma = makePrisma({ userRole: Role.MEMBER, updateThrowsP2002: true });
+    const service = new LabelsService(prisma);
+    await expect(
+      service.update(USER_ID, LABEL_ID, { name: 'bug' }),
+    ).rejects.toThrow(ConflictException);
+    await expect(
+      service.update(USER_ID, LABEL_ID, { name: 'bug' }),
+    ).rejects.toThrow('A label named "bug" already exists in this project');
+  });
+
+  it('re-throws non-P2002 errors unchanged', async () => {
+    const prisma = makePrisma({ userRole: Role.MEMBER });
+    (prisma.label.update as jest.Mock).mockRejectedValueOnce(new Error('db down'));
+    const service = new LabelsService(prisma);
+    await expect(
+      service.update(USER_ID, LABEL_ID, { name: 'bug' }),
+    ).rejects.toThrow('db down');
   });
 });

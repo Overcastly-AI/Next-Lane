@@ -41,7 +41,7 @@ export class UpdateWorkspaceDto {
   @ValidateIf((o: UpdateWorkspaceDto) => o.brandColor !== null)
   @IsString()
   @Matches(/^#[0-9a-fA-F]{6}$/, {
-    message: 'brandColor must be a valid 6-digit hex color (e.g. #1a2b3c) or null',
+    message: 'Accent color must be a valid hex color, like #1a2b3c.',
   })
   brandColor?: string | null;
 }
@@ -53,4 +53,10 @@ export class AddMemberDto {
   @IsOptional()
   @IsEnum(Role)
   role?: Role;
+}
+
+/** Body for `PATCH /workspaces/:id/members/:membershipId` — role change only. */
+export class UpdateMemberRoleDto {
+  @IsEnum(Role)
+  role!: Role;
 }

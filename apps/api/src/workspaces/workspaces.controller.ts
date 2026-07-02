@@ -18,7 +18,12 @@ import * as os from 'os';
 import * as crypto from 'crypto';
 import type { Request, Response } from 'express';
 import { WorkspacesService, LOGO_MAX_BYTES } from './workspaces.service';
-import { CreateWorkspaceDto, AddMemberDto, UpdateWorkspaceDto } from './dto/workspace.dto';
+import {
+  CreateWorkspaceDto,
+  AddMemberDto,
+  UpdateWorkspaceDto,
+  UpdateMemberRoleDto,
+} from './dto/workspace.dto';
 import { CurrentUser, AuthUser } from '../auth/current-user.decorator';
 import { Public } from '../auth/public.decorator';
 
@@ -90,6 +95,28 @@ export class WorkspacesController {
     @Req() req: Request,
   ) {
     return this.workspaces.addMember(user.id, id, dto, extractIp(req));
+  }
+
+  /**
+   * PATCH /workspaces/:id/members/:membershipId — change an existing member's
+   * role. Admin-only; rejects any change that would leave the workspace with
+   * zero admins.
+   */
+  @Patch(':id/members/:membershipId')
+  updateMemberRole(
+    @CurrentUser() user: AuthUser,
+    @Param('id') workspaceId: string,
+    @Param('membershipId') membershipId: string,
+    @Body() dto: UpdateMemberRoleDto,
+    @Req() req: Request,
+  ) {
+    return this.workspaces.updateMemberRole(
+      user.id,
+      workspaceId,
+      membershipId,
+      dto,
+      extractIp(req),
+    );
   }
 
   @Delete(':id/members/:membershipId')

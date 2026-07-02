@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -14,7 +15,12 @@ import {
   assertWorkspaceRole,
 } from '../common/membership.util';
 import { toUserDto } from '../auth/auth.service';
-import { CreateWorkspaceDto, AddMemberDto, UpdateWorkspaceDto } from './dto/workspace.dto';
+import {
+  CreateWorkspaceDto,
+  AddMemberDto,
+  UpdateWorkspaceDto,
+  UpdateMemberRoleDto,
+} from './dto/workspace.dto';
 import { Role } from '@next-lane/shared';
 import type { WorkspaceDto, MembershipDto } from '@next-lane/shared';
 import { AuditService } from '../audit/audit.service';
@@ -136,6 +142,18 @@ export class WorkspacesService {
     }));
   }
 
+  /**
+   * POST /workspaces/:id/members — invite a NEW member by email. Admin-only.
+   *
+   * This creates a membership only; it deliberately does NOT upsert an
+   * existing member's role. Earlier behavior upserted-by-email, which meant
+   * a solo admin re-typing their own email into the free-text Invite form
+   * (defaulted to role=MEMBER) silently demoted themselves with no
+   * confirmation and no recovery path (SETTINGS-1). If the email already
+   * belongs to a member of this workspace, reject with a friendly 409 that
+   * points the admin at the per-row role Select (see `updateMemberRole`)
+   * instead.
+   */
   async addMember(
     userId: string,
     id: string,
@@ -148,19 +166,17 @@ export class WorkspacesService {
     });
     if (!target) throw new NotFoundException('User not found');
 
-    // Check if it's a new membership or a role change (for audit action label).
     const existing = await this.prisma.membership.findUnique({
       where: { userId_workspaceId: { userId: target.id, workspaceId: id } },
     });
-    const action = existing ? 'membership.role_change' : 'membership.add';
-    const prevRole = existing?.role ?? null;
+    if (existing) {
+      throw new ConflictException(
+        `${target.email} is already a member of this workspace — change their role from the member list instead of re-inviting them.`,
+      );
+    }
 
-    const membership = await this.prisma.membership.upsert({
-      where: {
-        userId_workspaceId: { userId: target.id, workspaceId: id },
-      },
-      update: { role: dto.role ?? Role.MEMBER },
-      create: {
+    const membership = await this.prisma.membership.create({
+      data: {
         userId: target.id,
         workspaceId: id,
         role: dto.role ?? Role.MEMBER,
@@ -171,13 +187,12 @@ export class WorkspacesService {
     this.audit.record({
       workspaceId: id,
       actorId: userId,
-      action,
+      action: 'membership.add',
       targetType: 'Membership',
       targetId: membership.id,
       metadata: {
         targetEmail: target.email,
         role: membership.role,
-        ...(prevRole ? { previousRole: prevRole } : {}),
       },
       ip,
     });
@@ -189,6 +204,69 @@ export class WorkspacesService {
     };
   }
 
+  /**
+   * PATCH /workspaces/:id/members/:membershipId — change an EXISTING member's
+   * role. Admin-only. Refuses (400) any change that would leave the
+   * workspace with zero ADMINs (including a self-demotion by the last
+   * admin) — see `assertNotLastAdmin`.
+   */
+  async updateMemberRole(
+    userId: string,
+    workspaceId: string,
+    membershipId: string,
+    dto: UpdateMemberRoleDto,
+    ip?: string | null,
+  ): Promise<MembershipDto> {
+    await assertWorkspaceRole(this.prisma, userId, workspaceId, Role.ADMIN);
+    const membership = await this.prisma.membership.findUnique({
+      where: { id: membershipId },
+      include: { user: true },
+    });
+    if (!membership || membership.workspaceId !== workspaceId) {
+      throw new NotFoundException('Membership not found');
+    }
+
+    const prevRole = membership.role as Role;
+    if (prevRole === Role.ADMIN && dto.role !== Role.ADMIN) {
+      await this.assertNotLastAdmin(
+        workspaceId,
+        membershipId,
+        'change this admin’s role',
+      );
+    }
+
+    const updated = await this.prisma.membership.update({
+      where: { id: membershipId },
+      data: { role: dto.role },
+      include: { user: true },
+    });
+
+    this.audit.record({
+      workspaceId,
+      actorId: userId,
+      action: 'membership.role_change',
+      targetType: 'Membership',
+      targetId: membership.id,
+      metadata: {
+        targetEmail: membership.user.email,
+        role: updated.role,
+        previousRole: prevRole,
+      },
+      ip,
+    });
+
+    return {
+      id: updated.id,
+      role: updated.role as Role,
+      user: toUserDto(updated.user),
+    };
+  }
+
+  /**
+   * DELETE /workspaces/:id/members/:membershipId — remove a member.
+   * Admin-only. Refuses (400) removing the last ADMIN of a workspace
+   * (including the actor removing themselves) — see `assertNotLastAdmin`.
+   */
   async removeMember(
     userId: string,
     workspaceId: string,
@@ -202,6 +280,10 @@ export class WorkspacesService {
     });
     if (!membership || membership.workspaceId !== workspaceId) {
       throw new NotFoundException('Membership not found');
+    }
+
+    if (membership.role === Role.ADMIN) {
+      await this.assertNotLastAdmin(workspaceId, membershipId, 'remove this admin');
     }
 
     await this.prisma.membership.delete({ where: { id: membershipId } });
@@ -220,6 +302,33 @@ export class WorkspacesService {
     });
 
     return { id: membershipId };
+  }
+
+  /**
+   * Invariant guard: a workspace must always retain at least one ADMIN.
+   * Counts ADMIN memberships in `workspaceId` excluding `excludeMembershipId`
+   * (the membership about to be demoted/removed); if none would remain,
+   * rejects with a friendly 400. Covers both other-admin actions and a
+   * last-admin self-demotion/self-removal (the guard doesn't care who the
+   * actor is, only whether an admin seat would remain).
+   */
+  private async assertNotLastAdmin(
+    workspaceId: string,
+    excludeMembershipId: string,
+    action: string,
+  ): Promise<void> {
+    const remainingAdmins = await this.prisma.membership.count({
+      where: {
+        workspaceId,
+        role: Role.ADMIN,
+        id: { not: excludeMembershipId },
+      },
+    });
+    if (remainingAdmins === 0) {
+      throw new BadRequestException(
+        `Cannot ${action} — every workspace needs at least one admin. Promote another member to admin first.`,
+      );
+    }
   }
 
   // ── Branding ────────────────────────────────────────────────────────────────
