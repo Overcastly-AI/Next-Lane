@@ -17,7 +17,7 @@
  *   workflows-manager, workflow-create, workflow-from-template,
  *   workflow-row, workflow-enforce-toggle-2, workflow-graph-toggle
  */
-import { useState, type FormEvent } from 'react';
+import { useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import {
   IssueType,
   ISSUE_TYPES,
@@ -51,6 +51,12 @@ import { useToast } from '@/components/ui/Toast';
 import { errorMessage } from '@/lib/errorMessage';
 import { ApiError } from '@/api/client';
 import { cn } from '@/lib/cn';
+import { useCustomFields } from '@/api/custom-fields';
+import {
+  buildGateFieldOptions,
+  CORE_GATE_FIELD_OPTIONS,
+  type GateFieldOption,
+} from '@/lib/workflowGateFields';
 import { WorkflowGraph } from './WorkflowGraph';
 
 // ---------------------------------------------------------------------------
@@ -113,6 +119,7 @@ export function WorkflowsManager({
 
   return (
     <section
+      id="workflows-manager"
       data-testid="workflows-manager"
       className="rounded-xl border border-ink-200 bg-white p-4 shadow-card sm:p-5"
     >
@@ -121,7 +128,10 @@ export function WorkflowsManager({
         <div>
           <h2 className="text-sm font-semibold text-ink-900">Named Workflows</h2>
           <p className="mt-0.5 text-xs text-ink-500">
-            Define reusable workflow graphs and assign them to boards.
+            Define reusable workflow graphs and assign them to boards. Only
+            governs boards a workflow is explicitly assigned to — everything
+            else (Triage, the issue drawer, bulk edit) follows the legacy
+            project-wide transitions above.
           </p>
         </div>
         {isAdmin && (
@@ -225,7 +235,6 @@ export function WorkflowsManager({
       {selectedId && selectedWorkflow && (
         <WorkflowDetailPanel
           workflowId={selectedId}
-          workflowName={selectedWorkflow.name}
           projectId={projectId}
           statuses={statuses}
           isAdmin={isAdmin}
@@ -288,14 +297,12 @@ type ViewMode = 'list' | 'graph';
 
 function WorkflowDetailPanel({
   workflowId,
-  workflowName,
   projectId,
   statuses,
   isAdmin,
   onDeleteRequest,
 }: {
   workflowId: string;
-  workflowName: string;
   projectId: string;
   statuses: StatusDto[];
   isAdmin: boolean;
@@ -304,6 +311,8 @@ function WorkflowDetailPanel({
   const detailQuery = useWorkflowDetail(workflowId);
   const updateWorkflow = useUpdateWorkflow(projectId);
   const deleteTransition = useDeleteWorkflowTransition(workflowId);
+  const customFieldsQuery = useCustomFields(projectId);
+  const fieldOptions = buildGateFieldOptions(customFieldsQuery.data);
   const toast = useToast();
 
   const [addOpen, setAddOpen] = useState(false);
@@ -359,7 +368,12 @@ function WorkflowDetailPanel({
         <>
           {/* Header */}
           <div className="mb-4 flex items-start justify-between gap-3">
-            <h3 className="text-sm font-semibold text-ink-800">{workflowName}</h3>
+            <WorkflowNameEditor
+              workflowId={workflowId}
+              projectId={projectId}
+              name={detail.name}
+              isAdmin={isAdmin}
+            />
             <div className="flex shrink-0 items-center gap-2">
               {/* View toggle: List / Graph */}
               <div
@@ -488,6 +502,7 @@ function WorkflowDetailPanel({
         <WorkflowTransitionFormModal
           workflowId={workflowId}
           statuses={statuses}
+          fieldOptions={fieldOptions}
           onClose={() => setAddOpen(false)}
         />
       )}
@@ -497,6 +512,7 @@ function WorkflowDetailPanel({
         <WorkflowTransitionFormModal
           workflowId={workflowId}
           statuses={statuses}
+          fieldOptions={fieldOptions}
           existing={editTarget}
           onClose={() => setEditTarget(null)}
         />
@@ -529,6 +545,117 @@ function WorkflowDetailPanel({
         onConfirm={handleDeleteTransition}
         onCancel={() => setDeleteTransTarget(null)}
       />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Inline workflow rename (WF-4: pencil -> input, Enter/blur saves, Escape
+// cancels; per-keystroke typing supported since it's a plain controlled
+// <input>, not a debounced/batched field).
+// ---------------------------------------------------------------------------
+
+function WorkflowNameEditor({
+  workflowId,
+  projectId,
+  name,
+  isAdmin,
+}: {
+  workflowId: string;
+  projectId: string;
+  name: string;
+  isAdmin: boolean;
+}) {
+  const updateWorkflow = useUpdateWorkflow(projectId);
+  const toast = useToast();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(name);
+  // Distinguishes "blur because Escape was pressed" (cancel) from "blur
+  // because the admin clicked/tabbed away" (commit) — both funnel through
+  // the same onBlur handler so Enter/blur/Escape can't race each other.
+  const cancelledRef = useRef(false);
+
+  function startEditing() {
+    setDraft(name);
+    setEditing(true);
+  }
+
+  function commit() {
+    const trimmed = draft.trim();
+    setEditing(false);
+    if (!trimmed || trimmed === name) {
+      setDraft(name);
+      return;
+    }
+    updateWorkflow.mutate(
+      { id: workflowId, name: trimmed },
+      {
+        onSuccess: () => toast.success('Workflow renamed.'),
+        onError: (err) => {
+          const msg =
+            err instanceof ApiError && err.status === 409
+              ? 'A workflow with that name already exists in this project.'
+              : errorMessage(err, 'Could not rename the workflow.');
+          toast.error(msg);
+          setDraft(name);
+        },
+      },
+    );
+  }
+
+  function handleBlur() {
+    if (cancelledRef.current) {
+      cancelledRef.current = false;
+      setDraft(name);
+      setEditing(false);
+      return;
+    }
+    commit();
+  }
+
+  function handleKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      e.currentTarget.blur(); // triggers commit() via handleBlur
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      cancelledRef.current = true;
+      e.currentTarget.blur(); // triggers cancel via handleBlur
+    }
+  }
+
+  if (!isAdmin) {
+    return <h3 className="min-w-0 truncate text-sm font-semibold text-ink-800">{name}</h3>;
+  }
+
+  if (editing) {
+    return (
+      <input
+        autoFocus
+        aria-label="Workflow name"
+        value={draft}
+        maxLength={120}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={handleBlur}
+        onKeyDown={handleKeyDown}
+        className="h-7 min-w-0 flex-1 rounded border border-signal-300 bg-white px-2 text-sm font-semibold text-ink-800 focus:outline-none focus:ring-2 focus:ring-signal-200"
+      />
+    );
+  }
+
+  return (
+    <div className="flex min-w-0 items-center gap-1.5">
+      <h3 className="min-w-0 truncate text-sm font-semibold text-ink-800">{name}</h3>
+      <button
+        type="button"
+        aria-label="Rename workflow"
+        onClick={startEditing}
+        className="shrink-0 rounded p-1 text-ink-400 hover:bg-ink-100 hover:text-ink-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-400"
+      >
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z" />
+        </svg>
+      </button>
     </div>
   );
 }
@@ -729,6 +856,25 @@ function TransitionGroupView({
 function GateChip({ gate }: { gate: WorkflowGateDto }) {
   const label = WORKFLOW_GATE_LABELS[gate.type] ?? gate.type;
   const extra = gate.field ?? gate.linkType;
+  // WF-3: a gate stored (pre-fix) with a blank field/linkType param is a
+  // permanent no-op server-side — flag it visibly instead of implying it's
+  // an active rule.
+  const misconfigured =
+    (gate.type === WorkflowGateType.REQUIRE_FIELD && !gate.field) ||
+    (gate.type === WorkflowGateType.REQUIRE_LINK && !gate.linkType);
+
+  if (misconfigured) {
+    return (
+      <span
+        data-testid="workflow-gate-misconfigured"
+        title="This gate has no field/link type set and will never actually block a transition."
+        className="inline-flex items-center gap-0.5 rounded-sm bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 ring-1 ring-inset ring-amber-200"
+      >
+        ⚠ {label} — misconfigured
+      </span>
+    );
+  }
+
   return (
     <span className="inline-flex items-center gap-0.5 rounded-sm bg-signal-50 px-1.5 py-0.5 text-[10px] font-medium text-signal-700 ring-1 ring-inset ring-signal-100">
       {label}
@@ -953,11 +1099,13 @@ function initTransitionState(
 function WorkflowTransitionFormModal({
   workflowId,
   statuses,
+  fieldOptions,
   existing,
   onClose,
 }: {
   workflowId: string;
   statuses: StatusDto[];
+  fieldOptions: GateFieldOption[];
   existing?: WorkflowTransitionDto;
   onClose: () => void;
 }) {
@@ -1004,6 +1152,15 @@ function WorkflowTransitionFormModal({
       return dto;
     });
   }
+
+  // WF-3: a REQUIRE_FIELD gate with no field selected (or REQUIRE_LINK with no
+  // link type) would silently no-op server-side — block Save instead of
+  // letting the admin believe they configured an active rule.
+  const hasIncompleteGate = form.gates.some(
+    (g) =>
+      (g.type === GATE_NEEDS_FIELD && !g.field.trim()) ||
+      (g.type === GATE_NEEDS_LINKTYPE && !g.linkType.trim()),
+  );
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -1069,7 +1226,7 @@ function WorkflowTransitionFormModal({
             type="submit"
             form="wfm-transition-form"
             loading={isPending}
-            disabled={!form.toStatusId}
+            disabled={!form.toStatusId || hasIncompleteGate}
           >
             {isEdit ? 'Save changes' : 'Add transition'}
           </Button>
@@ -1158,6 +1315,7 @@ function WorkflowTransitionFormModal({
                 <GateEditor
                   key={gate.id}
                   gate={gate}
+                  fieldOptions={fieldOptions}
                   onChange={(patch) => updateGate(gate.id, patch)}
                   onRemove={() => removeGate(gate.id)}
                 />
@@ -1176,13 +1334,21 @@ function WorkflowTransitionFormModal({
 
 function GateEditor({
   gate,
+  fieldOptions,
   onChange,
   onRemove,
 }: {
   gate: GateDraft;
+  fieldOptions: GateFieldOption[];
   onChange: (patch: Partial<Omit<GateDraft, 'id'>>) => void;
   onRemove: () => void;
 }) {
+  // WF-2: known options + (if the stored value doesn't match anything known —
+  // e.g. a legacy gate saved before this fix, or a custom field that's since
+  // been deleted) a fallback entry so we never silently drop the current value.
+  const knownValues = new Set(fieldOptions.map((o) => o.value));
+  const showUnrecognized = gate.field !== '' && !knownValues.has(gate.field);
+
   return (
     <li className="flex flex-col gap-2 rounded-lg border border-ink-200 bg-ink-50 px-3 py-2.5">
       <div className="flex items-center gap-2">
@@ -1208,13 +1374,31 @@ function GateEditor({
         </button>
       </div>
       {gate.type === GATE_NEEDS_FIELD && (
-        <Input
-          aria-label="Field or custom-field key"
+        <select
+          aria-label="Field"
           value={gate.field}
           onChange={(e) => onChange({ field: e.target.value })}
-          placeholder="e.g. assigneeId or cf_severity"
-          maxLength={120}
-        />
+          className={selectClass}
+        >
+          <option value="">Select a field…</option>
+          {showUnrecognized && (
+            <option value={gate.field}>{gate.field} (unrecognized)</option>
+          )}
+          <optgroup label="Core fields">
+            {CORE_GATE_FIELD_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </optgroup>
+          {fieldOptions.length > CORE_GATE_FIELD_OPTIONS.length && (
+            <optgroup label="Custom fields">
+              {fieldOptions
+                .filter((o) => !CORE_GATE_FIELD_OPTIONS.some((c) => c.value === o.value))
+                .map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+            </optgroup>
+          )}
+        </select>
       )}
       {gate.type === GATE_NEEDS_LINKTYPE && (
         <Input

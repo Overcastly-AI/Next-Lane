@@ -1503,3 +1503,45 @@ gates status changes — is silently false for 3 of 5 ways a user can change
 an issue's status. WF-1 should block sign-off on this ready item until
 fixed; WF-2/WF-3/WF-4 should be fixed in the same batch since they touch
 the same components QA already has fresh context on.
+
+### Fixed 2026-07-03
+
+All 5 defects (WF-1..WF-5) fixed in this batch:
+
+- **WF-1:** `IssuesService` now routes every status-change surface through a
+  single shared `enforceStatusChange()` (used by `move()`, `update()`, and —
+  transitively — `bulkUpdate()`). When no explicit `boardId` is present
+  (Triage, the issue drawer, bulk edit), it resolves the project's enforced
+  board-assigned workflow via `resolveEnforcedWorkflowId()`, mirroring the
+  board query's own visibility rule (KANBAN = backlog/active-sprint, SCRUM =
+  active-sprint only); ties across boards break to the default board.
+  Automation bypass and the legacy project-level fallback are unchanged.
+- **WF-2:** `WorkflowService.evaluateGate`'s REQUIRE_FIELD case now resolves
+  `field` against the project's `CustomFieldDefinition`s (match by `key` or
+  `name`, case-insensitive) to the definition id before looking up the
+  stored value, with a backward-compatible direct-match short-circuit for
+  any gate already keyed literally. The gate editor's field input is now a
+  `<select>` of core fields + the project's real custom fields (value = the
+  field's `key`) in both `WorkflowSection` and `WorkflowsManager`.
+- **WF-3:** `WorkflowGateDtoClass.field`/`linkType` now require `@MinLength(1)`
+  (400 on blank) in addition to `@IsString()`. The gate editor disables Save
+  while a REQUIRE_FIELD/REQUIRE_LINK gate has an empty param, and any
+  already-stored blank-key gate renders an amber "misconfigured" chip on the
+  transition row instead of the normal active-gate chip.
+- **WF-4:** `WorkflowsManager`'s detail-panel header now has an inline
+  rename control (pencil → per-keystroke `<input>`, Enter/blur saves,
+  Escape cancels, 409 handled with a friendly toast that keeps the field
+  open for correction).
+- **WF-5:** the legacy section is now headed "Legacy project-wide
+  transitions" with an explainer + link to the Named Workflows manager
+  below (which itself now explains its own scope); the two "+ Add
+  transition" buttons have distinct accessible names (the named-workflow one
+  keeps the visible "+ Add transition" text/name, the legacy one is
+  labelled "Add legacy workflow transition").
+
+Regression: all 12 `test.fixme()` cases in `workflow-robustness.spec.ts` are
+now real, passing tests (desktop + mobile, 42/42 total in the spec);
+`board-workflows.spec.ts`, `board.spec.ts`, `workflow.spec.ts`, and
+`workflow-graph.spec.ts` remain green. New backend unit coverage added for
+the WF-1 resolution semantics (`issues-board-enforcement.spec.ts`) and the
+WF-2 definition-key resolution (`workflow.enforcement.spec.ts`).

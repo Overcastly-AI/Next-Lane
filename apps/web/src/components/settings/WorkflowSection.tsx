@@ -37,6 +37,12 @@ import { useToast } from '@/components/ui/Toast';
 import { errorMessage } from '@/lib/errorMessage';
 import { ApiError } from '@/api/client';
 import { cn } from '@/lib/cn';
+import { useCustomFields } from '@/api/custom-fields';
+import {
+  buildGateFieldOptions,
+  CORE_GATE_FIELD_OPTIONS,
+  type GateFieldOption,
+} from '@/lib/workflowGateFields';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -73,6 +79,8 @@ export function WorkflowSection({
   const workflowQuery = useWorkflow(projectId);
   const setEnforced   = useSetWorkflowEnforced(projectId);
   const deleteTransition = useDeleteWorkflowTransition(projectId);
+  const customFieldsQuery = useCustomFields(projectId);
+  const fieldOptions = buildGateFieldOptions(customFieldsQuery.data);
   const toast = useToast();
 
   const [addOpen, setAddOpen] = useState(false);
@@ -121,15 +129,22 @@ export function WorkflowSection({
       {/* Section header */}
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold text-slate-900">Workflow</h2>
+          <h2 className="text-sm font-semibold text-slate-900">Legacy project-wide transitions</h2>
           <p className="mt-0.5 text-xs text-slate-500">
-            Define which status transitions are allowed for this project.
+            Governs every status change that happens outside a board with its
+            own assigned workflow — Triage, the issue drawer, and bulk edit.
+            To restrict moves on a specific board instead, use the{' '}
+            <a href="#workflows-manager" className="font-medium text-signal-700 underline hover:text-signal-800">
+              Named Workflows
+            </a>{' '}
+            manager below.
           </p>
         </div>
         {isAdmin && workflow && (
           <Button
             size="sm"
             data-testid="workflow-add-transition"
+            aria-label="Add legacy workflow transition"
             onClick={() => setAddOpen(true)}
           >
             + Add transition
@@ -192,6 +207,7 @@ export function WorkflowSection({
         <TransitionFormModal
           projectId={projectId}
           statuses={statuses}
+          fieldOptions={fieldOptions}
           onClose={() => setAddOpen(false)}
         />
       )}
@@ -201,6 +217,7 @@ export function WorkflowSection({
         <TransitionFormModal
           projectId={projectId}
           statuses={statuses}
+          fieldOptions={fieldOptions}
           existing={editTarget}
           onClose={() => setEditTarget(null)}
         />
@@ -447,6 +464,25 @@ function TransitionGroup({
 function GateChip({ gate }: { gate: WorkflowGateDto }) {
   const label = WORKFLOW_GATE_LABELS[gate.type] ?? gate.type;
   const extra = gate.field ?? gate.linkType;
+  // WF-3: a gate stored (pre-fix) with a blank field/linkType param is a
+  // permanent no-op server-side — flag it visibly instead of implying it's
+  // an active rule.
+  const misconfigured =
+    (gate.type === WorkflowGateType.REQUIRE_FIELD && !gate.field) ||
+    (gate.type === WorkflowGateType.REQUIRE_LINK && !gate.linkType);
+
+  if (misconfigured) {
+    return (
+      <span
+        data-testid="workflow-gate-misconfigured"
+        title="This gate has no field/link type set and will never actually block a transition."
+        className="inline-flex items-center gap-0.5 rounded-sm bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 border border-amber-200"
+      >
+        ⚠ {label} — misconfigured
+      </span>
+    );
+  }
+
   return (
     <span className="inline-flex items-center gap-0.5 rounded-sm bg-brand-50 px-1.5 py-0.5 text-[10px] font-medium text-brand-700 border border-brand-100">
       {label}
@@ -507,11 +543,13 @@ function initState(
 function TransitionFormModal({
   projectId,
   statuses,
+  fieldOptions,
   existing,
   onClose,
 }: {
   projectId: string;
   statuses: StatusDto[];
+  fieldOptions: GateFieldOption[];
   existing?: WorkflowTransitionDto;
   onClose: () => void;
 }) {
@@ -559,6 +597,15 @@ function TransitionFormModal({
       return dto;
     });
   }
+
+  // WF-3: a REQUIRE_FIELD gate with no field selected (or REQUIRE_LINK with no
+  // link type) would silently no-op server-side — block Save instead of
+  // letting the admin believe they configured an active rule.
+  const hasIncompleteGate = form.gates.some(
+    (g) =>
+      (g.type === GATE_NEEDS_FIELD && !g.field.trim()) ||
+      (g.type === GATE_NEEDS_LINKTYPE && !g.linkType.trim()),
+  );
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -615,7 +662,7 @@ function TransitionFormModal({
     }
   }
 
-  const canSubmit = !!form.toStatusId;
+  const canSubmit = !!form.toStatusId && !hasIncompleteGate;
 
   return (
     <Modal
@@ -731,6 +778,7 @@ function TransitionFormModal({
                 <GateEditor
                   key={gate.id}
                   gate={gate}
+                  fieldOptions={fieldOptions}
                   onChange={(patch) => updateGate(gate.id, patch)}
                   onRemove={() => removeGate(gate.id)}
                 />
@@ -749,13 +797,21 @@ function TransitionFormModal({
 
 function GateEditor({
   gate,
+  fieldOptions,
   onChange,
   onRemove,
 }: {
   gate: GateDraft;
+  fieldOptions: GateFieldOption[];
   onChange: (patch: Partial<Omit<GateDraft, 'id'>>) => void;
   onRemove: () => void;
 }) {
+  // WF-2: known options + (if the stored value doesn't match anything known —
+  // e.g. a legacy gate saved before this fix, or a custom field that's since
+  // been deleted) a fallback entry so we never silently drop the current value.
+  const knownValues = new Set(fieldOptions.map((o) => o.value));
+  const showUnrecognized = gate.field !== '' && !knownValues.has(gate.field);
+
   return (
     <li className="flex flex-col gap-2 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2.5">
       <div className="flex items-center gap-2">
@@ -785,13 +841,31 @@ function GateEditor({
 
       {/* Field param */}
       {gate.type === GATE_NEEDS_FIELD && (
-        <Input
-          aria-label="Field or custom-field key"
+        <select
+          aria-label="Field"
           value={gate.field}
           onChange={(e) => onChange({ field: e.target.value })}
-          placeholder="e.g. assigneeId or cf_severity"
-          maxLength={120}
-        />
+          className={selectClass}
+        >
+          <option value="">Select a field…</option>
+          {showUnrecognized && (
+            <option value={gate.field}>{gate.field} (unrecognized)</option>
+          )}
+          <optgroup label="Core fields">
+            {CORE_GATE_FIELD_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </optgroup>
+          {fieldOptions.length > CORE_GATE_FIELD_OPTIONS.length && (
+            <optgroup label="Custom fields">
+              {fieldOptions
+                .filter((o) => !CORE_GATE_FIELD_OPTIONS.some((c) => c.value === o.value))
+                .map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+            </optgroup>
+          )}
+        </select>
       )}
 
       {/* Link type param */}

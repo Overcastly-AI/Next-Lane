@@ -21,18 +21,23 @@ export class WorkflowGateDtoClass {
   type!: WorkflowGateType;
 
   /**
-   * Required when type === REQUIRE_FIELD. Core field name (e.g. "storyPoints",
-   * "dueDate", "priority", "assignee") or a custom-field key.
+   * Required (non-empty) when type === REQUIRE_FIELD. Core field name (e.g.
+   * "storyPoints", "dueDate", "priority", "assignee") or a custom field's
+   * `key`/`name`. A blank value would silently no-op the gate at evaluation
+   * time (WF-3), so it's rejected here with a 400 instead.
    */
   @ValidateIf((o: WorkflowGateDtoClass) => o.type === WorkflowGateType.REQUIRE_FIELD)
   @IsString()
+  @MinLength(1, { message: 'field must not be empty when gate type is REQUIRE_FIELD' })
   field?: string;
 
   /**
-   * Required when type === REQUIRE_LINK. The link type string (e.g. "BLOCKS").
+   * Required (non-empty) when type === REQUIRE_LINK. The link type string
+   * (e.g. "BLOCKS").
    */
   @ValidateIf((o: WorkflowGateDtoClass) => o.type === WorkflowGateType.REQUIRE_LINK)
   @IsString()
+  @MinLength(1, { message: 'linkType must not be empty when gate type is REQUIRE_LINK' })
   linkType?: string;
 }
 

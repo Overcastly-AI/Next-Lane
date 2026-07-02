@@ -38,6 +38,8 @@ import {
   rankBetween,
   Role,
   IssueType,
+  BoardType,
+  SprintState,
   filterIssues,
   validateQuery,
 } from '@next-lane/shared';
@@ -766,10 +768,12 @@ export class IssuesService {
     // Bulk callers may pass workflowEnforced=false to skip the per-issue project
     // lookup when they have already pre-loaded the enforcement flag.
     if (dto.statusId !== undefined && dto.statusId !== existing.statusId) {
-      await this.workflowSvc.enforceTransition(id, dto.statusId, {
-        automated: opts?.automated,
-        workflowEnforced: opts?.workflowEnforced,
-      });
+      await this.enforceStatusChange(
+        id,
+        dto.statusId,
+        { projectId: existing.projectId, sprintId: existing.sprintId },
+        opts,
+      );
     }
 
     const activities: Prisma.ActivityLogCreateManyInput[] = [];
@@ -1012,30 +1016,102 @@ export class IssuesService {
   }
 
   /**
-   * Board-context-aware enforcement helper for the `move` path.
+   * Resolve the single enforced named workflow (if any) that governs status
+   * changes for an issue when NO explicit board context is available (Triage,
+   * the issue drawer, bulk edit, and any `move()` call without a `boardId`).
    *
-   * Enforcement resolution order:
-   *  1. Automation bypass (opts.automated === true) → skip all enforcement.
-   *  2. Board context with a non-null workflowId where workflow.enforced = true
-   *     → enforce using the named workflow's transitions (board-specific path).
-   *  3. Fall back to the existing project-level enforceTransition (unchanged).
+   * This closes the WF-1 enforcement-bypass gap: those surfaces previously
+   * fell straight through to the legacy project-level `workflowEnforced` flag
+   * and never looked at a board's assigned named workflow at all, so an
+   * ENFORCED named workflow assigned to a board could be silently defeated by
+   * using a different surface to change status.
    *
-   * No board context (boardId absent or board has no workflowId) → always falls
-   * through to the legacy project-level enforcement path.
+   * Resolution:
+   *  1. Load the project's boards that both (a) have an enforced named
+   *     workflow (`workflowId` set AND `workflow.enforced === true`) and
+   *     (b) would actually DISPLAY this issue — i.e. the same visibility rule
+   *     `BoardService`'s `buildIssueWhere` uses: a KANBAN board shows
+   *     backlog issues (no sprint) or issues in an ACTIVE sprint; a SCRUM
+   *     board only shows issues in an ACTIVE sprint.
+   *  2. If exactly one distinct enforced workflow applies among those
+   *     visible boards → return its id.
+   *  3. If more than one distinct enforced workflow applies → return the
+   *     DEFAULT board's workflow id (deterministic tie-break).
+   *  4. If none apply → return null (caller falls back to the legacy
+   *     project-level path).
    */
-  private async enforceMove(
+  private async resolveEnforcedWorkflowId(
+    projectId: string,
+    sprintId: string | null,
+  ): Promise<string | null> {
+    const boards = await this.prisma.board.findMany({
+      where: { projectId, workflowId: { not: null }, workflow: { enforced: true } },
+      select: { id: true, type: true, isDefault: true, workflowId: true },
+    });
+    if (boards.length === 0) return null;
+
+    // Only look up the sprint's state if at least one board could plausibly
+    // need it (i.e. the issue is in a sprint at all).
+    let sprintActive = false;
+    if (sprintId) {
+      const sprint = await this.prisma.sprint.findUnique({
+        where: { id: sprintId },
+        select: { state: true },
+      });
+      sprintActive = sprint?.state === SprintState.ACTIVE;
+    }
+
+    // Mirrors BoardService.buildIssueWhere's visibility rule.
+    const visible = boards.filter((b) =>
+      b.type === BoardType.SCRUM
+        ? sprintActive
+        : sprintId == null || sprintActive,
+    );
+    if (visible.length === 0) return null;
+
+    const distinctWorkflowIds = new Set(visible.map((b) => b.workflowId));
+    if (distinctWorkflowIds.size === 1) {
+      return visible[0].workflowId as string;
+    }
+
+    // Multiple distinct enforced workflows apply — deterministically prefer
+    // the default board's.
+    const defaultBoard = visible.find((b) => b.isDefault);
+    return (defaultBoard ?? visible[0]).workflowId as string;
+  }
+
+  /**
+   * Single shared enforcement routing method used by `move()`, `update()`,
+   * and (transitively, via `update()`) `bulkUpdate()` — every surface that
+   * can change an issue's status. Fixes WF-1 (board-scoped named-workflow
+   * enforcement bypass on non-board surfaces).
+   *
+   * Resolution order:
+   *  1. Automation bypass (opts.automated === true) → skip all enforcement.
+   *  2. Explicit `boardId` (board drag / card status picker):
+   *     - board has a non-null workflowId with workflow.enforced = true →
+   *       enforce that named workflow's transitions.
+   *     - otherwise → fall through to the legacy project-level path.
+   *  3. No explicit `boardId` (Triage, issue drawer, bulk edit, or any other
+   *     caller): resolve the project's enforced board-assigned workflow via
+   *     {@link resolveEnforcedWorkflowId} using the issue's current
+   *     project/sprint context.
+   *     - a workflow resolves → enforce it (board-specific path).
+   *     - none resolves → fall through to the legacy project-level path.
+   */
+  private async enforceStatusChange(
     issueId: string,
     targetStatusId: string,
-    boardId: string | undefined,
+    context: { projectId: string; sprintId: string | null; boardId?: string },
     opts?: MutationOpts,
   ): Promise<void> {
     // Automation bypass applies to all paths.
     if (opts?.automated) return;
 
-    if (boardId) {
+    if (context.boardId) {
       // Load the board to check for a named workflow assignment.
       const board = await this.prisma.board.findUnique({
-        where: { id: boardId },
+        where: { id: context.boardId },
         select: {
           workflowId: true,
           workflow: { select: { enforced: true } },
@@ -1052,6 +1128,21 @@ export class IssuesService {
       }
       // Board exists but no workflow (or workflow not enforced) → fall through
       // to project-level enforcement below.
+    } else {
+      // No explicit board context — resolve one from the project's boards so
+      // Triage / the drawer / bulk edit can't silently bypass a board's
+      // enforced named workflow (WF-1).
+      const resolvedWorkflowId = await this.resolveEnforcedWorkflowId(
+        context.projectId,
+        context.sprintId,
+      );
+      if (resolvedWorkflowId) {
+        return this.workflowSvc.enforceTransitionForWorkflow(
+          resolvedWorkflowId,
+          issueId,
+          targetStatusId,
+        );
+      }
     }
 
     // Legacy project-level enforcement path (unchanged behavior).
@@ -1089,7 +1180,12 @@ export class IssuesService {
     // Enforce workflow gate BEFORE applying the status change.
     // Automation-applied moves bypass enforcement (opts.automated === true).
     if (statusChanged) {
-      await this.enforceMove(id, dto.statusId, dto.boardId, opts);
+      await this.enforceStatusChange(
+        id,
+        dto.statusId,
+        { projectId: existing.projectId, sprintId: existing.sprintId, boardId: dto.boardId },
+        opts,
+      );
     }
 
     // Read neighbor ranks, compute the new rank, and persist inside a single

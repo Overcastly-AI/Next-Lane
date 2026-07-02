@@ -1034,6 +1034,7 @@ export class WorkflowService {
     gate: { type: string; field?: string; linkType?: string },
     issue: {
       id: string;
+      projectId: string;
       assigneeId: string | null;
       description: string | null;
       customFields: Prisma.JsonValue | null;
@@ -1098,20 +1099,41 @@ export class WorkflowService {
           break;
         }
 
-        // Custom field: look up by key in customFields JSON.
-        // customFields is stored as { [definitionId]: value } — we need to
-        // also support lookup by key. Load definitions to resolve the key.
+        // Custom field. `Issue.customFields` is stored as
+        // { [definitionId]: value } (see CustomFieldsService.validateAndNormalize
+        // and the drawer's CustomFieldsDrawerSection, which both key by the
+        // definition's opaque CUID) — but the gate editor lets admins configure
+        // gates by the field's human-facing `key` or `name` (the only values
+        // discoverable in the UI). Resolve fieldName both ways:
+        //  1. Direct match against customFields (backward compat for any gate
+        //     already configured with a literal key that happens to match the
+        //     stored object's own keys — e.g. hand-authored via the API).
+        //  2. Resolve fieldName -> CustomFieldDefinition (match by key OR name,
+        //     case-insensitive) -> definition id -> look up by id, which is how
+        //     the real UI actually stores values.
         const customFields =
           (issue.customFields as Record<string, unknown> | null) ?? {};
-        const fieldValue = customFields[fieldName];
-        if (fieldValue == null || fieldValue === '') {
-          // Try to find by definition id (in case fieldName is a CUID).
-          // If not found, or value is falsy, fail the gate.
-          throw new UnprocessableEntityException(
-            `This transition requires the field "${fieldName}" to be set`,
-          );
-        }
-        break;
+
+        const isSet = (v: unknown) => v != null && v !== '';
+
+        if (isSet(customFields[fieldName])) break;
+
+        const definition = await this.prisma.customFieldDefinition.findFirst({
+          where: {
+            projectId: issue.projectId,
+            OR: [
+              { key: { equals: fieldName, mode: 'insensitive' } },
+              { name: { equals: fieldName, mode: 'insensitive' } },
+            ],
+          },
+          select: { id: true },
+        });
+
+        if (definition && isSet(customFields[definition.id])) break;
+
+        throw new UnprocessableEntityException(
+          `This transition requires the field "${fieldName}" to be set`,
+        );
       }
 
       case 'REQUIRE_LINK': {

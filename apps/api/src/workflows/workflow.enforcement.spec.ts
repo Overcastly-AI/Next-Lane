@@ -74,6 +74,11 @@ function makePrisma() {
     project: { findUnique: jest.fn() },
     status: { findMany: jest.fn() },
     workflowTransition: { findMany: jest.fn() },
+    // WF-2: REQUIRE_FIELD gates that don't match customFields directly fall
+    // back to resolving the gate's `field` against a CustomFieldDefinition
+    // (by key/name). Default: no matching definition (falls straight to
+    // rejection) unless a test overrides it.
+    customFieldDefinition: { findFirst: jest.fn().mockResolvedValue(null) },
   } as unknown as PrismaService;
 }
 
@@ -365,6 +370,111 @@ describe('WorkflowService.enforceTransition', () => {
       await expect(
         service.enforceTransition(ISSUE_ID, STATUS_IN_PROGRESS),
       ).rejects.toBeInstanceOf(UnprocessableEntityException);
+    });
+
+    // ── WF-2: gate `field` resolves against CustomFieldDefinition.key/name ──
+    // (this is how the gate editor's dropdown and `Issue.customFields`'
+    // definitionId-keyed storage actually connect — see workflow.service.ts
+    // evaluateGate's REQUIRE_FIELD case.)
+
+    it('WF-2: allows when field is configured by the custom field KEY and the value is stored under the definition id', async () => {
+      const gated = makeTransition({ gates: [{ type: 'REQUIRE_FIELD', field: 'severity' }] });
+      (prisma.issue.findUnique as jest.Mock).mockResolvedValue(
+        makeIssue({
+          statusId: STATUS_TODO,
+          // Stored keyed by the definition's opaque id — never by "severity".
+          customFields: { 'def-severity-cuid': 'Critical' },
+        }),
+      );
+      (prisma.project.findUnique as jest.Mock).mockResolvedValue({ workflowEnforced: true });
+      (prisma.workflowTransition.findMany as jest.Mock).mockResolvedValue([gated]);
+      (prisma.customFieldDefinition.findFirst as jest.Mock).mockResolvedValue({
+        id: 'def-severity-cuid',
+      });
+
+      await expect(
+        service.enforceTransition(ISSUE_ID, STATUS_IN_PROGRESS),
+      ).resolves.toBeUndefined();
+
+      expect(prisma.customFieldDefinition.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            projectId: PROJECT_ID,
+            OR: [
+              { key: { equals: 'severity', mode: 'insensitive' } },
+              { name: { equals: 'severity', mode: 'insensitive' } },
+            ],
+          }),
+        }),
+      );
+    });
+
+    it('WF-2: allows when field is configured by the custom field NAME (case-insensitive)', async () => {
+      const gated = makeTransition({ gates: [{ type: 'REQUIRE_FIELD', field: 'Severity' }] });
+      (prisma.issue.findUnique as jest.Mock).mockResolvedValue(
+        makeIssue({
+          statusId: STATUS_TODO,
+          customFields: { 'def-severity-cuid': 'Critical' },
+        }),
+      );
+      (prisma.project.findUnique as jest.Mock).mockResolvedValue({ workflowEnforced: true });
+      (prisma.workflowTransition.findMany as jest.Mock).mockResolvedValue([gated]);
+      (prisma.customFieldDefinition.findFirst as jest.Mock).mockResolvedValue({
+        id: 'def-severity-cuid',
+      });
+
+      await expect(
+        service.enforceTransition(ISSUE_ID, STATUS_IN_PROGRESS),
+      ).resolves.toBeUndefined();
+    });
+
+    it('WF-2: rejects (422) when the resolved definition exists but its value is still unset', async () => {
+      const gated = makeTransition({ gates: [{ type: 'REQUIRE_FIELD', field: 'severity' }] });
+      (prisma.issue.findUnique as jest.Mock).mockResolvedValue(
+        makeIssue({ statusId: STATUS_TODO, customFields: {} }),
+      );
+      (prisma.project.findUnique as jest.Mock).mockResolvedValue({ workflowEnforced: true });
+      (prisma.workflowTransition.findMany as jest.Mock).mockResolvedValue([gated]);
+      (prisma.customFieldDefinition.findFirst as jest.Mock).mockResolvedValue({
+        id: 'def-severity-cuid',
+      });
+
+      await expect(
+        service.enforceTransition(ISSUE_ID, STATUS_IN_PROGRESS),
+      ).rejects.toBeInstanceOf(UnprocessableEntityException);
+    });
+
+    it('WF-2: rejects (422) when no custom field definition matches the configured key/name at all', async () => {
+      const gated = makeTransition({ gates: [{ type: 'REQUIRE_FIELD', field: 'nonexistent' }] });
+      (prisma.issue.findUnique as jest.Mock).mockResolvedValue(
+        makeIssue({ statusId: STATUS_TODO, customFields: {} }),
+      );
+      (prisma.project.findUnique as jest.Mock).mockResolvedValue({ workflowEnforced: true });
+      (prisma.workflowTransition.findMany as jest.Mock).mockResolvedValue([gated]);
+      (prisma.customFieldDefinition.findFirst as jest.Mock).mockResolvedValue(null);
+
+      await expect(
+        service.enforceTransition(ISSUE_ID, STATUS_IN_PROGRESS),
+      ).rejects.toBeInstanceOf(UnprocessableEntityException);
+    });
+
+    it('WF-2: backward compat — a direct customFields[fieldName] match still wins without a definition lookup', async () => {
+      const gated = makeTransition({ gates: [{ type: 'REQUIRE_FIELD', field: 'myCustomKey' }] });
+      (prisma.issue.findUnique as jest.Mock).mockResolvedValue(
+        makeIssue({
+          statusId: STATUS_TODO,
+          customFields: { myCustomKey: 'some-value' },
+        }),
+      );
+      (prisma.project.findUnique as jest.Mock).mockResolvedValue({ workflowEnforced: true });
+      (prisma.workflowTransition.findMany as jest.Mock).mockResolvedValue([gated]);
+
+      await expect(
+        service.enforceTransition(ISSUE_ID, STATUS_IN_PROGRESS),
+      ).resolves.toBeUndefined();
+
+      // Direct match short-circuits — no definition lookup needed.
+      expect(prisma.customFieldDefinition.findFirst).not.toHaveBeenCalled();
     });
   });
 

@@ -1066,6 +1066,10 @@ describe('IssuesService.update watcher fan-out', () => {
       status: { findUnique: jest.fn() },
       sprint: { findUnique: jest.fn() },
       user: { findUnique: jest.fn() },
+      // WF-1: update() resolves an enforced board workflow via
+      // resolveEnforcedWorkflowId() before falling back to the legacy path.
+      // No boards configured in this suite -> always resolves to null.
+      board: { findMany: jest.fn().mockResolvedValue([]) },
       $transaction: jest.fn((cb: (tx: typeof txClient) => unknown) => cb(txClient)),
       _tx: txClient,
     };
@@ -1264,6 +1268,10 @@ function makeBulkUpdatePrisma() {
     sprint: { findUnique: jest.fn() },
     user: { findUnique: jest.fn().mockResolvedValue({ name: 'Bulk Actor' }) },
     issueLabel: { upsert: jest.fn().mockResolvedValue({}) },
+    // WF-1: update() (called per-issue by bulkUpdate()) resolves an enforced
+    // board workflow via resolveEnforcedWorkflowId() before falling back to
+    // the legacy path. No boards configured in this suite -> always null.
+    board: { findMany: jest.fn().mockResolvedValue([]) },
     $transaction: jest.fn((cb: (tx: typeof txClient) => unknown) => cb(txClient)),
     _tx: txClient,
   };

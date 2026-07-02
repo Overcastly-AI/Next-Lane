@@ -1,10 +1,12 @@
 /**
- * Unit tests for the board-context enforcement path in IssuesService.move.
- *
- * Exercises the three resolution branches of `enforceMove`:
+ * Unit tests for the board-context enforcement path in IssuesService.move,
+ * exercising `enforceStatusChange` (the WF-1 shared enforcement router used
+ * by move/update/bulkUpdate):
  *  1. boardId present + board has enforced workflow → delegates to enforceTransitionForWorkflow
  *  2. boardId present + board has no workflow / workflow not enforced → falls through to project-level
- *  3. No boardId → falls through to project-level enforceTransition
+ *  3. No boardId → resolves an enforced board workflow from the project's
+ *     boards (WF-1 fix); with none configured, falls through to
+ *     project-level enforceTransition
  *  4. opts.automated === true → always bypasses ALL enforcement regardless of board
  *
  * The service itself is built from real source but ALL Prisma operations and
@@ -94,7 +96,14 @@ function makeMovePrisma() {
     project: { findUnique: jest.fn() },
     membership: { findUnique: jest.fn() },
     status: { findUnique: jest.fn() },
-    board: { findUnique: jest.fn() },
+    board: {
+      findUnique: jest.fn(),
+      // WF-1: with no explicit boardId, enforceStatusChange resolves an
+      // enforced board workflow from the project's boards. Default: none
+      // configured (individual tests override to exercise resolution).
+      findMany: jest.fn().mockResolvedValue([]),
+    },
+    sprint: { findUnique: jest.fn() },
     activityLog: { create: jest.fn() },
     $transaction: jest.fn((cb: (t: typeof tx) => unknown) => cb(tx)),
     _tx: tx,
@@ -255,19 +264,116 @@ describe('IssuesService.move — board-context enforcement routing', () => {
     });
   });
 
-  // ── Branch 3: no board context ────────────────────────────────────────────
+  // ── Branch 3: no board context (WF-1) ─────────────────────────────────────
+  //
+  // Prior to WF-1, a `move()` call with no `boardId` (or any other caller of
+  // `update()`/`bulkUpdate()`, which never has a boardId at all) fell straight
+  // to the legacy project-level path and could silently bypass a board's
+  // enforced named workflow. It now resolves one via
+  // `resolveEnforcedWorkflowId()` (mirrors the board query semantics) before
+  // falling back.
 
   describe('no boardId in move DTO (triage / API / drawer)', () => {
-    it('calls project-level enforceTransition without touching board lookup', async () => {
+    it('resolves via board.findMany (never board.findUnique) when no boardId is given', async () => {
       await service.move(USER, ISSUE_ID, { statusId: STATUS_B });
 
       expect(mocks.prisma.board.findUnique).not.toHaveBeenCalled();
+      expect(mocks.prisma.board.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            projectId: PROJECT,
+            workflowId: { not: null },
+            workflow: { enforced: true },
+          }),
+        }),
+      );
+    });
+
+    it('falls through to project-level enforceTransition when no enforced board workflow resolves', async () => {
+      mocks.prisma.board.findMany.mockResolvedValue([]); // no enforced boards in the project
+
+      await service.move(USER, ISSUE_ID, { statusId: STATUS_B });
+
       expect(workflowSvc.enforceTransitionForWorkflow).not.toHaveBeenCalled();
       expect(workflowSvc.enforceTransition).toHaveBeenCalledWith(
         ISSUE_ID,
         STATUS_B,
         expect.anything(),
       );
+    });
+
+    it('WF-1: enforces the resolved board workflow instead of the legacy path when exactly one enforced board applies', async () => {
+      mocks.prisma.board.findMany.mockResolvedValue([
+        { id: BOARD_ID, type: 'KANBAN', isDefault: true, workflowId: WORKFLOW_ID },
+      ]);
+
+      await service.move(USER, ISSUE_ID, { statusId: STATUS_B });
+
+      expect(workflowSvc.enforceTransitionForWorkflow).toHaveBeenCalledWith(
+        WORKFLOW_ID,
+        ISSUE_ID,
+        STATUS_B,
+      );
+      expect(workflowSvc.enforceTransition).not.toHaveBeenCalled();
+    });
+
+    it('WF-1: prefers the default board when multiple distinct enforced workflows resolve', async () => {
+      const OTHER_WORKFLOW_ID = 'wf-other';
+      mocks.prisma.board.findMany.mockResolvedValue([
+        { id: 'board-non-default', type: 'KANBAN', isDefault: false, workflowId: OTHER_WORKFLOW_ID },
+        { id: BOARD_ID, type: 'KANBAN', isDefault: true, workflowId: WORKFLOW_ID },
+      ]);
+
+      await service.move(USER, ISSUE_ID, { statusId: STATUS_B });
+
+      expect(workflowSvc.enforceTransitionForWorkflow).toHaveBeenCalledWith(
+        WORKFLOW_ID,
+        ISSUE_ID,
+        STATUS_B,
+      );
+    });
+
+    it('WF-1: resolves the SCRUM board only when the issue is in an active sprint', async () => {
+      mocks.prisma.issue.findUnique.mockResolvedValue({
+        id: ISSUE_ID,
+        projectId: PROJECT,
+        statusId: STATUS_A,
+        sprintId: 'sprint-1',
+        rank: 'a0',
+      });
+      mocks.prisma.sprint.findUnique.mockResolvedValue({ state: 'ACTIVE' });
+      mocks.prisma.board.findMany.mockResolvedValue([
+        { id: 'board-scrum', type: 'SCRUM', isDefault: false, workflowId: WORKFLOW_ID },
+      ]);
+
+      await service.move(USER, ISSUE_ID, { statusId: STATUS_B });
+
+      expect(mocks.prisma.sprint.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'sprint-1' } }),
+      );
+      expect(workflowSvc.enforceTransitionForWorkflow).toHaveBeenCalledWith(
+        WORKFLOW_ID,
+        ISSUE_ID,
+        STATUS_B,
+      );
+    });
+
+    it('WF-1: does NOT resolve a SCRUM-only board when the issue has no active sprint', async () => {
+      mocks.prisma.issue.findUnique.mockResolvedValue({
+        id: ISSUE_ID,
+        projectId: PROJECT,
+        statusId: STATUS_A,
+        sprintId: null,
+        rank: 'a0',
+      });
+      mocks.prisma.board.findMany.mockResolvedValue([
+        { id: 'board-scrum', type: 'SCRUM', isDefault: false, workflowId: WORKFLOW_ID },
+      ]);
+
+      await service.move(USER, ISSUE_ID, { statusId: STATUS_B });
+
+      expect(workflowSvc.enforceTransitionForWorkflow).not.toHaveBeenCalled();
+      expect(workflowSvc.enforceTransition).toHaveBeenCalled();
     });
   });
 

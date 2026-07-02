@@ -319,7 +319,7 @@ test.describe('Named workflows manager — CRUD (desktop)', () => {
   // -------------------------------------------------------------------------
   // KNOWN DEFECT — no rename affordance for a named workflow.
   // -------------------------------------------------------------------------
-  test.fixme(
+  test(
     'admin can rename a named workflow from the manager UI',
     async ({ page, request }) => {
       // REPRO: docs/UI-REVIEW.md "Workflows robustness sweep — 2026-07-02" #1.
@@ -390,7 +390,7 @@ test.describe('Transition & gate editor — robustness (desktop)', () => {
     });
   });
 
-  test.fixme(
+  test(
     'REQUIRE_FIELD gate keyed by the field placeholder\'s suggested custom-field key never actually matches a stored value',
     async ({ page, request }) => {
       // REPRO: docs/UI-REVIEW.md "Workflows robustness sweep — 2026-07-02" #2.
@@ -471,7 +471,7 @@ test.describe('Transition & gate editor — robustness (desktop)', () => {
     },
   );
 
-  test.fixme(
+  test(
     'a REQUIRE_FIELD gate saved with a blank field key silently no-ops instead of warning the admin',
     async ({ page, request }) => {
       // REPRO: docs/UI-REVIEW.md "Workflows robustness sweep — 2026-07-02" #3.
@@ -651,7 +651,7 @@ test.describe('Enforcement felt by the user — board surfaces (desktop)', () =>
 test.describe('Enforcement felt by the user — non-board surfaces (desktop)', () => {
   test.use({ viewport: { width: 1280, height: 900 } });
 
-  test.fixme(
+  test(
     'Triage\'s "s" status picker respects the board\'s enforced named workflow (currently bypasses it silently)',
     async ({ page, request }) => {
       // REPRO: docs/UI-REVIEW.md "Workflows robustness sweep — 2026-07-02" #4
@@ -699,7 +699,7 @@ test.describe('Enforcement felt by the user — non-board surfaces (desktop)', (
     },
   );
 
-  test.fixme(
+  test(
     'the issue drawer\'s Status <select> respects the board\'s enforced named workflow (currently bypasses it silently)',
     async ({ page, request }) => {
       // REPRO: docs/UI-REVIEW.md "Workflows robustness sweep — 2026-07-02" #4.
@@ -732,7 +732,7 @@ test.describe('Enforcement felt by the user — non-board surfaces (desktop)', (
     },
   );
 
-  test.fixme(
+  test(
     'bulk edit respects the board\'s enforced named workflow for status changes (currently bypasses it silently)',
     async ({ page, request }) => {
       // REPRO: docs/UI-REVIEW.md "Workflows robustness sweep — 2026-07-02" #4.
