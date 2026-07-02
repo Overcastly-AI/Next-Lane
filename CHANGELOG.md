@@ -49,6 +49,33 @@ development phase. A versioned release will be tagged once the v1 criteria in
 - Fixed dead mobile navigation menu on the docs site. The hamburger now opens a
   full-height menu (backdrop-filter containing-block fix).
 
+### Added — Navigation & UI
+
+**Persistent left sidebar (Navigation & IA Phase 1):**
+- **Desktop** (lg+) gains a fixed persistent sidebar: workspace switcher (shared state
+  with header), active workspace's projects, personal section (My Work / My Board /
+  Insights / Notifications), and workspace settings utility area. Collapsible to an
+  icon rail with state persisted across reloads (no flash).
+- **Mobile** (below lg) uses an overlay drawer opened from the header hamburger button;
+  header slims to remove duplicate nav links on desktop.
+- Full keyboard accessibility (aria-current focus rings, Escape closes drawer),
+  prefers-reduced-motion respected, mounted via `SidebarContext` above per-page
+  remount boundaries.
+
+### Added — Agent-native / MCP
+
+**MCP coverage parity sweep:**
+- **21 new tools** closing the founder-flagged gap between shipped features and MCP
+  exposure. New tools: GitHub issue links (read-only, PAT scope aware), quick links
+  (personal shortcuts), personal boards (list + create/move cards via /me identity),
+  issue templates (list + create-issue-from-template), time-tracking original estimate
+  field, CSV export (get_project_csv, raw text), bulk update (bulk_update_issues),
+  project/personal analytics + velocity/burndown/CFD reports, notifications (list +
+  mark read). 
+- **Total: 76 tools** (33 read, 43 write), up from 55. Every new tool live-tested
+  against the running API with a fresh demo-user PAT before commit; 33 new unit tests
+  added (53 total, green).
+
 ### Added — Boards & project tracking
 
 - **Multiple boards per project** with Kanban and Scrum board types.

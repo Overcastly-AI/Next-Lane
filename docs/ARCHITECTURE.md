@@ -56,12 +56,13 @@ Issues on a board (and in a sprint/backlog) are ordered by a `rank` **string** c
 - **Socket.io client** subscribes to realtime board/issue/workspace updates.
 - Talks to the API at `VITE_API_URL`.
 - **Mermaid.js** for rendering diagrams in markdown descriptions and comments.
+- **Persistent left sidebar** (Navigation & IA Phase 1): `SidebarContext` provides workspace/project navigation, workspace switcher, personal section (My Work/My Board/Insights/Notifications), and settings utility area. Desktop (lg+) shows a fixed sidebar collapsible to an icon rail with state persistence; mobile (below lg) uses an overlay drawer opened from the header hamburger button. State managed through context providers mounted above per-page remount boundaries.
 
 ## MCP Server (`apps/mcp`)
 
-- **Model Context Protocol** server (stdio transport) with **55 tools** (21 read, 34 write).
+- **Model Context Protocol** server (stdio transport) with **76 tools** (33 read, 43 write).
 - Speaks MCP over stdio; makes authenticated HTTP calls to the Next Lane REST API using Personal Access Tokens (PATs).
-- Tools expose: projects, boards, workflows, statuses, issues, sprints, comments, worklogs, checklists, labels, components, versions, saved filters, automations, and more.
+- Tools expose: projects, boards, workflows, statuses, issues, sprints, comments, worklogs, checklists, labels, components, versions, saved filters, automations, GitHub links, personal boards, issue templates, time-tracking, analytics, reports, notifications, bulk updates, and CSV export.
 - Allows AI agents (Claude Desktop, Claude Code, any MCP host) to **read and write** workspace state, including the workflow/SDLC graph itself.
 - See `apps/mcp/README.md` for the full tool reference and configuration.
 
