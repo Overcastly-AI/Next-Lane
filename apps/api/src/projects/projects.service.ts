@@ -11,9 +11,10 @@ import {
 } from '../common/membership.util';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
-import { StatusCategory, Role, BoardType } from '@next-lane/shared';
+import { StatusCategory, Role, BoardType, SocketEvents } from '@next-lane/shared';
 import type { ProjectDto } from '@next-lane/shared';
 import { AuditService } from '../audit/audit.service';
+import { RealtimeService } from '../realtime/realtime.service';
 
 type ProjectRow = {
   id: string;
@@ -46,6 +47,7 @@ export class ProjectsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly realtime: RealtimeService,
   ) {}
 
   async findAll(userId: string, workspaceId: string): Promise<ProjectDto[]> {
@@ -142,7 +144,15 @@ export class ProjectsService {
       where: { id },
       data,
     });
-    return toProjectDto(project);
+    const dtoOut = toProjectDto(project);
+    // Other open tabs/boards must see the renamed/re-keyed project without a
+    // manual reload — mirrors the issue.updated / sprint.updated pattern.
+    this.realtime.emitToProject(
+      project.id,
+      SocketEvents.ProjectUpdated,
+      dtoOut,
+    );
+    return dtoOut;
   }
 
   async archive(
@@ -166,6 +176,8 @@ export class ProjectsService {
       ip,
     });
 
-    return toProjectDto(project);
+    const dtoOut = toProjectDto(project);
+    this.realtime.emitToProject(project.id, SocketEvents.ProjectUpdated, dtoOut);
+    return dtoOut;
   }
 }

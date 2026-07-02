@@ -1,9 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { io, type Socket } from 'socket.io-client';
 import { useQueryClient } from '@tanstack/react-query';
-import { SocketEvents, type SocketEvent, type PresenceViewer } from '@next-lane/shared';
+import {
+  SocketEvents,
+  type SocketEvent,
+  type PresenceViewer,
+  type ProjectDto,
+} from '@next-lane/shared';
 import { API_URL, getToken } from './client';
-import { qk } from './keys';
+import { qk, invalidateBoardFamily } from './keys';
 
 let socket: Socket | null = null;
 
@@ -105,6 +110,18 @@ export function useBoardRealtime(
           // A sprint start/complete reshuffles which issues are on the board
           // (active sprint) vs. the backlog, so refresh both views.
           void qc.invalidateQueries({ queryKey: qk.sprints(projectId) });
+        }
+        if (event === SocketEvents.ProjectUpdated) {
+          // Project name/key/description/archived state changed — refresh the
+          // single-project cache, the workspace's project list, the board
+          // switcher, and every board view so no open tab shows stale data.
+          const project = payload as ProjectDto | null;
+          void qc.invalidateQueries({ queryKey: qk.project(projectId) });
+          if (project?.workspaceId) {
+            void qc.invalidateQueries({ queryKey: qk.projects(project.workspaceId) });
+          }
+          void qc.invalidateQueries({ queryKey: qk.boards(projectId) });
+          invalidateBoardFamily(qc, projectId);
         }
         handlerRef.current?.(event, payload);
       };

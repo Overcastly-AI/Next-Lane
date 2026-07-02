@@ -740,6 +740,13 @@ export const SocketEvents = {
   SprintUpdated: 'sprint.updated',
   NotificationCreated: 'notification.created',
   PresenceUpdate: 'presence.update',
+  /**
+   * A project's mutable fields (name/key/description/archived state) changed.
+   * Payload is the full `ProjectDto`. Emitted from update/archive/unarchive.
+   */
+  ProjectUpdated: 'project.updated',
+  /** A project was permanently deleted. Payload is `{ id }`. */
+  ProjectDeleted: 'project.deleted',
 } as const;
 
 export type SocketEvent = (typeof SocketEvents)[keyof typeof SocketEvents];
