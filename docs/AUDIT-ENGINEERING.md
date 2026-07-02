@@ -2752,3 +2752,322 @@ since it's a one-line Prisma filter change with an obvious test.
 - **Persist `QuickLinksMenu` group-collapse state** · P3 · S · Resets on every page navigation since AppHeader remounts per-page; `apps/web/src/components/QuickLinksMenu.tsx:233`
 - **Re-validate `ReportsPage`'s `selectedSprintId` against the live sprint list** · P3 · S · Stale selection after a sprint delete silently shows an empty chart instead of falling back; `apps/web/src/pages/ReportsPage.tsx:26-31`
 - **Realtime-coverage inventory across all top-level entities (Board, Workflow, CustomFieldDefinition, Component, Version)** · P2 · S per entity · Generalizes the project.updated fix; see Ideation #3
+
+## 2026-07-02 — Pass 12 (post-heavy-day: GitHub, OIDC, dashboards, sidebar, dark mode, swimlanes v2)
+
+Scope: ~20 commits since Pass 11 — the scoped-layouts structural fix (P1-1),
+`enforceStatusChange` (WF-1), `invalidateBoardFamily` (P2-2), the `doc-syncer`
+agent, the persistent left sidebar (`SidebarContext`, `nav/`), light/dark mode
+(token-layer palette, `ThemeContext`, tailwind `color-mix` opacity helper), the
+NLQL dashboards module, GitHub integration v1 (HMAC webhooks, AES-256-GCM PAT
+storage), OIDC SSO, the 85-tool MCP surface, and workspace last-admin guards.
+Read every new backend module (`apps/api/src/github/**`, `apps/api/src/auth/
+oidc/**`, `apps/api/src/dashboards/**`), the new frontend contexts/layouts
+(`ScopedLayouts.tsx`, `ThemeContext.tsx`, `SidebarContext.tsx`, `nav/**`), the
+CSP/nginx/entrypoint chain, `apps/web/playwright.config.ts`, and cross-checked
+every Pass-11 finding against current code (not just commit messages).
+`tsc --noEmit` clean on both `api` and `web`; `jest github dashboards oidc`
+(10 suites, 133 tests) green.
+
+### Pass-11 fix verification
+
+| Fix area | Status | Evidence |
+|---|---|---|
+| P1-1: 7 routes not syncing the header chip | **CONFIRMED FIXED — structurally** | `apps/web/src/layouts/ScopedLayouts.tsx` now owns `useSyncActiveWorkspace` at the route level; `App.tsx:181-219` nests every `/projects/:id/*` route (including the brand-new `dashboards` route, `App.tsx:191`) under `ProjectScopedLayout`, and every `/workspaces/:id/*` route under `WorkspaceScopedLayout`. Cross-checked all 22 pages that render `<AppHeader>` — the only ones outside the scoped layouts are user-scoped (`MyWorkPage`, `NotificationsPage`, `PersonalAnalyticsPage`, `PersonalBoardPage`, `ProfileSettingsPage`) or already self-syncing (`PulseDashboardPage`), which correctly don't need it. This is exactly Pass 11's Ideation #1, delivered — the property is now impossible to forget for route #16. |
+| P1-2: zero e2e for `QuickLinksMenu` / workspace rename+delete | **CONFIRMED FIXED** | `apps/web/e2e/quick-links.spec.ts` (8 tests: empty state, add/edit/delete, group+color, XSS-URL rejection, mobile-width overflow) and `apps/web/e2e/workspace-settings.spec.ts` (4 tests: rename+chip+dashboard-selector sync, empty-name rejection, type-to-confirm delete, MEMBER read-only view) both now exist. |
+| P2-1: dead `DashboardPage.tsx` | **CONFIRMED FIXED** | File no longer exists (`find` returns nothing). |
+| P2-2: `qk.boardView` invalidation inconsistently threaded | **CONFIRMED FIXED — via shared helper** | `invalidateBoardFamily()` (`apps/web/src/api/keys.ts:77-83`) now invalidates every `['boardView']`-prefixed cache entry (not just a single `boardId`) plus the legacy key, and is called from `issues.ts` (`useUpdateIssue`/`useBulkUpdateIssues`/`useAssignIssueToSprint`), `custom-fields.ts`, `sprints.ts` (all three mutations), and `socket.ts`'s `ProjectUpdated` handler. Simpler than the originally-proposed per-`boardId` threading and covers the same gap. |
+| P2-3: "Blocked" badge counts all `BLOCKS` links, not just unresolved | **CONFIRMED FIXED** | `board.service.ts:33-52`'s `issueInclude._count.linksTo` now filters `where: { type: BLOCKS, source: { status: { category: { not: DONE } } } }`, with an inline comment stating the fix explicitly. |
+| P2-4: personal-cards/quick-links/workspace-PATCH+logo missing from tenant-isolation matrix | **STILL OPEN — third consecutive pass** | `tenant-isolation.integration.spec.ts:409-435` still has only `GET`/`DELETE /workspaces/:id`, `GET .../members`, `GET .../audit-log` — no `PATCH /workspaces/:id`, no `POST/DELETE /workspaces/:id/logo`, no `/me/personal-cards/*`, no quick-link verb. Compounding: the two brand-new modules this pass (GitHub, dashboards) are *also* absent from this matrix (see Risk P2-6 below) — the matrix is now stale against 5 resource families, not the original 4. This has survived three audit passes without a fix landing; it is small (S) and mechanical — flag as blocking, not backlog, for the next build-loop batch. |
+| P3-1: no `project.updated` realtime event | **CONFIRMED FIXED** | `SocketEvents.ProjectUpdated = 'project.updated'` (`packages/shared/src/types.ts:755`), emitted from `ProjectsService`, and `useBoardRealtime` (`socket.ts:118-129`) invalidates `qk.project`, `qk.projects`, `qk.boards`, and calls `invalidateBoardFamily` on receipt. |
+| P3-2: `QuickLinksMenu` collapse state resets on navigation | **STILL OPEN** | `AppHeader` is still rendered per-page (22 call sites, `grep -rl "<AppHeader" apps/web/src/pages`), not hoisted above `<Routes>` — only the sidebar (`AppSidebar`/`MobileSidebarDrawer`) got hoisted into `AppShellFrame` (`App.tsx:88-104`) this round. `collapsed` (`QuickLinksMenu.tsx:233`) is still local, un-persisted `useState`. Low severity, unchanged. |
+| P3-3: `ReportsPage`'s `selectedSprintId` never re-validates | **STILL OPEN** | `ReportsPage.tsx:28-33` guard unchanged: `if (selectedSprintId || sprints.length === 0) return`. Low severity, unchanged. |
+| Ideation #1: `<WorkspaceScopedLayout>`/`<ProjectScopedLayout>` | **SHIPPED** | See P1-1 above — this is the single best fix of the last two passes; it converts a "remember to call the hook" bug class into a structural impossibility. |
+| Ideation #2: shared `invalidateBoardFamily()` helper | **SHIPPED** | See P2-2 above. |
+| Ideation #3: `project.updated` + realtime-coverage inventory | **PARTIALLY SHIPPED** | `project.updated` landed. The broader inventory ("which domain entities have realtime coverage") was not done as a sweep — and this pass finds the highest-value miss the inventory would have caught: **Dashboards have zero realtime coverage at all** (Risk P1-3 below), worse than any of the entities Pass 11 flagged. |
+
+### New-module engineering health (this pass's primary lens)
+
+**GitHub integration (`apps/api/src/github/**`).** Signature verification is
+correct and well-built: `verifyGithubSignature` (`github-signature.util.ts:25-37`)
+uses `timingSafeEqual` with a length guard before comparing, never throws, and
+the controller (`github.controller.ts:89-121`) is careful not to leak
+"configured vs. not" via the response (only in server logs). `req.rawBody` is
+wired at the Nest bootstrap level (`main.ts:26`, `rawBody: true`) specifically
+for this handler, with a documented fallback (`controller.ts:98`) that
+re-serializes `req.body` when `rawBody` is somehow absent — a safe failure mode
+since a re-serialized JSON body will almost never byte-match GitHub's original
+signature, so verification just correctly fails rather than silently
+succeeding. PAT-at-rest encryption (`github-crypto.util.ts`) is textbook
+AES-256-GCM: random 12-byte IV per encryption, auth tag verified on decrypt,
+key derived from a dedicated env var falling back to the always-required
+`JWT_SECRET` so zero-config self-hosting still works. Webhook processing is
+idempotent (`issueId_kind_externalId` unique constraint, upsert) and correctly
+scoped (issue-key regex is built from the caller's own `project.key`, so
+`OTHER-123` never matches project `NL`'s webhook). One real gap: no HTTP-level
+integration test exercises the real Nest bootstrap + Express raw-body pipeline
+for this endpoint (every existing test calls `GithubService`/`GithubController`
+methods directly) — see Risk P2-5.
+
+**OIDC (`apps/api/src/auth/oidc/**`).** Also solid: PKCE (S256) + `state` +
+`nonce` all used via `openid-client`, state carried in a signed, `httpOnly`,
+`sameSite: 'lax'`, 10-minute-expiry cookie (not a request param), single-use
+(cleared before use in `oidc.controller.ts:82`, so a replayed callback URL
+can't reuse it), token exchange failures are caught and sanitized before
+logging (`oidc.service.ts:119-123`, never logs the raw error which may embed
+a code/token), and the issued session JWT crosses the callback→SPA boundary via
+a URL **fragment** (`#token=...`, never a query param), stripped from history
+on the very first render (`SsoCompletePage.tsx:40-43`) — this is the correct
+pattern for keeping a bearer token out of server access logs and Referer
+headers. Unit coverage is genuinely thorough (18 tests spanning every guard:
+missing/expired/tampered state, wrong `typ` claim, state mismatch,
+`email_verified: false`, missing email, token-exchange failure). One
+accepted-risk note, not a code defect: JIT provisioning matches purely by
+`email` (`oidc.service.ts:192-208`) with no explicit "link to my existing
+account while authenticated" consent step — standard OIDC JIT behavior, but
+self-hosters who point `OIDC_ISSUER_URL` at a provider that allows
+self-service registration with arbitrary/unverified-by-a-domain emails could
+let an attacker take over an existing local-password account by registering
+that same email with the IdP (`email_verified` is only rejected when
+*explicitly* `false`; a provider that omits the claim entirely is accepted).
+Worth a one-line doc callout in the OIDC setup guide, not a P1/P2 code fix.
+
+**Dashboards (`apps/api/src/dashboards/**`).** The gadget-evaluation design is
+good: one capped issue query (`DASHBOARD_ISSUES_CAP = 2000`,
+`dashboards.service.ts:312-319`) shared across every gadget on the dashboard
+(no per-gadget issue re-fetch), hard caps on TABLE rows (50) and BREAKDOWN
+buckets (25) (`dashboard-gadget-evaluator.ts:19-23`), and a gadget failing to
+evaluate degrades to a per-gadget `error` string rather than a 500 for the
+whole dashboard (`dashboards.service.ts:346-349`). Tenant scoping is correct —
+every dashboard/gadget mutation resolves `dashboard.projectId` from the DB row
+itself (never a client-supplied value) before calling `assertProjectMember`/
+`assertProjectRole`. Two real gaps found: **no cap on dashboards-per-project or
+gadgets-per-dashboard** (Risk P2-6), and **zero realtime wiring** (Risk P1-3,
+the top finding of this pass alongside the CSP one).
+
+**Theme / dark mode (`ThemeContext.tsx`, `lib/theme.ts`, `index.html`,
+`tailwind.config.js`).** The React-side state machine is clean — no shadow
+state, synchronous `localStorage` restore in the `useState` initializer
+(mirrors the established `SidebarContext`/`WorkspaceContext` pattern), and
+`prefers-color-scheme` is tracked live only while the preference is `'system'`.
+The `withOpacity()` `color-mix()` helper (`tailwind.config.js:25-31`) is
+well-documented and its browser floor (Chrome 111+/Firefox 113+/Safari 16.4+,
+all March 2023+) is reasonable for a 2026 self-hosted target — low risk, noted
+as Ideation #3 below rather than a defect. The genuinely serious issue is the
+**inline bootstrap `<script>` in `index.html`** — see Risk P1-2, the other
+half of this pass's top finding alongside dashboards' missing realtime layer.
+
+### Top risks & debt (Pass 12, ranked by impact × probability)
+
+**[P1-1] The dark-mode "no flash of wrong theme" bootstrap is silently blocked by CSP in the actual shipped Docker artifact — the exact bug class that already burned this project once**
+- What: `apps/web/index.html:24-41` ships a synchronous inline `<script>` that reads `localStorage['nl.theme']` and applies the `.dark` class **before** any bundle loads, specifically to prevent first-paint flash. `apps/web/nginx.conf:19` (and its two duplicated copies at `:31` and `:47`) sets `Content-Security-Policy: ... script-src 'self'; ...` with **no `'unsafe-inline'`, no nonce, and no hash allowlist**. `apps/web/docker-entrypoint.sh` only ever rewrites the `__NL_CONNECT_SRC__` placeholder at container start — `script-src` is never touched. Per the CSP spec, `script-src 'self'` unconditionally blocks inline `<script>` blocks with no nonce/hash match, full stop — this is deterministic, not environment-dependent. The app's actual `type="module" src="/src/main.tsx"` bundle IS allowed (external, self-hosted, matches `'self'`), so React still mounts and `ThemeProvider`'s `useEffect` still eventually applies `.dark` — dark mode itself isn't broken — but the entire point of having a synchronous pre-paint script (avoiding the flash) is defeated: every reload with a dark preference stored will show a light flash first in the real deployment, and the browser will log a CSP-violation console error on every page load.
+- Why this reached green: `apps/web/playwright.config.ts:58-63`'s `webServer` runs `vite exec vite preview`, not the Docker/nginx image — `vite preview` emits no CSP header at all, so `theme.spec.ts` (5 tests, including "toggling to dark ... persists across reload") passes cleanly in the harness while the identical scenario fails in production. This is CLAUDE.md's own named failure mode (`docs/AUDIT-ENGINEERING.md` Pass 5–9 history) recurring for a *new* feature: a real fix landed for the connect-src incident (`scripts/smoke-web-csp.sh`, run in CI per `.github/workflows/images.yml:179`), but that regression guard only ever asserts on `connect-src` — it never checks `script-src`, never launches a browser against the built image, and would not catch this.
+- Impact/likelihood: Medium-high impact (a real, visible, guaranteed regression in every self-hosted production deployment — not hypothetical, not edge-case), certain likelihood (reproduces on every single page load with a dark preference stored, in every Docker deployment, today).
+- Files: `apps/web/index.html:24-41`, `apps/web/nginx.conf:19,31,47`, `apps/web/docker-entrypoint.sh`, `apps/web/playwright.config.ts:58-63`, `apps/web/e2e/theme.spec.ts`, `scripts/smoke-web-csp.sh`
+- Fix: Since the inline script's content is static (not templated per-request), compute its SHA-256 hash at build/entrypoint time and add `'sha256-<hash>'` to `script-src` in `nginx.conf` (three copies) — this satisfies CSP without `'unsafe-inline'` and without the complexity of per-request nonces behind a static nginx config. Regenerate the hash automatically (a small build step or a `docker-entrypoint.sh` step that hashes the shipped `index.html`'s script block) so it can never drift from the actual script content. Pair with two regression guards: (1) extend `scripts/smoke-web-csp.sh` to assert `script-src` contains the expected hash/`'self'` only (no `unsafe-inline`) and that `curl`'d `index.html`'s inline script content hashes to the same value asserted in the header; (2) add a Playwright project/test that runs against the **built Docker image** (not `vite preview`) — at minimum, launch a container from the built image, point Playwright's `baseURL` at it, seed `localStorage['nl.theme']='dark'` pre-navigation, and assert `document.documentElement.classList.contains('dark')` is true on the *very first* paint (no flash) and that zero CSP-violation `securitypolicyviolation` events fired.
+- Size: S (nginx/entrypoint hash fix) + M (Docker-artifact Playwright harness — this also closes the standing "tests run against the shipped artifact" gap called out in every prior debugging-discipline section).
+
+**[P1-2] Configurable Dashboards — this pass's flagship feature — has zero realtime coverage; gadget data can go stale indefinitely while the page is open**
+- What: `apps/api/src/dashboards/dashboards.service.ts` never injects `RealtimeService` and never emits any socket event for dashboard/gadget CRUD or for the underlying issues a gadget evaluates. On the frontend, `apps/web/src/pages/DashboardsPage.tsx` never calls `useBoardRealtime` (or any socket subscription) at all — confirmed by `grep -n "useBoardRealtime\|staleTime\|refetchInterval" DashboardsPage.tsx` returning nothing. Combined with the app's global TanStack Query defaults (`App.tsx:53-54`: `staleTime: 30_000`, `refetchOnWindowFocus: false`), a dashboard's gadget data is fetched once on mount and then **never automatically refreshed again** for as long as the tab stays open and focused — not after 30 seconds (nothing triggers the refetch), not on window refocus (disabled), not via socket (never subscribed). This is a strictly worse instance of the exact "stale board on revisit" bug class Pass 11 flagged for boards (P2-2, now fixed for boards) — dashboards shipped afterward with none of that fix's lessons applied. Two failure modes compound: (a) User A drags a card to Done on the Board while User B has a STAT/BREAKDOWN gadget open counting "open issues by status" — B's numbers are wrong indefinitely; (b) User A renames/reconfigures a gadget on a shared dashboard while User B has the same dashboard open in another tab — B never sees the change without a manual reload.
+- Impact/likelihood: Medium-high impact (silently wrong numbers on a reporting surface undermine the exact trust dashboards exist to build — worse than a UI staleness bug because users make decisions off dashboard numbers), high likelihood (any team with two people viewing the same project's dashboard while a third person works the board hits this on day one).
+- Files: `apps/api/src/dashboards/dashboards.service.ts` (no `RealtimeService` import at all), `apps/web/src/pages/DashboardsPage.tsx`, `apps/web/src/api/dashboards.ts:36-43` (`useDashboardData` — no realtime invalidation path), `apps/web/src/api/socket.ts:86-134` (`ALL_EVENTS` handler never touches `qk.dashboardData`/`qk.dashboards`), `packages/shared/src/types.ts:742-758` (`SocketEvents` — no `dashboard.updated`/`dashboardGadget.updated`)
+- Fix: Two-part, mirroring the `project.updated` pattern that just shipped cleanly: (1) add `DashboardUpdated`/`DashboardGadgetUpdated` to `SocketEvents`, emit from `DashboardsService`'s CRUD methods to the project room, so a second viewer's dashboard list/gadget config refreshes live; (2) in `DashboardsPage.tsx`, call `useBoardRealtime(projectId, (event) => { if (isIssueEvent(event)) qc.invalidateQueries({ queryKey: qk.dashboardData(dashboardId) }); })` (or extend the generic top-of-handler invalidation in `socket.ts` to also invalidate `['dashboardData']` broadly, the same "invalidate the whole family" approach `invalidateBoardFamily` already established) so gadget data refreshes whenever any issue in the project changes, not just when the dashboard's own CRUD fires.
+- Size: M.
+
+**[P2-1] `resolveEnforcedWorkflowId` N+1 in bulk status updates — the WF-1 unification is correct but not perf-hardened for its own precomputation path**
+- What: `enforceStatusChange` (`apps/api/src/issues/issues.service.ts:1102-1150`) is a genuinely well-designed unification (confirmed correct: board-context path → resolved-workflow path → legacy path, with automation bypass checked first) — but the middle branch, `resolveEnforcedWorkflowId` (`issues.service.ts:1043-1081`), does a fresh `board.findMany` plus a conditional `sprint.findUnique` **per issue**, and it's this branch (not the legacy one) that `update()` hits when called without a `boardId` — which is exactly how `bulkUpdate` calls it (`issues.service.ts:1610-1660`, sequential `for` loop, one `update()` await per issue, no `boardId` passed). `bulkUpdate` already precomputes an enforcement flag once per batch (`bulkWorkflowEnforced` via `isEnforcementEnabled`, `issues.service.ts` bulk-update workflow-context-preload block) specifically to avoid a per-issue DB round trip — but that precomputed flag only feeds the **legacy** fallback call at the bottom of `enforceStatusChange`, not the new named-workflow resolution path WF-1 added. For a project using named/enforced workflows, a 100-issue bulk status edit (the DTO's own cap, `bulk-update-issues.dto.ts`) now does up to ~200 extra sequential DB round trips that the existing perf-preload comment claims are avoided. No test asserts a bounded call-count for this path — `issues.service.spec.ts:1553+` ("bulkUpdate — workflow enforcement") only asserts `isEnforcementEnabled` is called once, which covers the legacy path the precomputation was originally written for, not the WF-1 path.
+- Impact/likelihood: Medium impact (real added latency on bulk operations for any project using named workflows — a growing surface given Workflows is a recently-shipped headline feature), medium-high likelihood (any named-workflow project doing a batch triage/bulk-status-edit hits this every time).
+- Files: `apps/api/src/issues/issues.service.ts:1043-1081` (`resolveEnforcedWorkflowId`), `:1102-1150` (`enforceStatusChange`), bulk-update loop (~`:1610-1660`), `apps/api/src/issues/issues.service.spec.ts:1553+` (missing call-count coverage for this path)
+- Fix: Precompute `resolveEnforcedWorkflowId(projectId, sprintId)` once per distinct `(projectId, sprintId)` pair encountered in the batch (mirroring the existing `bulkWorkflowEnforced` preload pattern exactly) and pass the resolved workflow id down through `opts` so `enforceStatusChange`'s middle branch becomes a plain lookup instead of a fresh query per issue. Add a test asserting `prisma.board.findMany` is called O(1) (or O(distinct sprints)), not O(issues), for a named-workflow-enforced batch.
+- Size: S–M.
+
+**[P2-2] No cap on dashboards-per-project or gadgets-per-dashboard**
+- What: `createDashboard` (`dashboards.service.ts:118-136`) and `createGadget` (`:190-229`) have no count check against the project/dashboard before inserting. `getDashboardData` (`:299-330`) evaluates every gadget on a dashboard in a sequential `for...of` loop with `await this.evaluateGadget(...)` per gadget — for a `BURNDOWN` gadget this means a `sprint.findFirst` plus a raw-SQL completion-dates aggregation (`reports.service.ts:124-137`, `:241-...`) per gadget, run one at a time, not `Promise.all`'d. There's no upper bound preventing a dashboard from accumulating, say, 200 gadgets (MEMBER role, no admin gate), at which point every `getDashboardData` call becomes ~200 sequential NLQL evaluations over up to 2000 issues plus dozens of sequential extra DB round trips for any BURNDOWN gadgets mixed in.
+- Impact/likelihood: Low-medium impact today (requires either a careless user or a misbehaving automation/MCP-driven script to create many gadgets — the MCP `create_dashboard_gadget` tool makes this one bad agent loop away from happening), low-medium likelihood.
+- Files: `apps/api/src/dashboards/dashboards.service.ts:118-136` (`createDashboard`), `:190-229` (`createGadget`), `:299-330` (`getDashboardData`'s sequential loop)
+- Fix: Add a `MAX_DASHBOARDS_PER_PROJECT` (e.g. 20) and `MAX_GADGETS_PER_DASHBOARD` (e.g. 20) constant, checked with a `BadRequestException` before insert — mirrors the existing `DASHBOARD_ISSUES_CAP`/`TABLE_GADGET_ROW_CAP`/`BREAKDOWN_BUCKET_CAP` pattern already established in this same module. Separately, parallelize `getDashboardData`'s gadget loop with `Promise.all` (the gadgets are read-only and independent) now that a cap bounds the fan-out.
+- Size: S.
+
+**[P2-3] Personal-cards/quick-links/workspace-PATCH+logo missing from the tenant-isolation matrix — third consecutive pass, plus two new modules (GitHub, dashboards) never added**
+- What: Unchanged core gap from Pass 10/11 (see fix-verification table above) — `PATCH /workspaces/:id`, `POST/DELETE /workspaces/:id/logo`, and any `/me/personal-cards`/`/me/quick-links` verb are still absent from `tenant-isolation.integration.spec.ts`. New this pass: `GET/PUT/DELETE /projects/:projectId/github` and every `/dashboards/*`/`/gadgets/*` route are *also* absent — both modules' cross-tenant guards are correct and unit-tested at the service-mock level (`github.service.spec.ts:103-116,226-237`; `dashboards.service.spec.ts` membership checks throughout), but neither has a row in the one integration-level test file whose entire purpose is to catch a regression across the whole API surface at once.
+- Impact/likelihood: Medium impact (correctness is unit-tested today; this is a regression-guard gap, not a live vulnerability), medium likelihood of catching a future refactor.
+- Files: `apps/api/src/tenant-isolation.integration.spec.ts`
+- Fix: Same as the last two passes — add the missing rows following the existing `buildMatrix`/`buildCrossWorkspaceRows` pattern; include the two new modules while there. Purely mechanical; given three-pass persistence, the backlog-groomer should treat this as blocking for the next build-loop batch rather than continuing to carry it forward.
+- Size: S.
+
+**[P2-5] No HTTP-level integration test for the GitHub webhook receiver — the exact "real artifact" gap this project's own QA mandate calls out**
+- What: Every GitHub test (`github.service.spec.ts`, `github.controller.spec.ts` if present, `github-signature.util.spec.ts`) calls service/util methods directly with a hand-constructed `Buffer` as `rawBody`. None boots the actual Nest app (`NestFactory.create` with `rawBody: true`) and POSTs a real HTTP request with a computed `X-Hub-Signature-256` header through Express's body-parser pipeline — the exact mechanism (`main.ts:26`'s `rawBody: true` option interacting with Express's JSON body-parser) that a future dependency bump (Express, `body-parser`, or a Nest upgrade) could silently break, with only a unit test (bypassing the HTTP layer entirely) to (not) catch it.
+- Impact/likelihood: Low-medium impact (webhook delivery silently failing is recoverable — GitHub retries failed deliveries and shows delivery status in its own UI — but would still be a confusing "my GitHub integration stopped working" support burden with no first-party signal), low likelihood short-term (nothing currently threatens the raw-body pipeline) but this is precisely the class of "green tests, broken real artifact" gap the project's QA mandate exists to close.
+- Files: `apps/api/src/github/github.service.spec.ts`, `apps/api/src/github/github.controller.ts` (no accompanying e2e/integration spec found)
+- Fix: Add one integration test (in the style of `tenant-isolation.integration.spec.ts`, which already boots a real `INestApplication`) that seeds a `GithubIntegration` row, computes a real HMAC signature over a real JSON payload with `computeGithubSignature`, POSTs it via `supertest` with the correct raw content-type, and asserts a 200 + the expected `IssueGithubLink` row — plus a negative case (tampered body, same header) asserting 401.
+- Size: S.
+
+**[P3-1] `color-mix()`-based opacity utilities have no fallback for pre-2023 browsers**
+- What: `withOpacity()` (`tailwind.config.js:25-31`) emits `color-mix(in srgb, var(--nl-x) N%, transparent)` for every `/NN`-opacity Tailwind utility built on a CSS-var color (covers a large swath of the design system: surfaces, scrims, status dot backgrounds, hover overlays). Browsers older than Safari 16.4 / Chrome 111 / Firefox 113 don't parse `color-mix()` and, per CSS error handling, drop the entire declaration rather than falling back to a nearby value — an affected element using e.g. `bg-scrim` or a `/35` opacity modifier gets no background-color at all rather than a degraded-but-visible one.
+- Impact/likelihood: Low impact (the stated target is evergreen self-hosted deployments; the cutoff is reasonable for a 2026 app), low likelihood (this audience skews toward current browsers) — flagged as hardening, not a live bug.
+- Files: `apps/web/tailwind.config.js:25-31`
+- Fix: Not urgent; if it's ever worth the complexity, emit a plain (non-opacity) fallback declaration immediately before the `color-mix()` one for the handful of load-bearing surfaces (scrim, modal backdrop) so old browsers get *a* color rather than none. Otherwise, document the browser floor in `docs/ARCHITECTURE.md` so it's a conscious tradeoff, not a silent one.
+- Size: S (if pursued at all).
+
+**[P3-2] `QuickLinksMenu` collapse-state reset (carried from Pass 11, unchanged)** — see fix-verification table. Files: `apps/web/src/components/QuickLinksMenu.tsx:233`. Size: S.
+
+**[P3-3] `ReportsPage` stale `selectedSprintId` after sprint delete (carried from Pass 11, unchanged)** — see fix-verification table. Files: `apps/web/src/pages/ReportsPage.tsx:28-33`. Size: S.
+
+### Ratings table (Pass 12)
+
+| Area | Score | Delta | Note |
+|---|---|---|---|
+| Architecture & module boundaries | 4 | — | New modules (github/oidc/dashboards) all follow the established domain-module pattern cleanly; `ScopedLayouts.tsx` is a genuinely good structural addition to the frontend layer. |
+| Data model & migrations | 4 | — | `Board.defaultGroupBy`, `Dashboard`/`DashboardGadget`, `GithubIntegration`/`IssueGithubLink` are all clean, additive migrations with sane constraints (`issueId_kind_externalId` unique on the GitHub link table is the correct idempotency key). |
+| AuthN/AuthZ & multi-tenant isolation | 4 | +1 | OIDC (PKCE+state+nonce, signed httpOnly state cookie, single-use) and GitHub (HMAC + timing-safe compare, ADMIN-gated secret visibility, AES-256-GCM PAT storage) are both well-built new auth/secret surfaces with no regressions found. Held at 4 rather than 5 because of the third-pass-open tenant-isolation matrix gap (P2-3) and the OIDC email-JIT-linking accepted-risk note. |
+| Input validation | 5 | — | New DTOs (`UpsertGithubIntegrationDto`'s `owner/repo` regex + length caps, `CreateDashboardGadgetDto`'s query length cap) are all appropriately strict; no gaps found. |
+| Error handling | 4 | — | Dashboards' per-gadget error isolation (a bad query degrades one gadget, not the whole page) and OIDC's sanitized-error redirect (never a raw 500 page on a top-level navigation) are both good patterns. No regressions. |
+| N+1 / query efficiency | **3** | -1 | Two real N+1/unbounded-fanout findings this pass: `resolveEnforcedWorkflowId` in bulk status updates (P2-1) and uncapped dashboard/gadget counts with a sequential (non-parallel) per-gadget evaluation loop (P2-2). Both are new-this-pass regressions, not carried debt. |
+| Realtime correctness | **2** | -1 | `project.updated` (Pass 11's fix) shipped cleanly, but Dashboards — the single largest feature added this pass — has ZERO realtime coverage (P1-2), which is a worse gap than anything Pass 11 found for boards. This is the lowest this category has scored; the "realtime coverage inventory" ideation from Pass 11 was not done as a sweep and would have caught this before ship. |
+| Rank / ordering integrity | 5 | — | Swimlanes v2's per-lane DnD isolation (Labels duplicating an issue into multiple lanes) is documented as deliberately safe and covered by 15 new API unit tests + extended `swimlanes.spec.ts`; no rank-integrity regressions found. |
+| Test coverage (unit + e2e) | 4 | +1 | Genuinely strong unit coverage for every new module (github: 8 spec files; oidc: 18 tests across state/nonce/JIT/error paths; dashboards: correctness + truncation + grid-position tests) and both outstanding Pass-11 P1 e2e gaps (`quick-links.spec.ts`, `workspace-settings.spec.ts`) are now closed. Held below 5 because of P2-3 (tenant matrix), P2-5 (no HTTP-level GitHub webhook integration test), and the CSP/Docker-artifact gap in the next row. |
+| Debugging / QA discipline | **2** | -1 | See dedicated section below — the theme-bootstrap CSP defect (P1-1) is a textbook recurrence of the exact "green tests, broken shipped artifact" failure mode this project has already paid to learn once, on a brand-new feature, with the *existing* regression guard (`smoke-web-csp.sh`) present but scoped too narrowly to catch it. |
+| Type safety | 5 | — | Strict TS throughout; `tsc --noEmit` clean on both `api` and `web`. |
+| Build / CI / Docker | 4 | — | `smoke-web-csp.sh` running in CI (`images.yml:179`) is good discipline generally — its narrow scope (connect-src only) is the specific gap, not the practice of having it. |
+| Secrets / config hygiene | 4 | — | GitHub PAT and OIDC client secret are both handled correctly (encrypted at rest / never logged, respectively); `webhookSecret` is correctly ADMIN-gated in API responses. |
+| Dependency risk | 4 | — | `openid-client` (OIDC) and Node's built-in `crypto` (GitHub HMAC/AES) are both well-established, low-risk additions; no new transitive-dependency red flags found. |
+
+### Debugging & QA-discipline audit (Pass 12 — mandatory)
+
+This pass's single most important finding (P1-1) is a direct, evidenced
+recurrence of the project's own named failure mode. The project already has
+the *right instinct* — `scripts/smoke-web-csp.sh` exists specifically because a
+past CSP `connect-src` bug reached the founder, and it correctly boots the
+**actual Docker image** (not `vite preview`) and asserts on the served headers.
+But its assertions are scoped to the literal fields the original incident
+touched (`connect-src`, the `__NL_CONNECT_SRC__` placeholder) — when a *new*
+feature (dark mode) later added a *new* thing that CSP can block (an inline
+`<script>`, governed by `script-src`, a directive the smoke test never reads),
+nothing re-asked "does this still work under the real CSP?" The regression
+guard covered the *instance*, not the *policy area*. This is the same lesson
+Pass 11 drew about `useSyncActiveWorkspace` (a guard scoped to the fixed flow,
+not the bug class) — recurring here in the CSP domain instead of the
+client-state domain.
+
+Compounding this: `playwright.config.ts`'s `webServer` runs `vite preview`,
+which serves the built JS bundle but with **no CSP header at all** — so even a
+well-written `theme.spec.ts` (which this project has: 5 solid tests covering
+persistence, system-preference tracking, and mobile reachability) cannot catch
+a CSP-blocks-a-feature bug, structurally, no matter how thorough its
+assertions are, because the harness never serves the header that would fail.
+This is the standing "shipped artifact" gap CLAUDE.md explicitly calls out by
+name (nginx CSP blocking login was bug #1 in that list) — it was fixed for
+`connect-src`/login, but the Playwright e2e suite's `webServer` still runs
+against `vite preview` for everything else, meaning **any future CSP-shaped
+regression in any feature** will reproduce this exact gap again. The
+structural fix (closing the *class*, not the *instance*, mirroring the
+`ScopedLayouts` pattern this same report credits Pass 11 for landing) is: add
+a second Playwright project (or a separate `docker-e2e` npm script) whose
+`webServer` builds and runs the actual `docker compose` web image, and run at
+minimum the CSP-sensitive specs (`theme.spec.ts`, `login.spec.ts`) against it
+in CI — not replacing the fast `vite preview` suite (keep that for iteration
+speed) but adding a slower, artifact-accurate gate before merge/release.
+
+**Regression-guard proposal, concretely:** (1) extend `smoke-web-csp.sh` to
+assert `script-src` too (no `unsafe-inline`, hash present and correct for the
+current `index.html`); (2) add the Docker-artifact Playwright pass described
+in Risk P1-1's fix; (3) as a cheap, immediate tripwire with no new
+infrastructure, add a one-line CI grep step: fail the build if
+`apps/web/index.html` contains an inline `<script>` tag whose content isn't
+also reflected as a `'sha256-...'` entry in `apps/web/nginx.conf`'s
+`script-src` — this catches the *next* person who adds a second inline script
+without updating the CSP, cheaply, even before the fuller Docker-Playwright
+gate lands.
+
+**Diagnosability:** No regressions this pass. Correlation IDs, pino,
+`/health`/`/health/live` unaffected. One new diagnosability idea (not a gap so
+much as an opportunity): the GitHub webhook receiver logs "signature
+verification failed" without a delivery identifier — GitHub sends
+`X-GitHub-Delivery` on every webhook call, which isn't currently read or
+logged. Threading it through would let a self-hoster correlate a failed
+delivery in their own GitHub repo settings UI with the exact line in Next
+Lane's logs, closing a real "hard to root-cause without a repro" gap for this
+specific integration.
+
+### Ideation — three concrete technical investments (mandatory every pass)
+
+1. **A Docker-artifact Playwright pass, gated in CI for CSP/security-header-sensitive
+   specs.** This is the structural fix behind P1-1 and the debugging-discipline
+   section above: today, *nothing* in the test suite runs against the real
+   nginx image before merge (`smoke-web-csp.sh` only runs in the image-publish
+   workflow, not on every PR, and only checks two response headers, not actual
+   page behavior). A slower, artifact-accurate Playwright project — even just
+   for `theme.spec.ts` + `login.spec.ts` + a new CSP-violation-listener smoke
+   test — would have caught P1-1 before it shipped, and closes the general
+   "green tests, broken real artifact" gap for every future feature that
+   touches `index.html`, inline styles/scripts, or security headers, not just
+   this one. *Priority: P1. Size: M.*
+
+2. **A `MAX_DASHBOARDS_PER_PROJECT`/`MAX_GADGETS_PER_DASHBOARD` cap + `Promise.all` the gadget-evaluation
+   loop, generalized into an audit of "which MEMBER-writable collections have no cap."**
+   Dashboards is the first NLQL-native, freely-creatable, MEMBER-writable
+   collection with unlimited fan-out cost per read (P2-2) — worth checking
+   whether the same shape of risk exists elsewhere (e.g., are Quick Links, Issue
+   Templates, or saved NLQL filters similarly uncapped with a read path that
+   scales with count?) before it becomes a pattern rather than a one-off.
+   *Priority: P2. Size: S per collection, ~M total for the sweep.*
+
+3. **Extend the `dashboard.updated` fix into the "realtime coverage inventory" Pass 11
+   proposed and this pass found wasn't done.** Rather than patching Dashboards'
+   realtime gap as a one-off (P1-2), do the actual inventory this time: for
+   every domain entity with a dedicated list/detail view (Dashboard, Board,
+   Workflow, CustomFieldDefinition, Component, Version, GithubIntegration),
+   confirm a realtime event exists and that the relevant page subscribes to
+   it. `project.updated`'s clean landing (confirmed this pass) proves the
+   pattern is cheap to replicate — the missing piece has been actually doing
+   the sweep instead of fixing findings one at a time as they're independently
+   discovered by two different audit passes. *Priority: P1 (given P1-2's
+   severity). Size: S per entity, ~M total.*
+
+### Direction (Pass 12)
+
+The engineering fundamentals keep holding under real feature-velocity pressure
+— three new backend modules (GitHub, OIDC, dashboards) in one day, all with
+strong unit coverage, correct tenant scoping, and clean secret handling, plus
+two of Pass 11's best-value recommendations (`ScopedLayouts`,
+`invalidateBoardFamily`) landed exactly as proposed and verified working by
+reading the code, not the commit message. But this pass's two P1s are both
+instances of a pattern worth naming explicitly: **a regression guard that
+covers the reported instance of a bug class doesn't automatically cover the
+next feature that falls into the same class.** The CSP smoke test exists
+because of a real incident and still let a CSP regression through on the very
+next feature that touched the DOM before hydration. The `project.updated`
+realtime fix landed cleanly and the very next major feature (dashboards)
+shipped with zero realtime coverage anyway, because "do a coverage inventory"
+was proposed as ideation rather than executed as a checklist. The single
+highest-leverage move next is not another one-off fix — it's building the two
+structural closers this pass already sketched: the Docker-artifact Playwright
+gate (closes the CSP/artifact-fidelity class for good) and an actually-executed
+realtime-coverage inventory (closes the "new feature ships silently stale"
+class for good). Both are sized M, both are cheap relative to the bugs they
+prevent, and both follow the exact shape of Pass 11's `ScopedLayouts` win —
+turn "remember to do X for every new Y" into something structurally impossible
+to skip.
+
+Second priority: land P1-2's dashboard realtime fix directly (it's the more
+urgent of the two P1s from a user-trust standpoint — wrong numbers on a
+reporting surface is worse than a cosmetic flash) alongside the CSP hash fix,
+since both are small on their own; the Docker-Playwright/inventory work can
+follow as the structural pass 13 investment. Third: close the
+three-pass-old tenant-isolation matrix gap (P2-3) — it is now the longest-lived
+open item in this document's history and costs almost nothing to fix.
+
+### Backlog-groomer feed (Pass 12 — compact)
+
+- **Fix CSP `script-src` blocking the dark-mode inline bootstrap script in the real Docker image** · P1 · S–M · `script-src 'self'` has no `unsafe-inline`/nonce/hash; the FOUC-prevention inline `<script>` in `index.html` is silently dropped by every browser in production, defeating the reload-flash fix; `apps/web/nginx.conf`, `apps/web/index.html`, `apps/web/docker-entrypoint.sh`
+- **Add a Docker-artifact Playwright gate (not `vite preview`) for CSP/security-header-sensitive specs** · P1 · M · Structural fix for the above and the general "tests pass, real artifact broken" gap; `apps/web/playwright.config.ts`, `scripts/smoke-web-csp.sh`
+- **Wire realtime coverage for Dashboards (`dashboard.updated`/`dashboardGadget.updated` + issue-change invalidation)** · P1 · M · Zero realtime coverage on this pass's flagship feature; gadget numbers can go stale indefinitely with the tab open (no staleTime refetch, no refocus refetch, no socket); `apps/api/src/dashboards/dashboards.service.ts`, `apps/web/src/pages/DashboardsPage.tsx`, `apps/web/src/api/socket.ts`, `packages/shared/src/types.ts`
+- **Precompute `resolveEnforcedWorkflowId` once per batch in `bulkUpdate`** · P2 · S–M · N+1 (~200 extra sequential queries for a 100-issue named-workflow batch) that the existing `bulkWorkflowEnforced` preload doesn't cover, since it only feeds the legacy fallback path; `apps/api/src/issues/issues.service.ts:1043-1150`
+- **Cap dashboards-per-project and gadgets-per-dashboard; parallelize the gadget-evaluation loop** · P2 · S · Currently unbounded (MEMBER-writable, MCP-writable); `getDashboardData` evaluates gadgets sequentially including per-gadget DB round trips for BURNDOWN; `apps/api/src/dashboards/dashboards.service.ts`
+- **Add personal-cards/quick-links/workspace-PATCH+logo + GitHub + dashboards rows to the tenant-isolation matrix** · P2 · S · Third consecutive pass for the original gap, now compounded by two more uncovered modules; `apps/api/src/tenant-isolation.integration.spec.ts`
+- **Add an HTTP-level integration test for the GitHub webhook receiver (real Nest bootstrap + supertest + real HMAC)** · P2 · S · Only direct-service-call unit tests exist today; the raw-body pipeline itself is untested at the HTTP layer; `apps/api/src/github/`
+- **Realtime-coverage inventory, executed (not just proposed) this time** · P1 · S per entity, ~M total · Pass 11 proposed this as ideation; Dashboards shipping with zero coverage anyway shows it needs to be a checklist item, not aspirational; see Ideation #3
+- **Log `X-GitHub-Delivery` on webhook signature-verification failures** · P3 · S · Diagnosability improvement — lets self-hosters correlate a failed delivery in GitHub's own UI with a Next Lane log line; `apps/api/src/github/github.controller.ts`
+- **Add a `color-mix()` fallback (or document the browser floor) for load-bearing opacity surfaces** · P3 · S · Pre-2023 browsers silently drop the declaration entirely rather than degrading; `apps/web/tailwind.config.js:25-31`
+- **Persist `QuickLinksMenu` group-collapse state** · P3 · S · Carried from Pass 11, unchanged; `apps/web/src/components/QuickLinksMenu.tsx:233`
+- **Re-validate `ReportsPage`'s `selectedSprintId` against the live sprint list** · P3 · S · Carried from Pass 11, unchanged; `apps/web/src/pages/ReportsPage.tsx:28-33`

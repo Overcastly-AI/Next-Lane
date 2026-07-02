@@ -2159,3 +2159,400 @@ remains accurate and unretested this pass since no code changed there.
 - Configurable dashboard / gadget grid for Pulse home — P2 · L · Carried forward from Pass 8/9/10, still the last flat-3 structural parity gap, unretested this pass
 - Scheduled/time-based automation trigger — P2 · M · Carried forward from Pass 9/10, unretested this pass
 - Per-project role override — P2 · L · Carried forward from Pass 9/10, unretested this pass
+
+---
+
+## 2026-07-02 — Pass 12 (founder-wave verification: sidebar, dark mode, dashboards, swimlanes v2, GitHub v1)
+
+**Trigger.** A large founder-driven wave shipped since Pass 11 (same day): persistent
+left sidebar (Nav & IA Phases 1+2), light/dark mode, NLQL-native dashboards
+(STAT/TABLE/BREAKDOWN/BURNDOWN), Swimlanes v2 (group-by custom field/component/
+label/sprint), GitHub integration v1, SSO/OIDC Phase 1, MCP 55→85 tools,
+workspace-switcher search/recents, two robustness fix batches, and CSV export
+completeness. This pass verifies every one of those as a real user, re-scores the
+Better-than-Jira scorecard with fresh evidence, and hunts regressions the wave's
+own surface area introduced.
+
+**Method.** Registered a fresh user via `POST /api/auth/register`
+(`audit12-*@example.com`), built a scenario via the API (`GBA` project, a `Team`
+SELECT custom field with three option values assigned across six issues, a
+second/third+ workspace, then 12 more `Scale Test WS N` workspaces to force the
+switcher's search/scale UI), then drove the real UI with Playwright
+(`chromium`, desktop 1440×900, mobile 393×851 `isMobile`/`hasTouch`, and 1024×768
+for the "small laptop" breakpoint called out in this pass's brief) —
+`/home/user/Next-Lane/apps/web/node_modules/@playwright/test/index.js` CJS
+default-import, browser launched with `executablePath` pointed at the
+environment's installed Chromium build. Configured GitHub v1 via the real API
+(`PUT /projects/:id/github`) and sent **real HMAC-SHA256-signed webhook payloads**
+(`push` and `pull_request` events, plus a deliberately-tampered signature) to
+`POST /github/webhook/:projectId` — not a mock, an actual signature computed with
+the returned `webhookSecret`. Screenshots in `/tmp/audit-p12/*.png` (ephemeral
+scratch, referenced by name below).
+
+### Headline: the wave is real and mostly excellent — but Swimlanes v2 shipped a mobile-breaking regression, and one Pass-11 fix has a subtler side effect than "fixed" implies
+
+Every major new surface was exercised end-to-end and, with one serious exception,
+works as advertised, well-built, and honestly represents the ROADMAP claims. The
+exception is severe enough to be this pass's top finding: **the board's
+"Group by" and filter-chip dropdown menus render completely invisible on mobile
+(393px) the moment the toolbar row's total width exceeds the viewport** —
+functionally interactive (a forced click on the invisible "Team" option correctly
+applies the swimlane grouping) but **not paintable to a real user's eyes on a real
+touchscreen**, which for all practical purposes makes Swimlanes v2 — this pass's
+flagship feature — unusable via touch on mobile. This directly contradicts the
+CLAUDE.md quality bar ("test real-user behavior... desktop AND mobile") and is a
+regression: Pass 11 rated the mobile board toolbar a clean 5/5 after Pass 10's
+overflow fix, and `git log -- apps/web/src/pages/BoardPage.tsx` confirms Swimlanes
+v2's commit (`8ff195c`) is the most recent touch to that file — the new "Group by"
+chip pushed the toolbar row's content past 393px and reintroduced the class of
+bug Pass 10 fixed, this time as an invisible-render bug rather than a visible
+overlap.
+
+**Repro (P1 — invisible mobile dropdown menus).** At 393×851 (`isMobile: true`),
+open the board, tap "Group by." The menu opens (confirmed via Playwright: the
+"Team" `<button>` is present, `opacity: 1`, `z-index: 20`, non-zero bounding box,
+`isVisible()` returns `true`) but **a full-viewport screenshot shows nothing at
+all** at that screen location — not even the left ~114px of the 208px-wide panel
+that geometrically overlaps the visible viewport (`ax-mobile-menu-verify.png`,
+taken twice, before and after, to rule out a timing fluke). An **element-level**
+screenshot of the same "Team" button (`az-team-btn-direct.png`) renders its text
+correctly, proving the node itself is paintable — this is a compositing/clipping
+bug, not a `display:none`/opacity issue. Root cause (via computed-style ancestor
+walk, `mobile-swimlanes7.mjs`): the dropdown is `position: absolute; left: 0`
+anchored to a wrapper that sits near the toolbar's right edge (`x: 279`, chip
+width 98px) inside a chain that includes `<div class="flex h-screen flex-col
+overflow-x-clip">` at the app-shell root — the dropdown's own box (`x: 279` to
+`x: 487`, 208px wide) extends 94px past the 393px viewport, and Chromium's
+`overflow-x-clip` (a stricter, newer clip primitive than `overflow: hidden`)
+appears to suppress the paint of the **entire** absolutely-positioned box rather
+than clipping only the overflowing portion. **Confirmed this is not swimlanes-
+specific:** the same board's "Priority" filter-chip dropdown reproduces
+identically (`ay-mobile-priority-menu.png` — opens, is interactive, renders
+nothing). **Confirmed the feature still functionally works underneath:** a forced
+click on the invisible "Team" option correctly applies the grouping
+(`ba-mobile-after-blind-team-click.png` shows `Group: Team` and real
+FRONTEND/BACKEND swimlane sections) — so this is a pure rendering/paint defect, not
+broken logic, but a real mobile user cannot see the menu to make the selection in
+the first place. **Confirmed desktop is unaffected** (`bd-desktop-groupby-
+sanity.png` — the same dropdown renders perfectly at 1440px, where the row never
+approaches the viewport edge).
+
+**Repro (P2 — quick-filter chip row overflow, likely reintroduced by the same
+commit).** At 393px, the quick-filter chip row (`My issues` / `High priority` /
+`Unresolved` / `Recently updated`) has `scrollWidth: 447` vs. `clientWidth: 393`
+(confirmed via `page.evaluate`) with `overflow-x: visible` — not `auto`/`scroll` —
+so the extra 54px is silently clipped rather than swipeable. The "Recently
+updated" button's own bounding box is `x: 331` to `x: 466`, meaning **more than
+half of it (73px of 134px) sits past the visible viewport edge with zero visual
+cue (no scroll shadow, no "more" affordance) and no working horizontal scroll
+gesture** (`an-mobile-chip-row.png` — the label is visibly cropped to "Rec").
+This quick filter is functionally unreachable on a real phone today.
+
+**Repro (P2 — "Group by" chip label wraps to two lines).** The new "Group by"
+chip is the only chip in either the desktop or mobile toolbar whose label wraps
+mid-word onto a second line inside a single-line-height pill at 393px
+(`an-mobile-chip-row.png` — "Group" / "by" stacked) — every sibling chip
+(`Labels`, `Type`, `Priority`) stays single-line at the same width. Cheap visual
+polish miss, but conspicuous since it's the newest chip in the row.
+
+**Finding (P3 — sidebar at the 1024px "small laptop" breakpoint).** The
+persistent left sidebar has no viewport-width-aware default: at 1024×768 it stays
+fully expanded at its 240px desktop width (confirmed in `AppSidebar.tsx` — the
+`collapsed` state is purely user-toggled/persisted, with no auto-collapse tied to
+`window.innerWidth`), leaving ~780px for the 3-column Kanban board. The `Done`
+column's header and its "+ Add issue" button are partially cut off
+(`ao-1024-board.png`) — the board area has its own internal horizontal scroll
+container so nothing is truly broken (`document.body.scrollWidth` still equals
+`innerWidth`), but a first-time visitor on a common 13" laptop resolution gets a
+noticeably more cramped board than before the persistent sidebar existed, with no
+system nudge ("collapse for more room?") to discover the fix. Not a regression in
+the "broken" sense — a genuine reduction in usable content width introduced by
+this pass's own headline nav feature, worth a follow-up.
+
+**Finding (P3, nuance — not a clear-cut bug but worth a product decision).**
+Pass 11's headline P1 (the workspace-chip lying on 7 of 12 scoped pages) is
+**genuinely and thoroughly fixed** — see the coherence-matrix verification below
+— via exactly the structural fix Pass 11's Ideation #1 recommended: a
+`useSyncActiveWorkspace(workspaceId)` hook (`WorkspaceContext.tsx:179-186`) that
+derives the active workspace from route params rather than trusting stale
+context. But this fix has a side effect worth flagging: **simply viewing any
+workspace-scoped page now permanently switches the user's persisted default
+workspace** (`localStorage`-backed), even for a page you only looked at and never
+took an action on. Repro: with "Second WS Audit12" active, deep-link to
+`/workspaces/{otherWorkspaceId}/branding`, save a color (or just view it — the
+`useSyncActiveWorkspace` call fires on mount regardless of any save), then
+navigate to `/` — the app now defaults to the *other* workspace
+(`ar-active-workspace-after-branding-save.png`, accent color visibly flipped to
+confirm). This is architecturally different from Pass 11's specific finding (the
+`handleSave`/`handleReset`-only side effect in `WorkspaceBrandingPage.tsx` is
+gone, code-verified), but the broader "browsing = switching your default" behavior
+now applies systemically to every workspace-scoped page, not just Branding. This
+may be intentional ("wherever you last navigated is where you land next," a
+pattern some multi-tenant tools use deliberately) or may want a distinct "switch"
+vs. "view" affordance — flagging for a product call, not re-opening as a defect,
+since it does correctly solve the header-honesty problem it was built to solve.
+
+### Cross-page coherence re-verification (mandate item 2) — Pass 11's P1 is closed
+
+Repeated Pass 11's exact methodology with a fresh two-workspace fixture: made
+"Second WS Audit12" the active workspace via the UI switcher, then deep-linked
+directly to every page Pass 11 found broken, for a project/workspace that belongs
+to the *other* workspace. **All seven previously-broken pages now correctly show
+the workspace the URL actually points to, not the stale "active" one:** Reports
+(`coh-reports.png`), Roadmap (`coh-roadmap.png`), Project Analytics
+(`coh-analytics.png`), Workspace Settings incl. the danger-zone delete page
+(`coh-ws-settings.png`), Members (`coh-ws-members.png`), and Branding
+(`coh-ws-branding.png`) all render "Audit12 Workspace" in both the header chip
+and the sidebar/breadcrumb — the exact defect the founder caught is gone. This is
+a clean, well-executed fix, not a partial one.
+
+### Feature verification detail
+
+- **Sidebar (desktop).** Expand/collapse toggles correctly, **persists across
+  reload** (`c-sidebar-collapsed.png` → `d-sidebar-collapsed-after-reload.png`
+  confirm identical collapsed state after a hard reload), and the active
+  project's row correctly expands to show Board/Backlog/Triage/Dashboards/
+  Roadmap/Reports — closing the exact "buried features" complaint from the
+  founder's 2026-07-02 session (VISION.md). Multi-board picker (`+ New board`)
+  present and reachable from the board-title dropdown.
+- **Sidebar (mobile drawer).** Hamburger → `MobileSidebarDrawer` opens a clean,
+  labeled ("Navigate") overlay with focus trap, backdrop, Esc/close/nav-click
+  close (`aj-mobile-sidebar-drawer.png`). **Gap:** `MobileSidebarDrawer.tsx`
+  reuses `SidebarNavContent` but does **not** render `<ThemeToggle>` or the
+  collapse control that the desktop `AppSidebar.tsx` has in its footer
+  (code-verified: `AppSidebar.tsx` imports and renders `ThemeToggle`;
+  `MobileSidebarDrawer.tsx` does not) — not a dead end, since the theme toggle is
+  reachable via the avatar/user menu instead (verified working,
+  `al-mobile-user-menu-theme.png` → `am-mobile-dark-applied.png`), but it means
+  the theme control lives in two different mental-model locations depending on
+  viewport width, which is a minor inconsistency worth a follow-up unification.
+- **Dark mode.** Toggle (Light/Dark/System), applies instantly, **persists
+  across reload** (`f-dark-home.png` → `g-dark-home-after-reload.png`).
+  Checked every "less-traveled surface" the brief called out: issue drawer
+  (`i-dark-issue-drawer.png` — checklist, time tracking, attachments, all
+  correctly themed), project settings (`j-dark-project-settings.png`),
+  workspace settings incl. the danger-zone red panel
+  (`k-dark-workspace-settings.png`), and branding (`l-dark-branding.png`,
+  including the live color-preview chips). **No contrast or dead-pixel defects
+  found** on any of these surfaces — this is a genuinely thorough token-layer
+  implementation, not a superficial "invert everything" pass.
+- **Dashboards (NLQL-native gadgets).** Created a real dashboard and all **four**
+  gadget types with live data: STAT (`6 issues match`), STAT with a real NLQL
+  query (`assignee = me() AND status != Done` → correctly returns `0`), TABLE
+  (renders a real sortable-looking issue table with Key/Title/Status/Assignee/
+  Points columns), BREAKDOWN (group-by `Priority`, correct bar + count),
+  BURNDOWN (`q5-tall-dashboard.png`). The Group-By selector for BREAKDOWN
+  correctly lists the project's custom field (**"Team (custom)"**) alongside
+  Status/Assignee/Priority/Type/Label/Component — custom fields are first-class
+  in the dashboard system, not an afterthought. **Burndown's empty state is
+  excellent UX, not a crash:** with no sprint-linked issues it shows "No issues
+  matched by this query belong to a sprint — add a sprint filter, e.g.
+  `sprint = "Sprint 1"`" — a specific, actionable message, not a blank chart or
+  a stack trace. **Invalid-query error path verified precise:**
+  `thisIsNotAField ~~~ garbage syntax @@` produces an inline parser error
+  ("Unexpected character '@' at position 35") and correctly disables the Save
+  button until fixed (`r-invalid-query-in-form.png`) — this is real recursive-
+  descent-parser-quality validation, not a generic "invalid query" toast.
+  Per-keystroke typing into the NLQL field showed no focus loss or dropped
+  characters (`perkeystroke.mjs` — 34-character query typed one keystroke at a
+  time, final value matched exactly).
+- **Swimlanes v2 (desktop).** Group-by menu correctly lists Status/Assignee/
+  Priority/Issue type/Epic/Component/Sprint/Labels plus a "CUSTOM FIELDS"
+  section with our `Team` field. Grouping by `Team` renders correct swimlane
+  sections (FRONTEND: 2, BACKEND: 2, PLATFORM: 1, with the 6th ungrouped issue
+  correctly falling into its own section) with accurate per-status counts inside
+  each lane (`u-swimlanes-by-team.png`). Desktop swimlanes are excellent — the
+  mobile regression above is the only defect in this feature.
+- **GitHub integration v1 — verified with a real signed webhook, not a mock.**
+  Configured via `PUT /projects/:id/github` (repo + PAT), which correctly
+  returned a generated `webhookSecret`. Computed a real `HMAC-SHA256`
+  signature over the JSON body with that secret and POSTed both a `push` event
+  (commit message `Fix login bug (GBA-1)`) and a `pull_request` event (title
+  `GBA-2 Add feature`, `#42`, `state: open`) to
+  `/api/github/webhook/:projectId` — both returned `200 {"ok":true,
+  "linksUpserted":1}`. **Confirmed the issue drawer renders both correctly**:
+  GBA-1's drawer shows a "DEVELOPMENT" section with `abc123d Fix login bug
+  (GBA-1)` (`ab-issue1-drawer-dev.png`); GBA-2's shows `#42 GBA-2 Add feature`
+  with an `OPEN` state badge (`ac-issue2-drawer-dev.png`). **Confirmed signature
+  verification actually rejects tampering**, not just accepts anything: a
+  request with `X-Hub-Signature-256: sha256=deadbeef` correctly returned
+  `401 {"message":"Invalid webhook signature"}`. This is a real, working,
+  security-correct feature — the ROADMAP claim is not an exaggeration.
+- **SSO/OIDC Phase 1.** Correctly **absent** from the login page when
+  unconfigured (`ad-login-page-no-sso.png` — clean email/password form, no
+  broken/disabled SSO button, no dead link) — good defensive UI. Code-verified
+  (`LoginPage.tsx:25-37`) that the button is entirely conditional on a
+  `providersQuery` result. **Gap noted:** configuration is env-var-only
+  (`apps/api/src/auth/oidc/oidc.config.ts`) with no in-app admin settings screen
+  — a self-hoster must edit `.env`/compose and restart the API to turn SSO on,
+  rotate a client secret, or change the provider label. Category-leading
+  trackers let an org admin do this from a settings page without a redeploy;
+  this is real self-service friction for the exact enterprise/agency audience
+  the "Admin controls" scorecard row is meant to serve.
+- **Workspace switcher — search AND recents both verified working.** With 14
+  workspaces, the switcher shows a search input once the list crosses the
+  threshold (`af-switcher-14ws.png`), and typing filters live and correctly
+  (`ag-switcher-search-filtered.png`, typed "Scale Test WS 9" → exactly one
+  match shown). **Recently-visited is also shipped and correct**, not just
+  search: after navigating A → "Scale Test WS 9" → "Scale Test WS 3," reopening
+  the switcher shows a "RECENT" section at the top with "Scale Test WS 9"
+  (the workspace visited immediately before the current one) ahead of the
+  alphabetical list (`ah-switcher-after-nav-order.png`). This closes **two**
+  Pass 11 backlog items (#3 search, Ideation #3 recently-visited) in the same
+  ship — a strong, complete piece of work.
+- **Admin lockout (robustness fix batch) re-verified.** Attempting to demote
+  the sole workspace ADMIN to VIEWER via the API correctly returns
+  `400 "Cannot change this admin's role — every workspace needs at least one
+  admin. Promote another member to admin first."` — the fix holds.
+- **CSV export completeness re-verified.** `GET /projects/:id/issues.csv`
+  returns 19 columns including `Description`, `Component`, `Fix Versions`,
+  `Parent`, `Original Estimate (minutes)`, and — correctly — `CF: Team` with
+  real per-issue values (`Frontend`/`Backend`/`Platform`) matching what was set
+  via the UI. The ROADMAP claim of column-completeness holds.
+- **Keyboard-first ergonomics re-verified.** Cmd-K opens a real fuzzy command
+  palette with quick actions (Create issue, Go to Board/Backlog/Reports, Triage
+  issues) and live issue search — typing "Audit issue 3" correctly surfaces
+  `GBA-4 Audit issue 3` with its status (`bc-cmdk-search.png`). No regression.
+- **Multi-board / board types.** The board-title dropdown correctly shows
+  "Main Board · default · KANBAN" with a "+ New board" affordance
+  (`v-board-picker.png`) — unchanged, still a genuine differentiator.
+- **Per-project role override.** Still absent — `prisma/schema.prisma` has no
+  `ProjectMembership` model; `Membership` remains a single workspace-wide role
+  row. Unchanged from Pass 9-11, reconfirmed by schema inspection this pass.
+
+### Ratings (Pass 12 — 1-10 scale per this pass's brief; prior passes used 1-5, noted for continuity)
+
+| Area | Score /10 | Note |
+|---|---|---|
+| Auth / onboarding | 9 | Unchanged strength; register → workspace → first project remains clean and dead-end-free. |
+| Navigation / IA (persistent sidebar) | 8 | Desktop excellent — collapse persists, active project expands to real sub-links, closes the founder's "buried features" complaint. Docked from a 9/10 for the 1024px cramped-board finding and the mobile drawer's missing theme-toggle/collapse control (P3s, not blockers). |
+| Dark mode | 9 | Thorough, token-driven, checked on 6 distinct surfaces incl. drawer/settings/branding with zero contrast or dead-pixel defects. Not a 10 only because it wasn't checked against WCAG contrast tooling this pass (spot-checked visually only). |
+| Dashboards (NLQL-native gadgets) | 8 | All four gadget types work with real data; custom fields fully integrated as group-by targets; excellent, specific empty/error states (burndown's "no sprint" message, the inline NLQL parser error). Docked for the still-open cross-sprint-trend and cross-workspace-scoping gaps carried from the ROADMAP's own "Phase 2" note. |
+| Swimlanes v2 (desktop) | 9 | Correct grouping, correct per-lane counts, custom fields fully wired into the group-by menu. |
+| Swimlanes v2 / board toolbar (mobile) | 3 | **Regression.** The flagship new feature's own trigger (the Group-by dropdown) is invisible-but-technically-clickable on a real phone; the pre-existing quick-filter chip row is also freshly broken (silent overflow-clip, not scroll). This is the pass's most severe finding. |
+| GitHub integration v1 | 9 | Verified end-to-end with a real signed webhook (not a mock): push + PR linking, drawer rendering, and signature-tampering correctly rejected. Docked one point only because auto-transition-on-merge/live CI status/smart-commits remain unshipped follow-ups (tracked, not a surprise). |
+| SSO/OIDC Phase 1 | 6 | Correctly gated/invisible when unconfigured — no broken UI. Real gap: env-var-only config with no in-app admin self-service screen, which is friction the target enterprise/agency buyer will notice immediately. |
+| Workspace switcher at scale | 9 | Both search and recently-visited verified working correctly with a real 14-workspace fixture — a complete, well-executed closure of two carried-forward backlog items in one ship. |
+| Cross-page / cross-navigation state coherence | 9 | Pass 11's headline P1 (7 of 12 broken pages) is genuinely and fully fixed via the recommended route-derived-truth structural pattern, re-verified with a fresh two-workspace deep-link matrix. Docked one point for the "browsing silently switches your persisted default workspace" nuance noted above — not a defect, but worth a product decision. |
+| Robustness fixes (admin lockout, CSV completeness) | 9 | Both re-verified directly against the API; hold up as claimed. |
+| Keyboard-first ergonomics | 9 | Cmd-K fuzzy search + quick actions confirmed with fresh live typing; no regression. |
+| Permissions granularity | 3 | Unchanged — no `ProjectMembership` model exists; still binary workspace-wide roles. |
+
+### Parity Scorecard (Pass 12 — deltas from Pass 11 noted)
+
+| Capability | Our depth | Leader baseline | Gap | Delta |
+|---|---|---|---|---|
+| Multiple boards / board types | 5 | 5 | none | unchanged |
+| Configurable columns/swimlanes | 5 | 5 | none | **desktop unchanged at 5; new mobile-specific gap noted separately (see ratings table) — this row measures capability depth, not per-platform reach** |
+| Query language (NLQL) + saved/shared filters | 5 | 5 | none | unchanged, re-verified with a fresh invalid-query + per-keystroke test |
+| Custom fields (definition + input types + card display + dashboard grouping) | 5 | 5 | none | **strengthened this pass** — custom fields now verified wired into dashboards' group-by menu and CSV export, not just cards/filters |
+| Card color rules | 5 | 5 | none | unchanged, not retested this pass |
+| Card-level link/dependency indicator | 5 | 5 | none | unchanged, not retested this pass |
+| Configurable statuses/transitions + gates | 5 | 5 | none | unchanged |
+| Automation rule engine | 4 | 5 | no scheduled/time trigger | unchanged, not retested this pass |
+| Dashboards/gadgets | 5 | 5 | none | **closed this pass** — Phase 1 shipped and verified with all 4 gadget types, real NLQL, custom-field grouping; the last flat-3 structural gap from Pass 8/9/10/11 is genuinely gone. Remaining refinements (cross-sprint trend, cross-workspace scoping) are polish, not a structural absence. |
+| Integrations (SCM) | 4 | 5 | GitHub v1 real and working; no auto-transition/CI-status/smart-commits/GitLab/Gitea | **improved this pass** — was scaffolding-adjacent risk before verification; now confirmed genuinely working end-to-end with a real signed webhook, not just present in code |
+| Permissions granularity | 3 | 5 | no per-project role override; SSO env-var-only, no self-service admin config | **new sub-gap noted** — SSO self-service config joins per-project roles as an admin-depth gap |
+| Cross-surface state coherence (active workspace/tenant context) | 4 | 5 | Pass 11's specific 7-page bug is fixed; the underlying "route visit can silently persist a context switch" pattern is now systemic-by-design rather than accidental, and worth a product decision | **improved from 2 → 4** — genuine, verified fix; not a 5 pending that product decision |
+| Mobile board toolbar | 2 | 5 | **regression** — invisible dropdown menus + freshly-broken chip-row overflow, both introduced by this pass's own Swimlanes v2 ship | **regressed from 5 → 2** since Pass 11 |
+| Import/export | 5 | 5 | none | **strengthened** — CSV completeness re-verified with real custom-field data end-to-end |
+| Workspace-switcher scale (search/filter/recents) | 5 | 5 | none | **closed this pass** — both search and recently-visited verified working with a real 14-workspace fixture |
+| SSO/OIDC | 3 | 5 | Phase 1 (generic OIDC login) works but is env-var/redeploy-only, no in-app admin config screen; no SAML/multi-provider | **new benchmark row this pass** |
+
+### Better-than-Jira scorecard — recommended verdict changes (evidence for vision-steward)
+
+| Dimension | Current verdict (VISION.md) | Recommended | Evidence (this pass) |
+|---|---|---|---|
+| Reporting | Behind | **→ Parity** | Dashboards Phase 1 is not scaffolding — verified all 4 gadget types with real data, custom-field grouping, and precise NLQL validation. The specific "flat 3 for four consecutive passes" gap this row was scored on is closed; remaining items (cross-sprint trend, cross-workspace scoping) are refinements a Parity/near-Better product still has, not a structural absence. |
+| Integrations | Behind, closing | **stays Behind, but tighten the note** | GitHub v1 confirmed genuinely working (real signed-webhook round trip, not just present in code) — this *reduces* execution risk on the claim, but the depth gap vs. the incumbent's day-one SCM feature set (auto-transition, live CI status, GitLab/Gitea) is unchanged, so the verdict itself shouldn't move yet. |
+| Reliability / coherence-of-state | Behind | **→ Parity** | Pass 11's exact headline defect (7 of 12 pages lying about the active workspace) is fully and correctly fixed, re-verified independently this pass with a fresh two-workspace deep-link matrix covering every previously-broken page. Flag the "browsing silently persists a workspace switch" nuance as a note, not a blocker to the verdict change — it's a design question, not a coherence bug. |
+| Admin controls | Behind | **stays Behind** | Real progress (SSO Phase 1 shipped and correctly gated; switcher search+recents shipped and verified) but two blockers for the target enterprise/agency buyer remain unaddressed: no per-project role override (schema-confirmed absent) and SSO configuration requires editing env vars and redeploying rather than an in-app admin screen — both are exactly what an evaluating admin checks first. |
+| Mobile | Behind | **stays Behind, reinforce with fresh negative evidence** | This pass found a *new* P1 regression (invisible, touch-unusable dropdown menus) directly caused by this wave's own Swimlanes v2 ship — mobile went from "missing native app" (a known, static gap) to actively regressing on web-mobile usability of a flagship new feature. This is the opposite of closing distance and should be called out explicitly in VISION.md's evidence line so it doesn't read as a stale carryover. |
+| Board speed & feel | Better | **stays Better** | Swimlanes v2 by custom field confirmed excellent on desktop; the mobile regression is tracked under the Mobile row, not this one — the underlying board capability itself is not diminished. |
+| Onboarding / first-hour experience | Parity | **stays Parity, but note structural improvement** | The persistent sidebar directly and durably resolves the founder's 2026-07-02 "three shipped features read as missing" complaint (branding, board filters, roadmap all now always-visible in the expanded project row) — this is real progress on the *first-hour orientation* half of this row, even though the *self-hosting setup friction* half is unchanged. Not enough alone to move to Better, but worth citing as the concrete fix for the cited complaint. |
+
+### Top gaps — prioritized backlog candidates
+
+| Rank | Item | Why it matters (user value) | Size | Area |
+|---|---|---|---|---|
+| 1 | **Fix invisible mobile filter/group-by dropdown menus** — the panel's `position: absolute; left: 0` anchoring against a chip near the toolbar's right edge, combined with the app-shell's `overflow-x-clip`, suppresses paint of the entire menu (not just the overflowing portion) once the toolbar row approaches 393px. Anchor right-aligned dropdowns from their right edge (`right: 0`) instead of `left: 0` when the trigger sits in the right half of a narrow viewport, or portal the menu to `document.body` (matching `MobileSidebarDrawer`'s own pattern) so it escapes the clipping ancestor entirely. | This is a P1: a real phone user cannot see the menu to select a swimlane grouping or a quick filter at all — confirmed functionally interactive but visually absent. It makes this pass's flagship feature (Swimlanes v2) unusable via touch, directly violating the CLAUDE.md "desktop AND mobile" quality bar. | S | Board / mobile |
+| 2 | **Fix mobile quick-filter chip row overflow** — set `overflow-x: auto` (with a scroll-snap or a fade/shadow affordance) on the chip row instead of the current `overflow-x: visible`, so "Recently updated" (and any future chip) becomes swipeable rather than silently clipped. | "Recently updated" is currently unreachable on a real phone — more than half the button sits past the viewport edge with no visual cue and no working scroll gesture. Likely reintroduced by the same commit that added the "Group by" chip to the same row. | S | Board / mobile |
+| 3 | **Fix the "Group by" chip's two-line label wrap on mobile** — shorten the label (e.g., an icon-only mobile variant, matching `Labels`/`Type`) or widen the pill's `min-width` so it stays single-line like every sibling chip. | Small, but conspicuous — the one newest chip in the row is the one that looks visually broken next to four polished siblings. | S | Board / mobile |
+| 4 | **In-app SSO/OIDC admin configuration screen** — let a workspace/instance admin set provider, client ID/secret, issuer URL, and label from a settings page (with the secret stored encrypted, mirroring the GitHub PAT pattern already shipped), instead of requiring an env-var edit and API redeploy. | This is real, immediate friction for the enterprise/agency self-hoster segment the "Admin controls" scorecard row exists to serve — it's the first thing an evaluating admin will try to click, and today there's nothing to click. | M | Admin / SSO |
+| 5 | **Per-project role override (`ProjectMembership` layer)** — carried forward from Pass 9-11, schema-confirmed still absent this pass. | Agencies/consultancies running multiple clients in one workspace still can't scope a Viewer to a single project; still binary workspace-wide roles. | L | Permissions |
+| 6 | **Sidebar auto-collapse (or a one-click nudge) at ≤1024px** — either default `collapsed: true` when `window.innerWidth` is below a small-laptop threshold on first load, or surface a lightweight "collapse for more room?" affordance when the board's own horizontal scroll container is triggered by sidebar width. | Not broken, but a real, measurable reduction in usable board width on a common 13" laptop resolution introduced by this pass's own headline nav feature; first-time visitors on smaller screens get no signal that collapsing helps. | S | Navigation / responsive |
+| 7 | **Unify the mobile theme control location** — either add `<ThemeToggle>` to `MobileSidebarDrawer.tsx` (matching desktop's sidebar-footer placement) or intentionally document/standardize on the avatar-menu placement for mobile so it isn't split by viewport width. | Minor consistency gap, not a dead end (the toggle is reachable either way) — but two different mental models for the same control depending on screen width is the kind of small friction the design-elevation directive exists to catch. | S | Navigation / dark mode |
+| 8 | **Product decision: should viewing a workspace-scoped page persist a default-workspace switch?** — either keep the current "wherever you last navigated becomes your default landing workspace" behavior and document it as intentional, or add a distinct "switch to this workspace" affordance separate from mere navigation/viewing. | Currently, simply viewing (or saving on) a colleague's shared link to another workspace's settings page silently and permanently changes what workspace greets you next time you open the app — verified working-as-coded but not obviously working-as-intended. | S (decision) / M (if changed) | Cross-page coherence |
+| 9 | **Configurable dashboards Phase 2** — cross-sprint trend view, cross-workspace gadget scoping, additional visualization types (already tracked in ROADMAP's own "Phase 2" note). | Carried forward; Phase 1's strength this pass makes Phase 2 a natural next increment rather than a new pillar. | M | Dashboards |
+| 10 | **Scheduled/time-based automation trigger** — carried forward from Pass 9-11, unretested this pass (no code change). | SLA/stale-issue/due-date automation patterns remain structurally impossible with reactive-only triggers. | M | Automation |
+
+### Ideation — 3 ambitious new features/UX improvements (Pass 12)
+
+1. **Dashboard sharing + a public "team pulse" embed** — reuse the same
+   share-token pattern already used for public boards to let a dashboard (not
+   just a board) be published read-only, no-login, to a URL a manager or client
+   can bookmark. Given how strong Dashboards Phase 1 turned out to be this pass
+   (real NLQL, real gadget variety, genuinely good empty/error states), this is
+   now a cheap, high-leverage extension rather than a speculative one — it
+   directly extends Pass 10's "public/embeddable project status page" idea but
+   is more valuable now that dashboards are a first-class, configurable surface
+   rather than a fixed report.
+2. **GitHub auto-transition-on-merge + a "linked PR" board-card badge** — now
+   that the linking plumbing is confirmed solid (real webhook signature
+   verification, correct idempotent upsert on `[issueId, kind, externalId]`),
+   the highest-leverage next slice isn't more link *types*, it's making the
+   existing links *act*: auto-move an issue to Done when its linked PR merges
+   (a config toggle per project, off by default), and surface a small PR-state
+   dot directly on the board card (mirroring the existing blocked-issue badge
+   pattern) so "this card has an open PR" is visible while scanning the board,
+   not just inside the drawer.
+3. **A "swimlane WIP/health" strip** — now that Swimlanes v2 groups issues into
+   real named sections (by component/label/custom field/sprint), add an
+   optional per-swimlane summary strip (count, oldest-issue age, or a
+   configurable custom-field rollup like "story points remaining") in the
+   swimlane header, the same way each status column already shows a count
+   badge. This turns swimlanes from a pure visual grouping into a genuine
+   team/component-level health signal at a glance — a natural, low-cost
+   extension of a feature that's otherwise already excellent on desktop.
+
+### Direction — next quarter
+
+This wave was ambitious and, item for item, mostly delivered exactly what it
+claimed — dashboards, GitHub integration, and the workspace-chip structural fix
+all held up under adversarial, hands-on verification (a real signed webhook, a
+real invalid-NLQL parser error, a real two-workspace deep-link matrix), which is
+a genuinely strong signal about engineering discipline on this team. The one
+real miss is exactly the kind of miss CLAUDE.md's quality-bar language warns
+about: Swimlanes v2 shipped, "tests passed," and it is in fact broken for a real
+mobile user in a way no amount of `.click()`-based e2e testing would catch unless
+it specifically asserted pixel visibility rather than DOM presence — the gap
+between "the button exists and is clickable" and "a human can see it" is
+precisely the class of bug the per-keystroke/real-user-behavior mandate exists to
+close. The immediate priority is item #1 (the invisible dropdown fix) since it's
+S-sized and blocks the pass's own flagship feature on an entire platform. After
+that: the SSO self-service config gap and per-project roles are the two
+highest-leverage remaining items for the "Admin controls" scorecard row, since
+they're the two things an evaluating enterprise/agency admin will look for
+first and find missing today. Structurally, this pass suggests the QA/build loop
+should add a lightweight "does this element have non-zero rendered pixels in a
+full-page screenshot at 393px" check for any new interactive menu/dropdown,
+since DOM presence + `isVisible()` alone (as this pass's own initial automated
+probes showed) is not sufficient to catch this exact bug class — a visibility-
+by-composite check, not just a visibility-by-style check, is needed going
+forward for any absolutely-positioned overlay near a viewport edge.
+
+### Backlog-Groomer Ingest — Pass 12 (title · priority · size · rationale)
+
+- Fix invisible mobile filter/group-by dropdown menus (right-align or portal past `overflow-x-clip`) — P1 · S · Confirmed functionally interactive but visually unpaintable at 393px; makes Swimlanes v2 unusable via touch, violates the desktop+mobile quality bar
+- Fix mobile quick-filter chip row overflow (`overflow-x: auto` + affordance) — P1 · S · "Recently updated" more than half clipped off-canvas with zero scroll cue, likely reintroduced by the same commit that added "Group by"
+- Fix "Group by" chip two-line label wrap on mobile — P2 · S · Visually inconsistent with every sibling chip at the same width
+- In-app SSO/OIDC admin configuration screen (no env-var/redeploy requirement) — P1 · M · Immediate, visible friction for the enterprise/agency buyer the Admin-controls scorecard row targets; nothing to click today
+- Per-project role override (`ProjectMembership` layer) — P2 · L · Carried forward from Pass 9-11, schema-confirmed still absent
+- Sidebar auto-collapse or nudge at ≤1024px — P2 · S · Real, measurable board-width reduction on common laptop resolutions introduced by this pass's own nav feature
+- Unify mobile theme-control placement (add to `MobileSidebarDrawer` or standardize on avatar menu) — P3 · S · Minor consistency gap, not a dead end
+- Product decision + implementation: distinct "switch workspace" vs. "view workspace page" affordance — P2 · S (decision) / M (build) · Currently, viewing a page silently and persistently changes the user's default landing workspace
+- Dashboard sharing / public "team pulse" embed (share-token reuse) — P3 · M · New ideation; cheap high-leverage extension now that Dashboards Phase 1 verified strong
+- GitHub auto-transition-on-merge + board-card PR-state badge — P2 · M · New ideation; the linking plumbing is confirmed solid, the highest-leverage next slice is making links act, not adding more link types
+- Swimlane WIP/health summary strip — P3 · S · New ideation; turns Swimlanes v2 from visual grouping into an at-a-glance team/component health signal
+- Configurable dashboards Phase 2 (cross-sprint trend, cross-workspace scoping) — P2 · M · Carried forward, natural next increment given Phase 1's verified strength
+- Scheduled/time-based automation trigger — P2 · M · Carried forward from Pass 9-11, unretested this pass

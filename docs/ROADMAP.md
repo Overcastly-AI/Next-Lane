@@ -268,83 +268,113 @@ live.
 § The operating question.) Not cheaper — *better*, on a daily-driver test: a
 team that has run the incumbent for years should prefer Next Lane within the
 first week for the tool itself, not just the price tag. The
-`docs/VISION.md` "Better-than-Jira scorecard" tracks this honestly against
-what's actually shipped (currently 3 dimensions better, 2 parity, 5 behind).
-Work is now sequenced to close the **behind** dimensions in switcher-impact
-order first, ahead of any new pillar or moonshot:
+`docs/VISION.md` "Better-than-Jira scorecard" was re-scored 2026-07-02 against
+the two independent Pass-12 audits (`docs/AUDIT-PRODUCT.md`,
+`docs/AUDIT-ENGINEERING.md`), which hands-on-verified the founder-wave that
+shipped since Pass 11: persistent left sidebar (Nav & IA Phases 1+2), dark
+mode, NLQL-native dashboards, Swimlanes v2, GitHub integration v1, SSO/OIDC
+Phase 1, and the MCP surface (55 → 85 tools). Result: **4 dimensions better, 3
+parity, 3 behind** (up from 3/2/5) — Reporting and Reliability/coherence-of-state
+both flipped Behind → Parity, and Search & query power flipped Parity → Better.
+Work is sequenced below to close what's left, in the order the two Pass-12
+audits' evidence implies, ahead of any new pillar or moonshot.
 
-1. **Reliability / coherence-of-state** (behind) — the workspace/tenant
-   context lying to the header chip on deep-link/back-forward navigation
-   (both Pass-11 audits, same day, independently). The specific 7-page
-   instance shipped fixed 2026-07-02; the structural fix (route-derived
-   "you are here" instead of opt-in context sync) is still open and is the
-   top item — trust in "where am I" is foundational to everything else.
-2. **Admin controls** (behind) — SSO/OIDC Phase 1 (generic provider login)
-   shipped 2026-07-02; workspace-switcher search/filter + recently-visited
-   shipped 2026-07-02 (the 50+-workspace flat list is no longer a wall of
-   text). Still missing SAML/multi-provider SSO (Phase 2) and per-project
-   role override. This remains a hard blocker for enterprise/agency
-   self-hosters evaluating a switch until the remaining gaps close.
-3. **Integrations** (behind, closing) — Phase 9 Developer Graph v1 kickoff
-   (GitHub two-way link: repo config, inbound webhook, PR/commit/branch
-   linking on the issue drawer) shipped 2026-07-02; import/export is still
-   file-based only. Remaining gaps: auto-transition-on-merge, live CI status
-   on the card, smart-commit syntax, and GitLab/Gitea — the incumbent's core
-   segment (engineering teams) still gets more day-one SCM depth from Jira.
-4. **Reporting** (behind, closing) — configurable dashboards **Phase 1
-   (NLQL-native gadget framework) shipped 2026-07-02**: per-project
-   dashboards, STAT/TABLE/BREAKDOWN/BURNDOWN gadgets, each just an NLQL
-   query + a visualization, evaluated through the same shared query engine
-   as boards/filters. Still no cross-sprint trend view, and dashboards
-   Phase 2 (more visualization types, cross-workspace gadget scoping) is
-   the tracked follow-up.
-5. **Mobile** (behind) — no native app; the 393px project-breadcrumb
-   legibility defect (project name crushed to "Pro…" by the workspace chip)
-   is fixed 2026-07-02 (`<ProjectBreadcrumb>` wraps to its own row on
-   mobile).
-6. **Navigation & IA / UI uplift** (founder-flagged 2026-07-02, cross-cutting
-   — not one of the five scorecard "behind" rows above, but now equally
-   prioritized): the founder independently rediscovered three shipped
-   features (workspace branding, board default filters, Gantt-style roadmap
-   timeline) as "missing," all for the same root cause — no persistent
-   nav/IA surface. Sequenced as the "Navigation & IA overhaul" epic.
-   **Phase 1 (persistent left sidebar framework) shipped 2026-07-02** — see
-   the ✅ entry below. **Phase 2 (surface the buried features as first-class
-   sidebar/project links, incl. clickable board-filter-indicator) also
-   shipped 2026-07-02** — the active project's sidebar row now expands to
-   Board/Backlog/**Roadmap**/Reports (`nav-sidebar-view`), a **Branding**
-   link (`nav-sidebar-branding`, admin-gated) sits beside Workspace settings,
-   and the board toolbar's filter chip is a clickable affordance into
-   `BoardSettingsModal`'s Default-filter field (plus a "+ Default filter"
-   empty-state prompt when none is set) — see the ✅ entry below. **Light/dark
-   mode shipped 2026-07-02** (see the ✅ entry below) — the design-token
-   system was touched once, coherently, for both the nav overhaul and dark
-   mode, per the standing CLAUDE.md "Design elevation" directive. CSV export
-   column-completeness (Description, Component, Fix Versions, Custom Fields,
-   time estimates, Parent/Epic) is in progress in parallel today; the
-   README/first-impression surface overhaul is owned by `oss-curator` and in
-   progress today (tracked there, not duplicated here).
+*(Note to backlog-groomer: this is the intended Ready-queue order for the next
+build-loop pass; `docs/BACKLOG.md` itself is unchanged by this vision-steward
+pass — groom the board against this sequencing next.)*
 
-7. **Founder directives, 2026-07-02 (Kanban field-sections, Settings/Workflows
-   robustness, NLQL-native dashboards, MCP parity, schema check-in)** — four
-   fresh asks, each filed as a scoped `docs/BACKLOG.md` item rather than left
-   as loose direction: **Kanban sections by field ("Swimlanes v2") shipped
-   2026-07-02** — extends the group-by to Component/Sprint/Labels/custom
-   SELECT fields plus a per-board default grouping (see the ✅ entry below);
-   **Settings** and **Workflows robustness passes** apply the founder's post-spaces-bug
-   quality bar (inputs/validation/error-states/persistence) as a dedicated
-   qa-tester audit + fix batch — **both now shipped** (Settings 2026-07-02,
-   Workflows 2026-07-03; see the "Settings robustness pass — fix batch" and
-   "Workflows robustness pass — fix batch" ✅ entries above); **custom dashboards are NLQL-native** —
-   every gadget, built-in or custom, is an NLQL query + a visualization,
-   rescoping (not duplicating) the "Configurable dashboards — Phase 1" item
-   above; and an **MCP coverage parity sweep** (✅ shipped 2026-07-02 — see
-   the Phase 6 bullet below) closed the gap between the product surface and
-   the MCP server's tools (55 → 76) and established the standing rule that
-   every feature's definition of done includes MCP exposure where it makes
-   sense. The founder also asked directly whether a DB schema overhaul is
-   needed: **answered no** — see the Phase 5 "DB schema check-in" bullet
-   above; the current/upcoming wave is small additive tables only.
+1. **Mobile — Swimlanes v2's own paint regression (P1, in flight).** The
+   board's "Group by" and filter-chip dropdown menus are functionally
+   clickable but render **completely invisible** on a real 393px phone
+   (`overflow-x-clip` suppresses the paint of an absolutely-positioned menu
+   that extends past the viewport) — this pass's flagship feature is unusable
+   via touch. The pre-existing quick-filter chip row regressed alongside it
+   (silently clips "Recently updated" off-canvas, no scroll affordance), and
+   the new "Group by" chip's label wraps to two lines unlike every sibling
+   chip (AUDIT-PRODUCT.md Pass 12, top-ranked finding). All three S-sized;
+   top of the queue since they block an entire platform on a just-shipped
+   feature.
+2. **Reliability artifact gap — CSP blocks the dark-mode bootstrap script in
+   the real Docker image (P1, in flight).** The no-flash inline `<script>` in
+   `index.html` is silently dropped by production nginx's `script-src 'self'`
+   (no hash/nonce/`unsafe-inline`) — dark mode still works, but every reload
+   with a dark preference flashes light first and logs a CSP violation; this
+   is the same "green tests, broken shipped artifact" failure class that
+   already burned this project once, now recurring on a brand-new feature
+   because the existing `smoke-web-csp.sh` guard only ever asserted
+   `connect-src` (AUDIT-ENGINEERING.md Pass 12, P1-1). Fix: sha256-hash the
+   script into `nginx.conf`'s `script-src` (3 copies), plus a
+   Docker-artifact Playwright gate (not `vite preview`) for CSP-sensitive
+   specs so this class of regression can't recur silently again.
+3. **Admin controls depth (behind).** Real progress already shipped
+   2026-07-02 (SSO/OIDC Phase 1, workspace-switcher search/recently-visited),
+   but two blockers an evaluating enterprise/agency admin checks first
+   remain: (a) **in-app SSO/OIDC configuration screen** — provider/client
+   id/secret/issuer/label from a settings page, encrypted at rest mirroring
+   the GitHub PAT pattern already shipped, instead of an env-var edit + API
+   redeploy; (b) **per-project role override** (`ProjectMembership` layer) —
+   still schema-confirmed absent, carried since Pass 9 (AUDIT-PRODUCT.md
+   Pass 12).
+4. **Integrations depth (behind, GitHub v1 de-risked).** GitHub integration
+   v1 is confirmed genuinely working end-to-end this pass — a real
+   HMAC-SHA256 signed webhook round trip (push + pull_request), correct
+   idempotent issue linking, and signature tampering correctly rejected with
+   401 (AUDIT-PRODUCT.md Pass 12) — this reduces execution risk but not the
+   depth gap. Next: **GitLab/Gitea** two-way linking (same shape as GitHub
+   v1) and **PR-status + auto-transition-on-merge** (a per-project config
+   toggle, off by default, plus a board-card "linked PR" badge mirroring the
+   existing blocked-issue badge) — the incumbent's day-one SCM feature set is
+   still ahead here.
+5. **Configurable dashboards — Phase 2 (parity, closing toward better).**
+   Phase 1 verified strong this pass (all 4 gadget types, custom-field
+   grouping, precise NLQL validation, excellent empty/error states —
+   AUDIT-PRODUCT.md Pass 12, 8/10) — this is what flipped Reporting
+   Behind → Parity. Phase 2: cross-sprint trend view, cross-workspace gadget
+   scoping, dashboard sharing/public read-only embed (reusing the existing
+   public-board share-token pattern). Also folds in engineering's own P1 for
+   this feature: **dashboards currently have zero realtime coverage** —
+   gadget data can go stale indefinitely with the tab open, no `staleTime`
+   refetch, no refocus refetch, no socket subscription
+   (AUDIT-ENGINEERING.md Pass 12, P1-2) — fix alongside a per-project/
+   per-dashboard gadget cap (engineering P2-2, currently unbounded).
+
+**Re-affirmed Better, not part of this queue:** Board speed & feel, Workflow
+flexibility, and Keyboard-first ergonomics all re-verified with fresh Pass-12
+evidence (Swimlanes v2 desktop, the `enforceStatusChange` unification, and
+live Cmd-K typing, respectively). **Search & query power flipped
+Parity → Better this pass:** NLQL is now the one query language spanning
+board grouping, saved/shared filters, automation conditions, *and*
+dashboards — an architectural unification the incumbent's fragmented
+JQL/automation-builder/report-config trio doesn't match. **Onboarding stays
+Parity:** the persistent sidebar (Phases 1+2, shipped) durably fixes the
+founder's "buried features" complaint, but self-hosting setup friction is
+unchanged, so it's not enough alone to flip to Better. See `docs/VISION.md`
+§ Better-than-Jira scorecard for the full per-dimension evidence.
+
+**Shipped this wave, for the record (2026-07-02 founder directives — Kanban
+field-sections, Settings/Workflows robustness, NLQL-native dashboards, MCP
+parity, schema check-in):** **Kanban sections by field ("Swimlanes v2")
+shipped** — extends the group-by to Component/Sprint/Labels/custom SELECT
+fields plus a per-board default grouping (see the ✅ entry below, and item 1
+above for its mobile regression). **Settings** and **Workflows robustness
+passes** — both shipped (Settings 2026-07-02, Workflows 2026-07-03; see the
+✅ entries above). **Custom dashboards are NLQL-native** — every gadget,
+built-in or custom, is an NLQL query + a visualization (see the "Configurable
+dashboards — Phase 1" ✅ entry). **MCP coverage parity** — two sweeps this
+wave took the server from 55 → 76 → **85 tools** (the second sweep added 9
+dashboard tools alongside Phase 1's ship), with the standing rule that every
+feature's definition of done includes MCP exposure where it makes sense. DB
+schema overhaul: **answered no** — small additive tables only (Dashboard/
+DashboardGadget, GithubIntegration/IssueGithubLink), see the Phase 5 "DB
+schema check-in" bullet above. **Navigation & IA overhaul Phases 1+2 and
+light/dark mode all shipped 2026-07-02** and were independently re-verified
+by both Pass-12 audits (persistent sidebar closes the founder's "buried
+features" complaint; dark mode is thorough and token-driven across 6
+surfaces — modulo the CSP artifact gap in item 2 above). **CSV export
+column-completeness shipped** — re-verified this pass at 19 columns
+including Description, Component, Fix Versions, Parent, time estimates, and
+all custom fields (AUDIT-PRODUCT.md Pass 12); the README/first-impression
+surface overhaul remains owned by `oss-curator`, tracked there.
 
 Everything below this line documents what already shipped; it is not being
 rewritten, only re-prioritized going forward per the ordering above.
