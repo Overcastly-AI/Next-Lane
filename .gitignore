@@ -45,3 +45,6 @@ playwright-report/
 uploads/
 apps/api/uploads/
 dump.rdb
+
+# QA agents' transient browser-exploration scratch scripts (never deliverables)
+apps/web/_qa_*.mjs
