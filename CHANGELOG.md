@@ -195,6 +195,14 @@ development phase. A versioned release will be tagged once the v1 criteria in
 - **Tools for org entities** — manage sprints, statuses, labels, components, versions, automations, saved filters, custom fields.
 - **Tool for user lists** — list workspace members (for @mention and assignee suggestions in agents).
 
+### Added — GitHub integration (Phase 9 — Developer Graph v1)
+
+- **Per-project GitHub repo linking** — two-way connection with GitHub repositories; PRs, commits, and branches referencing an issue key (e.g. `NL-123`) automatically appear in the issue's Development section.
+- **Webhook receiver** — HMAC-verified inbound GitHub webhooks (Push and Pull Request events) with project-scoped issue-key extraction.
+- **Encrypted PAT storage** — GitHub Personal Access Tokens stored at rest with AES-256-GCM encryption; tokens never returned by any API response after saving.
+- **Settings UI** — project admins configure the repo and PAT from **Project Settings → GitHub**; webhook URL and secret auto-generated and displayed for GitHub repo setup.
+- **Development section on issues** — PR and commit links show in the issue drawer with title, state, author, and GitHub URL.
+
 ### Added — Developer experience
 
 - pnpm monorepo: `apps/api` (NestJS), `apps/web` (React + Vite), `apps/mcp` (MCP server), `packages/shared`.

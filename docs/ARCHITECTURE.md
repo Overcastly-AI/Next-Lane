@@ -33,7 +33,7 @@ Managed with **pnpm workspaces**.
 
 ## Backend (`apps/api`)
 
-- **NestJS** with the standard module/controller/service/dto pattern. Modules by domain: `auth`, `users`, `workspaces`, `projects`, `boards`, `sprints`, `issues`, `custom-fields`, `components`, `versions`, `labels`, `comments`, `issue-links`, `issue-templates`, `checklist`, `work-logs`, `workflows`, `statuses`, `personal-boards`, `saved-filters`, `sprints`, `standups`, `poker`, `automations`, `notifications`, `webhooks`, `share-tokens`, `api-tokens`, `analytics`, `reports`, `roadmap`, `attachments`, `audit`, `search`, `realtime`, `mail`, `redis`, and `prisma`. Auth includes an optional `oidc` sub-module (SSO/OIDC with generic provider discovery).
+- **NestJS** with the standard module/controller/service/dto pattern. Modules by domain: `auth`, `users`, `workspaces`, `projects`, `boards`, `sprints`, `issues`, `custom-fields`, `components`, `versions`, `labels`, `comments`, `issue-links`, `issue-templates`, `checklist`, `work-logs`, `workflows`, `statuses`, `personal-boards`, `saved-filters`, `sprints`, `standups`, `poker`, `automations`, `notifications`, `webhooks`, `share-tokens`, `api-tokens`, `analytics`, `reports`, `roadmap`, `attachments`, `audit`, `search`, `realtime`, `mail`, `redis`, `github`, and `prisma`. Auth includes an optional `oidc` sub-module (SSO/OIDC with generic provider discovery).
 - **Prisma** as the ORM and migration tool. The schema is the single source of truth for the data model.
 - **PostgreSQL** for persistence. JSONB is used for custom fields and color rules.
 - **Auth**: JWT access tokens + refresh tokens, password hashing with argon2/bcrypt, route guards for RBAC; optional OIDC/SSO with JIT user provisioning.
@@ -74,7 +74,7 @@ Core entities and relationships:
 - `Workspace` —< `Team` —< `TeamMember` >— `User` (sub-workspace groups for standups / poker / analytics)
 - `Project` —< `Issue`, `Status`, `Sprint`, `Board`, `Label`, `Component`, `Version`, `CustomFieldDefinition`, `SavedFilter`
 - `Issue`: `number` (per-project seq), `type` (TASK/BUG/STORY/EPIC/SUBTASK), `title`, `description`, `statusId`, `assigneeId`, `reporterId`, `priority`, `storyPoints`, `parentId` (self-FK, `onDelete: SetNull`), `sprintId`, `dueDate`, `rank` (fractional index), `customFields` (JSONB with GIN index), `componentId`, `searchVector` (generated tsvector, GIN indexed)
-- `Issue` —< `Comment` (authorId nullable, `onDelete: SetNull`), `Attachment` (uploaderId nullable, `onDelete: SetNull`), `ActivityLog` (actorId nullable, `onDelete: SetNull`), `Watcher`, `Notification`
+- `Issue` —< `Comment` (authorId nullable, `onDelete: SetNull`), `Attachment` (uploaderId nullable, `onDelete: SetNull`), `ActivityLog` (actorId nullable, `onDelete: SetNull`), `Watcher`, `Notification`, `IssueGithubLink` (two-way links to PRs/commits/branches, `onDelete: Cascade`)
 - `Issue` >—< `Label` (via `IssueLabel`), `Version` (via `IssueVersion`), `IssueLink` (directed links: BLOCKS, RELATES_TO, DUPLICATES, etc.)
 - `Status`: per-project, `category` (TODO / IN_PROGRESS / DONE), `createdAt` / `updatedAt`
 - `Sprint`: goal, start/end dates, `completedAt`, state (PLANNED/ACTIVE/COMPLETED), `updatedAt`
@@ -84,6 +84,9 @@ Core entities and relationships:
 - `Component`: project-scoped sub-areas with optional `defaultAssigneeId`
 - `Version` (aka Release): project-scoped, `VersionState` (UNRELEASED/RELEASED/ARCHIVED), M:N with Issue via `IssueVersion`
 - `Notification.projectId` now has a proper FK (`onDelete: Cascade`)
+- `GithubIntegration`: per-project webhook config (repo fullname, HMAC secret, AES-256-GCM encrypted PAT); `onDelete: Cascade` when project is deleted.
+
+**GitHub integration (Phase 9):** a webhook receiver processes inbound GitHub events (push, pull_request). Commit messages, PR titles, and branch names referencing an issue key (e.g. `NL-123`) trigger upsert of `IssueGithubLink` rows, visible in the issue's Development section. Every webhook is HMAC-verified against the secret before processing; PATs are encrypted at rest and never returned by the API.
 
 **Cascade / delete policy:** user deletion sets actor/author/uploader fields to null (`onDelete: SetNull`) rather than deleting history. Project deletion cascades to all project-scoped children. Workspace deletion cascades to projects (and thus everything). See `docs/DATA-MODEL-REVIEW.md` §3.3 for the full policy table.
 
