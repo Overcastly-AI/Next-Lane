@@ -14,6 +14,8 @@ const OTHER_PROJECT_ID = 'project-2';
 function makePrisma() {
   return {
     membership: { findUnique: jest.fn() },
+    // getEffectiveProjectRole consults the override table; null = inherit.
+    projectMembership: { findUnique: jest.fn().mockResolvedValue(null) },
     project: { findUnique: jest.fn() },
     githubIntegration: {
       findUnique: jest.fn(),
@@ -86,6 +88,20 @@ describe('GithubService', () => {
       expect(result?.webhookSecret).toBe('the-webhook-secret');
       expect(result?.repoFullName).toBe('acme/widgets');
       expect(result?.hasToken).toBe(true);
+    });
+
+    it('includes webhookSecret for a project-ADMIN-via-override caller (workspace MEMBER)', async () => {
+      jest
+        .spyOn(membership, 'assertProjectMember')
+        .mockResolvedValue({ workspaceId: 'ws-1' } as never);
+      prisma.membership.findUnique.mockResolvedValue({ role: Role.MEMBER });
+      prisma.projectMembership.findUnique.mockResolvedValue({
+        role: Role.ADMIN,
+      });
+      prisma.githubIntegration.findUnique.mockResolvedValue(integrationRow());
+
+      const result = await service.get('user-1', PROJECT_ID);
+      expect(result?.webhookSecret).toBe('the-webhook-secret');
     });
 
     it('omits webhookSecret for a MEMBER caller (read-only summary)', async () => {

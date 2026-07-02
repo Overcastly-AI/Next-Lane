@@ -6,7 +6,11 @@ import type { Request } from 'express';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { AuditService } from '../audit/audit.service';
-import { assertProjectMember, assertProjectRole } from '../common/membership.util';
+import {
+  assertProjectMember,
+  assertProjectRole,
+  getEffectiveProjectRole,
+} from '../common/membership.util';
 import { encryptGithubToken } from './github-crypto.util';
 import { verifyGithubSignature } from './github-signature.util';
 import { extractIssueNumbers } from './github-issue-key.util';
@@ -113,10 +117,15 @@ export class GithubService {
     req?: Request,
   ): Promise<GithubIntegrationDto | null> {
     const project = await assertProjectMember(this.prisma, userId, projectId);
-    const membership = await this.prisma.membership.findUnique({
-      where: { userId_workspaceId: { userId, workspaceId: project.workspaceId } },
-    });
-    const isAdmin = membership?.role === Role.ADMIN;
+    // Effective project role so a per-project ADMIN override entitles the
+    // user to the webhookSecret, consistent with assertProjectRole call sites.
+    const effective = await getEffectiveProjectRole(
+      this.prisma,
+      userId,
+      project.workspaceId,
+      projectId,
+    );
+    const isAdmin = effective?.role === Role.ADMIN;
 
     const row = await this.prisma.githubIntegration.findUnique({
       where: { projectId },

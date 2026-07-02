@@ -260,6 +260,15 @@ describe('WorkLogsService.update', () => {
     await expect(service.update(USER_MEMBER, WORKLOG_ID, { minutes: 99 })).rejects.toThrow(ForbiddenException);
   });
 
+  it('allows a workspace MEMBER elevated to project ADMIN via override to update any work log', async () => {
+    const prisma = makePrisma({ workLogAuthorId: USER_AUTHOR, userRole: Role.MEMBER });
+    (prisma as unknown as { projectMembership: { findUnique: jest.Mock } })
+      .projectMembership.findUnique.mockResolvedValue({ role: Role.ADMIN });
+    const service = new WorkLogsService(prisma);
+    const result = await service.update(USER_MEMBER, WORKLOG_ID, { minutes: 45 });
+    expect(result.minutes).toBe(45);
+  });
+
   it('rejects a VIEWER (non-author) with ForbiddenException', async () => {
     const service = new WorkLogsService(makePrisma({ workLogAuthorId: USER_AUTHOR, userRole: Role.VIEWER }));
     await expect(service.update(USER_VIEWER, WORKLOG_ID, { minutes: 10 })).rejects.toThrow(ForbiddenException);

@@ -4,6 +4,7 @@ import type { Request } from 'express';
 import { ProjectMembershipsService } from './project-memberships.service';
 import { SetProjectRoleOverrideDto } from './dto/set-project-role-override.dto';
 import { CurrentUser, AuthUser } from '../auth/current-user.decorator';
+import { RequireScope } from '../auth/require-scope.decorator';
 
 function extractIp(req: Request): string | null {
   const forwarded = req.headers['x-forwarded-for'];
@@ -23,11 +24,13 @@ function extractIp(req: Request): string | null {
 export class ProjectMembershipsController {
   constructor(private readonly projectMemberships: ProjectMembershipsService) {}
 
+  @RequireScope('projects:read')
   @Get('projects/:id/members')
   listMembers(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.projectMemberships.listMembers(user.id, id);
   }
 
+  @RequireScope('projects:write')
   @Put('projects/:id/members/:userId/role')
   setOverride(
     @CurrentUser() user: AuthUser,
@@ -45,6 +48,7 @@ export class ProjectMembershipsController {
     );
   }
 
+  @RequireScope('projects:write')
   @Delete('projects/:id/members/:userId/role')
   clearOverride(
     @CurrentUser() user: AuthUser,

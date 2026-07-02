@@ -8,6 +8,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import {
   assertProjectMember,
   assertProjectRole,
+  getEffectiveProjectRole,
 } from '../common/membership.util';
 import { Role } from '@next-lane/shared';
 import { toUserDto } from '../auth/auth.service';
@@ -155,21 +156,20 @@ export class WorkLogsService {
       workLogRef.projectId,
     );
 
-    const membership = await this.prisma.membership.findUnique({
-      where: {
-        userId_workspaceId: { userId, workspaceId: project.workspaceId },
-      },
-      select: { role: true },
-    });
-
-    // membership cannot be null here (assertProjectMember already confirmed it),
-    // but guard defensively to satisfy TypeScript and preserve 403 semantics.
-    if (!membership) {
+    // Effective project role, so a per-project override (elevate or restrict)
+    // applies here the same as at every assertProjectRole call site.
+    const effective = await getEffectiveProjectRole(
+      this.prisma,
+      userId,
+      project.workspaceId,
+      workLogRef.projectId,
+    );
+    if (!effective) {
       throw new ForbiddenException('Not a member of this project');
     }
 
     const isAuthor = workLogRef.userId === userId;
-    const isAdmin = membership.role === Role.ADMIN;
+    const isAdmin = effective.role === Role.ADMIN;
 
     if (!isAuthor && !isAdmin) {
       throw new ForbiddenException(
@@ -203,19 +203,18 @@ export class WorkLogsService {
       workLogRef.projectId,
     );
 
-    const membership = await this.prisma.membership.findUnique({
-      where: {
-        userId_workspaceId: { userId, workspaceId: project.workspaceId },
-      },
-      select: { role: true },
-    });
-
-    if (!membership) {
+    const effective = await getEffectiveProjectRole(
+      this.prisma,
+      userId,
+      project.workspaceId,
+      workLogRef.projectId,
+    );
+    if (!effective) {
       throw new ForbiddenException('Not a member of this project');
     }
 
     const isAuthor = workLogRef.userId === userId;
-    const isAdmin = membership.role === Role.ADMIN;
+    const isAdmin = effective.role === Role.ADMIN;
 
     if (!isAuthor && !isAdmin) {
       throw new ForbiddenException(
