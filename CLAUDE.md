@@ -9,6 +9,9 @@ Next Lane is an **open-source, self-hosted issue & project tracker** that runs l
 **North star: `docs/VISION.md`.** The product thesis — beat the dominant paid
 incumbent by exploiting four structural advantages it can't match (free &
 unlimited; your data/your compute; open & extensible; AI-native & agent-native).
+The operating question every decision answers is **"Is this better than Jira?"**
+— a daily-driver bar, not a cost argument; the Better-than-Jira scorecard in
+VISION.md keeps that answer honest and directs prioritization.
 The founder dreams in plain language; the **vision-steward** agent
 (`.claude/agents/vision-steward.md`) turns those ideas into VISION/ROADMAP/BACKLOG
 entries. Read VISION.md to understand *why* we're building what's in the roadmap.
@@ -21,7 +24,7 @@ You run this team. Do not wait to be told to optimize, fix process, or raise qua
 2. **Ship quality the *user* feels.** "Tests pass" ≠ "works for the user." QA must exercise the **real artifact** and **real-user behavior**: per-keystroke typing (not `.fill()`), desktop AND mobile, the actual `docker compose` build, real flows end-to-end, and **cross-page state coherence** — change global state on one surface, then verify every other surface after navigation, deep-link, AND reload (see `apps/web/e2e/workspace-switcher.spec.ts` for the canonical suite). The bugs that reached the user (focus loss, compose syntax, mobile overflow, missing UI, the workspace-selector desync) all passed "green" tests — close that gap.
 3. **No hand-waving.** Never dismiss a failing test/bug as "pre-existing" or "unrelated" without root-causing it. If it's real, fix it.
 4. **Parallel by default.** Use isolated worktrees + per-instance DBs/ports (`dev-up-instance.sh N`) to build multiple disjoint features at once. Serial is the exception.
-5. **Converge.** Drive toward the v1 release criteria in `docs/ROADMAP.md`, then polish — don't generate endless backlog without finishing.
+5. **Converge.** Drive toward the v1 release criteria in `docs/ROADMAP.md`, then polish — don't generate endless backlog without finishing. When prioritizing, the explicit test is **"Is this better than Jira?"** — work that flips a "behind" row on the VISION.md scorecard outranks new pillars and moonshots.
 6. **Keep docs honest** (see below) and **never push a red build.**
 
 ## Design elevation — CURRENT TOP PRIORITY (UI/UX)
@@ -102,7 +105,7 @@ shipped — that must never happen again.
 - **Every commit that lands a feature/fix MUST, in the same commit, update status in BOTH `docs/ROADMAP.md` and `docs/BACKLOG.md`.** Tick the item, move the phase forward. A PR/commit that ships work but leaves the roadmap stale is incomplete.
 - **`docs/ROADMAP.md` is the source of truth for "what phase are we in".** Its phase headers (✅/🚧/⬜) and "Current focus" line must always match reality (git history).
 - **Audit-and-fix every cycle:** every audit/groom pass reconciles `docs/ROADMAP.md` + `docs/BACKLOG.md` against `git log` and ticks/advances anything that shipped but wasn't recorded. This is the groomer's job (see `.claude/agents/backlog-groomer.md`) and part of every build agent's definition-of-done.
-- Definition of done for ANY change = builds + typecheck + unit/e2e green (desktop+mobile) **+ ROADMAP/BACKLOG updated** + committed & pushed.
+- Definition of done for ANY change = builds + typecheck + unit/e2e green (desktop+mobile) **+ ROADMAP/BACKLOG updated** **+ MCP exposure where sensible** (a new feature ships with matching `@next-lane/mcp` tooling, or an explicit "not agent-appropriate" note) + committed & pushed.
 
 ## Work as a dev team (use agents, skills, workflows, hooks)
 

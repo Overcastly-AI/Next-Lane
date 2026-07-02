@@ -78,6 +78,13 @@ someone else's server and the price grows with your team. Next Lane flips that. 
 runs entirely on your own machine via Docker, and because the marginal cost of a
 seat on *your* hardware is zero, it's free and unlimited by design.
 
+But free isn't the bar. The question every release is held to is: **is this better
+than the tracker you're paying for — as a daily driver?** Not cheaper: faster on the
+board, sharper in search, a workflow that bends to your process, and legible to the
+coding agents that now write half your code. Where the honest answer is "not yet,"
+that gap is the next thing we build (see the scorecard in
+[`docs/VISION.md`](./docs/VISION.md)).
+
 We don't try to out-checklist a 20-year-old incumbent. We win on four **structural
 advantages** a cloud-first, per-seat, closed product can't match (full thesis in
 [`docs/VISION.md`](./docs/VISION.md)):
@@ -260,10 +267,12 @@ Next Lane is built openly and incrementally. The shipped surface above is the
 foundation; here's where the structural advantages get spent (full plan, with status
 markers, in [`docs/ROADMAP.md`](./docs/ROADMAP.md) — driven by [`docs/VISION.md`](./docs/VISION.md)):
 
+- **🧭 Navigation & IA overhaul + light/dark mode** — a persistent sidebar that keeps every capability one click away on many-project, many-workspace instances, landing together with a light/dark theme pass on the design-token system.
+- **📊 NLQL-native dashboards** — configurable dashboards where every gadget, built-in or custom, is an NLQL query plus a visualization — the query language is the product's spine, not a bolt-on.
+- **🔗 Developer Graph, deepened** — GitHub two-way issue ↔ PR/commit/branch linking is shipped; next: live PR/CI status on cards, auto-transition on merge, smart-commits, and **GitLab / Gitea**.
 - **🤖 Autopilot** — a self-hosted AI teammate: private, unlimited, $0 AI (natural-language → NLQL, auto-triage, semantic dedupe, sprint risk radar) building further on the MCP-native foundation already shipped.
 - **Data ownership (Glass Box Phase 2)** — SQL / warehouse export, Grafana dashboards, and OpenTelemetry traces.
 - **📚 The Unbundle** — free what others sell separately: docs/wiki, whiteboard, a public roadmap + voting portal, and intake forms.
-- **🔗 Developer Graph** — two-way **GitHub / GitLab / Gitea** links, live PR/CI status on cards, auto-transition on merge.
 - **SAML & multi-provider SSO** — Phase 2 of the OIDC login work above, plus per-workspace/role JIT provisioning.
 
 Full plan with phase status markers: [`docs/ROADMAP.md`](./docs/ROADMAP.md) · vision and thesis: [`docs/VISION.md`](./docs/VISION.md).
