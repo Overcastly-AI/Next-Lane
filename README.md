@@ -99,7 +99,7 @@ advantages** a cloud-first, per-seat, closed product can't match (full thesis in
 ## 🔌 MCP-native: your coding agent can run the tracker
 
 Next Lane ships **`@next-lane/mcp`** — a first-party [Model Context
-Protocol](https://modelcontextprotocol.io) server with **85 tools** (36 read, 49
+Protocol](https://modelcontextprotocol.io) server with **88 tools** (37 read, 51
 write) that let Claude Desktop, Claude Code, or any MCP client **read *and write*
 your workspace**: issues, sprints, comments, worklogs, checklists, labels,
 components, versions, dashboards, saved NLQL filters, automations, GitHub links,
@@ -232,7 +232,7 @@ Other useful scripts: `pnpm build`, `pnpm lint`, `pnpm test`, `pnpm format`.
 | Frontend | React + Vite + TypeScript |
 | UI | Tailwind CSS + shadcn/ui · TanStack Query · dnd-kit |
 | Auth | JWT access token · SSO/OIDC · personal API tokens (PATs) |
-| Agents | MCP server (`apps/mcp`, stdio, 85 tools) over the same REST API |
+| Agents | MCP server (`apps/mcp`, stdio, 88 tools) over the same REST API |
 | Infra | Docker Compose · Helm / Kustomize for Kubernetes |
 
 ```mermaid
@@ -254,7 +254,7 @@ Next-Lane/
 ├── apps/
 │   ├── api/        # NestJS backend (REST + WebSocket)
 │   ├── web/        # React + Vite frontend
-│   └── mcp/        # MCP server (stdio, 85 tools) for AI agents
+│   └── mcp/        # MCP server (stdio, 88 tools) for AI agents
 ├── packages/
 │   └── shared/     # Shared TypeScript types / contracts
 ├── deploy/         # Helm chart + Kustomize base & overlays
