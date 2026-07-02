@@ -14,6 +14,28 @@ This section summarizes the major capabilities delivered in the pre-1.0
 development phase. A versioned release will be tagged once the v1 criteria in
 [`docs/ROADMAP.md`](./docs/ROADMAP.md) are complete.
 
+### Added — 2026-07-02
+
+**Configurable dashboards (Phase 1):**
+- **NLQL-native dashboards** — per-project dashboards where every gadget is an
+  NLQL query plus a visualization (STAT, TABLE, BREAKDOWN, or BURNDOWN). Gadgets
+  render with per-visualization configuration (grid layout, field grouping, column
+  selection, row limits). Invalid/unresolvable queries return per-gadget errors
+  instead of 500s.
+- **Dashboard UI** — new `/projects/:id/dashboards` page with gadget grid, create
+  modal, edit modal, and drag-and-drop gadget reordering. Sidebar/ProjectNav
+  navigation entries added (MEMBER+ to view, VIEWER read-only).
+- **MCP tooling** — 9 new dashboard and gadget CRUD tools (list/get/create/update
+  /delete dashboards and gadgets, plus get_dashboard_data for server-side
+  evaluation). MCP server now 85 tools (36 read, 49 write).
+- **Backend** — `apps/api/src/dashboards/` module with controller, service, DTOs,
+  and gadget evaluator (reuses shared validateQuery/filterIssues). 40+ new unit
+  tests. Schema: additive `Dashboard` and `DashboardGadget` models
+  (migration 20260702010000_add_dashboards).
+- **E2E tests** — 10 new desktop/mobile tests for dashboard create, STAT gadget
+  display, BREAKDOWN visualization, VIEWER read-only, per-gadget error handling,
+  and 393px no-overflow.
+
 ### Fixed — 2026-07-02
 
 **Settings robustness sweep:**
