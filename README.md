@@ -13,7 +13,7 @@ one tracker your coding agent can *read and write*, not just talk about.
 [![CI](https://github.com/Overcastly-AI/Next-Lane/actions/workflows/ci.yml/badge.svg)](https://github.com/Overcastly-AI/Next-Lane/actions/workflows/ci.yml)
 [![E2E](https://github.com/Overcastly-AI/Next-Lane/actions/workflows/e2e.yml/badge.svg)](https://github.com/Overcastly-AI/Next-Lane/actions/workflows/e2e.yml)
 [![MCP server](https://img.shields.io/badge/MCP-85%20tools-8A2BE2.svg)](./apps/mcp/README.md)
-[![Unit tests](https://img.shields.io/badge/unit%20tests-1511%2B-brightgreen.svg)](./docs/ROADMAP.md)
+[![Unit tests](https://img.shields.io/badge/unit%20tests-1521%2B-brightgreen.svg)](./docs/ROADMAP.md)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6.svg?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Docker](https://img.shields.io/badge/Docker-compose%20up-2496ED.svg?logo=docker&logoColor=white)](#-quickstart)
 [![Self-hosted](https://img.shields.io/badge/self--hosted-your%20data-success.svg)](#why-next-lane)

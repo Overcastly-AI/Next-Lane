@@ -39,7 +39,7 @@ Managed with **pnpm workspaces**.
 - **Auth**: JWT access tokens + refresh tokens, password hashing with argon2/bcrypt, route guards for RBAC; optional OIDC/SSO with JIT user provisioning.
 - **Workspace members**: `POST /workspaces/:id/members` invites a new member (rejects if already a member with 409); role changes routed to `PATCH /workspaces/:id/members/:membershipId`, which enforces a last-admin invariant (workspace never left with zero admins). Removal via `DELETE /workspaces/:id/members/:membershipId` respects the same guard.
 - **Status change enforcement**: a single unified `IssuesService#enforceStatusChange()` method gates status transitions across all UI surfaces (board drag-and-drop, triage picker, issue drawer status dropdown, bulk edit) against board-assigned named workflows and project-level legacy workflow rules. Ensures no surface can silently bypass SDLC enforcement.
-- **Realtime**: a Socket.io gateway broadcasts board/issue/workspace changes; Redis adapter enables horizontal scaling.
+- **Realtime**: a Socket.io gateway broadcasts board/issue/workspace/dashboard changes; Redis adapter enables horizontal scaling. Dashboard gadgets subscribe to project updates via `SocketEvents.DashboardUpdated` and refresh data on any issue mutation.
 - **Validation**: `class-validator` DTOs at the controller boundary.
 - **API docs**: Swagger/OpenAPI served at `/api`.
 
@@ -56,7 +56,7 @@ Issues on a board (and in a sprint/backlog) are ordered by a `rank` **string** c
 - **Socket.io client** subscribes to realtime board/issue/workspace updates.
 - Talks to the API at `VITE_API_URL`.
 - **Mermaid.js** for rendering diagrams in markdown descriptions and comments.
-- **Theming layer** (light/dark mode): Dispatch design system color scales (ink/slate/red/amber/emerald/green/blue/gray/orange/signal/brand) backed by CSS custom properties with dark palette (ink-scale shade roles, canvas/surface/shadow semantic tokens). `ThemeContext` manages user preference (light/dark/system via localStorage `nl.theme`); a synchronous bootstrap script in `index.html` applies `.dark` class before first paint (no flash). `ThemeToggle` rendered in sidebar utility area and header user menu. Dark-aware `applyBrandColor()` composes custom workspace brand colors correctly in dark mode.
+- **Theming layer** (light/dark mode): Dispatch design system color scales (ink/slate/red/amber/emerald/green/blue/gray/orange/signal/brand) backed by CSS custom properties with dark palette (ink-scale shade roles, canvas/surface/shadow semantic tokens). `ThemeContext` manages user preference (light/dark/system via localStorage `nl.theme`); a synchronous bootstrap script (`public/theme-init.js`, loaded as a self-hosted static file via `<script src>` in `index.html`) applies `.dark` class before first paint with no flash and satisfies a strict CSP `script-src 'self'`. `ThemeToggle` rendered in sidebar utility area and header user menu. Dark-aware `applyBrandColor()` composes custom workspace brand colors correctly in dark mode.
 - **Persistent left sidebar** (Navigation & IA Phase 1 & 2): `SidebarContext` provides workspace/project navigation, workspace switcher, personal section (My Work/My Board/Insights/Notifications), per-project views (Board/Backlog/Roadmap/Reports), and settings utility area. Desktop (lg+) shows a fixed sidebar collapsible to an icon rail with state persistence; mobile (below lg) uses an overlay drawer opened from the header hamburger button. State managed through context providers mounted above per-page remount boundaries. Phase 2 surfaces per-project Board/Backlog/Roadmap/Reports directly under active project; Branding link (admin-gated) sits beside Workspace settings.
 
 ## MCP Server (`apps/mcp`)
@@ -82,7 +82,7 @@ Core entities and relationships:
 - `Issue` >—< `Label` (via `IssueLabel`), `Version` (via `IssueVersion`), `IssueLink` (directed links: BLOCKS, RELATES_TO, DUPLICATES, etc.)
 - `Status`: per-project, `category` (TODO / IN_PROGRESS / DONE), `createdAt` / `updatedAt`
 - `Sprint`: goal, start/end dates, `completedAt`, state (PLANNED/ACTIVE/COMPLETED), `updatedAt`
-- `Board`: KANBAN or SCRUM, `filterQuery` (NLQL), `colorRules` (JSON), optional `savedFilterId` FK → `SavedFilter`
+- `Board`: KANBAN or SCRUM, `filterQuery` (NLQL), `colorRules` (JSON), optional `savedFilterId` FK → `SavedFilter`, optional `defaultGroupBy` (swimlane/grouping dimension: Assignee, Priority, Issue type, Epic, Component, Sprint, Labels, or custom SELECT field `cf:<fieldId>`). Swimlanes v2 allows per-board configuration of the grouping dimension; URL parameter `?group=` overrides the default.
 - `Dashboard`: per-project configurable analytics surface (name, order), MEMBER+ write / VIEWER read
 - `DashboardGadget`: NLQL-native widgets on dashboards (STAT/TABLE/BREAKDOWN/BURNDOWN visualizations), each with a query and per-viz config (grid position/size, field grouping, column selection)
 - `SavedFilter`: NLQL query owned by a user, optionally shared to a project; boards can reference it

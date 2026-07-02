@@ -67,6 +67,31 @@ development phase. A versioned release will be tagged once the v1 criteria in
   now have distinct headings, explanations, and uniquely labeled "+ Add transition"
   buttons.
 
+**CSP & realtime updates (Pass-12 engineering batch):**
+- **CSP artifact hardening** (P1) — dark-mode bootstrap moved from a CSP-blocked
+  inline `<script>` to a self-hosted `public/theme-init.js` loaded as a static
+  asset via `<script src>`, satisfying strict `script-src 'self'` outright.
+- **Dashboards realtime coverage** (P1) — dashboards had zero real-time Socket.io
+  coverage. Added `SocketEvents.DashboardUpdated`, emitted from every
+  `DashboardsService` CRUD mutation; dashboard gadgets refresh automatically when
+  any project issue changes (no page reload needed).
+- **BulkUpdate N+1 query fix** (P2) — `resolveEnforcedWorkflowId` in bulk-edit
+  was issuing one board/sprint query per issue. Fixed via
+  `buildBulkWorkflowResolution()` (O(1) queries per batch, not O(issues)).
+
+**Mobile board toolbar regressions (Pass-12 product batch):**
+- **Invisible dropdowns** (P1) — board toolbar menus (Group by, Labels, Type, Priority,
+  saved filters, NLQL help) were plain `position: absolute` boxes that painted zero
+  pixels on a real 393px phone. Fixed with a new portalled, viewport-clamped
+  `<DropdownPanel>` component (positions `fixed` instead, flipping above the trigger
+  when there's no room below).
+- **Filter chip row scrolling** — quick-filter chip row now scrolls properly
+  (`overflow-x: auto` + `shrink-0` chips + `.nl-scroll` thin-scrollbar treatment);
+  was silently clipping "Recently updated" off-canvas.
+- **Sidebar auto-collapse at 1024px** — sidebar now collapses to icon rail by default
+  at the 1024-1279px "small laptop" breakpoint (unless user has an explicit preference
+  saved); fixes cramped 3-column board at 1024x768 resolution.
+
 **Docs-site mobile menu:**
 - Fixed dead mobile navigation menu on the docs site. The hamburger now opens a
   full-height menu (backdrop-filter containing-block fix).
@@ -134,6 +159,12 @@ development phase. A versioned release will be tagged once the v1 criteria in
   right now).
 - **Backlog view** with keyboard triage mode (j/k/s/p/a/l shortcuts).
 - **Sprints** — create, start, complete; sprint goals and date ranges.
+- **Kanban sections by field — Swimlanes v2** — group board issues by Assignee,
+  Priority, Issue type, Epic, Component, Sprint, Labels, or custom SELECT fields.
+  Each board has an optional `defaultGroupBy` setting; URL parameter `?group=`
+  overrides. Labels surfaces each issue in every one of its label lanes. Custom
+  SELECT fields render one lane per option (field order) plus a "None" lane for
+  unset values.
 
 ### Added — Issues
 
