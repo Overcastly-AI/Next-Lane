@@ -7,6 +7,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const fileType = require('file-type') as typeof import('file-type');
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   assertWorkspaceMember,
@@ -86,17 +87,34 @@ export class WorkspacesService {
   }
 
   async create(userId: string, dto: CreateWorkspaceDto): Promise<WorkspaceDto> {
-    const slug = await this.uniqueSlug(dto.slug ?? slugify(dto.name));
-    const workspace = await this.prisma.workspace.create({
-      data: {
-        name: dto.name,
-        slug,
-        memberships: {
-          create: { userId, role: Role.ADMIN },
-        },
-      },
-    });
-    return toWorkspaceDto(workspace);
+    const base = dto.slug ?? slugify(dto.name);
+    // uniqueSlug() is a read-then-write: two concurrent creates with the same
+    // name can both see the slug as free, and the loser hits the unique
+    // constraint (P2002). Retry with a fresh suffix instead of surfacing a
+    // spurious conflict to the user.
+    for (let attempt = 0; ; attempt++) {
+      const slug =
+        attempt === 0
+          ? await this.uniqueSlug(base)
+          : `${base || 'workspace'}-${Date.now().toString(36)}${attempt}`;
+      try {
+        const workspace = await this.prisma.workspace.create({
+          data: {
+            name: dto.name,
+            slug,
+            memberships: {
+              create: { userId, role: Role.ADMIN },
+            },
+          },
+        });
+        return toWorkspaceDto(workspace);
+      } catch (err) {
+        const isSlugCollision =
+          err instanceof Prisma.PrismaClientKnownRequestError &&
+          err.code === 'P2002';
+        if (!isSlugCollision || attempt >= 3) throw err;
+      }
+    }
   }
 
   async findOne(userId: string, id: string): Promise<WorkspaceDto> {

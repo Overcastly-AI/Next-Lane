@@ -121,6 +121,59 @@ test.describe('Personal board — desktop', () => {
     ).toBeVisible({ timeout: 8_000 });
   });
 
+  test('typing REAL keystrokes with spaces works in the edit modal', async ({
+    page,
+    request,
+  }) => {
+    // Regression (founder-reported 2026-07-02): dnd-kit's KeyboardSensor
+    // preventDefaulted Space as a drag activator; the edit modal renders
+    // inside the sortable card wrapper and portal events bubble through the
+    // REACT tree, so every space typed in the modal was swallowed. `.fill()`
+    // masked it — this test types per-keystroke on purpose.
+    const user = await registerNewUser(request, 'pb-spaces');
+    await login(page, { email: user.email, password: user.password });
+    await page.goto('/my-board');
+
+    await expect(page.getByTestId('personal-board')).toBeVisible({
+      timeout: 15_000,
+    });
+    await page.getByTestId('personal-add-card').first().click();
+    const input = page.getByTestId('personal-add-card-input');
+    await input.pressSequentially('spaced out card', { delay: 15 });
+    await expect(input).toHaveValue('spaced out card');
+    await page.getByTestId('personal-card-save').first().click();
+
+    const card = page
+      .getByTestId('personal-card')
+      .filter({ hasText: 'spaced out card' })
+      .first();
+    await expect(card).toBeVisible({ timeout: 8_000 });
+    await card.hover();
+    await card.getByRole('button', { name: /edit card/i }).click();
+
+    const modal = page.getByRole('dialog', { name: /edit card/i });
+    await expect(modal).toBeVisible();
+
+    // Title: per-keystroke typing, spaces must land.
+    const titleInput = modal.getByLabel(/title/i);
+    await titleInput.clear();
+    await titleInput.pressSequentially('two words here', { delay: 20 });
+    await expect(titleInput).toHaveValue('two words here');
+
+    // Notes: same, in the textarea.
+    const notesInput = modal.getByLabel(/notes/i);
+    await notesInput.click();
+    await notesInput.pressSequentially('note with spaces', { delay: 20 });
+    await expect(notesInput).toHaveValue('note with spaces');
+
+    await modal.getByRole('button', { name: /save/i }).click();
+    await expect(
+      page
+        .getByTestId('personal-card-title')
+        .filter({ hasText: 'two words here' }),
+    ).toBeVisible({ timeout: 8_000 });
+  });
+
   test('can set a color and due date on a card', async ({ page, request }) => {
     const user = await registerNewUser(request, 'pb-meta');
     await login(page, { email: user.email, password: user.password });

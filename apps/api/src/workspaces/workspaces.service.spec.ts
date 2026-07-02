@@ -532,3 +532,60 @@ describe('WorkspacesService.resolveLogo()', () => {
     ).not.toHaveBeenCalled();
   });
 });
+
+// ── create(): slug-collision retry ───────────────────────────────────────────
+
+describe('WorkspacesService.create — concurrent slug collision', () => {
+  const { Prisma } = jest.requireActual('@prisma/client') as typeof import('@prisma/client');
+
+  function p2002(): Error {
+    return new Prisma.PrismaClientKnownRequestError('unique constraint', {
+      code: 'P2002',
+      clientVersion: 'test',
+    });
+  }
+
+  function makeCreatePrisma(createImpl: jest.Mock) {
+    return {
+      // uniqueSlug probe: slug always looks free (that's the race).
+      workspace: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: createImpl,
+      },
+    } as unknown as PrismaService;
+  }
+
+  it('retries with a fresh suffix when the winning insert takes the slug (P2002)', async () => {
+    const created = { ...makeWorkspaceRow(), slug: 'alpha-retry' };
+    const create = jest
+      .fn()
+      .mockRejectedValueOnce(p2002())
+      .mockResolvedValueOnce(created);
+    const svc = makeService(makeCreatePrisma(create));
+
+    const dto = await svc.create(ADMIN_ID, { name: 'Alpha' });
+
+    expect(create).toHaveBeenCalledTimes(2);
+    // Second attempt must NOT reuse the first (taken) slug.
+    const firstSlug = (create.mock.calls[0][0] as { data: { slug: string } }).data.slug;
+    const secondSlug = (create.mock.calls[1][0] as { data: { slug: string } }).data.slug;
+    expect(secondSlug).not.toBe(firstSlug);
+    expect(dto.slug).toBe('alpha-retry');
+  });
+
+  it('gives up after bounded retries and surfaces the error', async () => {
+    const create = jest.fn().mockRejectedValue(p2002());
+    const svc = makeService(makeCreatePrisma(create));
+
+    await expect(svc.create(ADMIN_ID, { name: 'Alpha' })).rejects.toThrow('unique constraint');
+    expect(create.mock.calls.length).toBeLessThanOrEqual(5);
+  });
+
+  it('does not retry non-P2002 errors', async () => {
+    const create = jest.fn().mockRejectedValue(new Error('db down'));
+    const svc = makeService(makeCreatePrisma(create));
+
+    await expect(svc.create(ADMIN_ID, { name: 'Alpha' })).rejects.toThrow('db down');
+    expect(create).toHaveBeenCalledTimes(1);
+  });
+});

@@ -1898,3 +1898,264 @@ features the current buyer segment already has enough of.
 - "Board health" proactive nudge banner (stale/unassigned/blocked-too-long) — P3 · M · New ideation; turns existing analytics/automation data into a proactive signal
 - Inline card context menu (quick sprint/epic/assignee) — P3 · S · New ideation; removes clicks from the most repetitive daily board action
 - Public embeddable project status page (share-token reuse) — P3 · M · New ideation; strong self-hosted-but-professional story for external stakeholders
+
+---
+
+## 2026-07-01 — Pass 11 (full-functionality audit, cross-page coherence focus)
+
+**Trigger.** The founder caught a real bug cluster QA had missed: the workspace
+selector's header chip and the dashboard's own selector were two unsynced states,
+had no persistence across reload, and the chip misreported the workspace while
+viewing a project. That fix landed in `c8bf9c8` immediately before this pass. This
+pass's mandate: verify the fix, then hunt for the *rest* of that bug class —
+"each page works in isolation, but state is incoherent across pages/navigation/
+reload" — across the whole product, plus a general functionality sweep.
+
+**Method.** Registered a fresh user via `POST /api/auth/register`, created two
+workspaces ("Workspace A/B Coherence Test") each with one project (Alpha/Bravo)
+via the API to get a clean two-tenant fixture (`/tmp/audit-product/scenario.json`),
+then drove the real UI with Playwright (`chromium`, desktop 1440×900 and mobile
+393×851) — deep-linking directly into every project-scoped and workspace-scoped
+page while deliberately leaving the "active workspace" pointed at the *other*
+workspace, the way a user would after opening a bookmark, a notification link, or
+a second browser tab. Also re-tested the original bug's exact repro (dashboard
+`<select>` vs. header chip sync), the delete-active-workspace and
+delete-last-workspace heal paths, sprint creation, and the two features shipped
+immediately before this pass (blocked-issue board badge, custom-field card chips)
+to confirm they work as advertised. Also logged into the demo account to
+re-quantify the workspace-list scaling problem flagged in Pass 9/10. Screenshots
+in `/tmp/audit-product/*.png` (ephemeral scratch dir, referenced by number below).
+
+### Headline: the workspace-chip fix was real but incomplete — 7 of 12 workspace/project-scoped pages still lie
+
+`c8bf9c8` added a `useSyncActiveWorkspace(workspaceId)` hook and wired it into
+**8** pages: `BoardPage`, `BacklogPage`, `TriagePage`, `SettingsPage` (project
+settings), `AutomationsPage`, `StandupsPage`, `PokerStartPage`, `PokerSessionPage`.
+It did **not** wire it into `ReportsPage`, `RoadmapPage`, or `ProjectAnalyticsPage`
+(all project-scoped — trivial to fix, same one-line pattern), nor into any of the
+four **workspace-scoped** admin pages: `WorkspaceMembersPage`,
+`WorkspaceAuditLogPage`, `WorkspaceSettingsPage`, `WorkspaceBrandingPage` (these
+already have `workspaceId` from the route and need a plain
+`setActiveWorkspaceId(workspaceId)` on mount — no lookup required).
+
+**Repro (P1-1):** With two workspaces A (active) and B, deep-link to
+`/projects/{bravoProjectId}/reports` (Bravo is in Workspace B). The breadcrumb
+correctly reads "Bravo Project," but the header chip still reads "Workspace A
+Coherence Test." Opening the chip's dropdown shows **Workspace A checked as
+active** while you are unambiguously inside a Workspace B project.
+Screenshots: `03-reports-projB-direct.png`, `04-roadmap-projB-direct.png`,
+`05-analytics-projB-direct.png`, `14-switcher-open-on-projB-reports.png` (the
+clearest single piece of evidence — checkmark on the wrong workspace).
+
+**Repro (P1-2):** Deep-link to `/workspaces/{wsB.id}/settings` while active is A.
+The page body correctly says "Delete this workspace ... Workspace B Coherence
+Test" but the header chip still says "Workspace A." Same for `/members`,
+`/audit-log`, `/branding`. Screenshots: `06-members-wsB-direct.png`,
+`07-audit-wsB-direct.png`, `08-wssettings-wsB-direct.png`,
+`09-branding-wsB-direct.png`. This is the single most dangerous instance of the
+bug class: the **danger-zone delete-workspace page** is exactly where a user
+glances at the header to double-check where they are before clicking a
+destructive red button. (The actual delete action is safe — it's route-scoped
+and requires typing the workspace name to confirm — but the header actively
+undermines that confirmation ritual by showing the wrong workspace name right
+next to it.)
+
+**Repro (P1-3, consequence of P1-1):** From the wrongly-labeled Reports page,
+click the "Projects" breadcrumb link (`ReportsPage.tsx:229`, `<Link to="/">`).
+It navigates to `/` (the dashboard), which reads the same stale context — so a
+user trying to go "back to my projects" from Bravo Project (Workspace B) can
+silently land on **Workspace A's** dashboard/project list instead, with no
+transition cue that they changed tenants. Screenshot:
+`13-after-click-projects-breadcrumb.png`.
+
+**Confirmed still correct (no regression):** `BoardPage`, `BacklogPage`,
+`TriagePage` all synced correctly on deep-link (screenshots `02-board-projB.png`,
+`23-backlog-projB.png`, `28-triage-projB.png`). The original bug's exact repro —
+dashboard `<select>` vs. header chip — is genuinely fixed and stays in sync live
+without navigation (`22-dashboard-select-sync.png`). Reload persistence and
+delete-active-workspace healing both work. **Delete-the-last-workspace** (an edge
+case not explicitly called out in the fix commit) also heals cleanly: deleting a
+user's only workspace lands them back on the onboarding "Welcome to Next Lane"
+screen with a freshly auto-created default workspace, no crash, no blank state
+(`40-after-delete-last-workspace.png`). Board-level state (selected board,
+NLQL/text filter) correctly persists via URL query params and per-project
+`localStorage` across navigation and reload — this part of the "coherence"
+surface is well-built and was not regressed.
+
+**Secondary finding (P2):** `WorkspaceBrandingPage`'s `handleSave`/`handleReset`
+call `setActiveWorkspaceId(workspaceId)` as a *side effect* of saving or
+resetting the brand color (`WorkspaceBrandingPage.tsx:237,254`) — meaning simply
+saving a color on a workspace you're not "in" silently and permanently (it's
+persisted to `localStorage`) switches your global active workspace, with no
+explicit "switch workspace" affordance, confirmation, or even a toast that says
+so. This reads as an accidental workaround for the exact bug above (force a sync
+after a mutation) rather than an intentional feature, and it's the wrong fix — it
+should sync on page **load**, not smuggle a workspace switch into a color-save
+mutation.
+
+**Compounding finding on mobile (P2):** At 393px, the header breadcrumb has so
+little space that "Bravo Project" collapses to **"Pro..."** (unreadable) right
+next to a chip truncated to "Workspace ..." — so on mobile a user has almost no
+way to visually confirm which project or workspace they're looking at without
+opening the switcher dropdown. This isn't a new regression (it's a width/truncation
+consequence of the existing layout) but it materially worsens the severity of
+P1-1/P1-2 on the platform where users are least equipped to double-check via a
+wide browser tab title or URL bar. Screenshot: `15-mobile-reports-projB.png`,
+`16-mobile-switcher-open.png` (same wrong-workspace-checked bug, reproduced on
+mobile).
+
+### Other functionality verified this pass
+
+- **Board fixes from Pass 10 confirmed shipped and working.** The mobile board
+  toolbar overflow/overlap bug (Pass 10's #1 finding) is genuinely fixed — the
+  Colors/Export/Import/Create-issue row now wraps cleanly into its own rows at
+  393px with no overlap (`34-mobile-board.png`). The blocked-issue board badge
+  and custom-field card-face chip (Pass 10's #2 and #3 recommendations) are both
+  shipped and correctly rendered: a card with a `showOnCard` custom field shows a
+  "Severity: High" chip, and a card with an unresolved `BLOCKED_BY` link shows a
+  red "Blocked" badge, both visible while scanning the board without opening a
+  card (`31-board-cards-cf-blocked.png`). Good, fast turnaround on two of last
+  pass's highest-ranked recommendations.
+- **Sprint creation** works end-to-end from the Backlog page (name/goal/dates
+  modal, required-field validation via native HTML validation, sprint appears in
+  the sprint list immediately after create).
+- **Notification unread-count coherence is well-built** — `useNotifications` and
+  the unread-count query share TanStack Query cache keys and every
+  mark-as-read/mark-all-read mutation invalidates `qk.unreadCount`
+  (`apps/web/src/api/notifications.ts`), so the header bell badge and the
+  Notifications page can't drift out of sync. This is the *correct* pattern the
+  workspace-chip bug should have used from the start (a single source of truth
+  invalidated on mutation) instead of duplicating local state.
+- **My Work / Notifications / Personal Analytics (Insights) are correctly
+  workspace-agnostic** — they query "across all projects" by design and say so
+  in their empty states, and clicking into an issue from either page correctly
+  routes to `/projects/{id}/board?issue={id}`, which re-syncs the workspace chip
+  via `BoardPage`'s hook. No coherence bug in this direction.
+- **Quick Links are per-user, not per-workspace** — correctly workspace-agnostic,
+  no coherence concern.
+- **Fresh registration onboarding is unchanged and still strong** — clean
+  "Welcome to Next Lane" panel, 3 feature callouts, "Create your first project"
+  CTA, zero dead ends (`21-after-register.png`).
+- **Demo account workspace-switcher scaling re-confirmed, now quantified.** The
+  demo account's switcher dropdown currently lists **50+** entries — dozens of
+  `Assignee Test <timestamp>`, `Tenant Test A/B <timestamp>`, `Role Test
+  <timestamp>` junk workspaces from prior QA runs — in one long unstyled list
+  with no search box, no grouping beyond alphabetical-ish insertion order, no
+  archive/delete-from-list affordance, and no visual distinction between a real
+  workspace and a test fixture (`42-demo-ws-switcher.png`). This is dev-data
+  pollution, not strictly a shipped-product bug, but it is a real, live
+  demonstration of a **product gap**: there is no workspace search/filter in the
+  switcher, which will bite any real self-hoster who accumulates >15-20
+  workspaces (agencies, consultancies). Matches Pass 9/10; re-flagging because it
+  has visibly gotten worse (more QA runs since Pass 10) and remains unaddressed.
+- **False alarm, ruled out:** an apparent "Insights" nav item stuck in a
+  hover/active state across unrelated pages turned out to be a stationary
+  Playwright virtual-cursor artifact (confirmed by moving the mouse away and
+  re-screenshotting, `43-nav-mouse-away.png`) — not a real product bug. Noted here
+  so a future audit doesn't waste time rediscovering the same false lead.
+
+### Ratings (Pass 11)
+
+| Area | Score | Note |
+|---|---|---|
+| Auth / onboarding | 5 | Unchanged from Pass 10 — register → empty workspace → first-project flow is clean, zero dead ends. |
+| **Cross-page / cross-navigation state coherence** | **2** | New dedicated rating this pass. The exact bug class the founder flagged is still present on 7 of 12 workspace/project-scoped pages (Reports, Roadmap, Project Analytics, Members, Audit log, Settings, Branding) — the header chip is a facade that only some pages bother to keep honest. The fix pattern exists and works; it just wasn't applied everywhere. |
+| Board (desktop) | 5 | Confirmed all Pass 9/10-rated capabilities still work; blocked badge + custom-field chip now live on cards, closing two Pass-10 gaps. |
+| Board (mobile) | 4 | Pass 10's overflow/overlap regression is fixed. Docked at 4, not 5, because of the breadcrumb-truncation-plus-wrong-chip compounding issue noted above. |
+| Backlog / sprints | 4 | Sprint create works; workspace-chip sync correct on this page (part of the original fix). Unchanged otherwise from Pass 9/10. |
+| Triage | 4 | Functions correctly, workspace-chip sync correct (part of the original fix). |
+| Reports / Roadmap / Project Analytics | 3 | Functionally correct (data is route-scoped, not context-scoped, so the numbers shown are right) but **all three actively display the wrong workspace name in the header** on direct navigation — a trust/coherence defect layered on top of otherwise-solid Pass 9/10 features. |
+| Workspace admin (Members/Audit log/Settings/Branding) | 3 | Functionally correct (mutations are route-scoped) but all four pages fail to sync the header chip on load; General Settings' danger-zone page is the highest-stakes place for this to be wrong. |
+| Notifications | 5 | Confirmed well-architected: shared query-cache keys keep the bell badge and inbox page perfectly in sync — the pattern the workspace context should have followed from day one. |
+| My Work / Personal Analytics / Personal Board | 4 | Correctly workspace-agnostic; issue links from these pages correctly re-sync the workspace chip via the board route. Unchanged from Pass 9/10 otherwise. |
+| Onboarding / empty states | 5 | Unchanged — still a genuine strength. |
+| Workspace switcher at scale | 2 | Reconfirmed and now quantified: 50+ entries, zero search/filter/grouping in the demo account. Real self-hosters doing multi-tenant/agency work will hit this. |
+
+### Parity Scorecard (Pass 11 — re-verified, deltas from Pass 10 noted)
+
+| Capability | Our depth | Leader baseline | Gap | Delta |
+|---|---|---|---|---|
+| Multiple boards / board types | 5 | 5 | none | unchanged |
+| Configurable columns/swimlanes | 5 | 5 | none | unchanged |
+| Query language (NLQL) + saved/shared filters | 5 | 5 | none | unchanged |
+| Custom fields (definition + input types + card display) | 5 | 5 | none | **closed this pass** — card-face `showOnCard` chip verified live, was the last open item |
+| Card color rules | 5 | 5 | none | unchanged |
+| Card-level link/dependency indicator | 5 | 5 | none | **closed this pass** — blocked badge verified live |
+| Configurable statuses/transitions + gates | 5 | 5 | none | unchanged |
+| Automation rule engine | 4 | 5 | no scheduled/time trigger | unchanged, not retested this pass (no code change since Pass 10) |
+| Dashboards/gadgets | 3 | 5 | fixed sections, no gadget grid | unchanged |
+| Issue depth (components/versions/bulk/links/watchers/time) | 5 | 5 | none | unchanged |
+| Permissions granularity | 3 | 5 | no per-project role override | unchanged |
+| **Cross-surface state coherence (active workspace, active tenant context)** | **2** | 5 | **header/chip lies on 7 of 12 workspace-scoped pages; no dedicated audit lens for this before this pass** | **new benchmark row — this is the class of defect the founder specifically asked us to hunt for, and it's a real, current, unfixed gap** |
+| Mobile board toolbar | 5 | 5 | none | **closed since Pass 10** |
+| Import/export | 4 | 5 | file-based only, no live OAuth pull | unchanged |
+| Workspace-switcher scale (search/filter for many workspaces) | 2 | 4 | flat unstyled list, no search, confirmed 50+ entries in a real account | unchanged from Pass 9/10, now quantified |
+
+### Top gaps — prioritized backlog candidates
+
+| Rank | Item | Why it matters (user value) | Size | Area |
+|---|---|---|---|---|
+| 1 | **Finish the workspace-chip sync fix on the remaining 7 pages** — add `useSyncActiveWorkspace(project?.workspaceId)` to `ReportsPage`, `RoadmapPage`, `ProjectAnalyticsPage` (same one-line pattern already used on 8 sibling pages), and add a direct `setActiveWorkspaceId(workspaceId)` on mount to `WorkspaceMembersPage`, `WorkspaceAuditLogPage`, `WorkspaceSettingsPage`, `WorkspaceBrandingPage` (they already have `workspaceId` from the route — no lookup needed, just call it on load instead of only as a save side effect on `WorkspaceBrandingPage`) | This is the exact bug class the founder caught, still open on the majority of workspace/project-scoped surfaces. A user cannot trust the header to tell them where they are — and the worst instance is the "Delete this workspace" danger-zone page, where believing the header over the page body could genuinely confuse someone about which tenant they're destroying. | S | Cross-page coherence |
+| 2 | **Fix `WorkspaceBrandingPage`'s save-triggers-workspace-switch side effect** — remove `setActiveWorkspaceId(workspaceId)` from `handleSave`/`handleReset`; rely on the load-time sync from item 1 instead | Saving a brand color shouldn't have the surprising, undocumented, persisted side effect of switching the user's global active workspace. Small but a real "state changed without me asking" defect once item 1 exists to make it redundant anyway. | S | Cross-page coherence |
+| 3 | **Workspace-switcher search/filter for scale** — add a text filter input at the top of the chip dropdown once workspace count exceeds ~8-10, matching the pattern already used in NLQL/project pickers elsewhere in the app | Directly reproducible today: the demo account's switcher is a 50+-entry unstyled list with no way to find a workspace by typing. Any self-hoster running an agency/consultancy pattern (the same audience item permissions-granularity is meant to serve) will hit this quickly, and it undermines confidence in the workspace model at exactly the scale where it matters most. | S | Workspace admin |
+| 4 | **Mobile header identity legibility** — when width is too narrow to show the full breadcrumb, prefer truncating the *workspace* name (which is also in the chip) over the *project* name (which is the primary "where am I" signal on a project-scoped page), or collapse to an icon + tooltip/long-press instead of an unreadable 3-character fragment | "Pro..." tells a mobile user nothing; combined with gap #1, mobile users currently have the least reliable "where am I" signal of any surface in the product. Cheap layout fix, meaningful trust improvement. | S | Mobile / navigation |
+| 5 | **Configurable dashboard (gadget grid) for the Pulse home page** — carried forward from Pass 8/9/10, still the last flat-3 structural parity gap; not retested this pass (no code change) but remains open | Reinforces three consecutive passes' finding: the retention surface still can't be customized. | L | Dashboards |
+| 6 | **Scheduled/time-based automation trigger** — carried forward from Pass 9/10, not retested this pass (no code change) | SLA/stale-issue/due-date automation patterns remain structurally impossible with reactive-only triggers. | M | Automation |
+| 7 | **Per-project role override** — carried forward from Pass 9/10, not retested this pass (no code change) | Agencies/consultancies running multiple clients in one workspace still can't scope a Viewer to one project. | L | Permissions |
+
+### Ideation — 3 ambitious new features/UX improvements (Pass 11)
+
+1. **A visible, always-correct "you are here" breadcrumb component** — rather than
+   patching each page's sync call one at a time (the root cause of this pass's
+   headline finding), introduce a single `<TenantBreadcrumb>` component that
+   *derives* workspace/project identity from the route params and a fetch, never
+   from local/context state that pages have to remember to update. Route-derived
+   truth cannot drift the way a shared-but-optionally-synced context can. This
+   would retire the whole class of bug structurally instead of chasing it page by
+   page, and is a natural companion to fixing gap #1 above — worth considering as
+   the actual long-term fix rather than the incremental one.
+2. **A lightweight "workspace switcher" telemetry/guard for destructive actions**
+   — on any danger-zone action (delete workspace, delete project, bulk-delete
+   issues), render the target's identity inline in the confirm button itself
+   ("Delete **Workspace B Coherence Test**") sourced from the same route data as
+   the page body, and require it to literally match what's typed — which
+   `WorkspaceSettingsPage` already does well for delete. Extend that same
+   type-to-confirm pattern to project deletion and any other irreversible action
+   that doesn't have it yet, so the header's correctness stops being
+   safety-critical at all.
+3. **A "recently visited" workspace/project switcher** — instead of (or in
+   addition to) the flat A-Z workspace list, surface the last 3-5
+   workspaces/projects visited at the top of both the header chip and the
+   command palette, the way browser tab-switchers and IDE "recent files" do. This
+   directly defuses the 50+-entry scaling problem (gap #3) without requiring a
+   user to type a search query for the workspace they were just in, and is a
+   natural, cheap complement to a text-search filter.
+
+### Direction — next quarter
+
+The core tracker's feature surface is genuinely strong and two more Pass-10
+recommendations shipped fast (blocked badge, custom-field card chip) — that
+velocity is good. But this pass's headline finding is a warning: a UI built by
+composing many independently-correct pages, each fetching its own data and
+optionally syncing a shared "current tenant" pointer, will keep producing this
+exact bug class every time a new page is added unless the sync becomes
+structural rather than opt-in. The immediate priority is closing the remaining
+7 pages (gap #1 — genuinely an S-sized, one-afternoon fix) so the founder's
+original report is *fully* resolved, not just majority-resolved. The medium-term
+priority is the structural fix in Ideation #1 — a route-derived breadcrumb that
+can't drift — so this doesn't recur the next time someone ships a new
+project-scoped or workspace-scoped page. After that, return to the Pass 10
+backlog (configurable dashboards, scheduled automation, per-project roles) which
+remains accurate and unretested this pass since no code changed there.
+
+### Backlog-Groomer Ingest — Pass 11 (title · priority · size · rationale)
+
+- Finish workspace-chip sync on Reports/Roadmap/Project-Analytics/Members/Audit-log/Settings/Branding pages — P1 · S · Same bug class the founder just caught, still open on 7 of 12 scoped pages; worst instance is the workspace-delete danger-zone page
+- Remove WorkspaceBrandingPage's save-triggers-workspace-switch side effect — P1 · S · Saving a brand color silently and persistently switches the user's global active workspace with no confirmation
+- Workspace-switcher search/filter — P2 · S · Reproduced live: 50+ unstyled entries in the demo account, no way to search; blocks agency/multi-tenant self-hosters
+- Mobile header: prefer truncating workspace name over project name in the breadcrumb — P2 · S · "Pro..." gives mobile users zero identity signal, compounding the coherence bug above
+- Route-derived `<TenantBreadcrumb>` component (structural fix) — P2 · M · Retires this entire bug class instead of chasing it page-by-page every time a new scoped page ships
+- Recently-visited workspace/project switcher — P3 · S · New ideation; cheap complement to the search filter for the same scaling problem
+- Configurable dashboard / gadget grid for Pulse home — P2 · L · Carried forward from Pass 8/9/10, still the last flat-3 structural parity gap, unretested this pass
+- Scheduled/time-based automation trigger — P2 · M · Carried forward from Pass 9/10, unretested this pass
+- Per-project role override — P2 · L · Carried forward from Pass 9/10, unretested this pass

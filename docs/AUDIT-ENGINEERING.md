@@ -2423,3 +2423,332 @@ action.
 - **Extract a shared `useOptimisticReorder` hook for fractional-rank drag lists** · P1 · M · Second independent DnD+optimistic-update implementation already has a bug the first one avoided; structural fix prevents a third recurrence
 - **Workspace-export-before-delete flow in the delete-confirmation dialog** · P2 · M · De-risks the single most destructive user action in the product; CSV export infra already exists
 - **Generic `FileCleanupService.sweepWorkspace()` utility** · P2 · S–M · Establishes the convention so future file-backed models don't repeat the attachment-orphan bug
+
+---
+
+## 2026-07-01 — Pass 11 (workspace-selector bug-class sweep)
+
+Scope: the founder caught a real bug cluster — `WorkspaceContext` (header chip) and
+`PulseDashboardPage`'s local state were two independent, unsynced copies of "active
+workspace"; nothing persisted across reload; no project-scoped route kept the chip
+honest — fixed in `c8bf9c8` (localStorage persistence, single source of truth,
+`useSyncActiveWorkspace` hook). This pass's mandate: find every OTHER instance of
+**duplicated/shadow client state, persistence gaps, stale-cache/invalidation bugs,
+and effect-based state-healing races**, plus a lighter normal sweep. Read
+`WorkspaceContext.tsx`, `AppHeader.tsx`, every page under `apps/web/src/pages/**`,
+the full TanStack Query data layer (`apps/web/src/api/*.ts`), `App.tsx`'s route
+table, `apps/web/src/api/socket.ts`, and the e2e suite for regression-guard parity.
+Cross-checked all Pass-10 open items against `git log` since. `tsc --noEmit` on the
+web app is clean.
+
+### Pass-10 fix verification
+
+| Fix area | Status | Evidence |
+|---|---|---|
+| Personal-card optimistic reorder no-op | **CONFIRMED FIXED** | `2185b3f` — `onMutate` now computes a real optimistic move via shared `rankBetween`/`rankAfter`, both same-column and cross-column. |
+| Mobile board toolbar overlap | **CONFIRMED FIXED** | `2185b3f` — toolbar row now wraps on mobile (screenshot-verified per commit message). |
+| Orphaned attachment files on workspace delete | **CONFIRMED FIXED** | `2185b3f` — `WorkspacesService.remove()` now collects every attachment `storageKey` under the workspace and unlinks them (plus logo) before/after the cascading delete; new unit test in `workspaces.service.spec.ts`. |
+| `promoteCard` non-atomicity | **CONFIRMED FIXED (compensating action)** | `2185b3f` — `promoteCard` now deletes the just-created Issue if linking it back to the card fails, avoiding the orphan-issue failure mode; double-promote guard preserved. |
+| `QuickLinksMenu` duplicating `ColorSwatchPicker` | **CONFIRMED FIXED** | `2185b3f` — local `PALETTE`/`ColorPicker` deleted; now renders the shared `ui/ColorSwatchPicker`. |
+| E2e coverage for `WorkspaceSettingsPage` / `QuickLinksMenu` | **STILL OPEN** | No `quick-links.spec.ts` or `workspace-settings.spec.ts` exists; `grep` for `quick-links-button`, `quick-link-color`, `delete-workspace-button` across `apps/web/e2e/` returns zero matches. A `workspace-switcher.spec.ts` landed with `c8bf9c8` (7 tests) but it covers the chip/board-sync fix itself, not rename/delete-confirm or quick-links CRUD. See Risk #3 below — this is now flagged for the second consecutive pass and is the exact discipline gap the founder's bug slipped through. |
+| Personal-cards / quick-links / workspace PATCH+logo absent from tenant-isolation matrix | **STILL OPEN** | `tenant-isolation.integration.spec.ts` still has no rows for `PATCH/DELETE /me/personal-cards/:id`, any quick-link verb, `PATCH /workspaces/:id`, or `POST /workspaces/:id/logo` (only `DELETE :id` and `DELETE :id/logo` are covered, per `grep`). |
+| Extract shared `useOptimisticReorder` hook (ideation) | NOT DONE | Personal-board reorder was fixed in place; no shared hook extracted yet. Carried forward as ideation. |
+
+### This pass's bug-class sweep — findings
+
+**Lens 1 (duplicated/shadow client state).** Swept every `useState` in
+`apps/web/src/pages/**` and `components/**` for a "selected X" local copy that
+shadows a context/query/URL value. Found one dead-but-live instance of the exact
+bug (`DashboardPage.tsx`, Risk #1) and confirmed everything else that looked
+suspicious is either legitimately ephemeral (modal-local pickers in
+`PromoteCardModal`, `PokerStartPage`'s session-creation form) or already
+URL-derived (board filters, swimlane `groupBy`, saved-filter selection — all read
+from `searchParams`, no local mirror). Board selection (`BoardPage.tsx:81-99`) is
+correctly localStorage-persisted with an `isFetching`-guarded healing effect — the
+model to replicate elsewhere.
+
+**Lens 2 (persistence gaps).** `QuickLinksMenu`'s group-collapse state
+(`collapsed` at `QuickLinksMenu.tsx:233`) is local `useState`, not persisted —
+because `AppHeader` (and therefore `QuickLinksMenu`) fully remounts on every
+route change (each page independently renders `<AppHeader>`), every group
+re-expands on every navigation. Low severity (Risk #6). No other undocumented
+persistence gaps found — notification-type filter and NLQL saved-filter
+selection are appropriately ephemeral/URL-backed respectively.
+
+**Lens 3 (stale-cache/invalidation).** This is where the sweep found the most
+signal. `qk.boardView(boardId)` — the actual query key `BoardPage` renders from —
+is invalidated inconsistently across mutation hooks. `statuses.ts`, `labels.ts`,
+and `versions.ts` all correctly thread an optional `boardId` and invalidate
+`qk.boardView(boardId)` in addition to the legacy `qk.board(projectId)` key. But
+`useUpdateIssue`, `useBulkUpdateIssues`, `useAssignIssueToSprint` (all in
+`issues.ts`), `useUpdateIssueCustomFields` (`custom-fields.ts`), and all three
+sprint mutations (`sprints.ts`) never accept/invalidate `boardId` at all — only
+the legacy key, which is not the render source once a non-default board is
+selected. In practice this mostly self-heals via the realtime socket (server
+broadcasts to the whole project room including the sender), **but only while the
+board that needs updating is currently mounted and subscribed** — revisiting a
+previously-open board within the app's 30s global `staleTime` (`App.tsx:44`)
+after such a mutation shows stale data (see Risk #4). Also found: project rename
+has no realtime event at all (no `project.updated` in `SocketEvents`,
+`packages/shared/src/types.ts:734-743`), so `board.project.name` shown on
+Board/Backlog headers never updates for other viewers, ever, without reload (Risk
+#7); and the "Blocked" badge counts ALL `BLOCKS` links with no join to the
+blocker's status, so it doesn't clear when the blocking issue is completed
+despite being named "unresolved blockers" (Risk #5).
+
+**Lens 4 (effect-based state healing races).** Re-audited every "reset/clamp
+selection when list changes" effect. `WorkspaceContext`'s own healing effect
+(`WorkspaceContext.tsx:75-81`) is *not* `isFetching`-guarded like `BoardPage`'s
+now is, but it doesn't need to be: `useWorkspaces()`'s `data` doesn't
+transiently empty during a background refetch (TanStack Query serves the last
+good `data` until the new page resolves), so there's no analogous race —
+verified by reading `useWorkspaces` (`api/workspaces.ts:7-12`, default query, no
+`placeholderData` reset). `TriagePage`'s `selectedIndex` clamp
+(`TriagePage.tsx:185-189`) is monotonic-safe (`Math.min`, never force-resets to
+0 while the list is merely refetching). `ReportsPage`'s `selectedSprintId`
+seed-once effect (`ReportsPage.tsx:26-31`) has a different, minor flaw: it
+guards on `if (selectedSprintId || ...) return`, so once a sprint is picked it
+never re-validates — if that sprint is later deleted, `selectedSprintId` keeps
+pointing at a dead id and `useBurndown` silently gets an empty/404 response
+instead of falling back (Risk #8, P3).
+
+### The main finding: `useSyncActiveWorkspace` was applied to some routes but not all
+
+The `c8bf9c8` fix added `useSyncActiveWorkspace(workspaceId)` to 8 project-scoped
+pages (Board, Backlog, Triage, Settings, Automations, Standups, PokerStart,
+PokerSession). Cross-referencing every `<Route>` in `App.tsx` against every call
+site of the hook (`grep -rn useSyncActiveWorkspace`) turns up **7 routes that
+render `<AppHeader>` (and therefore the workspace chip) but never call it**:
+
+- Three more project-scoped routes with the identical `board?.project.workspaceId`
+  or `boardQuery.data?.project.workspaceId` value already available and unused
+  for this purpose: `ReportsPage.tsx` (`/projects/:id/reports`),
+  `ProjectAnalyticsPage.tsx` (`/projects/:id/analytics`), `RoadmapPage.tsx`
+  (`/projects/:id/roadmap`).
+- Four workspace-scoped routes where the `workspaceId` comes straight from
+  `useParams()` (even more trivial to wire up than the project-scoped case):
+  `WorkspaceMembersPage.tsx` (`/workspaces/:id/members`),
+  `WorkspaceAuditLogPage.tsx` (`/workspaces/:id/audit-log`),
+  `WorkspaceBrandingPage.tsx` (`/workspaces/:id/branding` — calls
+  `setActiveWorkspaceId` reactively only from its brand-color *save* handler, not
+  on page load), `WorkspaceSettingsPage.tsx` (`/workspaces/:id/settings` — same:
+  `setActiveWorkspaceId` only fires from the delete-workspace success path, not
+  page load).
+
+In normal in-app navigation this is largely masked because the only way to reach
+these routes today is via links that already carry `activeWorkspace.id`
+(`WorkspaceChip`'s "Workspace settings"/"Members" menu items, `ProjectNav`'s "More"
+menu, `WorkspaceSettingsNav`'s own tab bar) — so the chip and the page usually
+agree by construction. But the chip is still wrong, reproducibly, the moment the
+URL and the context diverge by any other path: a bookmark, a shared link, a
+browser **back/forward** navigation after switching workspaces (context state
+isn't popstate-aware), or a future feature that deep-links here (e.g. a
+notification email linking to `/workspaces/B/members` while the user's last
+active workspace was A). This is not a hypothetical — it's the exact "chip
+misreports which workspace you're in" bug (bug #4 in the `c8bf9c8` fix
+description) recurring on 7 of the 15 routes the fix was supposed to cover
+project/workspace-wide, and there is zero e2e coverage that would catch it (see
+Risk #3).
+
+### Ratings table (Pass 11)
+
+| Area | Score | Delta | Note |
+|---|---|---|---|
+| Architecture & module boundaries | 4 | — | No change; per-domain pattern holds. `DashboardPage.tsx` is dead code duplicating `PulseDashboardPage` — should be deleted, not a structural issue but a landmine. |
+| Data model & migrations | 4 | — | No schema changes this pass beyond the trivial `showOnCard` boolean; clean migration. |
+| AuthN/AuthZ & multi-tenant isolation | 3 | — | No regressions in the audited commits. Tenant-isolation matrix gap (personal-cards/quick-links/workspace PATCH+logo) carried forward unfixed for a second pass. |
+| Input validation | 5 | — | New DTOs (`showOnCard`, blocked-badge is read-only/computed) are trivially validated; no gaps found. |
+| Error handling | 4 | — | No regressions; `ReportsPage`'s stale-sprint-id-after-delete (Risk #8) degrades silently rather than erroring — minor. |
+| N+1 / query efficiency | 4 | — | Blocked-badge `_count` and custom-field `showOnCard` are both single-query, no N+1 introduced. |
+| Realtime correctness | **3** | -1 | New gap found this pass: no `project.updated`/rename event exists at all (Risk #7) — the realtime layer covers issues/comments/sprints but not the project entity itself, and `SocketEvents` has never had a project-level event. |
+| Rank / ordering integrity | 5 | — | No change; fractional indexing unaffected by this batch. |
+| Test coverage (unit + e2e) | **3** | — | `workspace-switcher.spec.ts` (7 tests) is a genuinely good addition, but it only covers the fixed flow — none of the 7 still-unsynced routes, and `QuickLinksMenu`/workspace-rename/-delete remain completely untested at the browser level for the second consecutive pass. |
+| Type safety | 5 | — | Strict TS throughout; `tsc --noEmit` clean on web. |
+| Build / CI / Docker | 4 | — | No changes to CI/build this pass. |
+| Secrets / config hygiene | 4 | — | No new secret surfaces. |
+| Dependency risk | 4 | — | No new dependencies. |
+| Debugging / QA discipline | **3** | — | The founder-caught bug is a textbook instance of the project's own stated failure mode ("tests pass ≠ works for the user") — `PulseDashboardPage`'s prior local-state bug had no e2e test that switched workspaces and checked the chip. The fix added exactly that test, but the coverage wasn't generalized to the other 7 routes with the same shape of risk, so the *class* of regression this pass exists to close is still only partially closed. See dedicated section below. |
+
+### Top risks & debt (Pass 11, ranked by impact × probability)
+
+**[P1-1] Seven routes never sync the header chip to the workspace they're actually showing**
+- What: `ReportsPage`, `ProjectAnalyticsPage`, `RoadmapPage` (project-scoped, `workspaceId` available from `useBoard(projectId).data.project.workspaceId` but unused), and `WorkspaceMembersPage`, `WorkspaceAuditLogPage`, `WorkspaceBrandingPage`, `WorkspaceSettingsPage` (workspace-scoped, `workspaceId` comes straight from `useParams()`) all render `<AppHeader>` — and therefore the workspace-chip switcher — without calling `useSyncActiveWorkspace`. `WorkspaceBrandingPage`/`WorkspaceSettingsPage` only call `setActiveWorkspaceId` reactively from a save/delete success handler, not on page load.
+- Impact/likelihood: Medium impact (the chip lying about which workspace you're in is the exact bug class the founder just caught and had fixed at real cost), medium likelihood — masked in normal same-tab click-through navigation (all in-app links to these routes already carry the active workspace's id) but reproducible via bookmark, shared link, or browser back/forward after a workspace switch (context state is not popstate-aware).
+- Files: `apps/web/src/pages/ReportsPage.tsx`, `apps/web/src/pages/ProjectAnalyticsPage.tsx`, `apps/web/src/pages/RoadmapPage.tsx`, `apps/web/src/pages/WorkspaceMembersPage.tsx`, `apps/web/src/pages/WorkspaceAuditLogPage.tsx`, `apps/web/src/pages/WorkspaceBrandingPage.tsx:407-419`, `apps/web/src/pages/WorkspaceSettingsPage.tsx:114-125`
+- Fix: Add `useSyncActiveWorkspace(boardQuery.data?.project.workspaceId)` to the three project-scoped pages (identical one-liner to the 8 already fixed). For the four workspace-scoped pages, call `useSyncActiveWorkspace(workspaceId)` directly (workspaceId is already a plain route param, even simpler than the project-scoped case — no query wait needed). Longer-term structural fix in Ideation #1 below.
+- Size: S
+
+**[P1-2] Zero e2e coverage for `QuickLinksMenu` and workspace rename/delete — second consecutive pass**
+- What: No spec file exercises quick-links add/edit/delete/group/collapse, workspace rename, or the type-to-confirm delete dialog (`DeleteWorkspaceDialog`) at the browser level. `workspace-branding.spec.ts` covers only logo + brand color; `workspace-switcher.spec.ts` (new this cycle, from `c8bf9c8`) covers only the chip-sync fix itself.
+- Impact/likelihood: High impact — workspace delete is the app's only irreversible hard-cascade-delete UI action; quick-links is a header-level feature every user touches. Likelihood of a future regression slipping through is high given this is literally the failure mode ("feature ships, no browser test exists for the new surface, bug reaches user") that produced the bug this pass is auditing.
+- Files: `apps/web/e2e/` (missing `quick-links.spec.ts`, `workspace-settings.spec.ts`)
+- Fix: Unchanged from Pass 10's recommendation — add both specs, desktop + mobile. This is now flagged twice; treat as blocking for the next build-loop batch rather than backlog.
+- Size: M
+
+**[P2-1] `DashboardPage.tsx` is dead code carrying the exact bug the founder just paid to fix**
+- What: `DashboardPage.tsx` defines its own local `const [selectedWs, setSelectedWs] = useState<string | null>(null)` (`DashboardPage.tsx:22`) with its own healing `useEffect` — a byte-for-byte re-implementation of the pre-fix `PulseDashboardPage` bug (two independent "active workspace" copies, no persistence). It is not referenced by `App.tsx`'s route table or any other file in the repo (confirmed via `grep -rn "DashboardPage"` across `src/` and `e2e/` — the only hit is its own `export function DashboardPage()`). It compiles and typechecks cleanly (dead code, not broken code), so nothing currently surfaces it — but it's a landmine: anyone routing to it again (e.g. restoring an old link, or a future refactor that re-adds a `/dashboard` route) resurrects the original bug on day one, silently, since it looks like working code and there's no lint rule catching unused-but-exported components.
+- Impact/likelihood: Low impact today (unreachable), but the *kind* of risk (a known-bad pattern sitting in the tree, invisible to review because nothing renders it) is exactly what this pass was commissioned to find.
+- Files: `apps/web/src/pages/DashboardPage.tsx` (entire file, 195 lines)
+- Fix: Delete the file. If any future "classic dashboard" variant is wanted, it should be built from `WorkspaceContext`/`useSyncActiveWorkspace` from day one, not resurrected from this version.
+- Size: S
+
+**[P2-2] `qk.boardView(boardId)` invalidation is inconsistently threaded through mutation hooks — up to 30s of stale board state on revisit**
+- What: `statuses.ts`, `labels.ts`, and `versions.ts` all accept an optional `boardId` param and invalidate `qk.boardView(boardId)` on mutation (the correct, established pattern). `useUpdateIssue`, `useBulkUpdateIssues`, `useAssignIssueToSprint` (`issues.ts`), `useUpdateIssueCustomFields` (`custom-fields.ts`), and all of `sprints.ts` (`useCreateSprint`/`useUpdateSprint`/`useDeleteSprint`) do not — they only invalidate the legacy `qk.board(projectId)` key, which nothing renders from once a board id is resolved (`BoardPage.tsx:182`: `const board = boardViewQuery.data`). In the common case this self-heals via the realtime socket (the API broadcasts to the whole project room including the sender, and `useBoardRealtime` unconditionally invalidates `qk.boardView(boardId)` on every event) — but only while the board that needs the update is *currently mounted*. Revisiting a board (e.g. Backlog → start a sprint → click the Board tab) within the app's global 30s `staleTime` (`App.tsx:44`) shows the pre-mutation board because TanStack Query serves cached data without refetching until `staleTime` elapses.
+- Impact/likelihood: Medium impact (visible, reproducible staleness on a common workflow — status/assignee/priority edits from the issue drawer, sprint start/complete, custom-field edits on `showOnCard` fields), medium likelihood (requires navigating away and back within 30s, which is a very ordinary flow, not an edge case).
+- Files: `apps/web/src/api/issues.ts:150-174` (`useUpdateIssue`), `:205-222` (`useBulkUpdateIssues`), `:240-281` (`useAssignIssueToSprint`), `apps/web/src/api/custom-fields.ts:110-128` (`useUpdateIssueCustomFields`), `apps/web/src/api/sprints.ts` (all three mutations)
+- Fix: Thread an optional `boardId` param through each of these hooks (mirroring `statuses.ts`/`labels.ts`) and invalidate `qk.boardView(boardId)` alongside the legacy key. Better structural fix in Ideation #3 below — a shared `invalidateBoardFamily(qc, projectId, boardId?)` helper so this stops being a hand-maintained checklist per mutation.
+- Size: S (mechanical) / M (with the shared helper)
+
+**[P2-3] "Blocked" badge counts all `BLOCKS` links, not just unresolved ones — doesn't clear when the blocker is completed**
+- What: `board.service.ts`'s `issueInclude._count.linksTo` filters only on `{ type: IssueLinkType.BLOCKS }` (`board.service.ts:33-41`), with no join to the blocking issue's status/category. The feature is literally named "Blocked badge on cards with **unresolved** blockers" (commit `bae368d`) but the query has no concept of "resolved" — a card stays marked "Blocked" forever once a `BLOCKS` link exists, even after the blocking issue is moved to a Done-category status.
+- Impact/likelihood: Medium impact (a visibly wrong, persistent "Blocked" badge undermines trust in the feature — the whole point is to help triage, and a false-positive that never clears trains users to ignore it), high likelihood (every project that resolves a blocker without deleting the link — the normal workflow — hits this).
+- Files: `apps/api/src/board/board.service.ts:33-41`, `apps/api/src/issues/issue.mapper.ts:165-172`
+- Fix: Change the filtered count to `linksTo: { where: { type: IssueLinkType.BLOCKS, source: { status: { category: { not: StatusCategory.DONE } } } } }` (Prisma supports filtering a `_count` through a relation), or compute it via a small raw aggregation if the nested relation filter isn't supported for counts in the current Prisma version — verify with a quick spike. Add a test asserting the badge disappears once the blocker is moved to a DONE-category status.
+- Size: S
+
+**[P2-4] Personal-cards, quick-links, and workspace PATCH/logo-upload still absent from the tenant-isolation matrix — second pass unfixed**
+- What: Unchanged from Pass 10 Risk #4. `tenant-isolation.integration.spec.ts` has rows for `DELETE /workspaces/:id` and `DELETE /workspaces/:id/logo` but not `PATCH /workspaces/:id`, `POST /workspaces/:id/logo`, or any personal-card/quick-link verb.
+- Impact/likelihood: Medium impact (ownership logic is correct today, unit-tested — this is a regression-guard gap, not a live vulnerability), medium likelihood of catching a future refactor regression.
+- Files: `apps/api/src/tenant-isolation.integration.spec.ts`
+- Fix: Same as Pass 10 — add the missing rows following the existing `buildCrossWorkspaceRows` pattern. Mechanical.
+- Size: S
+
+**[P3-1] Project rename has no realtime propagation — other viewers (and the renaming user's other open tabs/pages) never see it without a reload**
+- What: `SocketEvents` (`packages/shared/src/types.ts:734-743`) has events for issues, comments, sprints, notifications, and presence — but none for the `Project` entity itself. A project rename via `PATCH /projects/:id` only invalidates the renaming client's own `qk.projects`/`qk.project`/`qk.board` caches (`projects.ts:57-71`) via the HTTP mutation's `onSuccess`; there is no socket emit at all, so a second browser tab, a different team member, or the same user's already-open Board/Backlog page (per Risk P2-2's `qk.boardView` gap) never learns the project was renamed except by a hard reload.
+- Impact/likelihood: Low-medium impact (cosmetic staleness, not data-safety), low likelihood (project renames are infrequent), but notably this is the *only* top-level entity in the schema with realtime coverage for every other mutation type but not its own rename.
+- Files: `packages/shared/src/types.ts:734-743`, `apps/api/src/projects/projects.service.ts`, `apps/api/src/realtime/realtime.service.ts`
+- Fix: Add `ProjectUpdated: 'project.updated'` to `SocketEvents`, emit it from `ProjectsService.update()` to the project room, and have `useBoardRealtime`'s generic top-of-handler invalidation (which already fires for every event) pick it up for free — no new frontend wiring needed beyond the event existing.
+- Size: S
+
+**[P3-2] `QuickLinksMenu` group-collapse state resets on every page navigation**
+- What: `collapsed` (`QuickLinksMenu.tsx:233`) is local `useState`, never persisted. Because every page independently renders `<AppHeader>` (and therefore a fresh `QuickLinksMenu` instance), navigating between any two pages unmounts and remounts it, so any collapsed group re-expands.
+- Impact/likelihood: Low impact (cosmetic annoyance for users with many quick-link groups), certain (reproduces on literally every navigation) but low severity.
+- Files: `apps/web/src/components/QuickLinksMenu.tsx:233`
+- Fix: Persist collapsed-group keys to `localStorage` (same pattern as `nl.activeWorkspaceId` / `nl_board_${projectId}`) keyed by user, or lift `AppHeader`/its children above the per-page remount boundary (a shared app shell) — the latter is the more structural fix and is also what Ideation #1 below proposes for the workspace-sync problem, so it's worth doing once for both.
+- Size: S
+
+**[P3-3] `ReportsPage`'s `selectedSprintId` never re-validates after the initial pick — points at a deleted sprint silently**
+- What: The seed-once effect at `ReportsPage.tsx:26-31` guards with `if (selectedSprintId || sprints.length === 0) return`, so once a sprint id is set it is never re-checked against the live `sprints` list. If the selected sprint is later deleted, `selectedSprintId` keeps its stale value and `useBurndown(projectId, selectedSprintId)` silently returns empty/404 data rather than falling back to another sprint.
+- Impact/likelihood: Low impact (Reports page shows an empty chart instead of an error, recoverable by manually reselecting), low likelihood (requires deleting a sprint while its burndown is open in another tab/session).
+- Files: `apps/web/src/pages/ReportsPage.tsx:26-31`
+- Fix: Change the guard to also reset when `selectedSprintId` is set but no longer present in `sprints` (same "clamp instead of reset-on-refetch" shape as `BoardPage`'s board-selection healing effect, without needing an `isFetching` guard since sprint lists don't background-refetch mid-render the same way).
+- Size: S
+
+### Debugging & QA-discipline audit (Pass 11 — mandatory)
+
+The founder-caught bug is the cleanest possible illustration of this project's own
+stated failure mode: a green build, a green unit-test suite, and a passing e2e
+suite, while the actual deployed behavior ("switch workspace in the header, does
+the dashboard follow? does it survive reload?") was broken. The **root cause was
+not a missing test technique** (Playwright, real browser, real clicks — all
+present) but a **missing test scenario**: nothing exercised "switch workspace via
+the chip, then check the dashboard/board content," "reload the page, check the
+active workspace persisted," or "navigate to a project board and check the chip
+follows." The fix (`c8bf9c8`) added exactly those scenarios in
+`workspace-switcher.spec.ts` — a genuinely good, on-target regression guard for
+the flow that was broken.
+
+The gap this pass surfaces is that **the regression guard was scoped to the fixed
+flow, not to the bug class**. The bug class is "any page that shows the workspace
+chip must keep it in sync with what it's actually displaying" — a property that
+should hold for all 15 workspace/project-scoped routes, not just the 8 that got
+`useSyncActiveWorkspace` wired up. There is no test — unit, component, or e2e —
+that would fail today if a 16th route were added tomorrow without the sync call.
+This is structurally identical to the Docker-CSP gap that took four audit passes
+to close (Pass 5–9 history above): a real fix landed, but only for the reported
+instance, and the general case was left to manual vigilance.
+
+**Concrete regression-guard proposal (closes this structurally, not just for the
+7 routes found this pass):** rather than adding 7 more individual
+`useSyncActiveWorkspace` call sites (which only pushes the "don't forget for
+route 16" problem further down the road), extract a `<WorkspaceScopedLayout>` /
+`<ProjectScopedLayout>` wrapper that every project- and workspace-scoped route
+renders through, which calls `useSyncActiveWorkspace` exactly once at the layout
+level. Pair it with a **static route-audit test**: a Vitest test that imports
+`App.tsx`'s route table, filters to `/projects/:id/*` and `/workspaces/:id/*`
+patterns, and asserts each one's element tree is wrapped in the scoped layout
+(or, more simply, an e2e test parameterized over all 15 routes that switches
+workspace context and asserts the chip's `data-testid="workspace-chip"` text
+matches the URL's resolved workspace name on every one). Either approach turns
+"remember to call the hook" into "impossible to forget," which is the same shape
+of fix Pass 10's `useOptimisticReorder` proposal took for the drag-reorder bug
+class.
+
+**Diagnosability:** No regressions. Correlation IDs, pino, `/health`/`/health/live`
+unaffected by this batch.
+
+### Ideation — three concrete technical investments (mandatory every pass)
+
+1. **A single `<WorkspaceScopedLayout>`/`<ProjectScopedLayout>` wrapper that owns
+   `useSyncActiveWorkspace`, replacing the current per-page opt-in.** This is the
+   structural fix for Risk P1-1 and the general pattern behind it: today, keeping
+   the header chip honest is a manual checklist item for every new
+   project/workspace route, exactly the kind of "don't forget" tax the project's
+   own retrospectives (this one included) keep re-discovering costs real bugs. A
+   layout-level hook call makes it impossible to omit for any future route, and
+   as a bonus fixes Risk P3-2 (`QuickLinksMenu` collapse-state reset) for free if
+   the layout also hosts `AppHeader` above the per-page remount boundary instead
+   of each page rendering its own copy. *Priority: P1. Size: M.*
+
+2. **A shared `invalidateBoardFamily(qc, { projectId, boardId? })` helper,
+   consumed by every issue/sprint/project mutation hook.** Risk P2-2 showed that
+   "remember to invalidate `qk.boardView(boardId)` in addition to the legacy
+   `qk.board(projectId)` key" is currently a hand-maintained convention followed
+   by 3 of 9 mutation files and missed by 6. A single exported helper — called
+   from `onSuccess` with whatever ids the mutation has on hand — turns this into
+   a one-line, impossible-to-skip call and removes an entire class of "stale
+   board on revisit" bugs at the source rather than relying on the realtime
+   socket to paper over it. *Priority: P2. Size: S–M.*
+
+3. **A `project.updated` realtime event, generalized into an audit of "which
+   domain entities have realtime coverage."** Risk P3-1 found that `Project` is
+   the only top-level entity with zero realtime events despite every sibling
+   entity (Issue, Comment, Sprint, Notification) having one. Rather than a
+   one-off fix, do a quick inventory: for each Prisma model with a dedicated
+   settings/detail page (Project, Board, Workflow, CustomFieldDefinition,
+   Component, Version), confirm there's a realtime event on mutation and that
+   `useBoardRealtime`'s generic invalidation covers it — the generic top-of-
+   handler invalidation already fires for *any* event, so most of these are a
+   one-line `SocketEvents` addition plus one `emitToProject` call at the
+   service layer, not new frontend wiring. *Priority: P2. Size: S per entity,
+   ~M total.*
+
+### Direction (Pass 11)
+
+The codebase's engineering fundamentals remain solid — no security regressions in
+the last 15 commits, clean typecheck, and Pass 10's hardening batch (attachment
+sweep, reorder fix, `ColorSwatchPicker` dedup) is fully confirmed shipped. This
+pass's value is entirely in the targeted sweep the founder asked for, and it paid
+off: the workspace-selector bug class is real and still present on 7 of 15
+routes, just not on the one route (`PulseDashboardPage`) that got fixed and
+tested. The single most important next step is **not** to patch those 7 routes
+one-by-one (that just moves the "don't forget" risk to route 16) but to build
+the `<WorkspaceScopedLayout>` wrapper (Ideation #1) that makes the property
+structural. Pair it with the parameterized "chip matches route" e2e test so the
+regression guard covers the *class*, not the *instance* — closing the same kind
+of gap that took four passes to close for the Docker/CSP bug.
+
+Second priority: land the two missing e2e specs (`quick-links.spec.ts`,
+`workspace-settings.spec.ts`) — flagged for a second consecutive pass and
+directly implicated in why the original bug reached the founder rather than a
+test run. Third: the `qk.boardView` invalidation gap (Risk P2-2) and its shared-
+helper fix (Ideation #2) — both are small, mechanical, and remove a whole class
+of "stale board on revisit" bugs that are currently only masked by the realtime
+socket being connected and the board being mounted at the right moment. The
+Blocked-badge correctness bug (Risk P2-3) is small and should ship alongside
+since it's a one-line Prisma filter change with an obvious test.
+
+### Backlog-groomer feed (Pass 11 — compact)
+
+- **Sync the header chip on the 7 remaining project/workspace-scoped routes** · P1 · S · `ReportsPage`, `ProjectAnalyticsPage`, `RoadmapPage`, `WorkspaceMembersPage`, `WorkspaceAuditLogPage`, `WorkspaceBrandingPage`, `WorkspaceSettingsPage` render the chip without calling `useSyncActiveWorkspace`; reproducible via bookmark/back-forward/deep-link even though normal click-through masks it; `apps/web/src/pages/*.tsx`
+- **Extract `<WorkspaceScopedLayout>`/`<ProjectScopedLayout>` wrapper owning `useSyncActiveWorkspace`** · P1 · M · Structural fix for the above so the property can't be forgotten on route #16; also fixes QuickLinksMenu collapse-state reset if it hosts AppHeader; see Ideation #1
+- **Add `quick-links.spec.ts` and `workspace-settings.spec.ts` e2e coverage** · P1 · M · Second consecutive pass flagging zero browser-level tests for quick-links CRUD and workspace rename/delete — the same class of gap that let the founder-reported bug through; `apps/web/e2e/`
+- **Delete dead `DashboardPage.tsx`** · P2 · S · Unreachable file re-implements the exact pre-fix workspace-selector bug (own local `selectedWs`, no persistence); landmine if ever re-routed to; `apps/web/src/pages/DashboardPage.tsx`
+- **Thread `boardId` through `useUpdateIssue`/`useBulkUpdateIssues`/`useAssignIssueToSprint`/`useUpdateIssueCustomFields`/sprint mutations and invalidate `qk.boardView`** · P2 · S · Inconsistent with `statuses.ts`/`labels.ts`/`versions.ts`; causes up-to-30s stale board state on revisit when realtime isn't actively covering the mounted board; `apps/web/src/api/issues.ts`, `custom-fields.ts`, `sprints.ts`
+- **Add shared `invalidateBoardFamily()` helper** · P2 · S–M · Structural fix for the above so future mutations can't skip it; see Ideation #2
+- **Fix Blocked badge to exclude resolved (DONE-category) blockers** · P2 · S · Feature is named "unresolved blockers" but the Prisma `_count` has no status join, so the badge never clears once a blocker link exists; `apps/api/src/board/board.service.ts:33-41`
+- **Add personal-cards/quick-links/workspace-PATCH+logo rows to tenant-isolation matrix** · P2 · S · Carried forward from Pass 10, still unfixed; `apps/api/src/tenant-isolation.integration.spec.ts`
+- **Add `project.updated` realtime event** · P3 · S · Project is the only top-level entity with zero realtime coverage; renames don't propagate to other tabs/viewers without reload; `packages/shared/src/types.ts`, `apps/api/src/projects/projects.service.ts`
+- **Persist `QuickLinksMenu` group-collapse state** · P3 · S · Resets on every page navigation since AppHeader remounts per-page; `apps/web/src/components/QuickLinksMenu.tsx:233`
+- **Re-validate `ReportsPage`'s `selectedSprintId` against the live sprint list** · P3 · S · Stale selection after a sprint delete silently shows an empty chart instead of falling back; `apps/web/src/pages/ReportsPage.tsx:26-31`
+- **Realtime-coverage inventory across all top-level entities (Board, Workflow, CustomFieldDefinition, Component, Version)** · P2 · S per entity · Generalizes the project.updated fix; see Ideation #3

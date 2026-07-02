@@ -3,7 +3,6 @@ import {
   DndContext,
   DragOverlay,
   PointerSensor,
-  KeyboardSensor,
   useSensor,
   useSensors,
   closestCorners,
@@ -32,6 +31,7 @@ import { useToast } from '@/components/ui/Toast';
 import { ColorSwatchPicker } from '@/components/ui/ColorSwatchPicker';
 import { MarkdownRenderer } from '@/components/ui/MarkdownRenderer';
 import { errorMessage } from '@/lib/errorMessage';
+import { EditableSafeKeyboardSensor } from '@/lib/dndSensors';
 import { cn } from '@/lib/cn';
 import {
   usePersonalBoard,
@@ -122,7 +122,7 @@ export function PersonalBoardPage() {
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(KeyboardSensor, {
+    useSensor(EditableSafeKeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     }),
   );

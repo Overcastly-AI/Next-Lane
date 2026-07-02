@@ -4,7 +4,6 @@ import {
   DndContext,
   DragOverlay,
   PointerSensor,
-  KeyboardSensor,
   useSensor,
   useSensors,
   closestCorners,
@@ -40,6 +39,7 @@ import {
   useDeleteSavedFilter,
 } from '@/api/saved-filters';
 import { canEdit } from '@/lib/permissions';
+import { EditableSafeKeyboardSensor } from '@/lib/dndSensors';
 import { endDateStatus } from '@/lib/sprintDates';
 import { useBoardRealtime, usePresence } from '@/api/socket';
 import { useAuth } from '@/auth/AuthContext';
@@ -540,7 +540,7 @@ export function BoardPage() {
 
   const dragSensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(KeyboardSensor, {
+    useSensor(EditableSafeKeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     }),
   );

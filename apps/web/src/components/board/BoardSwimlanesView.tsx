@@ -14,7 +14,6 @@ import {
   DndContext,
   DragOverlay,
   PointerSensor,
-  KeyboardSensor,
   useSensor,
   useSensors,
   closestCorners,
@@ -29,6 +28,7 @@ import { Avatar } from '@/components/ui/Avatar';
 import { BoardColumn } from './BoardColumn';
 import { IssueCard } from './IssueCard';
 import { cn } from '@/lib/cn';
+import { EditableSafeKeyboardSensor } from '@/lib/dndSensors';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -242,7 +242,7 @@ function SingleLane({
 
   const dragSensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(KeyboardSensor, {
+    useSensor(EditableSafeKeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     }),
   );
