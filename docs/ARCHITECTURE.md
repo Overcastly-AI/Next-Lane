@@ -33,11 +33,12 @@ Managed with **pnpm workspaces**.
 
 ## Backend (`apps/api`)
 
-- **NestJS** with the standard module/controller/service/dto pattern. Modules by domain: `auth`, `users`, `workspaces`, `projects`, `boards`, `sprints`, `issues`, `custom-fields`, `components`, `versions`, `labels`, `comments`, `issue-links`, `issue-templates`, `checklist`, `work-logs`, `workflows`, `statuses`, `personal-boards`, `saved-filters`, `sprints`, `standups`, `poker`, `automations`, `dashboards`, `notifications`, `webhooks`, `share-tokens`, `api-tokens`, `analytics`, `reports`, `roadmap`, `attachments`, `audit`, `search`, `realtime`, `mail`, `redis`, `github`, and `prisma`. Auth includes an optional `oidc` sub-module (SSO/OIDC with generic provider discovery).
+- **NestJS** with the standard module/controller/service/dto pattern. Modules by domain: `auth`, `users`, `workspaces`, `projects`, `boards`, `sprints`, `issues`, `custom-fields`, `components`, `versions`, `labels`, `comments`, `issue-links`, `issue-templates`, `checklist`, `work-logs`, `workflows`, `statuses`, `personal-boards`, `saved-filters`, `sprints`, `standups`, `poker`, `automations`, `dashboards`, `notifications`, `webhooks`, `share-tokens`, `api-tokens`, `analytics`, `reports`, `roadmap`, `attachments`, `audit`, `search`, `realtime`, `mail`, `redis`, `github`, `admin-settings`, `project-memberships`, and `prisma`. Auth includes an optional `oidc` sub-module (SSO/OIDC with generic provider discovery).
 - **Prisma** as the ORM and migration tool. The schema is the single source of truth for the data model.
 - **PostgreSQL** for persistence. JSONB is used for custom fields and color rules.
-- **Auth**: JWT access tokens + refresh tokens, password hashing with argon2/bcrypt, route guards for RBAC; optional OIDC/SSO with JIT user provisioning.
+- **Auth**: JWT access tokens + refresh tokens, password hashing with argon2/bcrypt, route guards for RBAC; optional OIDC/SSO with JIT user provisioning. OIDC is configurable via environment variables (env-only) or in-app admin screen (`/admin/sso`, gated to `User.isInstanceAdmin` — the first user on a fresh install, or oldest user on an existing install). Instance-admin is distinct from workspace-level ADMIN and gates instance-wide settings (e.g., SSO configuration) that predate workspace membership.
 - **Workspace members**: `POST /workspaces/:id/members` invites a new member (rejects if already a member with 409); role changes routed to `PATCH /workspaces/:id/members/:membershipId`, which enforces a last-admin invariant (workspace never left with zero admins). Removal via `DELETE /workspaces/:id/members/:membershipId` respects the same guard.
+- **Per-project role overrides**: a sparse `ProjectMembership` table allows ADMIN-level users to grant or restrict a member's role on individual projects (e.g., elevate a MEMBER to project ADMIN, or restrict to VIEWER). All project-scoped authorization checks resolve effective role via `getEffectiveProjectRole()`, which routes through the override when present. Accessed via `GET/PUT/DELETE /projects/:id/members/:userId/role`; workspace ADMINs bypass overrides (always retain full access).
 - **Status change enforcement**: a single unified `IssuesService#enforceStatusChange()` method gates status transitions across all UI surfaces (board drag-and-drop, triage picker, issue drawer status dropdown, bulk edit) against board-assigned named workflows and project-level legacy workflow rules. Ensures no surface can silently bypass SDLC enforcement.
 - **Realtime**: a Socket.io gateway broadcasts board/issue/workspace/dashboard changes; Redis adapter enables horizontal scaling. Dashboard gadgets subscribe to project updates via `SocketEvents.DashboardUpdated` and refresh data on any issue mutation.
 - **Validation**: `class-validator` DTOs at the controller boundary.
@@ -61,7 +62,7 @@ Issues on a board (and in a sprint/backlog) are ordered by a `rank` **string** c
 
 ## MCP Server (`apps/mcp`)
 
-- **Model Context Protocol** server (stdio transport) with **85 tools** (36 read, 49 write).
+- **Model Context Protocol** server (stdio transport) with **88 tools** (37 read, 51 write).
 - Speaks MCP over stdio; makes authenticated HTTP calls to the Next Lane REST API using Personal Access Tokens (PATs).
 - Tools expose: projects, boards, workflows, statuses, issues, sprints, comments, worklogs, checklists, labels, components, versions, saved filters, automations, dashboards, GitHub links, personal boards, issue templates, time-tracking, analytics, reports, notifications, bulk updates, and CSV export.
 - Allows AI agents (Claude Desktop, Claude Code, any MCP host) to **read and write** workspace state, including the workflow/SDLC graph itself.
@@ -73,8 +74,9 @@ Baseline v2 (applied 2026-06-28). Single migration: `20260628004947_baseline_v2`
 
 Core entities and relationships:
 
-- `User` —< `Membership` >— `Workspace` (a user belongs to workspaces with a role)
+- `User` —< `Membership` >— `Workspace` (a user belongs to workspaces with a role; User.isInstanceAdmin gates instance-wide settings)
 - `Workspace` —< `Project` (`key`, `leadId` FK → User with `onDelete: SetNull`)
+- `Project` —< `ProjectMembership` >— `User` (sparse per-project role overrides; allows restricting or elevating a member's workspace role on a per-project basis)
 - `Workspace` —< `Team` —< `TeamMember` >— `User` (sub-workspace groups for standups / poker / analytics)
 - `Project` —< `Issue`, `Status`, `Sprint`, `Board`, `Label`, `Component`, `Version`, `CustomFieldDefinition`, `SavedFilter`
 - `Issue`: `number` (per-project seq), `type` (TASK/BUG/STORY/EPIC/SUBTASK), `title`, `description`, `statusId`, `assigneeId`, `reporterId`, `priority`, `storyPoints`, `parentId` (self-FK, `onDelete: SetNull`), `sprintId`, `dueDate`, `rank` (fractional index), `customFields` (JSONB with GIN index), `componentId`, `searchVector` (generated tsvector, GIN indexed)
@@ -91,6 +93,7 @@ Core entities and relationships:
 - `Version` (aka Release): project-scoped, `VersionState` (UNRELEASED/RELEASED/ARCHIVED), M:N with Issue via `IssueVersion`
 - `Notification.projectId` now has a proper FK (`onDelete: Cascade`)
 - `GithubIntegration`: per-project webhook config (repo fullname, HMAC secret, AES-256-GCM encrypted PAT); `onDelete: Cascade` when project is deleted.
+- `OidcConfig`: instance-wide singleton (id='default') holding SSO/OIDC provider configuration (issuer URL, client ID, AES-256-GCM encrypted client secret, button label). Env variables (`OIDC_*`) take precedence over DB config; updated via in-app admin screen at `/admin/sso` (instance-admin gated). Secrets encrypted using a shared `secret-crypto.util.ts` (same pattern as GitHub integration).
 
 **GitHub integration (Phase 9):** a webhook receiver processes inbound GitHub events (push, pull_request). Commit messages, PR titles, and branch names referencing an issue key (e.g. `NL-123`) trigger upsert of `IssueGithubLink` rows, visible in the issue's Development section. Every webhook is HMAC-verified against the secret before processing; PATs are encrypted at rest and never returned by the API.
 

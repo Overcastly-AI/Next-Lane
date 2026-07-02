@@ -62,6 +62,13 @@ unverified (`email_verified: false`) are rejected; `GET /api/auth/providers`
 is the public, unauthenticated capability probe the frontend uses to decide
 whether to render the button — it never assumes a provider is configured.
 
+**Configuration via admin screen:** in addition to environment variables, SSO/OIDC
+provider settings can be configured directly in the app via the in-app admin screen
+at `/admin/sso` (restricted to instance-level admin users). Environment variables
+take precedence; the screen is useful for updating provider credentials without
+restarting the API. The first user on a fresh install (or the oldest user on an
+existing install) is automatically marked as instance-admin.
+
 SAML, multiple simultaneously-configured providers, and per-workspace/role
 JIT provisioning are a tracked Phase 2 follow-up (see `docs/BACKLOG.md`).
 

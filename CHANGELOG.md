@@ -16,6 +16,48 @@ development phase. A versioned release will be tagged once the v1 criteria in
 
 ### Added — 2026-07-02
 
+**In-app SSO/OIDC admin configuration:**
+- **Admin settings screen** — new `/admin/sso` page (instance-admin gated) allows
+  operators to configure SSO/OIDC provider details (issuer URL, client ID, client
+  secret) directly in the app, with live effect (no API restart needed). Environment
+  variables (`OIDC_*`) take precedence for air-gapped deployments.
+- **Instance-admin concept** — `User.isInstanceAdmin` flag (auto-set for first user
+  on fresh install, or oldest user on existing install) gates instance-wide settings
+  distinct from workspace-level ADMIN role. Used to protect SSO configuration from
+  inadvertent changes by workspace admins.
+- **Shared secret encryption** — new `common/crypto/secret-crypto.util.ts` (AES-256-GCM)
+  replaces GitHub integration's inline encryption pattern; both OIDC and GitHub PAT
+  secrets now use the same secure-at-rest pattern.
+- **Backend** — new `apps/api/src/admin-settings/` module with `OidcConfigService`
+  (singleton management), controller (GET/PUT for config mutation), and 40+ unit tests.
+  Schema: new `OidcConfig` model (id='default', instance-wide singleton).
+- **Frontend e2e tests** — 12 desktop/mobile tests covering admin SSO screen: label
+  field display, form submission, secret masking, env-override detection, success toast,
+  login button re-render after config change.
+
+**Per-project role overrides (Phase 2):**
+- **Backend authorization layer** — new `apps/api/src/project-memberships/` module
+  with `getEffectiveProjectRole()` (single source of truth for project-scoped authz)
+  and three MCP tools (list_project_members, set_project_role_override,
+  remove_project_role_override). Workspace ADMINs bypass overrides. Non-admin members
+  can be elevated to project ADMIN or restricted to project VIEWER.
+- **API endpoints** — `GET /projects/:id/members` (list with overrides), `PUT
+  /projects/:id/members/:userId/role` (set override), `DELETE
+  /projects/:id/members/:userId/role` (clear override). All scoped `projects:read` /
+  `projects:write` PAT scopes.
+- **Frontend UI** — new Members section in project settings (admin-gated); displays
+  workspace members with override badges; inline role dropdown (VIEWER/MEMBER/ADMIN)
+  with create/edit/delete audit trail.
+- **Schema** — new `ProjectMembership` model (sparse, unique on projectId+userId);
+  enables per-project role restriction/elevation without duplication of workspace
+  members.
+- **Authorization consistency** — all project-scoped writes/reads now call
+  `assertProjectRole()`, which resolves effective role via the new override layer;
+  includes work-logs GitHub route and new endpoints, PAT-scoped.
+- **E2E tests** — 11 desktop tests: Members section display, override creation,
+  effective role resolution, ADMIN bypass, deletion, audit events.
+- **MCP tools** — 3 new tools (now 88 total: 37 read, 51 write).
+
 **Configurable dashboards (Phase 1):**
 - **NLQL-native dashboards** — per-project dashboards where every gadget is an
   NLQL query plus a visualization (STAT, TABLE, BREAKDOWN, or BURNDOWN). Gadgets
@@ -27,7 +69,7 @@ development phase. A versioned release will be tagged once the v1 criteria in
   navigation entries added (MEMBER+ to view, VIEWER read-only).
 - **MCP tooling** — 9 new dashboard and gadget CRUD tools (list/get/create/update
   /delete dashboards and gadgets, plus get_dashboard_data for server-side
-  evaluation). MCP server now 85 tools (36 read, 49 write).
+  evaluation). MCP server now 88 tools (37 read, 51 write).
 - **Backend** — `apps/api/src/dashboards/` module with controller, service, DTOs,
   and gadget evaluator (reuses shared validateQuery/filterIssues). 40+ new unit
   tests. Schema: additive `Dashboard` and `DashboardGadget` models
