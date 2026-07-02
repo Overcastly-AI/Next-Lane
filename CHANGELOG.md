@@ -14,6 +14,41 @@ This section summarizes the major capabilities delivered in the pre-1.0
 development phase. A versioned release will be tagged once the v1 criteria in
 [`docs/ROADMAP.md`](./docs/ROADMAP.md) are complete.
 
+### Fixed — 2026-07-02
+
+**Settings robustness sweep:**
+- **Admin lockout guard** (P1) — workspace Members invite form no longer silently
+  self-demotes a solo admin. Inviting an already-member email returns a friendly
+  409; role changes moved to new `PATCH /workspaces/:id/members/:membershipId`
+  endpoint, which enforces a last-admin invariant (workspace never locked out of
+  admin access).
+- **Branding color validation** (P2) — hex input now normalizes 3-digit CSS
+  shorthand to 6-digit before submit instead of server 400.
+- **Status & label uniqueness** (P2) — statuses and labels now reject case-insensitive
+  duplicate names per project with friendly 409 errors.
+
+**Workflow robustness sweep:**
+- **Unified status-change enforcement** (P1) — Triage's "s" picker, issue drawer
+  status dropdown, and bulk edit no longer silently bypass board-assigned named
+  workflows or project-level workflow enforcement. All surfaces now route through
+  a single `IssuesService#enforceStatusChange()` that resolves and checks both
+  named and legacy workflow gates before allowing a transition.
+- **REQUIRE_FIELD gate resolution** (P2) — custom-field gates now resolve field
+  names/keys case-insensitively to definition IDs; field input in the gate editor
+  is a curated `<select>` instead of freeform text.
+- **Gate validation** (P2) — REQUIRE_FIELD and REQUIRE_LINK gates reject blank
+  field keys with 400; gate editor disables Save until field is chosen; already-stored
+  blank-key gates render a "misconfigured" warning.
+- **Workflow rename UI** (P2) — named workflows now have an inline rename affordance
+  (pencil icon → per-keystroke edit → Enter/blur saves, Escape cancels).
+- **Settings disambiguation** (P3) — legacy WorkflowSection and new WorkflowsManager
+  now have distinct headings, explanations, and uniquely labeled "+ Add transition"
+  buttons.
+
+**Docs-site mobile menu:**
+- Fixed dead mobile navigation menu on the docs site. The hamburger now opens a
+  full-height menu (backdrop-filter containing-block fix).
+
 ### Added — Boards & project tracking
 
 - **Multiple boards per project** with Kanban and Scrum board types.

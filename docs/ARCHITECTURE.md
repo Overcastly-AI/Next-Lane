@@ -37,6 +37,8 @@ Managed with **pnpm workspaces**.
 - **Prisma** as the ORM and migration tool. The schema is the single source of truth for the data model.
 - **PostgreSQL** for persistence. JSONB is used for custom fields and color rules.
 - **Auth**: JWT access tokens + refresh tokens, password hashing with argon2/bcrypt, route guards for RBAC; optional OIDC/SSO with JIT user provisioning.
+- **Workspace members**: `POST /workspaces/:id/members` invites a new member (rejects if already a member with 409); role changes routed to `PATCH /workspaces/:id/members/:membershipId`, which enforces a last-admin invariant (workspace never left with zero admins). Removal via `DELETE /workspaces/:id/members/:membershipId` respects the same guard.
+- **Status change enforcement**: a single unified `IssuesService#enforceStatusChange()` method gates status transitions across all UI surfaces (board drag-and-drop, triage picker, issue drawer status dropdown, bulk edit) against board-assigned named workflows and project-level legacy workflow rules. Ensures no surface can silently bypass SDLC enforcement.
 - **Realtime**: a Socket.io gateway broadcasts board/issue/workspace changes; Redis adapter enables horizontal scaling.
 - **Validation**: `class-validator` DTOs at the controller boundary.
 - **API docs**: Swagger/OpenAPI served at `/api`.
