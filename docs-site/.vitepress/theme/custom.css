@@ -185,7 +185,13 @@ body {
 }
 
 /* ─── Nav bar ───────────────────────────────────────────────────────────────── */
-.VPNav {
+/*
+ * Blur the inner .VPNavBar, NOT the .VPNav wrapper: backdrop-filter turns an
+ * element into the containing block for position:fixed descendants, and the
+ * mobile menu (.VPNavScreen) is a fixed-position child of .VPNav — blurring
+ * the wrapper collapsed the open menu to 0px height (menu appeared dead).
+ */
+.VPNavBar {
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   border-bottom: 1px solid var(--vp-c-divider);
