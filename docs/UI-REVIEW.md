@@ -1237,3 +1237,269 @@ explanation (Project details name, Workspace name).**
 | P2 | 3 |
 | P3 | 2 (grouped: message-leak polish, trailing-space affordance) |
 
+
+## Workflows robustness sweep — 2026-07-02
+
+**Scope.** Founder directive ("Workflows too should be more robust"),
+independent QA pass by `qa-tester` (not the implementer) against the entire
+workflow feature surface: the Workflows manager (create/seed-from-template/
+delete named workflows), the transition editor (add/edit/delete transitions,
+duplicate 409 handling, per-gate-type param inputs incl. REQUIRE_FIELD with
+custom-field keys), the visual graph builder (`WorkflowGraph.tsx`
+node/edge rendering, connect-handle creation, edge deletion, reload
+persistence), board workflow assignment (`BoardWorkflowSelector`,
+ENFORCED badge), and — the headline target — **enforcement as actually felt
+by the user**: with an enforced named workflow assigned to a board, every
+surface that can change an issue's status (board drag, the card status
+picker, Triage's `s` keyboard picker, the issue drawer's Status `<select>`,
+and bulk edit) was attempted with an illegal move to verify the gate holds
+and the rollback is clean everywhere. Settings pages other than the
+Workflow/Workflows-manager sections are **out of scope** (owned by the
+parallel Settings-robustness sweep, see above).
+
+**Method.** Real running stack (web on :3000, API on :4000, rate limiting
+disabled), Chromium via Playwright, fresh isolated fixtures per test via the
+API (never the shared demo project), per-keystroke typing
+(`pressSequentially`, never `.fill()`) for all named-field input. Regression
+coverage added in `apps/web/e2e/workflow-robustness.spec.ts`: **15 green
+tests** (desktop + mobile, 30/30) locking in confirmed-correct behavior, plus
+**6 `test.fixme()`** tests that encode the desired correct behavior for each
+confirmed defect below (each was run as a real, non-`fixme` test first to
+capture the failure/evidence, then converted to `fixme` per the task's
+"green suite" requirement — screenshots referenced inline).
+
+**Environment note (not a product defect, but a trap for anyone following
+the stated recovery recipe verbatim):** running the web dev server with
+`--host 127.0.0.1` (as the recovery recipe specifies) and then visiting
+`http://127.0.0.1:3000` causes every login/register call to fail with a
+generic "Unable to sign in. Try again." — the API's default
+`CORS_ORIGINS` allowlist (`apps/api/src/main.ts`) is hardcoded to
+`http://localhost:3000` only, so the browser's CORS check silently discards
+a perfectly successful `201` response (confirmed via API access logs: the
+login succeeded server-side every time; the browser just refused to let the
+frontend read it). Visiting `http://localhost:3000` instead — same server,
+same port — works with zero code changes. Filed as **P3** since it's purely
+a documentation/config-default mismatch, not a workflow-feature bug, but it
+cost significant investigation time and would confuse a self-hoster who
+binds the dev server to `127.0.0.1` and then browses to that literal
+address. Fix: either default `CORS_ORIGINS` to include both, or update the
+recovery recipe / `.env.example` to call out the `localhost` vs `127.0.0.1`
+distinction explicitly.
+
+**Verdict: REJECT.** The single most important promise of this feature —
+"assign an ENFORCED workflow to a board and status moves are gated" — is
+**only honored on two of five surfaces that can change an issue's status**
+(board drag and the board's inline card status picker). Triage's `s`
+picker, the issue drawer's Status dropdown, and bulk edit all **silently
+bypass the board's named workflow enforcement entirely**, with no error, no
+toast, no indication to the user that anything unusual happened — this is
+exactly the "no silent failures" bar the founder's acceptance criteria
+called out, and it fails on 3 of 5 surfaces. Everything downstream of that
+(the manager UI, templates, the graph builder, deletion healing, rapid
+toggling) held up well and is documented as passing below.
+
+### Defects (prioritized)
+
+**P1 — WF-1: Board-scoped named-workflow enforcement is bypassed entirely by
+Triage's `s` picker, the issue drawer's Status `<select>`, and bulk edit.**
+Repro: create a named workflow, set `enforced: true`, add exactly one
+transition (`TODO → IN_PROGRESS`, no `TODO → DONE`), assign it to a board.
+On the board, drag or use the card status picker to move a `TODO` issue to
+`DONE` — correctly blocked with a 422 toast ("not allowed by the board
+workflow"). Now open the **same project's Triage view**, select the same
+issue, press `s`, choose "Done" — **it succeeds silently**, no toast, no
+error, the issue is now in Done. Screenshot evidence:
+`test-results/workflow-robustness-eviden-e37a1.../test-failed-1.png`
+(captured while temporarily un-`fixme`'d) shows the Triage row for "Triage
+bypass check" reading status **"Done"** with zero alert on screen — a
+board that displays "Strict — ENFORCED" was silently overridden from a
+different page in the same app. The same is true for the issue drawer's
+Status `<select>` (`await drawer.locator('#d-status').selectOption(...)`
+succeeds with no gate check) and for a `bulk-status` change from the
+Triage/Backlog multi-select bar (`BulkActionBar`'s "Set status" apply,
+confirmed via `IssuesService.bulkUpdate()` code inspection — see root
+cause). **Root cause:** `IssuesService.enforceMove()` (the ONLY code path
+that resolves a board's named-workflow assignment via `board.workflowId` +
+`board.workflow.enforced`) is invoked exclusively from `move()`
+(`POST /issues/:id/move`), which only board drag/card-picker call (with
+`boardId` in the payload). `TriagePage.tsx`'s `s` picker and
+`IssueDetailDrawer.tsx`'s Status field both call `useUpdateIssue()`
+(`PATCH /issues/:id`), which routes straight to `IssuesService.update()` →
+`this.workflowSvc.enforceTransition()` — a function that **only ever checks
+the legacy project-wide `Project.workflowEnforced` flag** (a completely
+separate, independent boolean from any named workflow's own `enforced`
+flag, and off by default) and has no board-context parameter at all.
+`IssuesService.bulkUpdate()` has the identical gap — it pre-loads
+`isEnforcementEnabled(projectId)` (same legacy flag) once for the whole
+batch and never resolves a board. **User impact:** any team relying on a
+board-assigned named workflow for process compliance (the entire point of
+the feature) can have it silently defeated by anyone using Triage, the
+drawer, or a bulk edit — three of the five ways to change status in the
+product. **Fix shape:** either (a) thread an optional `boardId` through
+`update()`/`bulkUpdate()` from every caller that has one (Triage and
+Backlog both know the active board via `useBoard(projectId)`; the drawer
+would need the board id passed down from whichever page opened it), or (b)
+resolve enforcement independently of `boardId` — e.g. gate on ANY of the
+issue's project's enforced named workflows / the legacy flag, whichever is
+stricter — so a "silently bypass by using a different surface" class of bug
+can't recur as new surfaces are added. Regression tests (currently
+`test.fixme`, ready to un-skip once fixed):
+`apps/web/e2e/workflow-robustness.spec.ts` — "Triage's 's' status picker
+respects the board's enforced named workflow…", "the issue drawer's Status
+`<select>` respects…", "bulk edit respects…".
+
+**P2 — WF-2: The REQUIRE_FIELD gate's custom-field mode can never actually
+succeed via the UI-documented input — it silently, permanently blocks the
+transition even after the field is set.** `Issue.customFields` is stored
+keyed by the custom field definition's **opaque CUID** (confirmed via
+`CustomFieldsService.validateAndNormalize`, which maps payload keys against
+`definitions.map(d => [d.id, d])`, and via the drawer's
+`CustomFieldsDrawerSection.tsx`, which reads/writes
+`currentValues[field.id]` — never `field.key`). But the gate editor's
+REQUIRE_FIELD input (`WorkflowSection.tsx` / `WorkflowsManager.tsx`
+`GateEditor`) has the placeholder `"e.g. assigneeId or cf_severity"`,
+actively steering an admin toward typing a human-readable key that can
+**never** match. The backend's own gate-evaluation code
+(`WorkflowService.evaluateGate`, `REQUIRE_FIELD` case) even has a stale
+comment admitting the gap — *"customFields is stored as { [definitionId]:
+value } — we need to also support lookup by key. Load definitions to
+resolve the key."* — directly above code that never does that lookup; it
+does a flat `customFields[fieldName]`. Nowhere in the UI (Settings' Custom
+Fields section, the drawer) is the definition's actual CUID surfaced for an
+admin to copy. Repro/evidence: created a `TEXT` custom field "Severity"
+(key auto-derives to `severity`), gated `TODO → IN_PROGRESS` on
+`REQUIRE_FIELD` with `field: "severity"` (the exact value the placeholder
+promises works), then set the field via
+`PATCH /issues/:id { customFields: { [definitionId]: "Critical" } }` (the
+only way the real drawer ever writes it) — the gated move still returned
+**422** ("this transition requires the field 'severity' to be set") even
+though the field was genuinely set. Any admin who configures this gate by
+following the documented placeholder has built a transition that can never
+be completed by a normal user — a silent, undiscoverable dead end.
+**Fix shape:** either resolve the gate by the field's stable `key` (with
+the backend translating key → definitionId at evaluation time, honoring the
+placeholder's promise), or replace the freeform text input with a dropdown
+of the project's actual custom fields (by display name), removing the
+opportunity to type an unusable value. Regression test (currently
+`test.fixme`): "REQUIRE_FIELD gate keyed by the field placeholder's
+suggested custom-field key never actually matches a stored value".
+
+**P2 — WF-3: A REQUIRE_FIELD gate can be saved with a blank field key and
+silently becomes a permanent no-op with no warning.** The gate editor lets
+an admin add a REQUIRE_FIELD gate and click Save without ever filling in
+the field-key input — there is no client-side required validation on that
+field, and the Save button stays enabled (confirmed live: `Received:
+"enabled"` when asserting it should be disabled). The transition is created
+and rendered with a "Require a field to be set" chip that implies it's
+active. The backend's `evaluateGate()` has `if (!fieldName) break; //
+Mis-configured gate — skip silently.` — the gate is stored but never
+actually gates anything, ever. An admin who believes they've locked down a
+transition has silently configured a no-op. **Fix shape:** disable Save
+while a REQUIRE_FIELD/REQUIRE_LINK gate has an empty param, or flag
+mis-configured gates visibly in the transition list/graph (e.g. a warning
+chip instead of the normal "G" badge). Regression test (currently
+`test.fixme`): "a REQUIRE_FIELD gate saved with a blank field key silently
+no-ops instead of warning the admin".
+
+**P2 — WF-4: No rename affordance for a named workflow.** The founder's
+ready-item explicitly scopes "create/rename/delete named workflows" for
+this sweep. Create and delete both work; **rename does not exist in the
+UI** — `WorkflowsManager.tsx`'s detail-panel header renders only a static
+`<h3>` for the name, the List/Graph view toggle, "+ Add transition", and a
+delete icon button. No pencil/edit control anywhere. The backend fully
+supports it (`PATCH /workflows/:id` accepts `name`/`description` via
+`UpdateNamedWorkflowDto` — already wired for the `enforced` toggle, so the
+mutation hook exists and is one field away from covering `name` too).
+Confirmed live: `getByRole('button', { name: /rename workflow/i })` finds
+nothing. **Fix shape:** add a rename control (inline-edit-on-click or a
+pencil icon opening a small modal, matching `CreateWorkflowModal`'s
+pattern) next to the workflow name in the detail-panel header. Regression
+test (currently `test.fixme`): "admin can rename a named workflow from the
+manager UI".
+
+**P3 — WF-5: Two independent "Workflow" sections coexist on the same
+Settings page with no cross-reference, and their "+ Add transition" buttons
+are ambiguous by accessible name alone.** `SettingsPage.tsx` renders the
+legacy single-project `<WorkflowSection>` (heading "Workflow", its own
+enforcement toggle, its own transitions) immediately followed by
+`<WorkflowsManager>` (heading "Named Workflows", a completely separate
+per-board system with its own enforcement toggle per workflow) — with
+nothing explaining that these are two independent systems, that the legacy
+one governs Triage/the drawer/bulk-edit (per WF-1) while the named one only
+governs boards it's explicitly assigned to, or which one "wins" when both
+are active. Confirmed live: `page.getByRole('button', { name: '+ Add
+transition' })` throws a Playwright strict-mode violation — it resolves to
+**two** identically-labeled buttons with no distinguishing accessible name
+(`workflow-add-transition` in the legacy section vs. an untestid'd
+duplicate in the named-workflow detail panel), meaning a screen-reader
+user tabbing through the page, or any automation, cannot disambiguate them
+without visual/DOM context. This is very likely the single biggest source
+of user confusion in the whole feature — a founder or admin enabling
+"enforcement" almost certainly doesn't know which of the two systems they
+just turned on, or that a board can silently ignore the one they configured
+in favor of (or in addition to) the other. **Fix shape:** at minimum, a
+short explanatory note atop one or both sections ("Named workflows govern
+individual boards; the legacy Workflow below governs every other status
+change in this project — Triage, the issue drawer, and bulk edit") plus a
+unique accessible name per "+ Add transition" button (e.g. "+ Add
+transition to \<workflow name\>" for the named-workflow variant). Longer
+term, this reinforces the WF-1 fix's case for unifying enforcement so there
+is only one mental model.
+
+### What held up well (adversarial testing passed)
+
+- **Named workflow CRUD:** blank-workflow creation with per-keystroke typed
+  names (including spaces) persists correctly; duplicate workflow names are
+  rejected with a friendly, specific 409 message and the create dialog stays
+  open so the admin can correct it (no lost input).
+- **Seed-from-template correctness:** all four templates (`simple`,
+  `kanban`, `scrum`, `bug-triage`) produce exactly the documented transition
+  graph — verified transition-by-transition against the service's own
+  documented semantics (e.g. `kanban` = full `n×(n-1)` permissive matrix,
+  `simple` = strictly 2 forward-only transitions, `scrum`/`bug-triage` add
+  the documented back-transitions) — and the workflow-list UI's `NT`
+  transition-count badge matches exactly.
+- **Duplicate transition 409:** adding an identical `(from, to, type)`
+  transition a second time is correctly rejected with a friendly toast
+  (once the test's own button-ambiguity, see WF-5, was scoped correctly).
+- **Workflow deletion heals the board:** deleting a named workflow that a
+  board references clears the board's `workflowId` to `null` — the
+  `ENFORCED` badge disappears and `board-workflow-select` correctly resets
+  to "No workflow", both immediately and confirmed via the board API.
+- **Graph builder:** node/edge rendering, connect-handle transition
+  creation, and edge deletion (pre-existing `workflow-graph.spec.ts`
+  coverage) all still pass; a transition created via the graph survives
+  navigate-away-and-back AND a full page reload (new coverage added by this
+  sweep).
+- **Board-surface enforcement itself is solid:** an illegal board drag/card
+  -picker move is blocked with a clear 422 toast, the card visibly and
+  durably stays in its original column (confirmed via reload, not just
+  optimistic-UI state) — no ghost cards, no stuck drag state — and a
+  **legal** move under the same strict workflow still succeeds normally. A
+  second illegal attempt immediately after the first works correctly too
+  (no stuck/disabled state from the rollback).
+- **Rapid toggling:** double/triple-clicking either the legacy project-level
+  enforcement toggle or a named workflow's enforcement toggle in quick
+  succession always settles to a value that matches the server's
+  authoritative state (verified via a fresh API read) and survives a full
+  reload — no permanent UI/server desync from the race.
+- **Mobile (390×844):** the board's ENFORCED badge + 422 error toast render
+  usably with zero horizontal page overflow; the Workflows manager's
+  from-template flow (template picker modal → created row) is fully usable
+  at 390px with zero overflow.
+
+### Defect count summary
+
+| Priority | Count |
+|---|---|
+| P1 | 1 (WF-1 — enforcement bypass on 3 of 5 status-change surfaces) |
+| P2 | 3 (WF-2 unusable custom-field gate, WF-3 silent no-op blank gate, WF-4 no rename UI) |
+| P3 | 1 (WF-5 dual-system ambiguity/confusion + CORS-origin recovery-recipe trap noted separately) |
+
+**Overall verdict: REJECT.** The manager UI, templates, graph builder, and
+board-surface enforcement are solid and ready to ship as-is. The feature
+cannot be called "robust" while its core promise — an enforced workflow
+gates status changes — is silently false for 3 of 5 ways a user can change
+an issue's status. WF-1 should block sign-off on this ready item until
+fixed; WF-2/WF-3/WF-4 should be fixed in the same batch since they touch
+the same components QA already has fresh context on.
