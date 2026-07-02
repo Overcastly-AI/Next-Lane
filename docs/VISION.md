@@ -86,21 +86,39 @@ materially changes.
 
 | Dimension | Verdict | Evidence |
 |---|---|---|
-| Board speed & feel | **Better** | The DnD board has been rated 5/5 in every product-audit pass since Pass 3 — fractional-rank optimistic drag, live presence, WIP limits, swimlanes, blocked-link and custom-field card-face chips (AUDIT-PRODUCT.md Pass 11). It also runs with zero network hop to a third-party cloud and zero per-seat automation throttling — speed the incumbent can't structurally match on your own hardware. |
+| Board speed & feel | **Better** | The DnD board has been rated 5/5 in every product-audit pass since Pass 3 — fractional-rank optimistic drag, live presence, WIP limits, swimlanes, blocked-link and custom-field card-face chips (AUDIT-PRODUCT.md Pass 11). It also runs with zero network hop to a third-party cloud and zero per-seat automation throttling — speed the incumbent can't structurally match on your own hardware. **Honesty check (2026-07-02 founder session):** the board itself still earns "Better," but the founder independently rediscovered three shipped capabilities as "missing" — workspace branding, board default filters, and the Gantt-style roadmap timeline — because none of them live on a persistent nav surface. That is not a board-speed defect, but it is real erosion risk on the daily-driver claim: a feature nobody can find is a feature that doesn't exist to the user. See "Navigation & IA overhaul," ROADMAP.md Phase 5. |
 | Workflow flexibility | **Better** | Per-board named workflows with a visual graph editor, transition gates, and one-click templates (Phase 5, ROADMAP.md) — and, uniquely, the workflow definition is readable *and editable* over MCP by an AI agent (`@next-lane/mcp`, 18 tools). No closed per-seat tracker exposes its SDLC to an agent this way. |
 | Keyboard-first ergonomics | **Better** | A command palette (Cmd-K) plus a dedicated keyboard triage mode (`j`/`k` navigate, `s`/`p`/`a`/`l` inline pickers, `?` help overlay) go deeper than the incumbent's shortcut set — a genuine power-user differentiator, not table stakes. |
 | Search & query power | Parity | NLQL (query language + saved/shared filters + full-text search) shows "none" gap vs. the leader baseline in the Pass-11 parity scorecard (AUDIT-PRODUCT.md). The power is there; the incumbent's 20-year JQL install base and muscle memory is a maturity/ecosystem gap that shipping more features alone won't close. |
-| Onboarding / first-hour experience | Parity | In-app onboarding is a rated strength across four consecutive audit passes ("zero dead ends," guided first-project flow, strong empty states). But self-hosting itself (Docker Compose, env config) is real setup friction a cloud incumbent's instant signup doesn't have — the two roughly cancel out today. |
+| Onboarding / first-hour experience | Parity | In-app onboarding is a rated strength across four consecutive audit passes ("zero dead ends," guided first-project flow, strong empty states). But self-hosting itself (Docker Compose, env config) is real setup friction a cloud incumbent's instant signup doesn't have — the two roughly cancel out today. **2026-07-02 discoverability findings sharpen this:** the founder — a power user of this exact product — independently reported three already-shipped features (branding, board default filters, roadmap/Gantt) as "lost," each 1-3 clicks deep behind a "More" menu or settings chip. First-hour onboarding gets you *in*; there is no persistent surface that keeps you oriented to *everything that's there* once you're past hour one on a many-project, many-workspace instance — the gap this scorecard row will next be judged on. |
 | Reporting | Behind | Burndown/velocity/CFD exist per-sprint, but there is still no configurable dashboard/gadget grid — rated a flat 3 vs. 5 for four consecutive audit passes (Pass 8/9/10/11, AUDIT-PRODUCT.md) — and no cross-sprint trend reporting. Advanced/configurable reporting is a genuine incumbent strength we have not matched. |
 | Integrations | Behind | Phase 9 "Developer Graph" (GitHub/GitLab/Gitea two-way linking, PR/CI status, auto-transition) is still 🔭 vision — unshipped. Import/export is file-based only, no live OAuth pull (rated 4 vs. 5, AUDIT-PRODUCT.md Pass 11). No marketplace. This is where the incumbent's 20-year ecosystem is a real, unclosed moat. |
 | Mobile | Behind | Responsive web only — no native app, while the incumbent ships native iOS/Android with offline support. Pass 11 also found an open mobile-specific defect (header identity legibility during workspace/project navigation, AUDIT-PRODUCT.md) — mobile is currently our weakest coherence surface, not just a missing feature. |
 | Reliability / coherence-of-state | Behind | Two *independent* Pass-11 audits (2026-07-01) found the same defect class the same day: the workspace/tenant context could silently disagree with the page you were looking at, on up to 7 of 15 routes (AUDIT-PRODUCT.md, AUDIT-ENGINEERING.md). The specific instances shipped fixed 2026-07-02 (ROADMAP.md), but the *pattern* — opt-in context sync instead of route-derived truth — is still structural and both auditors flagged it as a recurrence risk. A mature 20-year product doesn't have this bug class at all. |
-| Admin controls | Behind | No SSO/OIDC; no per-project role override (rated 3 vs. 5, AUDIT-PRODUCT.md Pass 11); the workspace switcher has no search/filter at scale (rated 2 vs. 4, reproduced live at 50+ workspaces in the demo account). Admin/permission depth is where enterprise self-hosters will judge us hardest. |
+| Admin controls | Behind | No SSO/OIDC Phase 2 (SAML/multi-provider); no per-project role override (rated 3 vs. 5, AUDIT-PRODUCT.md Pass 11); the workspace switcher's search/filter shipped 2026-07-02 (Ready queue). Admin/permission depth is where enterprise self-hosters will judge us hardest. **2026-07-02 founder session:** workspace branding — an admin-controls feature (per-tenant logo/accent, see "Brand hierarchy" above) — is fully built but sits two navigation levels deep (chip → dropdown → settings tab), which is exactly the kind of admin-surface burial that makes a real admin capability read as absent during an evaluation. |
 
 **Tally as of 2026-07-02: 3 better / 2 parity / 5 behind.** This is the
 honest current state, not a target. The backlog-groomer sequences work to
 flip "behind" rows first — see the "Better-than-Jira gaps" note in
 `docs/BACKLOG.md`.
+
+**Cross-cutting finding (2026-07-02, founder session):** three separately-
+reported "lost features" — workspace branding, board default filters, the
+Gantt-style roadmap timeline — turned out to all be *shipped and working*,
+just unreachable without already knowing where to look (a "More" dropdown, a
+settings-modal tab, a chip flyout). That is one root cause, not three bugs:
+**Next Lane has no persistent navigation/IA surface.** Every project- and
+workspace-scoped capability is reachable only through a horizontally-
+collapsing top nav and nested menus, which does not scale past a handful of
+projects/workspaces — exactly the "many projects and many workspaces" shape
+the founder is now running. This does not change any scorecard verdict by
+itself (the underlying features already work), but it is the highest-
+leverage fix available for the *feel* of "better than Jira": a comparable
+incumbent tracker's left sidebar is muscle memory for every daily-driver
+user we're trying to win. See the "Navigation & IA overhaul" epic,
+`docs/ROADMAP.md` Phase 5, sequenced with a light/dark mode pass (also
+founder-requested) so the design-token system is touched once, coherently,
+rather than twice.
 
 ## The pillars (what "better than the incumbent" means here)
 

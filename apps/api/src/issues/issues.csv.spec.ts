@@ -156,6 +156,12 @@ function makeIssueRow(overrides: {
   sprint?: { name: string } | null;
   labels?: Array<{ label: { id: string; name: string; color: string; projectId: string } }>;
   dueDate?: Date | null;
+  description?: string | null;
+  parent?: { id: string; number: number; type: string; title: string; statusId: string } | null;
+  component?: { id: string; name: string } | null;
+  versions?: Array<{ version: { id: string; name: string; state: string } }>;
+  originalEstimateMinutes?: number | null;
+  customFields?: Record<string, unknown> | null;
 } = {}) {
   const now = new Date('2026-06-28T10:00:00.000Z');
   return {
@@ -164,7 +170,7 @@ function makeIssueRow(overrides: {
     projectId: 'proj-1',
     type: overrides.type ?? IssueType.TASK,
     title: overrides.title ?? 'Test issue',
-    description: null,
+    description: overrides.description ?? null,
     statusId: 'status-1',
     assigneeId: overrides.assignee?.id ?? null,
     reporterId: overrides.reporter?.id ?? null,
@@ -174,10 +180,14 @@ function makeIssueRow(overrides: {
     sprintId: overrides.sprint ? 'sprint-1' : null,
     dueDate: overrides.dueDate ?? null,
     rank: 'a0',
-    customFields: null,
+    customFields: overrides.customFields ?? null,
+    originalEstimateMinutes: overrides.originalEstimateMinutes ?? null,
     createdAt: now,
     updatedAt: now,
     project: { key: 'NL' },
+    parent: overrides.parent ?? null,
+    component: overrides.component ?? null,
+    versions: overrides.versions ?? [],
     status: overrides.status ?? { id: 'status-1', name: 'To Do', category: StatusCategory.TODO, order: 0, projectId: 'proj-1' },
     assignee: overrides.assignee ?? null,
     reporter: overrides.reporter ?? null,
@@ -246,7 +256,7 @@ describe('IssuesService.exportCsv — header row', () => {
     const lines = csv.split('\r\n').filter(Boolean);
 
     expect(lines[0]).toBe(
-      'Key,Title,Type,Status,Priority,Assignee,Reporter,Story Points,Sprint,Labels,Due Date,Created,Updated',
+      'Key,Title,Type,Status,Priority,Assignee,Reporter,Story Points,Sprint,Labels,Due Date,Description,Component,Fix Versions,Parent,Original Estimate (minutes),Created,Updated',
     );
   });
 
@@ -496,5 +506,55 @@ describe('IssuesService.exportCsv — authorization', () => {
     const service = makeService(prisma);
 
     await expect(service.exportCsv('user-1', 'proj-1')).resolves.toBeDefined();
+  });
+});
+
+describe('IssuesService.exportCsv — completeness columns (2026-07-02)', () => {
+  it('exports description, component, fix versions, parent key, estimate, and custom fields', async () => {
+    const defs = [
+      { id: 'cf-sev', key: 'severity', name: 'Severity', type: 'SELECT' },
+    ];
+    const row = makeIssueRow({
+      description: 'Multi-line\ndescription here',
+      component: { id: 'comp-1', name: 'Mobile App' },
+      versions: [
+        { version: { id: 'v-1', name: '1.2.0', state: 'UNRELEASED' } },
+        { version: { id: 'v-2', name: '1.1.1', state: 'RELEASED' } },
+      ],
+      parent: {
+        id: 'issue-epic',
+        number: 7,
+        type: IssueType.EPIC,
+        title: 'Parent epic',
+        statusId: 'status-1',
+      },
+      originalEstimateMinutes: 480,
+      customFields: { 'cf-sev': 'Critical' },
+    });
+    const svc = makeService(
+      makePrisma({ issues: [row], customFieldDefs: defs }),
+    );
+
+    const { csv } = await svc.exportCsv('user-1', 'proj-1');
+    const lines = csv.split('\r\n').filter(Boolean);
+
+    // Header carries the CF column.
+    expect(lines[0]).toContain('CF: Severity');
+    // Values land in the data row.
+    const dataRow = lines[1];
+    expect(dataRow).toContain('"Multi-line\ndescription here"');
+    expect(dataRow).toContain('Mobile App');
+    expect(dataRow).toContain('1.2.0; 1.1.1');
+    expect(dataRow).toContain('NL-7'); // parent key composed from project key
+    expect(dataRow).toContain('480');
+    expect(dataRow).toContain('Critical');
+  });
+
+  it('leaves the new columns empty when the issue has none of that data', async () => {
+    const svc = makeService(makePrisma({ issues: [makeIssueRow()] }));
+    const { csv } = await svc.exportCsv('user-1', 'proj-1');
+    const lines = csv.split('\r\n').filter(Boolean);
+    // 18 columns in the base header (no custom fields defined).
+    expect(lines[0].split(',')).toHaveLength(18);
   });
 });

@@ -1226,7 +1226,9 @@ export class IssuesService {
    * Authorization: project member (VIEWER+).
    *
    * Columns: Key, Title, Type, Status, Priority, Assignee, Reporter,
-   *   Story Points, Sprint, Labels, Due Date, Created, Updated.
+   *   Story Points, Sprint, Labels, Due Date, Description, Component,
+   *   Fix Versions, Parent, Original Estimate (minutes), one "CF: <name>"
+   *   column per custom-field definition, Created, Updated.
    *
    * Optional `q` NLQL filter: validated via `validateQuery`, then evaluated
    * with `filterIssues` (same evaluator as the board uses). Invalid query →
@@ -1283,6 +1285,24 @@ export class IssuesService {
         labels: { include: { label: true } },
         project: { select: { key: true } },
         sprint: { select: { name: true } },
+        // Issue keys are computed (PROJECT-number) — select the parent's number
+        // and compose the key with the project key below. The extra fields
+        // satisfy toIssueDto's IssueRef contract.
+        parent: {
+          select: {
+            id: true,
+            number: true,
+            type: true,
+            title: true,
+            statusId: true,
+          },
+        },
+        component: { select: { id: true, name: true } },
+        versions: {
+          include: {
+            version: { select: { id: true, name: true, state: true } },
+          },
+        },
       },
       orderBy: { number: 'asc' },
       take: IssuesService.CSV_ROW_CAP + 1,
@@ -1302,7 +1322,13 @@ export class IssuesService {
       });
     }
 
-    // Build the CSV.
+    // Custom-field definitions become one export column each ("CF: <name>"),
+    // in definition order, so no stored data is invisible in the download.
+    const customFieldDefs = await this.loadCustomFieldDefs(projectId);
+
+    // Build the CSV. Column names shared with the importer (Title, Type,
+    // Status, Priority, Assignee, Story Points, Due Date, Labels, Description)
+    // keep the export round-trippable; the extra columns are ignored on import.
     const HEADER = [
       'Key',
       'Title',
@@ -1315,14 +1341,23 @@ export class IssuesService {
       'Sprint',
       'Labels',
       'Due Date',
+      'Description',
+      'Component',
+      'Fix Versions',
+      'Parent',
+      'Original Estimate (minutes)',
+      ...customFieldDefs.map((def) => `CF: ${def.name}`),
       'Created',
       'Updated',
     ];
 
-    // We need sprint names and label names per-issue — build lookup maps from
-    // the raw rows keyed by issue id.
+    // Relation-derived cells come from the raw rows (the DTO mapper only
+    // carries what its own include loaded) — build per-issue lookup maps.
     const sprintNameById = new Map<string, string>();
     const labelsByIssueId = new Map<string, string[]>();
+    const parentKeyById = new Map<string, string>();
+    const componentById = new Map<string, string>();
+    const versionsByIssueId = new Map<string, string[]>();
     for (const row of rows) {
       if (row.sprint) {
         sprintNameById.set(row.id, row.sprint.name);
@@ -1331,12 +1366,27 @@ export class IssuesService {
       if (names.length > 0) {
         labelsByIssueId.set(row.id, names);
       }
+      if (row.parent) {
+        parentKeyById.set(row.id, `${project.key}-${row.parent.number}`);
+      }
+      if (row.component) componentById.set(row.id, row.component.name);
+      const versionNames = row.versions.map((iv) => iv.version.name);
+      if (versionNames.length > 0) {
+        versionsByIssueId.set(row.id, versionNames);
+      }
     }
+
+    const formatCustomField = (value: unknown): string => {
+      if (value === null || value === undefined) return '';
+      if (Array.isArray(value)) return value.map(String).join('; ');
+      return String(value);
+    };
 
     const lines: string[] = [csvRow(HEADER)];
 
     for (const issue of issueDtos) {
       const labelNames = labelsByIssueId.get(issue.id) ?? [];
+      const customValues = (issue.customFields ?? {}) as Record<string, unknown>;
       lines.push(
         csvRow([
           issue.key,
@@ -1350,6 +1400,14 @@ export class IssuesService {
           sprintNameById.get(issue.id) ?? '',
           labelNames.join('; '),
           issue.dueDate ?? '',
+          issue.description ?? '',
+          componentById.get(issue.id) ?? '',
+          (versionsByIssueId.get(issue.id) ?? []).join('; '),
+          parentKeyById.get(issue.id) ?? '',
+          issue.originalEstimateMinutes ?? '',
+          ...customFieldDefs.map((def) =>
+            formatCustomField(customValues[def.id] ?? customValues[def.key ?? '']),
+          ),
           issue.createdAt,
           issue.updatedAt,
         ]),
