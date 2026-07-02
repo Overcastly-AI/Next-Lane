@@ -18,7 +18,7 @@ one tracker your coding agent can *read and write*, not just talk about.
 [![Self-hosted](https://img.shields.io/badge/self--hosted-your%20data-success.svg)](#why-next-lane)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING.md)
 
-Built by [Overcastly AI](https://overcastly.com)
+Built by [Overcastly AI](https://overcastly.com?utm_source=github&utm_medium=readme&utm_campaign=next-lane&utm_content=hero)
 
 [Quick Start](#-quickstart) · [Why Next Lane](#why-next-lane) · [MCP / agents](#-mcp-native-your-coding-agent-can-run-the-tracker) · [Features](#-whats-shipped) · [Architecture](#-architecture-at-a-glance) · [Roadmap](#-on-the-roadmap) · [Contributing](#-contributing) · [Docs](https://overcastly-ai.github.io/Next-Lane/) · [Changelog](./CHANGELOG.md)
 
@@ -292,7 +292,7 @@ This project follows the [Contributor Covenant Code of Conduct](./CODE_OF_CONDUC
 
 ## Built by Overcastly AI
 
-Next Lane is designed and maintained by [Overcastly AI](https://overcastly.com).
+Next Lane is designed and maintained by [Overcastly AI](https://overcastly.com?utm_source=github&utm_medium=readme&utm_campaign=next-lane&utm_content=footer).
 
 ## Trademarks & disclaimer
 
