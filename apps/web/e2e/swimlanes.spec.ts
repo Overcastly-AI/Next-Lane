@@ -11,7 +11,12 @@
  */
 
 import { test, expect, type APIRequestContext } from '@playwright/test';
-import { setupIsolatedProject, createIssue, API_URL } from './helpers';
+import {
+  setupIsolatedProject,
+  createIssue,
+  API_URL,
+  paintedDistinctColorCount,
+} from './helpers';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -264,5 +269,91 @@ test.describe('Board swimlanes (mobile)', () => {
         document.documentElement.clientWidth,
     );
     expect(overflow).toBeLessThanOrEqual(1);
+  });
+
+  // ── Regression coverage for Pass 12's P1: invisible "Group by" dropdown ──
+  //
+  // The bug this guards against: the menu was DOM-present, `isVisible():
+  // true`, with a valid non-zero `boundingBox()` — and STILL painted zero
+  // real pixels on a real phone because a clipping ancestor
+  // (`overflow-x-clip`) suppressed the compositor's paint of the whole
+  // absolutely-positioned box once it extended past the 393px viewport
+  // edge. DOM presence + `isVisible()` alone did not catch this; a real
+  // rendered-pixel check (below) plus a full-containment boundingBox check
+  // are both required, per docs/AUDIT-PRODUCT.md Pass 12's own recommended
+  // follow-up ("a visibility-by-composite check, not just a
+  // visibility-by-style check").
+  test('Group by dropdown menu is fully within the viewport AND paints real, non-blank pixels at 393px', async ({
+    page,
+    request,
+  }) => {
+    test.setTimeout(45_000);
+    const ctx = await setupIsolatedProject(page, request, { label: 'swim-paint' });
+    await createIssue(request, ctx.token, ctx.project.id, { title: 'p1' });
+    await request.post(`${API_URL}/api/issues`, {
+      headers: { Authorization: `Bearer ${ctx.token}` },
+      data: { projectId: ctx.project.id, title: 'p2', type: 'BUG' },
+    });
+
+    await page.setViewportSize({ width: 393, height: 851 });
+    await page.goto(`/projects/${ctx.project.id}/board`);
+    await expect(page.getByText(/to do/i).first()).toBeVisible({ timeout: 15_000 });
+
+    const groupByBtn = page.getByTestId('swimlane-groupby');
+    await groupByBtn.scrollIntoViewIfNeeded();
+    await groupByBtn.click();
+
+    const menu = page.getByRole('menu', { name: 'Group by menu' });
+    await expect(menu).toBeVisible({ timeout: 5_000 });
+
+    // 1. Full containment: the panel's box must not extend past the
+    //    viewport (the audit's root-cause geometry: 208px-wide panel
+    //    anchored at x:279 on a 393px viewport extended 94px off-canvas).
+    const box = await menu.boundingBox();
+    expect(box).not.toBeNull();
+    const viewport = page.viewportSize()!;
+    expect(box!.x).toBeGreaterThanOrEqual(0);
+    expect(box!.x + box!.width).toBeLessThanOrEqual(viewport.width);
+
+    // 2. Paint-level check: a real screenshot of the menu's own region must
+    //    show more than a single flat color — real bordered/text content,
+    //    not a fully-suppressed blank paint.
+    const distinctColors = await paintedDistinctColorCount(page, menu);
+    expect(distinctColors).toBeGreaterThan(5);
+
+    // 3. The functionally-interactive option is also genuinely clickable at
+    //    its real screen position (not just DOM-clickable).
+    await page.getByRole('menuitemradio', { name: /issue type/i }).click();
+    await expect(page.getByTestId('swimlane-lane')).toHaveCount(2, { timeout: 8_000 });
+
+    await page.screenshot({ path: '/tmp/nav-shots/mobile-groupby-fixed.png' });
+  });
+
+  test('Priority filter dropdown (shares the same absolute-panel pattern) also paints real pixels at 393px', async ({
+    page,
+    request,
+  }) => {
+    const ctx = await setupIsolatedProject(page, request, { label: 'swim-paint-pri' });
+    await createIssue(request, ctx.token, ctx.project.id, { title: 'p1' });
+
+    await page.setViewportSize({ width: 393, height: 851 });
+    await page.goto(`/projects/${ctx.project.id}/board`);
+    await expect(page.getByText(/to do/i).first()).toBeVisible({ timeout: 15_000 });
+
+    const priorityBtn = page.getByRole('button', { name: /^priority$/i });
+    await priorityBtn.scrollIntoViewIfNeeded();
+    await priorityBtn.click();
+
+    const menu = page.getByRole('dialog', { name: 'Filter by priority' });
+    await expect(menu).toBeVisible({ timeout: 5_000 });
+
+    const box = await menu.boundingBox();
+    expect(box).not.toBeNull();
+    const viewport = page.viewportSize()!;
+    expect(box!.x).toBeGreaterThanOrEqual(0);
+    expect(box!.x + box!.width).toBeLessThanOrEqual(viewport.width);
+
+    const distinctColors = await paintedDistinctColorCount(page, menu);
+    expect(distinctColors).toBeGreaterThan(5);
   });
 });

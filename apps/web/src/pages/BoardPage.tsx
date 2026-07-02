@@ -51,6 +51,7 @@ import { Select } from '@/components/ui/Select';
 import { Avatar } from '@/components/ui/Avatar';
 import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
+import { DropdownPanel } from '@/components/ui/DropdownPanel';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { ErrorState, LoadingState, EmptyState } from '@/components/ui/States';
 import { ProjectNav } from '@/components/project/ProjectNav';
@@ -831,7 +832,7 @@ export function BoardPage() {
         </div>
 
         {/* Row 2: filter pills + group-by */}
-        <div className="flex items-center gap-3 overflow-x-auto pb-0.5 sm:overflow-x-visible sm:pb-0">
+        <div className="nl-scroll flex items-center gap-3 overflow-x-auto pb-0.5 sm:overflow-x-visible sm:pb-0">
           <LabelFilter
             labels={labelsQuery.data ?? []}
             selected={labelFilter}
@@ -1189,11 +1190,13 @@ function LabelFilter({
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
     function onDown(e: MouseEvent) {
-      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+      const target = e.target as Node;
+      if (!ref.current?.contains(target) && !panelRef.current?.contains(target)) setOpen(false);
     }
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') setOpen(false);
@@ -1225,14 +1228,14 @@ function LabelFilter({
   }
 
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} className="relative shrink-0">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-haspopup="menu"
         className={cn(
-          'inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-sm transition-colors',
+          'inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border px-3 text-sm transition-colors',
           'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200',
           count > 0
             ? 'border-brand-300 bg-brand-50 text-brand-700'
@@ -1246,12 +1249,15 @@ function LabelFilter({
         {count > 0 ? `Labels (${count})` : 'Labels'}
       </button>
 
-      {open && (
-        <div
-          role="dialog"
-          aria-label="Filter by label"
-          className="absolute left-0 z-20 mt-2 w-60 rounded-lg border border-slate-200 bg-surface p-2 shadow-cardHover"
-        >
+      <DropdownPanel
+        open={open}
+        anchorRef={ref}
+        panelRef={panelRef}
+        role="dialog"
+        aria-label="Filter by label"
+        className="w-60 rounded-lg border border-slate-200 bg-surface p-2 shadow-cardHover"
+      >
+        <>
           {labels.length === 0 ? (
             <p className="px-1 py-2 text-xs text-slate-400">No labels yet.</p>
           ) : (
@@ -1299,8 +1305,8 @@ function LabelFilter({
               </button>
             </div>
           )}
-        </div>
-      )}
+        </>
+      </DropdownPanel>
     </div>
   );
 }
@@ -1333,11 +1339,13 @@ function MultiSelectFilter<T extends string>({
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
     function onDown(e: MouseEvent) {
-      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+      const target = e.target as Node;
+      if (!ref.current?.contains(target) && !panelRef.current?.contains(target)) setOpen(false);
     }
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') setOpen(false);
@@ -1362,14 +1370,14 @@ function MultiSelectFilter<T extends string>({
   }
 
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} className="relative shrink-0">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-haspopup="menu"
         className={cn(
-          'inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-sm transition-colors',
+          'inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border px-3 text-sm transition-colors',
           'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200',
           count > 0
             ? 'border-brand-300 bg-brand-50 text-brand-700'
@@ -1380,12 +1388,14 @@ function MultiSelectFilter<T extends string>({
         {count > 0 ? `${label} (${count})` : label}
       </button>
 
-      {open && (
-        <div
-          role="dialog"
-          aria-label={ariaLabel}
-          className="absolute left-0 z-20 mt-2 w-52 rounded-lg border border-slate-200 bg-surface p-2 shadow-cardHover"
-        >
+      <DropdownPanel
+        open={open}
+        anchorRef={ref}
+        panelRef={panelRef}
+        role="dialog"
+        aria-label={ariaLabel}
+        className="w-52 rounded-lg border border-slate-200 bg-surface p-2 shadow-cardHover"
+      >
           <ul className="max-h-64 space-y-0.5 overflow-y-auto">
             {options.map((opt) => {
               const checked = selectedSet.has(opt.value as T);
@@ -1441,8 +1451,7 @@ function MultiSelectFilter<T extends string>({
               </button>
             </div>
           )}
-        </div>
-      )}
+      </DropdownPanel>
     </div>
   );
 }
@@ -1598,7 +1607,7 @@ function QuickFilterBar({
 }) {
   return (
     <div
-      className="flex items-center gap-1.5 overflow-x-auto pb-0.5 sm:overflow-x-visible sm:pb-0"
+      className="nl-scroll flex items-center gap-1.5 overflow-x-auto pb-0.5 sm:overflow-x-visible sm:pb-0"
       role="group"
       aria-label="Quick filters"
     >
@@ -1704,7 +1713,9 @@ function NlqlQueryBar({
   const [deleteTarget, setDeleteTarget] = useState<SavedFilterDto | null>(null);
 
   const filterMenuRef = useRef<HTMLDivElement>(null);
+  const filterPanelRef = useRef<HTMLDivElement>(null);
   const helpRef = useRef<HTMLDivElement>(null);
+  const helpPanelRef = useRef<HTMLDivElement>(null);
 
   const createMutation = useCreateSavedFilter(projectId);
   const updateMutation = useUpdateSavedFilter(projectId);
@@ -1714,7 +1725,13 @@ function NlqlQueryBar({
   useEffect(() => {
     if (!filterMenuOpen) return;
     function onDown(e: MouseEvent) {
-      if (!filterMenuRef.current?.contains(e.target as Node)) setFilterMenuOpen(false);
+      const target = e.target as Node;
+      if (
+        !filterMenuRef.current?.contains(target) &&
+        !filterPanelRef.current?.contains(target)
+      ) {
+        setFilterMenuOpen(false);
+      }
     }
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') setFilterMenuOpen(false);
@@ -1731,7 +1748,10 @@ function NlqlQueryBar({
   useEffect(() => {
     if (!helpOpen) return;
     function onDown(e: MouseEvent) {
-      if (!helpRef.current?.contains(e.target as Node)) setHelpOpen(false);
+      const target = e.target as Node;
+      if (!helpRef.current?.contains(target) && !helpPanelRef.current?.contains(target)) {
+        setHelpOpen(false);
+      }
     }
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') setHelpOpen(false);
@@ -1835,12 +1855,15 @@ function NlqlQueryBar({
               </svg>
             </button>
 
-            {filterMenuOpen && (
-              <div
-                role="menu"
-                aria-label="Saved filters menu"
-                className="absolute left-0 z-30 mt-1.5 w-64 rounded-lg border border-slate-200 bg-surface shadow-cardHover"
-              >
+            <DropdownPanel
+              open={filterMenuOpen}
+              anchorRef={filterMenuRef}
+              panelRef={filterPanelRef}
+              role="menu"
+              aria-label="Saved filters menu"
+              className="w-64 rounded-lg border border-slate-200 bg-surface shadow-cardHover"
+            >
+              <>
                 <div className="border-b border-slate-100 px-3 py-2">
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
                     Saved filters
@@ -1896,8 +1919,8 @@ function NlqlQueryBar({
                     ))}
                   </ul>
                 )}
-              </div>
-            )}
+              </>
+            </DropdownPanel>
           </div>
 
           {/* Query input — smart autocomplete */}
@@ -1938,12 +1961,16 @@ function NlqlQueryBar({
               <span className="text-xs font-bold leading-none">?</span>
             </button>
 
-            {helpOpen && (
-              <div
-                role="dialog"
-                aria-label="NLQL help"
-                className="absolute right-0 z-30 mt-1.5 w-72 rounded-lg border border-slate-200 bg-surface p-3 shadow-cardHover"
-              >
+            <DropdownPanel
+              open={helpOpen}
+              anchorRef={helpRef}
+              panelRef={helpPanelRef}
+              align="end"
+              role="dialog"
+              aria-label="NLQL help"
+              className="w-72 rounded-lg border border-slate-200 bg-surface p-3 shadow-cardHover"
+            >
+              <>
                 <p className="mb-2 text-xs font-semibold text-slate-700">Query language reference</p>
                 <div className="space-y-1.5 text-xs text-slate-600">
                   <p className="font-medium text-slate-500">Fields</p>
@@ -1961,8 +1988,8 @@ function NlqlQueryBar({
                     <li><code>priority &gt; MEDIUM AND assignee IS EMPTY</code></li>
                   </ul>
                 </div>
-              </div>
-            )}
+              </>
+            </DropdownPanel>
           </div>
 
           {/* Save button */}
@@ -2130,11 +2157,13 @@ function GroupBySelector({
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
     function onDown(e: MouseEvent) {
-      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+      const target = e.target as Node;
+      if (!ref.current?.contains(target) && !panelRef.current?.contains(target)) setOpen(false);
     }
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') setOpen(false);
@@ -2155,7 +2184,7 @@ function GroupBySelector({
   const activeLabel = allOptions.find((o) => o.value === value)?.label;
 
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} className="relative shrink-0">
       <button
         type="button"
         data-testid="swimlane-groupby"
@@ -2164,7 +2193,7 @@ function GroupBySelector({
         aria-haspopup="menu"
         onClick={() => setOpen((v) => !v)}
         className={cn(
-          'inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-sm transition-colors',
+          'inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border px-3 text-sm transition-colors',
           'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200',
           value
             ? 'border-brand-300 bg-brand-50 text-brand-700'
@@ -2183,12 +2212,15 @@ function GroupBySelector({
         </svg>
       </button>
 
-      {open && (
-        <div
-          role="menu"
-          aria-label="Group by menu"
-          className="absolute left-0 z-20 mt-2 w-52 max-h-[26rem] overflow-y-auto rounded-lg border border-slate-200 bg-surface p-1.5 shadow-cardHover"
-        >
+      <DropdownPanel
+        open={open}
+        anchorRef={ref}
+        panelRef={panelRef}
+        role="menu"
+        aria-label="Group by menu"
+        className="w-52 max-h-[26rem] overflow-y-auto rounded-lg border border-slate-200 bg-surface p-1.5 shadow-cardHover"
+      >
+        <>
           {/* None option */}
           <button
             type="button"
@@ -2259,8 +2291,8 @@ function GroupBySelector({
               ))}
             </>
           )}
-        </div>
-      )}
+        </>
+      </DropdownPanel>
     </div>
   );
 }

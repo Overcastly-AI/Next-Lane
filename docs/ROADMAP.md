@@ -283,17 +283,32 @@ audits' evidence implies, ahead of any new pillar or moonshot.
 build-loop pass; `docs/BACKLOG.md` itself is unchanged by this vision-steward
 pass — groom the board against this sequencing next.)*
 
-1. **Mobile — Swimlanes v2's own paint regression (P1, in flight).** The
-   board's "Group by" and filter-chip dropdown menus are functionally
-   clickable but render **completely invisible** on a real 393px phone
-   (`overflow-x-clip` suppresses the paint of an absolutely-positioned menu
-   that extends past the viewport) — this pass's flagship feature is unusable
-   via touch. The pre-existing quick-filter chip row regressed alongside it
-   (silently clips "Recently updated" off-canvas, no scroll affordance), and
-   the new "Group by" chip's label wraps to two lines unlike every sibling
-   chip (AUDIT-PRODUCT.md Pass 12, top-ranked finding). All three S-sized;
-   top of the queue since they block an entire platform on a just-shipped
-   feature.
+1. **Mobile — Swimlanes v2's own paint regression — ✅ fixed 2026-07-02
+   (Pass-12 mobile fix batch).** The board's "Group by" and filter-chip
+   dropdown menus were functionally clickable but rendered **completely
+   invisible** on a real 393px phone (`overflow-x-clip` suppressed the paint
+   of an absolutely-positioned menu that extended past the viewport) — this
+   pass's flagship feature was unusable via touch. Fixed at the pattern
+   level, not point-wise: a new portalled, viewport-clamped
+   `<DropdownPanel>` component (`apps/web/src/components/ui/DropdownPanel.tsx`,
+   `createPortal`-to-`document.body` + measured/clamped `position: fixed`,
+   flips above the trigger when there's no room below) replaces every
+   toolbar `position: absolute` menu in `BoardPage.tsx` (Group by, Labels,
+   Type, Priority filters, saved-filter menu, NLQL help). The pre-existing
+   quick-filter chip row's overflow regression (silently clipped "Recently
+   updated" off-canvas) is fixed with a real `overflow-x: auto` +
+   `shrink-0` chips + the house `.nl-scroll` thin-scrollbar style, and the
+   "Group by" chip's two-line wrap is fixed with `whitespace-nowrap`/
+   `shrink-0`, matching every sibling chip. Verified with paint-level e2e
+   (not just `isVisible()`/`boundingBox()` — a real screenshot decoded via
+   `<canvas>` to assert non-blank pixel content, per the audit's own
+   recommended follow-up) in `swimlanes.spec.ts` and a chip-reachability
+   check in `quick-filters.spec.ts`; desktop unaffected
+   (AUDIT-PRODUCT.md Pass 12, top-ranked finding). Also fixed the related
+   P3 the same pass: the persistent sidebar defaulted to expanded at the
+   1024–1279px "small laptop" band, visibly cramping the 3-column board —
+   now defaults to the collapsed rail there when the user has no stored
+   preference (an explicit preference always wins, at any width).
 2. **Reliability artifact gap — CSP blocks the dark-mode bootstrap script in
    the real Docker image — ✅ shipped 2026-07-02 (Pass-12 fix batch).** The
    no-flash bootstrap moved from an inline `<script>` in `index.html` to a

@@ -2237,6 +2237,12 @@ the first place. **Confirmed desktop is unaffected** (`bd-desktop-groupby-
 sanity.png` — the same dropdown renders perfectly at 1440px, where the row never
 approaches the viewport edge).
 
+> **Fixed 2026-07-02** — portalled, viewport-clamped `<DropdownPanel>` component
+> (`apps/web/src/components/ui/DropdownPanel.tsx`) replaces every toolbar
+> `position: absolute` menu in `BoardPage.tsx`; paint-level e2e added to
+> `swimlanes.spec.ts` (real screenshot decoded via canvas, not just
+> `isVisible()`/`boundingBox()`). See `docs/BACKLOG.md` Ready queue.
+
 **Repro (P2 — quick-filter chip row overflow, likely reintroduced by the same
 commit).** At 393px, the quick-filter chip row (`My issues` / `High priority` /
 `Unresolved` / `Recently updated`) has `scrollWidth: 447` vs. `clientWidth: 393`
@@ -2248,12 +2254,19 @@ cue (no scroll shadow, no "more" affordance) and no working horizontal scroll
 gesture** (`an-mobile-chip-row.png` — the label is visibly cropped to "Rec").
 This quick filter is functionally unreachable on a real phone today.
 
+> **Fixed 2026-07-02** — chip row now `overflow-x: auto` with `shrink-0` chips
+> and the house `.nl-scroll` treatment; e2e added to `quick-filters.spec.ts`
+> confirming "Recently updated" is fully reachable after scrolling.
+
 **Repro (P2 — "Group by" chip label wraps to two lines).** The new "Group by"
 chip is the only chip in either the desktop or mobile toolbar whose label wraps
 mid-word onto a second line inside a single-line-height pill at 393px
 (`an-mobile-chip-row.png` — "Group" / "by" stacked) — every sibling chip
 (`Labels`, `Type`, `Priority`) stays single-line at the same width. Cheap visual
 polish miss, but conspicuous since it's the newest chip in the row.
+
+> **Fixed 2026-07-02** — `whitespace-nowrap`/`shrink-0` added to the "Group by"
+> chip, matching every sibling; e2e assertion added to `quick-filters.spec.ts`.
 
 **Finding (P3 — sidebar at the 1024px "small laptop" breakpoint).** The
 persistent left sidebar has no viewport-width-aware default: at 1024×768 it stays
@@ -2268,6 +2281,11 @@ noticeably more cramped board than before the persistent sidebar existed, with n
 system nudge ("collapse for more room?") to discover the fix. Not a regression in
 the "broken" sense — a genuine reduction in usable content width introduced by
 this pass's own headline nav feature, worth a follow-up.
+
+> **Fixed 2026-07-02** — `SidebarContext.tsx`'s `readCollapsed()` now defaults
+> to the collapsed rail at 1024–1279px when there is no stored preference; an
+> explicit user preference still wins at any width. e2e added to
+> `nav-sidebar.spec.ts`.
 
 **Finding (P3, nuance — not a clear-cut bug but worth a product decision).**
 Pass 11's headline P1 (the workspace-chip lying on 7 of 12 scoped pages) is

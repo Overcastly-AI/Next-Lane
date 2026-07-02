@@ -337,4 +337,56 @@ test.describe('Quick-filter presets – mobile', () => {
     });
     await expect(page.getByText(medTitle)).toHaveCount(0, { timeout: 10_000 });
   });
+
+  // ── Regression coverage for Pass 12's P2: chip row silently overflowed ──
+  //
+  // Was `overflow-x: visible` (not `auto`), so "Recently updated" (more than
+  // half its own width) sat past the 393px viewport edge with zero scroll
+  // cue and no working scroll gesture. The row must now be a real
+  // horizontally-scrollable container: `overflow-x: auto`, and scrolling it
+  // must actually bring the clipped chip fully into view.
+  test('chip row is horizontally scrollable and "Recently updated" is fully reachable at 393px', async ({
+    page,
+    request,
+  }) => {
+    await setupIsolatedProject(page, request, { label: 'qf-scroll' });
+
+    const row = page.getByRole('group', { name: 'Quick filters' });
+    await expect(row).toBeVisible({ timeout: 10_000 });
+
+    const overflowX = await row.evaluate((el) => getComputedStyle(el).overflowX);
+    expect(overflowX).toBe('auto');
+
+    const recentChip = page.getByTestId('quick-filter-recent');
+    await expect(recentChip).toBeVisible({ timeout: 10_000 });
+
+    // Scroll the row all the way right and confirm the chip is now fully
+    // inside the viewport (not clipped/cropped as "Rec…").
+    await row.evaluate((el) => {
+      el.scrollLeft = el.scrollWidth;
+    });
+    const box = await recentChip.boundingBox();
+    const viewport = page.viewportSize()!;
+    expect(box).not.toBeNull();
+    expect(box!.x).toBeGreaterThanOrEqual(0);
+    expect(box!.x + box!.width).toBeLessThanOrEqual(viewport.width + 1);
+
+    await page.screenshot({ path: '/tmp/nav-shots/mobile-chips-scroll.png' });
+  });
+
+  // ── Regression coverage for Pass 12's P3: "Group by" chip wraps to 2 lines ──
+  test('"Group by" chip stays single-line at 393px, matching sibling filter chips', async ({
+    page,
+    request,
+  }) => {
+    await setupIsolatedProject(page, request, { label: 'qf-groupby-wrap' });
+
+    const groupByBtn = page.getByTestId('swimlane-groupby');
+    await expect(groupByBtn).toBeVisible({ timeout: 10_000 });
+    const box = await groupByBtn.boundingBox();
+    expect(box).not.toBeNull();
+    // A single-line 14px chip button is ~36px tall; two-line wrap roughly
+    // doubles that. Assert it stays in the single-line range.
+    expect(box!.height).toBeLessThan(44);
+  });
 });

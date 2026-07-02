@@ -194,6 +194,70 @@ test.describe('Sidebar — desktop', () => {
 });
 
 // ---------------------------------------------------------------------------
+// "Small laptop" breakpoint (1024–1279px) — default-collapse without a
+// stored preference (Pass 12 audit finding #6: the expanded 240px sidebar
+// crowds the board's columns at this width).
+// ---------------------------------------------------------------------------
+
+test.describe('Sidebar — 1024px small-laptop default', () => {
+  test.use({ viewport: { width: 1024, height: 768 } });
+
+  test('defaults to the collapsed rail with no stored preference', async ({
+    page,
+    request,
+  }) => {
+    await setup(page, request);
+
+    // First load, brand-new user → no localStorage preference yet → the
+    // small-laptop default (collapsed) applies from the very first paint.
+    const toggle = page.getByTestId('nav-sidebar-toggle');
+    await expect(toggle).toBeVisible({ timeout: 15_000 });
+    await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  test('an explicit "expanded" preference overrides the small-laptop default and survives reload', async ({
+    page,
+    request,
+  }) => {
+    await setup(page, request);
+
+    const toggle = page.getByTestId('nav-sidebar-toggle');
+    await expect(toggle).toHaveAttribute('aria-pressed', 'true', { timeout: 15_000 });
+
+    // User explicitly expands it.
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+
+    await page.reload();
+
+    // The explicit preference — not the width default — wins after reload.
+    await expect(page.getByTestId('nav-sidebar-toggle')).toHaveAttribute(
+      'aria-pressed',
+      'false',
+      { timeout: 15_000 },
+    );
+  });
+
+  test('the 3-column board is no longer visually cramped at 1024px (Done column reachable without scrolling the sidebar into view)', async ({
+    page,
+    request,
+  }) => {
+    const ctx = await setup(page, request);
+
+    await page.goto(`/projects/${ctx.projectId}/board`);
+    await expect(page.getByText(/to do/i).first()).toBeVisible({ timeout: 15_000 });
+
+    // Collapsed rail by default here → the board region has materially more
+    // width than the old always-expanded 240px sidebar left it.
+    const boardMain = page.locator('main');
+    const mainBox = await boardMain.boundingBox();
+    expect(mainBox?.width ?? 0).toBeGreaterThan(880);
+
+    await page.screenshot({ path: '/tmp/nav-shots/sidebar-1024.png' });
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Mobile (< lg) — overlay drawer
 // ---------------------------------------------------------------------------
 

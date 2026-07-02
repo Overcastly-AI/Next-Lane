@@ -1,4 +1,4 @@
-import { Page, expect, type APIRequestContext } from '@playwright/test';
+import { Page, Locator, expect, type APIRequestContext } from '@playwright/test';
 
 export const DEMO = { email: 'demo@nextlane.dev', password: 'nextlane' };
 
@@ -223,6 +223,67 @@ export async function createLabel(
   );
   expect(res.ok(), `create label failed: ${res.status()}`).toBeTruthy();
   return ((await res.json()) as { id: string }).id;
+}
+
+/**
+ * Paint-level visibility check for absolutely-positioned / portalled
+ * overlays near a viewport edge.
+ *
+ * Motivation (docs/AUDIT-PRODUCT.md Pass 12): a menu can be DOM-present,
+ * `opacity: 1`, correctly `z-index`-ed, have a non-zero `boundingBox()`, and
+ * report `isVisible(): true` — and STILL paint zero real pixels to a real
+ * user's screen if a clipping ancestor (e.g. `overflow-x-clip`) suppresses
+ * the compositor's paint of the whole absolutely-positioned box once part
+ * of it extends past the viewport edge. `isVisible()`/`boundingBox()` alone
+ * do not catch this class of bug — only an actual rendered-pixel check does.
+ *
+ * This takes a real Playwright screenshot clipped to the locator's bounding
+ * box, decodes it via the browser's own `<canvas>` (no extra npm deps), and
+ * samples pixel colors to assert the region isn't a single flat color (which
+ * a fully-suppressed/blank paint would be). Returns the sampled distinct
+ * color count for the caller to assert on.
+ */
+export async function paintedDistinctColorCount(
+  page: Page,
+  locator: Locator,
+): Promise<number> {
+  const box = await locator.boundingBox();
+  if (!box || box.width <= 0 || box.height <= 0) return 0;
+
+  const buffer = await page.screenshot({
+    clip: {
+      x: Math.max(0, box.x),
+      y: Math.max(0, box.y),
+      width: Math.max(1, Math.min(box.width, page.viewportSize()!.width - Math.max(0, box.x))),
+      height: Math.max(1, Math.min(box.height, page.viewportSize()!.height - Math.max(0, box.y))),
+    },
+  });
+
+  const base64 = buffer.toString('base64');
+  const { distinctColors } = await page.evaluate(async (b64) => {
+    const img = new Image();
+    const loaded = new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve();
+      img.onerror = () => reject(new Error('image decode failed'));
+    });
+    img.src = `data:image/png;base64,${b64}`;
+    await loaded;
+    const canvas = document.createElement('canvas');
+    canvas.width = img.naturalWidth;
+    canvas.height = img.naturalHeight;
+    const ctx = canvas.getContext('2d')!;
+    ctx.drawImage(img, 0, 0);
+    const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const colors = new Set<string>();
+    // Sample every 4th pixel (16 bytes) for speed; enough to detect a
+    // uniform blank region vs. real bordered/text content.
+    for (let i = 0; i < data.length; i += 16) {
+      colors.add(`${data[i]},${data[i + 1]},${data[i + 2]}`);
+    }
+    return { distinctColors: colors.size };
+  }, base64);
+
+  return distinctColors;
 }
 
 /** Navigate to a project board and wait for its columns to render. */
