@@ -27,6 +27,7 @@ import { useMyRole } from '@/api/workspaces';
 import { canEdit } from '@/lib/permissions';
 import { endDateStatus, formatDateRange } from '@/lib/sprintDates';
 import { AppHeader } from '@/components/AppHeader';
+import { ProjectBreadcrumb } from '@/components/project/ProjectBreadcrumb';
 import { ProjectNav } from '@/components/project/ProjectNav';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -1082,19 +1083,7 @@ function Shell({
   return (
     <div className="flex h-screen flex-col overflow-x-clip">
       <AppHeader>
-        <div className="flex items-center gap-2">
-          <Link
-            to="/"
-            className="text-sm text-slate-400 hover:text-slate-600"
-            aria-label="Back to projects"
-          >
-            Projects
-          </Link>
-          <span className="text-slate-300">/</span>
-          <span className="truncate text-sm font-semibold text-slate-900">
-            {projectName ?? 'Project'}
-          </span>
-        </div>
+        <ProjectBreadcrumb primary={projectName} />
       </AppHeader>
       <ProjectNav projectId={projectId} />
       <main className="flex-1 overflow-y-auto bg-slate-50">{children}</main>

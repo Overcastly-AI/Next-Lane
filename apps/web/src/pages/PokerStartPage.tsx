@@ -12,6 +12,7 @@ import { useMyRole } from '@/api/workspaces';
 import { canEdit } from '@/lib/permissions';
 import { AppHeader } from '@/components/AppHeader';
 import { ProjectNav } from '@/components/project/ProjectNav';
+import { ProjectBreadcrumb } from '@/components/project/ProjectBreadcrumb';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { Field } from '@/components/ui/Field';
@@ -419,19 +420,7 @@ function Shell({
   return (
     <div className="flex h-screen flex-col overflow-x-clip">
       <AppHeader>
-        <div className="flex min-w-0 items-center gap-2">
-          <Link
-            to="/"
-            className="shrink-0 text-sm text-ink-400 hover:text-ink-600"
-            aria-label="Back to projects"
-          >
-            Projects
-          </Link>
-          <span className="shrink-0 text-ink-300">/</span>
-          <span className="truncate text-sm font-semibold text-ink-900">
-            {projectName ?? 'Project'}
-          </span>
-        </div>
+        <ProjectBreadcrumb primary={projectName} />
       </AppHeader>
       <ProjectNav projectId={projectId} />
       <main className="flex-1 overflow-y-auto bg-ink-50">{children}</main>

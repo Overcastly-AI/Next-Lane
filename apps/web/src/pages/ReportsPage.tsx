@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { SprintState, type SprintDto } from '@next-lane/shared';
 import { useBoard } from '@/api/issues';
 import { useSprints } from '@/api/meta';
 import { useVelocity, useBurndown, useCfd } from '@/api/reports';
 import { AppHeader } from '@/components/AppHeader';
 import { ProjectNav } from '@/components/project/ProjectNav';
+import { ProjectBreadcrumb } from '@/components/project/ProjectBreadcrumb';
 import { Select } from '@/components/ui/Select';
 import { ErrorState, LoadingState, EmptyState, Spinner } from '@/components/ui/States';
 import { VelocityChart } from '@/components/reports/VelocityChart';
@@ -225,19 +226,7 @@ function Shell({
   return (
     <div className="flex h-screen flex-col overflow-x-clip">
       <AppHeader>
-        <div className="flex min-w-0 items-center gap-2 overflow-hidden">
-          <Link
-            to="/"
-            className="shrink-0 text-sm text-ink-400 hover:text-ink-600"
-            aria-label="Back to projects"
-          >
-            Projects
-          </Link>
-          <span className="shrink-0 text-ink-300">/</span>
-          <span className="min-w-0 truncate text-sm font-semibold text-ink-900">
-            {projectName ?? 'Project'}
-          </span>
-        </div>
+        <ProjectBreadcrumb primary={projectName} />
       </AppHeader>
       <ProjectNav projectId={projectId} />
       <main className="flex-1 overflow-y-auto bg-ink-50">{children}</main>

@@ -23,7 +23,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { Link, NavLink, useNavigate, useParams } from 'react-router-dom';
+import { NavLink, useNavigate, useParams } from 'react-router-dom';
 import {
   PRIORITIES,
   Priority,
@@ -42,6 +42,7 @@ import { canEdit } from '@/lib/permissions';
 import { errorMessage } from '@/lib/errorMessage';
 import { cn } from '@/lib/cn';
 import { AppHeader } from '@/components/AppHeader';
+import { ProjectBreadcrumb } from '@/components/project/ProjectBreadcrumb';
 import { Avatar } from '@/components/ui/Avatar';
 import { Badge } from '@/components/ui/Badge';
 import { ErrorState, LoadingState, EmptyState } from '@/components/ui/States';
@@ -1073,19 +1074,7 @@ function Shell({
   return (
     <div className="flex h-screen flex-col overflow-hidden">
       <AppHeader>
-        <div className="flex items-center gap-2">
-          <Link
-            to="/"
-            className="text-sm text-slate-400 hover:text-slate-600"
-            aria-label="Back to projects"
-          >
-            Projects
-          </Link>
-          <span className="text-slate-300">/</span>
-          <span className="truncate text-sm font-semibold text-slate-900">
-            {projectName ?? 'Project'}
-          </span>
-        </div>
+        <ProjectBreadcrumb primary={projectName} />
       </AppHeader>
       {projectId && <TriagePageNav projectId={projectId} />}
       <main className="flex min-h-0 flex-1 flex-col bg-white">{children}</main>

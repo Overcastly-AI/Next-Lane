@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { useNavigate, useParams, Link } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { Role, StatusCategory, type StatusDto } from '@next-lane/shared';
 import { useProject, useUpdateProject, useArchiveProject } from '@/api/projects';
 import { useStatuses, useLabels } from '@/api/meta';
@@ -8,6 +8,7 @@ import { useCreateLabel, useDeleteLabel, useUpdateLabel } from '@/api/labels';
 import { useMyRole, useWorkspaceMembers } from '@/api/workspaces';
 import { canEdit } from '@/lib/permissions';
 import { AppHeader } from '@/components/AppHeader';
+import { ProjectBreadcrumb } from '@/components/project/ProjectBreadcrumb';
 import { ProjectNav } from '@/components/project/ProjectNav';
 import { ColumnFormModal } from '@/components/board/ColumnFormModal';
 import { WebhooksSection } from '@/components/settings/WebhooksSection';
@@ -867,19 +868,7 @@ function Shell({
   return (
     <div className="flex h-screen flex-col overflow-x-clip">
       <AppHeader>
-        <div className="flex min-w-0 items-center gap-2 overflow-hidden">
-          <Link
-            to="/"
-            className="shrink-0 text-sm text-slate-400 hover:text-slate-600"
-            aria-label="Back to projects"
-          >
-            Projects
-          </Link>
-          <span className="shrink-0 text-slate-300">/</span>
-          <span className="min-w-0 truncate text-sm font-semibold text-slate-900">
-            {projectName ?? 'Project'}
-          </span>
-        </div>
+        <ProjectBreadcrumb primary={projectName} />
       </AppHeader>
       <ProjectNav projectId={projectId} />
       <main className="flex flex-1 flex-col overflow-y-auto">{children}</main>

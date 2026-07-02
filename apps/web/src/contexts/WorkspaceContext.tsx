@@ -37,11 +37,24 @@ interface WorkspaceContextValue {
   workspaces: WorkspaceDto[];
   /** Explicitly set the active workspace by id (called by workspace-scoped pages). */
   setActiveWorkspaceId: (id: string) => void;
+  /**
+   * Up to 3 most-recently-visited workspaces, most recent first, EXCLUDING
+   * the current `activeWorkspace` and any id no longer in `workspaces`
+   * (deleted / access revoked). Used by the workspace switcher's "Recent"
+   * section once the workspace list gets long enough that a flat list stops
+   * scaling (VISION.md § Better-than-Jira gap #2).
+   */
+  recentWorkspaces: WorkspaceDto[];
 }
 
 const WorkspaceContext = createContext<WorkspaceContextValue | null>(null);
 
 const STORAGE_KEY = 'nl.activeWorkspaceId';
+// Small MRU (most-recently-used) list, independent of the single "active"
+// pointer above — it's a history, not a selection. Capped generously in
+// storage; the switcher itself only surfaces the top 3.
+const RECENTS_STORAGE_KEY = 'nl.recentWorkspaceIds';
+const MAX_STORED_RECENTS = 8;
 
 function readStoredId(): string | null {
   try {
@@ -60,6 +73,29 @@ function writeStoredId(id: string | null): void {
   }
 }
 
+function readRecentIds(): string[] {
+  try {
+    const raw = localStorage.getItem(RECENTS_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((v) => typeof v === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Push `id` to the front of the recents MRU list (dedup, capped). */
+function pushRecentId(id: string): string[] {
+  const existing = readRecentIds().filter((v) => v !== id);
+  const next = [id, ...existing].slice(0, MAX_STORED_RECENTS);
+  try {
+    localStorage.setItem(RECENTS_STORAGE_KEY, JSON.stringify(next));
+  } catch {
+    /* private mode / storage disabled — fall back to in-memory only */
+  }
+  return next;
+}
+
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const { isAuthenticated } = useAuth();
   const workspacesQuery = useWorkspaces();
@@ -69,6 +105,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   // Restore the last-active workspace synchronously so the first render already
   // reflects the user's choice (no flash of "first workspace" before an effect).
   const [activeId, setActiveId] = useState<string | null>(() => readStoredId());
+  const [recentIds, setRecentIds] = useState<string[]>(() => readRecentIds());
 
   // Seed / heal: fall back to the first workspace only when nothing is set or
   // the persisted one is no longer in the list (deleted / access revoked).
@@ -94,11 +131,22 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const setActiveWorkspaceId = useCallback((id: string) => {
     setActiveId(id);
     writeStoredId(id);
+    setRecentIds(pushRecentId(id));
   }, []);
 
+  const recentWorkspaces = useMemo(
+    () =>
+      recentIds
+        .filter((id) => id !== activeId)
+        .map((id) => workspaces.find((w) => w.id === id))
+        .filter((w): w is WorkspaceDto => Boolean(w))
+        .slice(0, 3),
+    [recentIds, activeId, workspaces],
+  );
+
   const value = useMemo<WorkspaceContextValue>(
-    () => ({ activeWorkspace, workspaces, setActiveWorkspaceId }),
-    [activeWorkspace, workspaces, setActiveWorkspaceId],
+    () => ({ activeWorkspace, workspaces, setActiveWorkspaceId, recentWorkspaces }),
+    [activeWorkspace, workspaces, setActiveWorkspaceId, recentWorkspaces],
   );
 
   return (

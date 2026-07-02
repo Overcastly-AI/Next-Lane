@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import {
   POKER_DECK,
   PokerState,
@@ -21,6 +21,7 @@ import { useBoard } from '@/api/issues';
 import { useMyRole } from '@/api/workspaces';
 import { canEdit } from '@/lib/permissions';
 import { AppHeader } from '@/components/AppHeader';
+import { ProjectBreadcrumb } from '@/components/project/ProjectBreadcrumb';
 import { ProjectNav } from '@/components/project/ProjectNav';
 import { Button } from '@/components/ui/Button';
 import { Avatar } from '@/components/ui/Avatar';
@@ -765,26 +766,12 @@ function Shell({
   return (
     <div className="flex h-screen flex-col overflow-x-clip">
       <AppHeader>
-        <div className="flex min-w-0 items-center gap-2">
-          <Link
-            to="/"
-            className="shrink-0 text-sm text-ink-400 hover:text-ink-600"
-            aria-label="Back to projects"
-          >
-            Projects
-          </Link>
-          <span className="shrink-0 text-ink-300">/</span>
-          <Link
-            to={`/projects/${projectId}/backlog`}
-            className="truncate text-sm text-ink-500 hover:text-ink-700"
-          >
-            {projectName ?? 'Project'}
-          </Link>
-          <span className="shrink-0 text-ink-300">/</span>
-          <span className="truncate text-sm font-semibold text-ink-900">
-            {sessionName ?? 'Poker'}
-          </span>
-        </div>
+        <ProjectBreadcrumb
+          primary={sessionName ?? 'Poker'}
+          secondary={[
+            { label: projectName ?? 'Project', to: `/projects/${projectId}/backlog` },
+          ]}
+        />
       </AppHeader>
       <ProjectNav projectId={projectId} />
       <main className="flex-1 overflow-y-auto bg-ink-50">{children}</main>

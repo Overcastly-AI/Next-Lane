@@ -43,6 +43,7 @@ import { endDateStatus } from '@/lib/sprintDates';
 import { useBoardRealtime, usePresence } from '@/api/socket';
 import { useAuth } from '@/auth/AuthContext';
 import { AppHeader } from '@/components/AppHeader';
+import { ProjectBreadcrumb } from '@/components/project/ProjectBreadcrumb';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
@@ -719,23 +720,17 @@ export function BoardPage() {
     <Shell
       projectId={projectId}
       header={
-        <div className="flex min-w-0 items-center gap-2 overflow-hidden">
-          <Link
-            to="/"
-            className="shrink-0 text-sm text-ink-400 hover:text-ink-700"
-            aria-label="Back to projects"
-          >
-            Projects
-          </Link>
-          <span className="shrink-0 text-ink-300">/</span>
-          <span className="min-w-0 truncate text-sm font-semibold text-ink-900">
-            {board.project.name}
-          </span>
-          <span className="shrink-0 rounded bg-ink-100 px-1.5 py-0.5 font-mono text-xs font-medium text-ink-500">
-            {board.project.key}
-          </span>
-          <ActiveSprintBadge sprint={activeSprint} />
-        </div>
+        <ProjectBreadcrumb
+          primary={board.project.name}
+          extra={
+            <>
+              <span className="shrink-0 rounded bg-ink-100 px-1.5 py-0.5 font-mono text-xs font-medium text-ink-500">
+                {board.project.key}
+              </span>
+              <ActiveSprintBadge sprint={activeSprint} />
+            </>
+          }
+        />
       }
     >
       {/* Toolbar */}

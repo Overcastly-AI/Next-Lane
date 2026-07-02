@@ -8,7 +8,7 @@
  * edit, and delete. The "Run Log" tab renders AutomationRunsPanel.
  */
 import { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import {
   AUTOMATION_ACTION_LABELS,
   AUTOMATION_TRIGGER_LABELS,
@@ -24,6 +24,7 @@ import {
   useToggleAutomation,
 } from '@/api/automations';
 import { AppHeader } from '@/components/AppHeader';
+import { ProjectBreadcrumb } from '@/components/project/ProjectBreadcrumb';
 import { ProjectNav } from '@/components/project/ProjectNav';
 import { Button } from '@/components/ui/Button';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -50,19 +51,7 @@ function Shell({
   return (
     <div className="flex h-screen flex-col overflow-x-clip">
       <AppHeader>
-        <div className="flex min-w-0 items-center gap-2 overflow-hidden">
-          <Link
-            to="/"
-            className="shrink-0 text-sm text-ink-400 hover:text-ink-600"
-            aria-label="Back to projects"
-          >
-            Projects
-          </Link>
-          <span className="shrink-0 text-ink-300">/</span>
-          <span className="min-w-0 truncate text-sm font-semibold text-ink-900">
-            {projectName ?? 'Project'}
-          </span>
-        </div>
+        <ProjectBreadcrumb primary={projectName} />
       </AppHeader>
       <ProjectNav projectId={projectId} />
       <main className="flex flex-1 flex-col overflow-y-auto">{children}</main>

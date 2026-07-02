@@ -268,6 +268,122 @@ test.describe('Workspace switcher — multi-workspace coherence', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Search/filter + recently-visited (large workspace count)
+// ---------------------------------------------------------------------------
+
+/**
+ * Fresh user with 10 workspaces (past the 8-workspace search threshold),
+ * distinctly prefixed so filtering is unambiguous. Logs the user into the UI
+ * and lands on the dashboard.
+ */
+async function setupManyWorkspaces(
+  page: Page,
+  request: APIRequestContext,
+): Promise<{ user: RegisteredUser; names: string[] }> {
+  const suffix = `${Date.now().toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}`;
+  const user = await registerNewUser(request, 'wsqa-many');
+  const names = [
+    `Acme Corp ${suffix}`,
+    `Acme Labs ${suffix}`,
+    `Beta Inc ${suffix}`,
+    `Beta Labs ${suffix}`,
+    `Gamma LLC ${suffix}`,
+    `Delta Co ${suffix}`,
+    `Epsilon Group ${suffix}`,
+    `Zeta Partners ${suffix}`,
+    `Eta Studio ${suffix}`,
+    `Theta Works ${suffix}`,
+  ];
+  for (const name of names) {
+    await createWorkspace(request, user.token, name);
+  }
+  await login(page, { email: user.email, password: user.password });
+  return { user, names };
+}
+
+const switcherItem = (page: Page) => page.getByTestId('workspace-switcher-item');
+const switcherSearch = (page: Page) => page.getByTestId('workspace-switcher-search');
+
+test.describe('Workspace switcher — search/filter + recently visited', () => {
+  test('search box appears past the threshold, autofocuses, and narrows the list per keystroke', async ({
+    page,
+    request,
+  }) => {
+    const { names } = await setupManyWorkspaces(page, request);
+    await expect(chip(page)).toBeVisible({ timeout: 15_000 });
+
+    await chip(page).click();
+    const search = switcherSearch(page);
+    await expect(search).toBeVisible({ timeout: 5_000 });
+    await expect(search).toBeFocused();
+
+    // Full list visible before typing anything.
+    await expect(switcherItem(page)).toHaveCount(names.length, { timeout: 10_000 });
+
+    // Per-keystroke, case-insensitive filter.
+    await search.pressSequentially('acme', { delay: 30 });
+    await expect(switcherItem(page)).toHaveCount(2, { timeout: 5_000 });
+    for (const name of names.filter((n) => n.startsWith('Acme'))) {
+      await expect(switcherItem(page).filter({ hasText: name })).toBeVisible();
+    }
+    // Non-matching workspaces are gone, not just hidden.
+    await expect(switcherItem(page).filter({ hasText: 'Zeta' })).toHaveCount(0);
+
+    // Clearing the query restores the full list.
+    await search.fill('');
+    await expect(switcherItem(page)).toHaveCount(names.length, { timeout: 5_000 });
+
+    // A query matching nothing shows an empty state, not a blank dropdown.
+    await search.fill('nonexistent-workspace-zzz');
+    await expect(switcherItem(page)).toHaveCount(0);
+    await expect(page.getByText(/no workspaces match/i)).toBeVisible();
+  });
+
+  test('recently-visited section lists the last switched-to workspaces, most recent first', async ({
+    page,
+    request,
+  }) => {
+    const { names } = await setupManyWorkspaces(page, request);
+    await expect(chip(page)).toBeVisible({ timeout: 15_000 });
+
+    // Switch to "Gamma LLC …", then to "Eta Studio …", via the switcher.
+    await chip(page).click();
+    await switcherSearch(page).pressSequentially('Gamma', { delay: 20 });
+    await switcherItem(page).filter({ hasText: 'Gamma' }).click();
+    await expect(chip(page)).toContainText('Gamma', { timeout: 10_000 });
+
+    await chip(page).click();
+    await switcherSearch(page).pressSequentially('Eta Studio', { delay: 20 });
+    await switcherItem(page).filter({ hasText: 'Eta Studio' }).click();
+    await expect(chip(page)).toContainText('Eta', { timeout: 10_000 });
+
+    // Reopen with an empty query: "Recent" shows Gamma (the previous stop),
+    // not the now-active Eta Studio, and clicking it switches back.
+    await chip(page).click();
+    await expect(switcherSearch(page)).toHaveValue('');
+    await expect(page.getByText('Recent', { exact: true })).toBeVisible({
+      timeout: 5_000,
+    });
+    const recentSection = page.locator('#workspace-switcher-recent-heading').locator('..');
+    await expect(recentSection.getByTestId('workspace-switcher-item')).toHaveCount(1);
+    await expect(
+      recentSection.getByTestId('workspace-switcher-item').filter({ hasText: 'Gamma' }),
+    ).toBeVisible();
+
+    await recentSection
+      .getByTestId('workspace-switcher-item')
+      .filter({ hasText: 'Gamma' })
+      .click();
+    await expect(chip(page)).toContainText('Gamma', { timeout: 10_000 });
+
+    // Typing hides the "Recent" section (it would just duplicate a match).
+    await chip(page).click();
+    await switcherSearch(page).pressSequentially('Beta', { delay: 20 });
+    await expect(page.getByText('Recent', { exact: true })).toHaveCount(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Single-workspace user
 // ---------------------------------------------------------------------------
 

@@ -192,6 +192,8 @@ delivered as QA'd vertical slices.
 - ✅ **Blocked badge clears when the blocker is resolved** (2026-07-02, eng-audit Pass-11 P2) — The board's `blockedByCount` counted every BLOCKS link regardless of the blocker's status, so the red Blocked badge stayed forever even after the blocking issue was Done. The filtered `_count` now adds `source: { status: { category: { not: DONE } } }`. Board e2e extended: after moving the blocker to Done the badge disappears on reload. 43 board unit tests + 66 board/workspace-switcher e2e green desktop + mobile.
 - ✅ **Route-derived scoped layouts — tenant context correct by construction** (2026-07-02, Ready #1) — `ScopedLayouts.tsx`: `/projects/:id/*` and `/workspaces/:id/*` now render through `ProjectScopedLayout`/`WorkspaceScopedLayout`, which own the workspace-chip sync; the 15 per-page `useSyncActiveWorkspace` calls are gone, so route #16 can't reintroduce the bug class. Parameterized class-guard e2e asserts the chip matches the URL's workspace on all 14 scoped routes (workspace-switcher 18/18 desktop+mobile).
 - ✅ **SSO/OIDC — Phase 1: generic OIDC login provider** (2026-07-02, Ready #2) — env-configured single provider (`OIDC_ISSUER_URL`/`OIDC_CLIENT_ID`/`OIDC_CLIENT_SECRET`, optional `OIDC_BUTTON_LABEL`/`OIDC_REDIRECT_URI`; OFF unless all three required vars are set). `OidcModule` (`apps/api/src/auth/oidc/`) via `openid-client@5`: `GET /auth/oidc/login` (PKCE + state/nonce, signed short-lived httpOnly state cookie, redirects to the provider) + `GET /auth/oidc/callback` (state/nonce CSRF guard, token exchange, rejects unverified emails, JIT-provisions by email, issues the same JWT password login issues); both 404 when unconfigured. `GET /auth/providers` public capability probe; `LoginPage` renders "Continue with `<label>`" only when enabled; new SPA route `/login/sso-complete` completes the redirect. 41 new unit tests (`openid-client` mocked, no network); 1375 API tests green; `apps/web/e2e/sso.spec.ts` (button-absent + endpoint-404 when unconfigured) green desktop+mobile. SAML, multi-provider, and per-workspace/role JIT provisioning are the tracked Phase 2 follow-up.
+- ✅ **Workspace switcher search/filter + recently-visited** (2026-07-02, Next-P2) — the chip dropdown gains a case-insensitive, autofocused, per-keystroke search box + a scrollable list once a user has >8 workspaces, plus a localStorage-backed "Recent" section (last 3 switched-to, excluding the active one); all existing `workspace-chip`/`workspace-switcher-item` test hooks and footer links preserved; 2 new e2e (desktop+mobile) in `workspace-switcher.spec.ts`.
+- ✅ **Mobile breadcrumb: project name wins the space** (2026-07-02, Ready #4) — the project breadcrumb ("Projects / {name}") now wraps to its own full-width row below the icon row at mobile widths instead of competing inline with the workspace chip + action icons; a shared `<ProjectBreadcrumb>` component (11 project-scoped pages migrated) collapses "Projects" to a back-chevron icon and hides secondary badges on mobile so the project name — the primary "where am I" signal — is never truncated below ~15 characters; verified with a 393px Playwright text-content assertion (`mobile-breadcrumb.spec.ts`) and a desktop no-regression check.
 - ⬜ **Remaining parity gaps**: configurable dashboards, project-level role overrides, personal-board per-card checklists, SSO/OIDC Phase 2 (SAML + multi-provider + JIT workspace/role provisioning).
 
 ## Phase 6 — Autopilot: a self-hosted AI teammate 🔭 (vision)
@@ -267,19 +269,21 @@ order first, ahead of any new pillar or moonshot:
    "you are here" instead of opt-in context sync) is still open and is the
    top item — trust in "where am I" is foundational to everything else.
 2. **Admin controls** (behind) — SSO/OIDC Phase 1 (generic provider login)
-   shipped 2026-07-02; still missing SAML/multi-provider SSO (Phase 2),
-   per-project role override, and workspace-switcher search/filter at scale
-   (reproduced at 50+ workspaces). This remains a hard blocker for
-   enterprise/agency self-hosters evaluating a switch until the remaining
-   gaps close.
+   shipped 2026-07-02; workspace-switcher search/filter + recently-visited
+   shipped 2026-07-02 (the 50+-workspace flat list is no longer a wall of
+   text). Still missing SAML/multi-provider SSO (Phase 2) and per-project
+   role override. This remains a hard blocker for enterprise/agency
+   self-hosters evaluating a switch until the remaining gaps close.
 3. **Integrations** (behind) — Phase 9 Developer Graph (GitHub/GitLab/Gitea
    two-way linking) is still unshipped; import/export is file-based only.
    Engineering teams — the incumbent's core segment — expect PR/commit
    linking on day one.
 4. **Reporting** (behind) — no configurable dashboard/gadget grid (flat 3/5
    for four straight audit passes); no cross-sprint trend view.
-5. **Mobile** (behind) — no native app; open header-legibility defect on
-   narrow viewports compounds the coherence gap above.
+5. **Mobile** (behind) — no native app; the 393px project-breadcrumb
+   legibility defect (project name crushed to "Pro…" by the workspace chip)
+   is fixed 2026-07-02 (`<ProjectBreadcrumb>` wraps to its own row on
+   mobile).
 
 Everything below this line documents what already shipped; it is not being
 rewritten, only re-prioritized going forward per the ordering above.

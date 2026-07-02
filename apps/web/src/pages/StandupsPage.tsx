@@ -21,6 +21,7 @@ import { useProjectIssues } from '@/api/issues';
 import { useMyRole } from '@/api/workspaces';
 import { useProject } from '@/api/projects';
 import { AppHeader } from '@/components/AppHeader';
+import { ProjectBreadcrumb } from '@/components/project/ProjectBreadcrumb';
 import { ProjectNav } from '@/components/project/ProjectNav';
 import { Button } from '@/components/ui/Button';
 import { Textarea } from '@/components/ui/Textarea';
@@ -857,19 +858,7 @@ function Shell({
   return (
     <div className="flex h-screen flex-col overflow-x-clip">
       <AppHeader>
-        <div className="flex items-center gap-2">
-          <Link
-            to="/"
-            className="text-sm text-ink-400 hover:text-ink-700 transition-colors duration-[120ms]"
-            aria-label="Back to projects"
-          >
-            Projects
-          </Link>
-          <span className="text-ink-300">/</span>
-          <span className="truncate text-sm font-semibold text-ink-900">
-            {projectName ?? 'Project'}
-          </span>
-        </div>
+        <ProjectBreadcrumb primary={projectName} />
       </AppHeader>
       <ProjectNav projectId={projectId} />
       <main className="flex-1 overflow-y-auto bg-ink-50">{children}</main>
