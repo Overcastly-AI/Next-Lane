@@ -385,6 +385,156 @@ const readTools: ToolDef[] = [
     handler: (args, client) =>
       client.get(`/projects/${args.projectId}/automations`).then(jsonResult),
   },
+  {
+    name: 'list_issue_github_links',
+    group: 'read',
+    description:
+      'List an issue’s linked GitHub pull requests / commits (populated by the ' +
+      'push/PR webhook integration, if configured). Requires the `github:read` ' +
+      'PAT scope when the token is scoped. Does not include the project’s ' +
+      'webhook secret — configuring the integration itself is not exposed over ' +
+      'MCP (admin-only, secret-bearing).',
+    inputSchema: { issueId: z.string().describe('Issue id.') },
+    handler: (args, client) =>
+      client.get(`/issues/${args.issueId}/github-links`).then(jsonResult),
+  },
+  {
+    name: 'list_quick_links',
+    group: 'read',
+    description: 'List the caller’s personal shortcut links (sidebar quick links), ordered.',
+    inputSchema: {},
+    handler: (_args, client) => client.get('/me/quick-links').then(jsonResult),
+  },
+  {
+    name: 'get_personal_board',
+    group: 'read',
+    description:
+      'Get the caller’s personal (non-project) board: columns in order, each ' +
+      'with its cards in rank order. Three default columns ("To Do", "Doing", ' +
+      '"Done") are created automatically on first access. Use this to find ' +
+      'columnId/card ids for create_personal_card / update_personal_card.',
+    inputSchema: {},
+    handler: (_args, client) => client.get('/me/personal-board').then(jsonResult),
+  },
+  {
+    name: 'list_issue_templates',
+    group: 'read',
+    description:
+      'List a project’s issue templates (name, target issue type, default ' +
+      'title/description/priority/assignee/component/labels). Use with ' +
+      'create_issue_from_template.',
+    inputSchema: { projectId: z.string().describe('Project id.') },
+    handler: (args, client) =>
+      client.get(`/projects/${args.projectId}/issue-templates`).then(jsonResult),
+  },
+  {
+    name: 'get_project_analytics',
+    group: 'read',
+    description:
+      'Team analytics for a project over a rolling day window (throughput, ' +
+      'cycle time, workload by assignee). Defaults to 30 days.',
+    inputSchema: {
+      projectId: z.string().describe('Project id.'),
+      days: z
+        .number()
+        .int()
+        .min(1)
+        .max(366)
+        .optional()
+        .describe('Rolling window size in days (default 30).'),
+    },
+    handler: (args, client) =>
+      client
+        .get(`/projects/${args.projectId}/analytics`, { days: args.days as number | undefined })
+        .then(jsonResult),
+  },
+  {
+    name: 'get_my_analytics',
+    group: 'read',
+    description:
+      'Personal analytics for the caller (their own throughput/cycle time) ' +
+      'over a rolling day window. Defaults to 30 days.',
+    inputSchema: {
+      days: z
+        .number()
+        .int()
+        .min(1)
+        .max(366)
+        .optional()
+        .describe('Rolling window size in days (default 30).'),
+    },
+    handler: (args, client) =>
+      client.get('/me/analytics', { days: args.days as number | undefined }).then(jsonResult),
+  },
+  {
+    name: 'get_velocity_report',
+    group: 'read',
+    description: 'Velocity report: committed vs completed story points per completed/active sprint.',
+    inputSchema: { projectId: z.string().describe('Project id.') },
+    handler: (args, client) =>
+      client.get(`/projects/${args.projectId}/reports/velocity`).then(jsonResult),
+  },
+  {
+    name: 'get_burndown_report',
+    group: 'read',
+    description: 'Burndown report: daily ideal vs remaining story points for one sprint.',
+    inputSchema: {
+      projectId: z.string().describe('Project id.'),
+      sprintId: z.string().describe('Sprint id.'),
+    },
+    handler: (args, client) =>
+      client
+        .get(`/projects/${args.projectId}/sprints/${args.sprintId}/burndown`)
+        .then(jsonResult),
+  },
+  {
+    name: 'get_cfd_report',
+    group: 'read',
+    description:
+      'Cumulative Flow Diagram: per-day count of issues in each status category ' +
+      '(TODO / IN_PROGRESS / DONE) over a window. Defaults to 30 days.',
+    inputSchema: {
+      projectId: z.string().describe('Project id.'),
+      days: z.number().int().optional().describe('Window size in days (default 30).'),
+    },
+    handler: (args, client) =>
+      client
+        .get(`/projects/${args.projectId}/reports/cfd`, { days: args.days as number | undefined })
+        .then(jsonResult),
+  },
+  {
+    name: 'list_notifications',
+    group: 'read',
+    description: 'List the caller’s notifications, newest first.',
+    inputSchema: {},
+    handler: (_args, client) => client.get('/notifications').then(jsonResult),
+  },
+  {
+    name: 'get_unread_notification_count',
+    group: 'read',
+    description: 'Get the caller’s unread notification count.',
+    inputSchema: {},
+    handler: (_args, client) => client.get('/notifications/unread-count').then(jsonResult),
+  },
+  {
+    name: 'get_project_csv',
+    group: 'read',
+    description:
+      'Export a project’s issues as CSV text (same data as the web app’s ' +
+      '"Export CSV" button). Optional NLQL `q` filter narrows the rows. The ' +
+      'result is returned as raw CSV text, not JSON. Very large exports may be ' +
+      'truncated by the API.',
+    inputSchema: {
+      projectId: z.string().describe('Project id to export.'),
+      q: z.string().optional().describe('Optional NLQL filter query.'),
+    },
+    handler: async (args, client) => {
+      const csv = await client.get<string>(`/projects/${args.projectId}/issues.csv`, {
+        q: args.q as string | undefined,
+      });
+      return { content: [{ type: 'text' as const, text: String(csv) }] };
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -575,6 +725,16 @@ const writeTools: ToolDef[] = [
       storyPoints: z.number().int().min(0).max(999).optional(),
       dueDate: z.string().optional().describe('ISO-8601 date string.'),
       componentId: z.string().optional(),
+      originalEstimateMinutes: z
+        .number()
+        .int()
+        .min(0)
+        .optional()
+        .describe('Original time-tracking estimate, in minutes.'),
+      customFields: z
+        .record(z.unknown())
+        .optional()
+        .describe('Custom field values keyed by field id (from list_custom_fields).'),
     },
     handler: (args, client) =>
       client
@@ -591,6 +751,8 @@ const writeTools: ToolDef[] = [
           storyPoints: args.storyPoints,
           dueDate: args.dueDate,
           componentId: args.componentId,
+          originalEstimateMinutes: args.originalEstimateMinutes,
+          customFields: args.customFields,
         })
         .then(jsonResult),
   },
@@ -602,8 +764,8 @@ const writeTools: ToolDef[] = [
       '(partial update). Use parentId to re-parent an issue (e.g. attach a ' +
       'subtask to an epic/story) or pass parentId:null to unparent it; the same ' +
       'null-to-clear rule applies to assigneeId, sprintId, componentId, ' +
-      'storyPoints, and dueDate. To change status use move_issue (it can apply ' +
-      'workflow rules); to link issues use link_issues.',
+      'storyPoints, dueDate, and originalEstimateMinutes. To change status use ' +
+      'move_issue (it can apply workflow rules); to link issues use link_issues.',
     inputSchema: {
       issueId: z.string().describe('Issue id to update.'),
       parentId: z
@@ -653,6 +815,13 @@ const writeTools: ToolDef[] = [
             'list_custom_fields): only the keys present are changed; set a key to ' +
             'null to clear that field.',
         ),
+      originalEstimateMinutes: z
+        .number()
+        .int()
+        .min(0)
+        .nullable()
+        .optional()
+        .describe('Original time-tracking estimate in minutes, or null to clear it.'),
     },
     handler: (args, client) =>
       client
@@ -668,6 +837,7 @@ const writeTools: ToolDef[] = [
           storyPoints: args.storyPoints,
           dueDate: args.dueDate,
           customFields: args.customFields,
+          originalEstimateMinutes: args.originalEstimateMinutes,
         })
         .then(jsonResult),
   },
@@ -1142,6 +1312,209 @@ const writeTools: ToolDef[] = [
           order: args.order,
         })
         .then(jsonResult),
+  },
+  {
+    name: 'create_quick_link',
+    group: 'write',
+    description: 'Add a personal shortcut link (shown in the caller’s sidebar quick-links menu).',
+    inputSchema: {
+      label: z.string().min(1).max(60).describe('Shortcut label.'),
+      url: z.string().max(2048).describe('Target http(s) URL.'),
+      color: z
+        .string()
+        .nullable()
+        .optional()
+        .describe('Hex accent color (#rrggbb), or null/omit for none.'),
+      group: z
+        .string()
+        .max(40)
+        .nullable()
+        .optional()
+        .describe('Free-text group name, or null/omit for ungrouped.'),
+    },
+    handler: (args, client) =>
+      client
+        .post('/me/quick-links', {
+          label: args.label,
+          url: args.url,
+          color: args.color,
+          group: args.group,
+        })
+        .then(jsonResult),
+  },
+  {
+    name: 'update_quick_link',
+    group: 'write',
+    description: 'Rename, re-point, recolor, regroup, or reorder a personal quick link.',
+    inputSchema: {
+      id: z.string().describe('Quick link id.'),
+      label: z.string().min(1).max(60).optional(),
+      url: z.string().max(2048).optional(),
+      color: z.string().nullable().optional().describe('Hex accent color, or null to clear.'),
+      group: z.string().max(40).nullable().optional().describe('Group name, or null to clear.'),
+      order: z.number().int().min(0).optional().describe('Sort position among the caller’s quick links.'),
+    },
+    handler: (args, client) =>
+      client
+        .patch(`/me/quick-links/${args.id}`, {
+          label: args.label,
+          url: args.url,
+          color: args.color,
+          group: args.group,
+          order: args.order,
+        })
+        .then(jsonResult),
+  },
+  {
+    name: 'delete_quick_link',
+    group: 'write',
+    description: 'Remove a personal quick link.',
+    inputSchema: { id: z.string().describe('Quick link id.') },
+    handler: (args, client) => client.delete(`/me/quick-links/${args.id}`).then(jsonResult),
+  },
+  {
+    name: 'create_personal_card',
+    group: 'write',
+    description:
+      'Add a card to a column on the caller’s personal (non-project) board. ' +
+      'Use get_personal_board to find a columnId.',
+    inputSchema: {
+      columnId: z.string().describe('Destination column id.'),
+      title: z.string().min(1).max(300),
+      notes: z.string().max(50000).optional(),
+      color: z.string().nullable().optional().describe('Hex accent color, or null/omit for none.'),
+      dueDate: z.string().nullable().optional().describe('ISO-8601 date string, or null/omit for none.'),
+    },
+    handler: (args, client) =>
+      client
+        .post('/me/personal-cards', {
+          columnId: args.columnId,
+          title: args.title,
+          notes: args.notes,
+          color: args.color,
+          dueDate: args.dueDate,
+        })
+        .then(jsonResult),
+  },
+  {
+    name: 'update_personal_card',
+    group: 'write',
+    description:
+      'Edit and/or move a personal board card. To move it, pass columnId (the ' +
+      'destination column) plus beforeId/afterId — the neighbor cards in that ' +
+      'column used to compute the card’s new rank (omit both to place it at the ' +
+      'end). Other fields (title, notes, color, dueDate) are a partial update.',
+    inputSchema: {
+      id: z.string().describe('Card id.'),
+      title: z.string().min(1).max(300).optional(),
+      notes: z.string().max(50000).nullable().optional().describe('Card notes, or null to clear.'),
+      color: z.string().nullable().optional().describe('Hex accent color, or null to clear.'),
+      dueDate: z.string().nullable().optional().describe('ISO-8601 date string, or null to clear.'),
+      columnId: z.string().optional().describe('Move the card to this column.'),
+      beforeId: z
+        .string()
+        .optional()
+        .describe('Neighbor card that should come immediately before this one after the move.'),
+      afterId: z
+        .string()
+        .optional()
+        .describe('Neighbor card that should come immediately after this one after the move.'),
+    },
+    handler: (args, client) =>
+      client
+        .patch(`/me/personal-cards/${args.id}`, {
+          title: args.title,
+          notes: args.notes,
+          color: args.color,
+          dueDate: args.dueDate,
+          columnId: args.columnId,
+          beforeId: args.beforeId,
+          afterId: args.afterId,
+        })
+        .then(jsonResult),
+  },
+  {
+    name: 'create_issue_from_template',
+    group: 'write',
+    description:
+      'Create an issue from an issue template (list_issue_templates for the ' +
+      'id). Any field passed here overrides that template’s default; the ' +
+      'resolved title must end up non-empty (from the override or the ' +
+      'template’s titleTemplate) or the API rejects the request.',
+    inputSchema: {
+      templateId: z.string().describe('Issue template id.'),
+      title: z.string().min(1).max(300).optional(),
+      description: z.string().max(50000).optional(),
+      assigneeId: z.string().nullable().optional().describe('Overrides the template default, or null to force unassigned.'),
+      componentId: z.string().nullable().optional().describe('Overrides the template default, or null to force none.'),
+      priority: priorityEnum.optional(),
+      statusId: z.string().optional().describe('Initial status id (defaults to the project default).'),
+      sprintId: z.string().optional(),
+      labelIds: z.array(z.string()).optional().describe('Overrides the template’s default labels.'),
+    },
+    handler: (args, client) =>
+      client
+        .post(`/issue-templates/${args.templateId}/create-issue`, {
+          title: args.title,
+          description: args.description,
+          assigneeId: args.assigneeId,
+          componentId: args.componentId,
+          priority: args.priority,
+          statusId: args.statusId,
+          sprintId: args.sprintId,
+          labelIds: args.labelIds,
+        })
+        .then(jsonResult),
+  },
+  {
+    name: 'bulk_update_issues',
+    group: 'write',
+    description:
+      'Apply the same change to up to 100 issues at once: status, assignee, ' +
+      'priority, sprint, type, and/or attach a label. Returns ' +
+      '{ updated, failed } where failed lists any ids that could not be ' +
+      'changed and why (not found, insufficient permissions, etc). At least ' +
+      'one change field must be set.',
+    inputSchema: {
+      ids: z.array(z.string()).min(1).max(100).describe('Issue ids to update (1-100).'),
+      statusId: z.string().optional(),
+      assigneeId: z.string().nullable().optional().describe('null clears the assignee.'),
+      priority: priorityEnum.optional(),
+      sprintId: z.string().nullable().optional().describe('null removes the issue from its sprint.'),
+      type: issueTypeEnum.optional(),
+      addLabelIds: z
+        .array(z.string())
+        .optional()
+        .describe('Label ids to attach to every matching issue (idempotent).'),
+    },
+    handler: (args, client) =>
+      client
+        .post('/issues/bulk', {
+          ids: args.ids,
+          changes: {
+            statusId: args.statusId,
+            assigneeId: args.assigneeId,
+            priority: args.priority,
+            sprintId: args.sprintId,
+            type: args.type,
+            addLabelIds: args.addLabelIds,
+          },
+        })
+        .then(jsonResult),
+  },
+  {
+    name: 'mark_notification_read',
+    group: 'write',
+    description: 'Mark one of the caller’s notifications as read.',
+    inputSchema: { id: z.string().describe('Notification id.') },
+    handler: (args, client) => client.post(`/notifications/${args.id}/read`).then(jsonResult),
+  },
+  {
+    name: 'mark_all_notifications_read',
+    group: 'write',
+    description: 'Mark all of the caller’s notifications as read.',
+    inputSchema: {},
+    handler: (_args, client) => client.post('/notifications/read-all').then(jsonResult),
   },
 ];
 

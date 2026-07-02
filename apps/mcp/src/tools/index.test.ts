@@ -86,6 +86,28 @@ describe('tool registry', () => {
       'create_saved_filter',
       'create_custom_field',
       'create_automation',
+      // MCP coverage parity sweep (2026-07-02)
+      'list_issue_github_links',
+      'list_quick_links',
+      'get_personal_board',
+      'list_issue_templates',
+      'get_project_analytics',
+      'get_my_analytics',
+      'get_velocity_report',
+      'get_burndown_report',
+      'get_cfd_report',
+      'list_notifications',
+      'get_unread_notification_count',
+      'get_project_csv',
+      'create_quick_link',
+      'update_quick_link',
+      'delete_quick_link',
+      'create_personal_card',
+      'update_personal_card',
+      'create_issue_from_template',
+      'bulk_update_issues',
+      'mark_notification_read',
+      'mark_all_notifications_read',
     ];
     for (const name of expected) expect(names).toContain(name);
     // No duplicate names.
@@ -308,6 +330,213 @@ describe('tool registry', () => {
     const [url, init] = fetchImpl.mock.calls[0];
     expect(url).toBe('http://localhost:4000/api/issues/i1/worklogs');
     expect(JSON.parse((init as RequestInit).body as string)).toEqual({ minutes: 30, note: 'fix' });
+  });
+
+  it('list_issue_github_links GETs /issues/:id/github-links', async () => {
+    const { client, fetchImpl } = clientWith(200, [{ id: 'gl1', kind: 'PR' }]);
+    const res = await tool('list_issue_github_links').handler({ issueId: 'i1' }, client);
+    expect(fetchImpl.mock.calls[0][0]).toBe(
+      'http://localhost:4000/api/issues/i1/github-links',
+    );
+    expect(res.content[0].text).toContain('gl1');
+  });
+
+  it('list_quick_links GETs /me/quick-links', async () => {
+    const { client, fetchImpl } = clientWith(200, [{ id: 'ql1' }]);
+    await tool('list_quick_links').handler({}, client);
+    expect(fetchImpl.mock.calls[0][0]).toBe('http://localhost:4000/api/me/quick-links');
+  });
+
+  it('get_personal_board GETs /me/personal-board', async () => {
+    const { client, fetchImpl } = clientWith(200, { columns: [] });
+    await tool('get_personal_board').handler({}, client);
+    expect(fetchImpl.mock.calls[0][0]).toBe('http://localhost:4000/api/me/personal-board');
+  });
+
+  it('list_issue_templates GETs /projects/:id/issue-templates', async () => {
+    const { client, fetchImpl } = clientWith(200, [{ id: 'tpl1' }]);
+    await tool('list_issue_templates').handler({ projectId: 'p1' }, client);
+    expect(fetchImpl.mock.calls[0][0]).toBe(
+      'http://localhost:4000/api/projects/p1/issue-templates',
+    );
+  });
+
+  it('get_project_analytics GETs /projects/:id/analytics with days query', async () => {
+    const { client, fetchImpl } = clientWith(200, { throughput: 5 });
+    await tool('get_project_analytics').handler({ projectId: 'p1', days: 14 }, client);
+    const url = fetchImpl.mock.calls[0][0] as string;
+    expect(url).toBe('http://localhost:4000/api/projects/p1/analytics?days=14');
+  });
+
+  it('get_my_analytics GETs /me/analytics', async () => {
+    const { client, fetchImpl } = clientWith(200, { throughput: 2 });
+    await tool('get_my_analytics').handler({}, client);
+    expect(fetchImpl.mock.calls[0][0]).toBe('http://localhost:4000/api/me/analytics');
+  });
+
+  it('get_velocity_report GETs /projects/:id/reports/velocity', async () => {
+    const { client, fetchImpl } = clientWith(200, []);
+    await tool('get_velocity_report').handler({ projectId: 'p1' }, client);
+    expect(fetchImpl.mock.calls[0][0]).toBe(
+      'http://localhost:4000/api/projects/p1/reports/velocity',
+    );
+  });
+
+  it('get_burndown_report GETs /projects/:id/sprints/:id/burndown', async () => {
+    const { client, fetchImpl } = clientWith(200, {});
+    await tool('get_burndown_report').handler({ projectId: 'p1', sprintId: 's1' }, client);
+    expect(fetchImpl.mock.calls[0][0]).toBe(
+      'http://localhost:4000/api/projects/p1/sprints/s1/burndown',
+    );
+  });
+
+  it('get_cfd_report GETs /projects/:id/reports/cfd with days query', async () => {
+    const { client, fetchImpl } = clientWith(200, []);
+    await tool('get_cfd_report').handler({ projectId: 'p1', days: 7 }, client);
+    const url = fetchImpl.mock.calls[0][0] as string;
+    expect(url).toBe('http://localhost:4000/api/projects/p1/reports/cfd?days=7');
+  });
+
+  it('list_notifications GETs /notifications', async () => {
+    const { client, fetchImpl } = clientWith(200, []);
+    await tool('list_notifications').handler({}, client);
+    expect(fetchImpl.mock.calls[0][0]).toBe('http://localhost:4000/api/notifications');
+  });
+
+  it('get_unread_notification_count GETs /notifications/unread-count', async () => {
+    const { client, fetchImpl } = clientWith(200, { count: 3 });
+    await tool('get_unread_notification_count').handler({}, client);
+    expect(fetchImpl.mock.calls[0][0]).toBe(
+      'http://localhost:4000/api/notifications/unread-count',
+    );
+  });
+
+  it('get_project_csv GETs the .csv route and returns raw text (not JSON-wrapped)', async () => {
+    const fetchImpl = vi.fn(async () =>
+      new Response('key,title\nNL-1,Fix bug\n', {
+        status: 200,
+        headers: { 'Content-Type': 'text/csv; charset=utf-8' },
+      }),
+    );
+    const client = new NextLaneClient(config, fetchImpl as unknown as typeof fetch);
+    const res = await tool('get_project_csv').handler({ projectId: 'p1', q: 'status = Done' }, client);
+    const url = fetchImpl.mock.calls[0][0] as string;
+    expect(url).toContain('http://localhost:4000/api/projects/p1/issues.csv?');
+    expect(url).toContain('q=status');
+    expect(res.content[0].text).toBe('key,title\nNL-1,Fix bug\n');
+  });
+
+  it('create_quick_link POSTs to /me/quick-links', async () => {
+    const { client, fetchImpl } = clientWith(201, { id: 'ql1' });
+    await tool('create_quick_link').handler({ label: 'Runbook', url: 'https://ex.com' }, client);
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toBe('http://localhost:4000/api/me/quick-links');
+    expect((init as RequestInit).method).toBe('POST');
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({
+      label: 'Runbook',
+      url: 'https://ex.com',
+    });
+  });
+
+  it('update_quick_link PATCHes /me/quick-links/:id', async () => {
+    const { client, fetchImpl } = clientWith(200, { id: 'ql1' });
+    await tool('update_quick_link').handler({ id: 'ql1', order: 2 }, client);
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toBe('http://localhost:4000/api/me/quick-links/ql1');
+    expect((init as RequestInit).method).toBe('PATCH');
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({ order: 2 });
+  });
+
+  it('delete_quick_link DELETEs /me/quick-links/:id', async () => {
+    const { client, fetchImpl } = clientWith(200, null);
+    await tool('delete_quick_link').handler({ id: 'ql1' }, client);
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toBe('http://localhost:4000/api/me/quick-links/ql1');
+    expect((init as RequestInit).method).toBe('DELETE');
+  });
+
+  it('create_personal_card POSTs to /me/personal-cards', async () => {
+    const { client, fetchImpl } = clientWith(201, { id: 'pc1' });
+    await tool('create_personal_card').handler({ columnId: 'col1', title: 'Read RFC' }, client);
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toBe('http://localhost:4000/api/me/personal-cards');
+    expect((init as RequestInit).method).toBe('POST');
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({
+      columnId: 'col1',
+      title: 'Read RFC',
+    });
+  });
+
+  it('update_personal_card PATCHes /me/personal-cards/:id with move fields', async () => {
+    const { client, fetchImpl } = clientWith(200, { id: 'pc1' });
+    await tool('update_personal_card').handler(
+      { id: 'pc1', columnId: 'col2', afterId: 'pc0' },
+      client,
+    );
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toBe('http://localhost:4000/api/me/personal-cards/pc1');
+    expect((init as RequestInit).method).toBe('PATCH');
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({
+      columnId: 'col2',
+      afterId: 'pc0',
+    });
+  });
+
+  it('create_issue_from_template POSTs to /issue-templates/:id/create-issue', async () => {
+    const { client, fetchImpl } = clientWith(201, { id: 'i9' });
+    await tool('create_issue_from_template').handler(
+      { templateId: 'tpl1', title: 'Override title' },
+      client,
+    );
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toBe('http://localhost:4000/api/issue-templates/tpl1/create-issue');
+    expect((init as RequestInit).method).toBe('POST');
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({
+      title: 'Override title',
+    });
+  });
+
+  it('bulk_update_issues POSTs ids + changes to /issues/bulk', async () => {
+    const { client, fetchImpl } = clientWith(200, { updated: 2, failed: [] });
+    await tool('bulk_update_issues').handler(
+      { ids: ['i1', 'i2'], statusId: 's1', assigneeId: null },
+      client,
+    );
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toBe('http://localhost:4000/api/issues/bulk');
+    expect((init as RequestInit).method).toBe('POST');
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({
+      ids: ['i1', 'i2'],
+      changes: { statusId: 's1', assigneeId: null },
+    });
+  });
+
+  it('mark_notification_read POSTs to /notifications/:id/read', async () => {
+    const { client, fetchImpl } = clientWith(200, { id: 'n1', read: true });
+    await tool('mark_notification_read').handler({ id: 'n1' }, client);
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toBe('http://localhost:4000/api/notifications/n1/read');
+    expect((init as RequestInit).method).toBe('POST');
+  });
+
+  it('mark_all_notifications_read POSTs to /notifications/read-all', async () => {
+    const { client, fetchImpl } = clientWith(200, { updated: 4 });
+    await tool('mark_all_notifications_read').handler({}, client);
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toBe('http://localhost:4000/api/notifications/read-all');
+    expect((init as RequestInit).method).toBe('POST');
+  });
+
+  it('update_issue PATCHes originalEstimateMinutes (including null-to-clear)', async () => {
+    const { client, fetchImpl } = clientWith(200, { id: 'i1' });
+    await tool('update_issue').handler(
+      { issueId: 'i1', originalEstimateMinutes: null },
+      client,
+    );
+    const [, init] = fetchImpl.mock.calls[0];
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({
+      originalEstimateMinutes: null,
+    });
   });
 
   it('handlers propagate API errors so the server wrapper can mark isError', async () => {

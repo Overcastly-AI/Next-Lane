@@ -136,6 +136,18 @@ Then run `claude mcp list` to confirm it is connected.
 | `list_checklist`    | List an issue's checklist items (`issueId`).                           |
 | `list_saved_filters`| List a project's saved NLQL filters (`projectId`).                    |
 | `list_automations`  | List a project's automation rules (`projectId`).                       |
+| `list_issue_github_links` | List an issue's linked GitHub PRs/commits (`issueId`). Requires `github:read` scope when the token is scoped. |
+| `list_quick_links`  | List the caller's personal sidebar shortcut links.                     |
+| `get_personal_board`| Get the caller's personal (non-project) board: columns + cards.       |
+| `list_issue_templates` | List a project's issue templates (`projectId`).                    |
+| `get_project_analytics` | Team analytics for a project (`projectId`, `days?`).               |
+| `get_my_analytics`  | Personal analytics for the caller (`days?`).                          |
+| `get_velocity_report` | Velocity per completed/active sprint (`projectId`).                 |
+| `get_burndown_report` | Daily ideal-vs-remaining points for one sprint (`projectId`, `sprintId`). |
+| `get_cfd_report`    | Cumulative Flow Diagram series (`projectId`, `days?`).                |
+| `list_notifications`| List the caller's notifications, newest first.                        |
+| `get_unread_notification_count` | Get the caller's unread notification count.               |
+| `get_project_csv`   | Export a project's issues as **raw CSV text** (`projectId`, optional NLQL `q`). |
 
 ### Write (SDLC)
 
@@ -170,8 +182,24 @@ Then run `claude mcp list` to confirm it is connected.
 | `create_saved_filter`           | Save a reusable NLQL filter (optionally shared).               |
 | `create_custom_field`           | Define a project custom field.                                 |
 | `create_automation`             | Create an automation rule (trigger → condition → actions).     |
+| `create_quick_link` / `update_quick_link` / `delete_quick_link` | CRUD the caller's personal sidebar shortcut links. |
+| `create_personal_card` / `update_personal_card` | Add / edit / move a card on the caller's personal board (move = `columnId` + `beforeId`/`afterId`). |
+| `create_issue_from_template`    | Create an issue from an issue template, with per-field overrides. |
+| `bulk_update_issues`            | Apply the same status/assignee/priority/sprint/type/label change to up to 100 issues at once. |
+| `mark_notification_read` / `mark_all_notifications_read` | Mark one or all of the caller's notifications read. |
 
-`update_issue` also accepts `customFields` (partial, keyed by field id).
+`create_issue` / `update_issue` also accept `originalEstimateMinutes` (time-tracking estimate) and `customFields` (partial, keyed by field id).
+
+### Not exposed over MCP (by design)
+
+- **Configuring the GitHub integration** (`upsert`/`remove` — sets/rotates the
+  webhook secret, and `GET` returns the plaintext secret to project admins) is
+  admin-only and secret-bearing; it is deliberately **not** wired as an MCP
+  tool. Only the read-only `list_issue_github_links` (no secret in the
+  response) is exposed. Manage the integration from project Settings in the
+  web app.
+- **Workspace/project deletion** and other irreversible, non-confirmable
+  destructive actions are intentionally out of scope for the same reason.
 
 ## Development
 
