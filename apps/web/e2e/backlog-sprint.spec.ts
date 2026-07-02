@@ -51,7 +51,13 @@ async function createIssue(page: Page): Promise<string> {
 }
 
 async function gotoBacklog(page: Page): Promise<void> {
-  await page.getByRole('link', { name: 'Backlog' }).click();
+  // exact: true — this test runs against the shared demo workspace, whose
+  // project list accumulates many "QA Backlog <stamp>" projects from this
+  // very spec's own `createProject()` runs over time. Since those project
+  // names are now also rendered as sidebar nav links, a loose substring
+  // match on "Backlog" resolves to dozens of elements; the ProjectNav tab's
+  // accessible name is the exact, bare string "Backlog".
+  await page.getByRole('link', { name: 'Backlog', exact: true }).click();
   await expect(page).toHaveURL(/\/backlog/, { timeout: 15_000 });
   await expect(
     page.getByRole('heading', { level: 1, name: 'Backlog' }),

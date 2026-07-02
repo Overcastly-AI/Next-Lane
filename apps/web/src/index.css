@@ -190,6 +190,12 @@ h1, h2, h3, h4, h5, h6,
   animation: nl-drawer-in var(--nl-duration-slow) var(--nl-ease) both;
 }
 
+/* ── Sidebar drawer slide-in (left-hand nav panel — opposite direction from
+   the right-hand nl-drawer-animate used by issue/side panels) ────────────── */
+.nl-sidebar-drawer-animate {
+  animation: nl-sidebar-drawer-in var(--nl-duration-slow) var(--nl-ease) both;
+}
+
 /* ── Modal scale-in ──────────────────────────────────────────────────────── */
 .nl-modal-animate {
   animation: nl-modal-in 160ms var(--nl-ease) both;
@@ -203,6 +209,11 @@ h1, h2, h3, h4, h5, h6,
 
 @keyframes nl-drawer-in {
   from { opacity: 0; transform: translateX(20px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes nl-sidebar-drawer-in {
+  from { opacity: 0; transform: translateX(-16px); }
   to   { opacity: 1; transform: translateX(0); }
 }
 

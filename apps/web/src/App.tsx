@@ -1,16 +1,21 @@
+import type { ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   BrowserRouter,
   Navigate,
   Route,
   Routes,
+  useLocation,
 } from 'react-router-dom';
 import { ApiError } from '@/api/client';
-import { AuthProvider } from '@/auth/AuthContext';
+import { AuthProvider, useAuth } from '@/auth/AuthContext';
 import { RequireAuth } from '@/auth/RequireAuth';
 import { ToastProvider } from '@/components/ui/Toast';
 import { CommandPaletteProvider } from '@/components/CommandPaletteProvider';
 import { WorkspaceProvider } from '@/contexts/WorkspaceContext';
+import { SidebarProvider } from '@/contexts/SidebarContext';
+import { AppSidebar } from '@/components/nav/AppSidebar';
+import { MobileSidebarDrawer } from '@/components/nav/MobileSidebarDrawer';
 import { WorkspaceScopedLayout, ProjectScopedLayout } from '@/layouts/ScopedLayouts';
 import { LoginPage } from '@/pages/LoginPage';
 import { SsoCompletePage } from '@/pages/SsoCompletePage';
@@ -56,6 +61,46 @@ const queryClient = new QueryClient({
   },
 });
 
+/**
+ * Routes that render their own full-bleed chrome (auth screens, the public
+ * read-only share view) and must NOT get the persistent sidebar frame.
+ * Checked by prefix so nested paths (e.g. `/share/:token`) match too.
+ */
+const CHROMELESS_PREFIXES = [
+  '/login',
+  '/register',
+  '/forgot-password',
+  '/reset-password',
+  '/share/',
+];
+
+/**
+ * App.tsx-level shell: renders the persistent sidebar + mobile drawer as
+ * SIBLINGS of the routed page content, not inside any per-page layout — so
+ * they mount ONCE and simply re-render on navigation instead of remounting
+ * on every route change (this is also what makes the sidebar's collapsed
+ * state and any future collapse-persisted UI, e.g. QuickLinks, survive
+ * navigation without a flash). Falls through to bare `children` on
+ * auth/public-chrome routes and before authentication resolves.
+ */
+function AppShellFrame({ children }: { children: ReactNode }) {
+  const { isAuthenticated } = useAuth();
+  const { pathname } = useLocation();
+  const isChromeless = CHROMELESS_PREFIXES.some((p) => pathname.startsWith(p));
+
+  if (!isAuthenticated || isChromeless) {
+    return <>{children}</>;
+  }
+
+  return (
+    <div className="lg:flex">
+      <AppSidebar />
+      <div className="min-w-0 flex-1">{children}</div>
+      <MobileSidebarDrawer />
+    </div>
+  );
+}
+
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
@@ -63,7 +108,9 @@ export default function App() {
         <AuthProvider>
           <ToastProvider>
           <WorkspaceProvider>
+          <SidebarProvider>
           <CommandPaletteProvider>
+          <AppShellFrame>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/login/sso-complete" element={<SsoCompletePage />} />
@@ -169,7 +216,9 @@ export default function App() {
 
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
+          </AppShellFrame>
           </CommandPaletteProvider>
+          </SidebarProvider>
           </WorkspaceProvider>
           </ToastProvider>
         </AuthProvider>

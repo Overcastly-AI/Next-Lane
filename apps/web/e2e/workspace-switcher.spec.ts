@@ -268,6 +268,47 @@ test.describe('Workspace switcher — multi-workspace coherence', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Sidebar workspace switcher (Navigation & IA overhaul — Phase 1)
+// ---------------------------------------------------------------------------
+//
+// The persistent left sidebar (desktop, lg+) has its own workspace switcher
+// trigger that reuses the exact same `WorkspaceSwitcherMenuContent` and
+// `WorkspaceContext` state as the header chip above — this asserts that
+// switching FROM the sidebar keeps everything (chip, sidebar's own project
+// list) coherent, mirroring the chip-driven case already covered above.
+
+test.describe('Workspace switcher — sidebar', () => {
+  test.use({ viewport: { width: 1280, height: 800 } });
+
+  test('switching workspace via the sidebar re-scopes the sidebar project list', async ({
+    page,
+    request,
+  }) => {
+    const ctx = await setupMultiWorkspace(page, request);
+    await expect(chip(page)).toContainText('Alpha', { timeout: 15_000 });
+
+    const sidebar = page.getByTestId('nav-sidebar');
+    await expect(sidebar).toBeVisible({ timeout: 15_000 });
+    await expect(sidebar).toContainText('Alpha Project', { timeout: 15_000 });
+    await expect(sidebar).not.toContainText('Bravo Project');
+
+    await sidebar.getByTestId('nav-sidebar-workspace-trigger').click();
+    await page
+      .getByTestId('workspace-switcher-item')
+      .filter({ hasText: 'Bravo' })
+      .click();
+
+    // The header chip (single source of truth) follows immediately...
+    await expect(chip(page)).toContainText('Bravo', { timeout: 10_000 });
+    // ...and the sidebar's OWN project list re-scopes to the new workspace,
+    // with no leftover Alpha entries.
+    await expect(sidebar).toContainText('Bravo Project', { timeout: 15_000 });
+    await expect(sidebar).not.toContainText('Alpha Project');
+    expect(ctx.bravo.id).toBeTruthy();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Search/filter + recently-visited (large workspace count)
 // ---------------------------------------------------------------------------
 

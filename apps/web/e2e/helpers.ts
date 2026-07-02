@@ -16,21 +16,39 @@ export async function login(page: Page, creds = DEMO): Promise<void> {
 }
 
 /**
- * Navigate to a primary section (My Work / My Board / Insights) via the header.
+ * Navigate to a primary section (My Work / My Board / Insights / …) via
+ * whichever nav surface currently renders it.
  *
- * The header nav links are visible on desktop but collapse into the user-menu
- * dropdown on mobile (so the bar fits a phone viewport without clipping). This
- * helper clicks whichever surface is active for the current viewport, so specs
- * pass on both the desktop and mobile Playwright projects.
+ * The same link text can legitimately exist in more than one DOM location at
+ * once — the header nav (visible only at md–lg widths), the persistent
+ * left sidebar (visible at lg+), and the mobile drawer (only while open) —
+ * with all but one hidden via CSS at any given viewport. This is
+ * viewport-generic on purpose: it does not special-case "desktop" vs
+ * "mobile", it just clicks whichever matching link is actually visible, so
+ * it keeps working regardless of which surface owns the link at a given
+ * breakpoint. Falls back to the user-menu dropdown (true mobile, <768px)
+ * where the primary links are duplicated as buttons instead of links.
  */
 export async function gotoSection(
   page: Page,
   name: RegExp | string,
 ): Promise<void> {
-  const headerLink = page.getByRole('link', { name }).first();
-  if (await headerLink.isVisible().catch(() => false)) {
-    await headerLink.click();
-    return;
+  // Poll rather than a single snapshot: right after login/registration the
+  // sidebar's workspace-dependent sections mount asynchronously (workspace
+  // list fetch, first-run default-workspace creation), so the visible
+  // candidate can appear a beat after the header nav's own (hidden) copy
+  // is already in the DOM. `expect.poll` retries until one is visible or
+  // the timeout elapses, instead of taking one point-in-time snapshot.
+  const deadline = Date.now() + 10_000;
+  while (Date.now() < deadline) {
+    const candidates = await page.getByRole('link', { name }).all();
+    for (const link of candidates) {
+      if (await link.isVisible().catch(() => false)) {
+        await link.click();
+        return;
+      }
+    }
+    await page.waitForTimeout(150);
   }
   // Mobile: the links live inside the user menu as buttons.
   await page.getByTestId('user-menu-button').click();

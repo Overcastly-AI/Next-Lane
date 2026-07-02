@@ -86,6 +86,9 @@ test.describe('Desktop project breadcrumb — no regression', () => {
     );
     const name = page.getByTestId('project-breadcrumb-name');
     await expect(name).toHaveText(project.name);
-    await expect(page.getByText(project.key)).toBeVisible();
+    // Scoped to the header: the persistent sidebar (Navigation & IA overhaul
+    // Phase 1) also renders every project's key as its own nav-row chip, so
+    // an unscoped page-wide text search is no longer unambiguous.
+    await expect(page.locator('header').getByText(project.key)).toBeVisible();
   });
 });

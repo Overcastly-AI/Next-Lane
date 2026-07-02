@@ -194,7 +194,11 @@ test.describe('Public share link', () => {
 
     // Navigate to project settings.
     await page.goto(`/projects/${project.id}/settings`);
-    await expect(page.getByText(/settings/i).first()).toBeVisible({
+    // Scoped to <main>: the project is deliberately named "Settings Share
+    // Test" (to test the Share section below), and that name is now ALSO
+    // rendered as a sidebar nav link — an unscoped page-wide /settings/i
+    // search is no longer unambiguous. `<main>` is the actual page content.
+    await expect(page.locator('main').getByText(/settings/i).first()).toBeVisible({
       timeout: 10_000,
     });
 

@@ -1024,7 +1024,10 @@ export function BoardPage() {
            * .nl-lane-divider). Columns themselves carry no left/right padding gap
            * so the divider sits precisely in the gutter between lanes.
            */}
-          <div className="nl-scroll flex flex-1 overflow-x-auto px-4 pb-4 pt-3 gap-0">
+          <div
+            data-testid="board-scroll-container"
+            className="nl-scroll flex flex-1 overflow-x-auto px-4 pb-4 pt-3 gap-0"
+          >
             {statuses.map((status, idx) => (
               <div key={status.id} className="flex items-stretch gap-0">
                 {/* Dashed lane divider — between columns, not before the first */}

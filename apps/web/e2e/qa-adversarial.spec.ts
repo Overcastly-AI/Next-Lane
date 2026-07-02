@@ -286,11 +286,15 @@ test.describe('Mobile board layout', () => {
   }) => {
     await setupIsolatedProject(page, request, { label: 'mob-layout' });
     await expect(page.getByText(/to do/i).first()).toBeVisible();
-    const scrollable = await page.evaluate(() => {
-      const board = document.querySelector('.nl-scroll');
-      if (!board) return null;
-      return window.getComputedStyle(board).overflowX;
-    });
+    // `.nl-scroll` is a shared thin-scrollbar utility applied to several
+    // elements on this page now (board columns, and — since the Navigation
+    // & IA overhaul's persistent sidebar — the sidebar's own project list),
+    // so a bare `document.querySelector('.nl-scroll')` is no longer a
+    // reliable way to find the board's horizontal-scroll container
+    // specifically; `board-scroll-container` targets it precisely.
+    const scrollable = await page
+      .getByTestId('board-scroll-container')
+      .evaluate((board) => window.getComputedStyle(board).overflowX);
     expect(scrollable).toMatch(/auto|scroll/);
   });
 });

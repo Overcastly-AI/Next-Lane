@@ -19,6 +19,7 @@ import {
   createProject,
   createIssue,
   API_URL,
+  gotoSection,
 } from './helpers';
 
 /**
@@ -66,7 +67,10 @@ test.describe('Personal analytics — desktop', () => {
     await login(page, { email: user.email, password: user.password });
 
     await page.goto('/');
-    await page.getByTestId('nav-my-analytics').click();
+    // Viewport-generic: "Insights" lives in the header at md–lg widths and
+    // in the persistent sidebar at lg+ (see nav-sidebar.spec.ts for the
+    // sidebar-specific coverage) — gotoSection finds whichever is visible.
+    await gotoSection(page, 'Insights');
     await expect(page).toHaveURL(/\/me\/analytics/);
     await expect(page.getByTestId('personal-analytics')).toBeVisible({
       timeout: 15_000,

@@ -20,6 +20,7 @@ Each item below is redesigned design-skill-led, then ✅ when shipped + verified
 
 **Phase B — Core shell + board + drawer** (highest-traffic surfaces)
 - [x] `AppHeader` — active-state ring-inset, focus-visible rings on all nav/search/menu ✅ 2026-06-29
+- [x] `nav/AppSidebar` · `nav/MobileSidebarDrawer` · `nav/SidebarNavContent` · `nav/WorkspaceSwitcherMenuContent` — new persistent left sidebar (Navigation & IA overhaul Phase 1), signature cobalt rail-tick active indicator, see dated entry below ✅ 2026-07-02
 - [x] `NotificationBell` — focus-visible ring on bell + mark-all + notification items ✅ 2026-06-29
 - [x] `board/BoardColumn` — WIP indicator polish ✅ 2026-06-29
 - [x] `board/IssueCard` — due-date + story-points chip ring-1 ring-inset (consistent badge vocabulary); overdue chip uses amber-50/amber-200 tokens ✅ 2026-06-29
@@ -1545,3 +1546,48 @@ now real, passing tests (desktop + mobile, 42/42 total in the spec);
 `workflow-graph.spec.ts` remain green. New backend unit coverage added for
 the WF-1 resolution semantics (`issues-board-enforcement.spec.ts`) and the
 WF-2 definition-key resolution (`workflow.enforcement.spec.ts`).
+
+---
+
+## 2026-07-02 — Navigation & IA overhaul, Phase 1: persistent left sidebar
+
+New component family: `nav/AppSidebar` (desktop rail, `lg`+), `nav/MobileSidebarDrawer`
+(overlay, below `lg`), `nav/SidebarNavContent` (shared list content), `nav/WorkspaceSwitcherMenuContent`
+(extracted from `AppHeader`'s `WorkspaceChip`, reused by both). Built within the existing
+Dispatch token system — no new palette, no new type. Design choices, and what was
+rejected as reading too generic for this brief:
+
+- **Active-row indicator:** a 3px cobalt "rail tick" flush to the row's left edge,
+  opacity-toggled, rather than a full filled-pill background (the common
+  Linear/Notion-style sidebar active state). Rejected the pill because it's the
+  default answer for *any* sidebar regardless of product — the rail tick instead
+  extends Dispatch's own existing lane vocabulary (the logo's three ascending lane
+  bars, the board's dashed `nl-lane-divider`) so the sidebar reads as an extension of
+  the product's identity rather than a bolted-on nav component.
+- **Project rows** render their key through the existing `.nl-issue-key` mono chip
+  (the same class every issue key already uses) instead of inventing a new project
+  icon/avatar treatment — reinforces "everything in Dispatch has a code," and the
+  collapsed rail truncates to 2 chars (matching `ProjectCard`'s existing key-badge
+  convention) rather than introducing a fresh icon set.
+- **Chrome color:** kept the sidebar white with `ink-200` borders, matching the
+  header's own chrome, rather than the common dark-rail-on-light-canvas pattern —
+  a bespoke dark rail would have meant touching the token system twice (once now,
+  once for the tracked dark-mode item next); it touches once, coherently, when dark
+  mode lands.
+- **Motion:** reused the existing `nl-fade-in`/`nl-modal-animate` vocabulary and
+  `useOverlay` (same focus-trap/scroll-lock/Escape as `Modal`) for the mobile drawer,
+  plus one new directional keyframe (`nl-sidebar-drawer-in`, slides from the left —
+  the opposite direction of the existing right-hand `nl-drawer-in` used by
+  issue/side panels) rather than a new animation library or hover-lift/scale
+  micro-interactions layered on top.
+
+Bug caught in its own QA screenshots (documented here per the design-elevation
+loop's "critique your own work" step): the first collapsed-rail pass let long
+project keys overflow the 56px rail into the page content (no `overflow-x`
+containment on absolutely-unclipped mono chips) — fixed by truncating to 2 chars
+in collapsed mode, matching the existing `ProjectCard` convention, with an
+`overflow-x-hidden` added to the scrollable project-list region as a second line
+of defense. Screenshots (desktop 1440 + mobile 393, dashboard + board, expanded +
+collapsed rail + open mobile drawer) captured before/after per the design-elevation
+directive. All existing `data-testid`/role/aria-label hooks preserved; full e2e
+suite (desktop + mobile) green.
