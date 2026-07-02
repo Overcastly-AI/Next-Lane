@@ -170,6 +170,7 @@ current build** (see [`docs/ROADMAP.md`](./docs/ROADMAP.md) for status and what'
 | **Organize** | **Components** (with default assignee) · **versions / releases** (M:N, lifecycle) · **issue templates** (create-from-template) |
 | **Personal** | **Personal boards** (private Kanban) · personal analytics · shared board links |
 | **Bulk & import/export** | **Bulk edit** (multi-select in Backlog + Triage) · **CSV export** · **CSV import** from Jira, GitHub, or Linear exports (dry-run preview) |
+| **Navigation & UI** | **Persistent sidebar** (desktop fixed/collapsible, mobile drawer) with workspace switcher and per-project views (Board/Backlog/Roadmap/Reports) · **light / dark mode** with system preference awareness and toggle in sidebar/header |
 | **Workspace** | **Branding** — custom name, accent color, logo · workspace audit log |
 | **Admin & security** | Roles & permissions (Admin / Member / Viewer) · password reset over SMTP · HMAC-signed outbound webhooks (with SSRF guard) · tenant-isolation regression matrix |
 | **Ops & deploy** | One-command Docker Compose · **Helm chart + Kustomize** for Kubernetes · GHCR multi-arch image builds · structured JSON logs · health/readiness probes · CI (typecheck + build + **1471+ unit tests**) + full Playwright **e2e suite, desktop and mobile** |

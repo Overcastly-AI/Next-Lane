@@ -62,6 +62,32 @@ development phase. A versioned release will be tagged once the v1 criteria in
   prefers-reduced-motion respected, mounted via `SidebarContext` above per-page
   remount boundaries.
 
+**Navigation & IA Phase 2 — sidebar elevation:**
+- **Per-project views in sidebar** — Board, Backlog, Roadmap, Reports now expand
+  directly under the active project in the sidebar; the Gantt-style Roadmap,
+  previously two clicks deep in ProjectNav's "More" dropdown, is one click away.
+- **Branding as first-class link** — admin-gated workspace Branding settings now sit
+  beside Workspace settings in the sidebar utility area (no longer buried in Project Settings).
+- **Board default filter affordance** — the board toolbar's default-filter chip is now
+  clickable, opening BoardSettingsModal's filter field with a "+ Default filter" empty-state
+  prompt when none is set. Closes founder-reported discoverability gap for filter
+  persistence.
+
+**Light / dark mode — full token-layer theming:**
+- **Dark palette** — Dispatch design system color scales (ink/slate/red/amber/emerald/
+  green/blue/gray/orange/signal/brand) are now CSS custom-property-backed with contrast-verified
+  dark values; canvas/surface/shadow semantic tokens re-derived for each mode; ink-scale
+  shade roles fixed across light and dark.
+- **Theme preferences** — ThemeContext stores user preference (light/dark/system) in
+  localStorage (`nl.theme`); System preference auto-applies on first visit.
+- **No-flash bootstrap** — synchronous inline script in `index.html` applies `.dark`
+  class before first paint, preventing UI flash on theme toggle or reload.
+- **Dark-aware workspace branding** — custom workspace brand colors compose correctly
+  in dark mode; `applyBrandColor()` handles contrast and token composition.
+- **ThemeToggle** rendered in sidebar utility area and header user menu. ~190 hardcoded
+  bg-white/ring-white/border-white utilities migrated to surface tokens; modal/drawer
+  backdrops pinned to mode-invariant scrim token.
+
 ### Added — Agent-native / MCP
 
 **MCP coverage parity sweep:**
