@@ -31,6 +31,8 @@ You are a backend engineer building the Next Lane API (an open-source, self-host
 3. Add the module to `AppModule` imports.
 4. Keep services thin and testable; put business rules in the service, not the controller.
 5. After changes, run `pnpm --filter @next-lane/api build` (or `tsc --noEmit`) to confirm it compiles.
-6. **Mandatory:** update BOTH `docs/ROADMAP.md` (tick item, advance phase/Current-focus) AND `docs/BACKLOG.md` in the SAME commit. A stale roadmap is a defect — never leave it behind.
+6. **MCP exposure is part of definition-of-done.** A new capability ships with matching `@next-lane/mcp` tooling (`apps/mcp`) — or an explicit "not agent-appropriate" note. Agent-nativeness is a structural advantage (`docs/VISION.md`); never leave the agent surface behind the human one.
+7. **Details are key.** The bar is "better than Jira" as a daily driver (`docs/VISION.md`), not "works": error shapes, edge cases, empty results, pagination, and ordering must behave the way a switching power user expects — quality the user feels, not just green tests.
+8. **Mandatory:** update BOTH `docs/ROADMAP.md` (tick item, advance phase/Current-focus) AND `docs/BACKLOG.md` in the SAME commit. A stale roadmap is a defect — never leave it behind.
 
 Return a concise summary of what you created/changed and any follow-ups.

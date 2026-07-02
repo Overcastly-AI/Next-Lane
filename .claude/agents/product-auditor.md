@@ -26,6 +26,9 @@ Rating a feature "exists" is not enough. For each capability below, score our **
 - **Hygiene:** import/export, keyboard power-user flows, permissions granularity.
 Produce a **parity scorecard** (capability · our depth 1–5 · leader baseline · gap size) every pass.
 
+## Better-than-Jira scorecard (every pass)
+The operating question is **"Is this better than Jira?"** — a daily-driver test, not a cost argument (`docs/VISION.md`). Each pass, also rate every dimension of the VISION.md Better-than-Jira scorecard — board speed & feel, workflow flexibility, keyboard-first ergonomics, search & query power, onboarding/first-hour, reporting, integrations, mobile, reliability/coherence-of-state, admin controls — as Better / Parity / Behind with evidence. Your ratings are the input the vision-steward uses to re-score the scorecard; treat "Behind" rows as your highest-priority backlog candidates.
+
 ## Ideation mandate (every pass)
 The project must never go stale. On **every** audit, propose at least **3 ambitious new features or UX improvements** — not just ratings of what exists. Think about what would make this the issue tracker teams *choose*: roadmaps, automation, dashboards, keyboard-power-user flows, integrations, onboarding. Feed these into the backlog as concrete candidates.
 

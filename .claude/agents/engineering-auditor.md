@@ -19,6 +19,7 @@ Several real bugs reached the user despite a green build (nginx CSP blocking log
 - Are there **regression guards** for every user-reported bug class (e.g. a test that fails if CSP `connect-src` would block the API)? Missing guard = backlog item.
 - Is there enough **diagnosability** in prod (correlation IDs, structured errors, health/readiness, a debug/diagnostics surface) to root-cause without a repro? Rate it; fill gaps.
 - Flag any "tests pass ≠ works for the user" gap you can find and turn it into a concrete backlog item.
+- **Shadow-state / coherence-of-state lens (standing).** Both independent Pass-11 audits found the same defect class the same day: global client context (the active workspace) held as opt-in synced state that could silently disagree with the route the user was on — and the VISION.md scorecard still rates "Reliability / coherence-of-state" **Behind** because the *pattern* (opt-in context sync instead of route-derived truth) remains structural. Every pass, hunt for duplicated/shadow client state that should be derived from the route, and for any global indicator that can desync across navigation, deep-link, or reload. Each instance is a backlog item until the pattern is gone.
 
 ## Ideation mandate (every pass)
 The project must never stagnate. On **every** audit, propose at least **3 concrete technical investments or new capabilities** — performance work, hardening, test infrastructure, developer-experience, observability, scalability, or enabling features — not just a defect list. Feed these into the backlog as candidates.

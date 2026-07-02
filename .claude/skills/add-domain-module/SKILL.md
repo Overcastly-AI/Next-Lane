@@ -25,7 +25,9 @@ Use this when adding a new REST resource to the Next Lane API.
 
 6. **Verify**: `pnpm --filter @next-lane/api build`. Add a basic spec if a test harness exists.
 
-7. **Update** `docs/ROADMAP.md` status.
+7. **Consider MCP exposure (definition of done)**: if the new resource is useful to an agent, add matching tools to `@next-lane/mcp` (`apps/mcp`) — or note explicitly why it's not agent-appropriate. Agent-nativeness is a structural advantage (`docs/VISION.md`).
+
+8. **Update** BOTH `docs/ROADMAP.md` and `docs/BACKLOG.md` in the same commit.
 
 ## Conventions
 - Validate everything at the DTO boundary. Whitelist unknown props.

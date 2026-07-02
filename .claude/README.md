@@ -25,6 +25,9 @@ To get upstream updates (and the session-start hook) directly, you can also run 
 | `product-auditor` | Independent deep product/UX audit; rates features, steers backlog → `docs/AUDIT-PRODUCT.md` |
 | `engineering-auditor` | Independent deep engineering audit (quality/security/debt); steers backlog → `docs/AUDIT-ENGINEERING.md` |
 | `backlog-groomer` | Maintains the dev board `docs/BACKLOG.md` from auditor + QA input; keeps a ready queue |
+| `vision-steward` | Turns the founder's plain-language ideas into `docs/VISION.md` / ROADMAP / BACKLOG entries; owns the Better-than-Jira scorecard (writes docs only) |
+| `doc-syncer` | Cheap-model (haiku) commit-driven reconciler for ARCHITECTURE.md, CHANGELOG.md, docs-site facts, README claims — run at the end of every build-loop iteration |
+| `oss-curator` | OSS credibility & DX: owns README + community/meta docs (CONTRIBUTING, SECURITY, templates, badges); truth-only, never app code |
 
 ## Skills (`skills/`)
 
@@ -35,6 +38,7 @@ To get upstream updates (and the session-start hook) directly, you can also run 
 | `run-stack` | Bring the app up locally and verify it works end-to-end |
 | `playwright-qa` | QA / user-acceptance testing in a real browser, desktop + mobile |
 | `ui-consistency-review` | Design/UX audit of components → prioritized feedback in `docs/UI-REVIEW.md` |
+| `frontend-design` | ANY UI work (mandatory per CLAUDE.md's design-elevation directive) — distinctive, intentional visual design; vendored Anthropic skill (see its `LICENSE.txt`) |
 
 Plus the vendored Superpowers skills (TDD, systematic-debugging, writing-plans, subagent-driven-development, verification-before-completion, …) listed above.
 
