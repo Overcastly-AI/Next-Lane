@@ -13,7 +13,7 @@ import {
 import { toProjectDto } from '../projects/projects.service';
 import { toStatusDto } from '../statuses/statuses.service';
 import { toIssueDto } from '../issues/issue.mapper';
-import { BoardType, IssueLinkType, Role, SprintState, validateQuery } from '@next-lane/shared';
+import { BoardType, IssueLinkType, Role, SprintState, StatusCategory, validateQuery } from '@next-lane/shared';
 import type { BoardDto, BoardSummaryDto, BoardColorRule, ValidateCustomFieldDef } from '@next-lane/shared';
 import type { CreateBoardDto } from './dto/create-board.dto';
 import type { UpdateBoardDto } from './dto/update-board.dto';
@@ -35,10 +35,17 @@ const issueInclude = {
   project: { select: { key: true } },
   // `linksTo` = links where this issue is the target; filtered to BLOCKS gives
   // the count of issues blocking it (BLOCKS is stored canonically blocker→blocked).
+  // A blocker whose status is DONE no longer blocks — only unresolved ones count,
+  // so the badge clears the moment the blocking issue is completed.
   _count: {
     select: {
       comments: true,
-      linksTo: { where: { type: IssueLinkType.BLOCKS } },
+      linksTo: {
+        where: {
+          type: IssueLinkType.BLOCKS,
+          source: { status: { category: { not: StatusCategory.DONE } } },
+        },
+      },
     },
   },
 } satisfies Prisma.IssueInclude;

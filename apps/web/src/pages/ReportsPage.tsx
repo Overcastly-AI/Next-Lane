@@ -4,6 +4,7 @@ import { SprintState, type SprintDto } from '@next-lane/shared';
 import { useBoard } from '@/api/issues';
 import { useSprints } from '@/api/meta';
 import { useVelocity, useBurndown, useCfd } from '@/api/reports';
+import { useSyncActiveWorkspace } from '@/contexts/WorkspaceContext';
 import { AppHeader } from '@/components/AppHeader';
 import { ProjectNav } from '@/components/project/ProjectNav';
 import { Select } from '@/components/ui/Select';
@@ -15,6 +16,7 @@ import { CumulativeFlowChart } from '@/components/reports/CumulativeFlowChart';
 export function ReportsPage() {
   const { projectId = '' } = useParams();
   const boardQuery = useBoard(projectId);
+  useSyncActiveWorkspace(boardQuery.data?.project.workspaceId);
   const sprintsQuery = useSprints(projectId);
   const velocityQuery = useVelocity(projectId);
 

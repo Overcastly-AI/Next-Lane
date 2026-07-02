@@ -33,6 +33,7 @@ import {
   useAddMember,
 } from '@/api/workspaces';
 import { useAuth } from '@/auth/AuthContext';
+import { useSyncActiveWorkspace } from '@/contexts/WorkspaceContext';
 import { errorMessage } from '@/lib/errorMessage';
 
 // ── Role badge styling ────────────────────────────────────────────────────────
@@ -201,6 +202,7 @@ function InviteForm({ workspaceId }: { workspaceId: string }) {
 
 export function WorkspaceMembersPage() {
   const { workspaceId = '' } = useParams<{ workspaceId: string }>();
+  useSyncActiveWorkspace(workspaceId);
   const { user } = useAuth();
   const toast = useToast();
 

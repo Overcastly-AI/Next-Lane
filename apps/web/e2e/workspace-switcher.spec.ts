@@ -188,6 +188,23 @@ test.describe('Workspace switcher — multi-workspace coherence', () => {
     });
   });
 
+  test('deep-linking to a workspace settings page syncs the chip', async ({
+    page,
+    request,
+  }) => {
+    const ctx = await setupMultiWorkspace(page, request);
+    // Land on Alpha first so the active workspace is NOT Bravo.
+    await expect(chip(page)).toContainText('Alpha', { timeout: 15_000 });
+
+    await page.goto(`/workspaces/${ctx.bravo.id}/settings`);
+    await expect(
+      page.getByRole('heading', { name: 'General settings' }),
+    ).toBeVisible({ timeout: 15_000 });
+
+    // The chip must report the workspace we actually landed in.
+    await expect(chip(page)).toContainText('Bravo', { timeout: 15_000 });
+  });
+
   test('deleting the active workspace heals to a remaining one', async ({
     page,
     request,

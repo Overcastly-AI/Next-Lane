@@ -1,6 +1,7 @@
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useBoard } from '@/api/issues';
 import { useRoadmap } from '@/api/roadmap';
+import { useSyncActiveWorkspace } from '@/contexts/WorkspaceContext';
 import { AppHeader } from '@/components/AppHeader';
 import { ProjectNav } from '@/components/project/ProjectNav';
 import {
@@ -20,6 +21,7 @@ export function RoadmapPage() {
   const { projectId = '' } = useParams();
   const navigate = useNavigate();
   const boardQuery = useBoard(projectId);
+  useSyncActiveWorkspace(boardQuery.data?.project.workspaceId);
   const roadmapQuery = useRoadmap(projectId);
 
   const projectName = boardQuery.data?.project.name;

@@ -74,6 +74,35 @@ test.describe('Kanban board', () => {
     await expect(
       blockerCard.getByTestId('issue-blocked-badge'),
     ).toHaveCount(0);
+
+    // Resolving the blocker clears the badge — a DONE blocker no longer blocks.
+    const statusRes = await request.get(
+      `${API_URL}/api/projects/${ctx.project.id}/statuses`,
+      { headers: { Authorization: `Bearer ${ctx.token}` } },
+    );
+    expect(statusRes.ok()).toBeTruthy();
+    const statuses = (await statusRes.json()) as {
+      id: string;
+      category: string;
+    }[];
+    const done = statuses.find((s) => s.category === 'DONE');
+    expect(done, 'project should have a DONE status').toBeTruthy();
+    const moveRes = await request.patch(
+      `${API_URL}/api/issues/${blocker.id}`,
+      {
+        headers: { Authorization: `Bearer ${ctx.token}` },
+        data: { statusId: done!.id },
+      },
+    );
+    expect(moveRes.ok(), `move blocker failed: ${moveRes.status()}`).toBeTruthy();
+
+    await page.reload();
+    await expect(
+      page
+        .getByTestId('issue-card')
+        .filter({ hasText: 'The blocked one' })
+        .getByTestId('issue-blocked-badge'),
+    ).toHaveCount(0, { timeout: 10_000 });
   });
 
   test('pins a showOnCard custom field value as a chip', async ({

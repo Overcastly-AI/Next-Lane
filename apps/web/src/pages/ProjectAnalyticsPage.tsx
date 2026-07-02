@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useBoard } from '@/api/issues';
 import { useProjectAnalytics } from '@/api/analytics';
+import { useSyncActiveWorkspace } from '@/contexts/WorkspaceContext';
 import { AppHeader } from '@/components/AppHeader';
 import { ProjectNav } from '@/components/project/ProjectNav';
 import { ErrorState, EmptyState } from '@/components/ui/States';
@@ -22,6 +23,7 @@ export function ProjectAnalyticsPage() {
   const [days, setDays] = useState<number>(30);
 
   const boardQuery = useBoard(projectId);
+  useSyncActiveWorkspace(boardQuery.data?.project.workspaceId);
   const query = useProjectAnalytics(projectId, days);
   const data = query.data;
 

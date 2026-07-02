@@ -26,7 +26,7 @@ import {
   useUploadWorkspaceLogo,
   useDeleteWorkspaceLogo,
 } from '@/api/workspaces';
-import { useWorkspaceContext } from '@/contexts/WorkspaceContext';
+import { useSyncActiveWorkspace } from '@/contexts/WorkspaceContext';
 import { applyBrandColor } from '@/lib/applyBrandColor';
 import { errorMessage } from '@/lib/errorMessage';
 import { getApiUrl } from '@/api/config';
@@ -207,7 +207,6 @@ function ColorSection({ workspaceId }: { workspaceId: string }) {
   const toast = useToast();
   const workspacesQuery = useWorkspaces();
   const workspace = workspacesQuery.data?.find((w) => w.id === workspaceId);
-  const { setActiveWorkspaceId } = useWorkspaceContext();
 
   const [localColor, setLocalColor] = useState<string>(
     workspace?.brandColor ?? '#2563eb',
@@ -233,8 +232,6 @@ function ColorSection({ workspaceId }: { workspaceId: string }) {
       {
         onSuccess: () => {
           toast.success('Brand color saved.');
-          // Ensure the workspace context picks up the change immediately.
-          setActiveWorkspaceId(workspaceId);
         },
         onError: (err) => {
           toast.error(errorMessage(err, 'Could not save brand color.'));
@@ -251,7 +248,6 @@ function ColorSection({ workspaceId }: { workspaceId: string }) {
           toast.success('Brand color reset to default.');
           setLocalColor('#2563eb');
           applyBrandColor(null);
-          setActiveWorkspaceId(workspaceId);
         },
         onError: (err) => {
           toast.error(errorMessage(err, 'Could not reset brand color.'));
@@ -405,6 +401,7 @@ function ColorSection({ workspaceId }: { workspaceId: string }) {
 
 export function WorkspaceBrandingPage() {
   const { workspaceId = '' } = useParams<{ workspaceId: string }>();
+  useSyncActiveWorkspace(workspaceId);
 
   const myRole = useMyRole(workspaceId);
   const isAdmin = myRole === Role.ADMIN;
