@@ -6,11 +6,13 @@ import {
 import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ReportsService } from '../reports/reports.service';
+import { RealtimeService } from '../realtime/realtime.service';
 import { assertProjectMember, assertProjectRole } from '../common/membership.util';
 import { toIssueDto } from '../issues/issue.mapper';
 import {
   DashboardGadgetVisualization,
   Role,
+  SocketEvents,
   filterIssues,
   validateQuery,
   type DashboardDataDto,
@@ -62,9 +64,24 @@ export class DashboardsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly reports: ReportsService,
+    private readonly realtime: RealtimeService,
   ) {}
 
   // ── Shared helpers ────────────────────────────────────────────────────────
+
+  /**
+   * Notify everyone else viewing this project that a dashboard/gadget
+   * changed, so a second open tab refreshes without a manual reload — mirrors
+   * the `project.updated` pattern. Payload is intentionally minimal
+   * (`{ dashboardId }`); clients refetch rather than trust a pushed DTO,
+   * since gadget CRUD affects a nested collection the dashboard DTO doesn't
+   * fully carry on every mutation shape.
+   */
+  private emitDashboardUpdated(projectId: string, dashboardId: string): void {
+    this.realtime.emitToProject(projectId, SocketEvents.DashboardUpdated, {
+      dashboardId,
+    });
+  }
 
   private async loadCustomFieldDefs(
     projectId: string,
@@ -132,6 +149,7 @@ export class DashboardsService {
     const dashboard = await this.prisma.dashboard.create({
       data: { projectId, name: dto.name, order },
     });
+    this.emitDashboardUpdated(projectId, dashboard.id);
     return toDashboardSummaryDto(dashboard, 0);
   }
 
@@ -164,6 +182,7 @@ export class DashboardsService {
     const gadgetCount = await this.prisma.dashboardGadget.count({
       where: { dashboardId },
     });
+    this.emitDashboardUpdated(dashboard.projectId, dashboardId);
     return toDashboardSummaryDto(updated, gadgetCount);
   }
 
@@ -171,6 +190,7 @@ export class DashboardsService {
     const dashboard = await this.getDashboardOr404(dashboardId);
     await assertProjectRole(this.prisma, userId, dashboard.projectId, Role.MEMBER);
     await this.prisma.dashboard.delete({ where: { id: dashboardId } });
+    this.emitDashboardUpdated(dashboard.projectId, dashboardId);
   }
 
   // ── Gadgets ──────────────────────────────────────────────────────────────
@@ -225,6 +245,7 @@ export class DashboardsService {
         } as Prisma.InputJsonValue,
       },
     });
+    this.emitDashboardUpdated(dashboard.projectId, dashboardId);
     return toDashboardGadgetDto(gadget);
   }
 
@@ -273,6 +294,7 @@ export class DashboardsService {
       where: { id: gadgetId },
       data,
     });
+    this.emitDashboardUpdated(gadget.dashboard.projectId, gadget.dashboardId);
     return toDashboardGadgetDto(updated);
   }
 
@@ -285,6 +307,7 @@ export class DashboardsService {
       Role.MEMBER,
     );
     await this.prisma.dashboardGadget.delete({ where: { id: gadgetId } });
+    this.emitDashboardUpdated(gadget.dashboard.projectId, gadget.dashboardId);
   }
 
   // ── Data ─────────────────────────────────────────────────────────────────

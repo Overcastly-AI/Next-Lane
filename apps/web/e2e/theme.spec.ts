@@ -65,8 +65,9 @@ test.describe('Light / dark mode', () => {
     await expect.poll(() => isDarkActive(page)).toBe(true);
     expect(await storedTheme(page)).toBe('dark');
 
-    // Reload — no flash, the inline bootstrap script in index.html applies
-    // the class before the app even mounts.
+    // Reload — no flash, the self-hosted theme-init.js bootstrap script
+    // (loaded before the app bundle, see index.html) applies the class
+    // before the app even mounts.
     await page.reload();
     expect(await isDarkActive(page)).toBe(true);
     expect(await storedTheme(page)).toBe('dark');

@@ -10,6 +10,7 @@ import * as membership from '../common/membership.util';
 import { DashboardsService, DASHBOARD_ISSUES_CAP } from './dashboards.service';
 import type { PrismaService } from '../prisma/prisma.service';
 import type { ReportsService } from '../reports/reports.service';
+import type { RealtimeService } from '../realtime/realtime.service';
 
 const PROJECT_ID = 'proj-1';
 const PROJECT_KEY = 'NL';
@@ -145,12 +146,14 @@ function makeIssueRow(i: number, overrides: Partial<{ statusName: string; sprint
 describe('DashboardsService', () => {
   let prisma: MockPrisma;
   let reports: ReturnType<typeof makeReports>;
+  let realtime: { emitToProject: jest.Mock };
   let service: DashboardsService;
 
   beforeEach(() => {
     prisma = makePrisma();
     reports = makeReports();
-    service = new DashboardsService(prisma, reports);
+    realtime = { emitToProject: jest.fn() };
+    service = new DashboardsService(prisma, reports, realtime as unknown as RealtimeService);
     jest
       .spyOn(membership, 'assertProjectMember')
       .mockResolvedValue(makeProjectRow() as never);
@@ -189,6 +192,12 @@ describe('DashboardsService', () => {
       expect.objectContaining({ data: expect.objectContaining({ order: 3, projectId: PROJECT_ID }) }),
     );
     expect(result.gadgetCount).toBe(0);
+    expect(realtime.emitToProject).toHaveBeenCalledTimes(1);
+    expect(realtime.emitToProject).toHaveBeenCalledWith(
+      PROJECT_ID,
+      'dashboard.updated',
+      { dashboardId: DASHBOARD_ID },
+    );
   });
 
   it('createDashboard defaults order to 0 when no dashboards exist', async () => {
@@ -235,6 +244,11 @@ describe('DashboardsService', () => {
       data: { name: 'Renamed', order: 5 },
     });
     expect(result.name).toBe('Renamed');
+    expect(realtime.emitToProject).toHaveBeenCalledWith(
+      PROJECT_ID,
+      'dashboard.updated',
+      { dashboardId: DASHBOARD_ID },
+    );
   });
 
   it('deleteDashboard requires MEMBER role and deletes by id', async () => {
@@ -245,6 +259,11 @@ describe('DashboardsService', () => {
 
     expect(membership.assertProjectRole).toHaveBeenCalledWith(prisma, 'user-1', PROJECT_ID, Role.MEMBER);
     expect(prisma.dashboard.delete).toHaveBeenCalledWith({ where: { id: DASHBOARD_ID } });
+    expect(realtime.emitToProject).toHaveBeenCalledWith(
+      PROJECT_ID,
+      'dashboard.updated',
+      { dashboardId: DASHBOARD_ID },
+    );
   });
 
   // ── createGadget ───────────────────────────────────────────────────────
@@ -297,6 +316,11 @@ describe('DashboardsService', () => {
       }),
     );
     expect(result.id).toBe('g-2');
+    expect(realtime.emitToProject).toHaveBeenCalledWith(
+      PROJECT_ID,
+      'dashboard.updated',
+      { dashboardId: DASHBOARD_ID },
+    );
   });
 
   // ── updateGadget ───────────────────────────────────────────────────────
@@ -339,6 +363,11 @@ describe('DashboardsService', () => {
       where: { id: 'gadget-1' },
       data: { config: { position: 2, field: 'status', size: 2 } },
     });
+    expect(realtime.emitToProject).toHaveBeenCalledWith(
+      PROJECT_ID,
+      'dashboard.updated',
+      { dashboardId: DASHBOARD_ID },
+    );
   });
 
   // ── deleteGadget ───────────────────────────────────────────────────────
@@ -353,6 +382,11 @@ describe('DashboardsService', () => {
 
     expect(membership.assertProjectRole).toHaveBeenCalledWith(prisma, 'user-1', PROJECT_ID, Role.MEMBER);
     expect(prisma.dashboardGadget.delete).toHaveBeenCalledWith({ where: { id: 'gadget-1' } });
+    expect(realtime.emitToProject).toHaveBeenCalledWith(
+      PROJECT_ID,
+      'dashboard.updated',
+      { dashboardId: DASHBOARD_ID },
+    );
   });
 
   // ── getDashboardData ───────────────────────────────────────────────────

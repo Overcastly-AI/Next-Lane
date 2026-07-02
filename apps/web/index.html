@@ -18,27 +18,15 @@
       there is no flash of the wrong theme. Mirrors the `nl.theme` preference
       written by ThemeContext (src/contexts/ThemeContext.tsx): 'light' |
       'dark' | 'system' (default, falls back to `prefers-color-scheme`).
+      Served as a self-hosted static file (public/theme-init.js) — NOT an
+      inline <script> — so it satisfies a strict `script-src 'self'` CSP
+      (see nginx.conf) with no 'unsafe-inline'/nonce/hash needed. Loaded as
+      a normal BLOCKING script (no `defer`/`type=module`) so it still runs
+      before the app bundle mounts, preserving the same no-flash guarantee.
       Kept deliberately tiny and dependency-free — this is the ONE place in
       the app allowed to touch the DOM before React mounts.
     -->
-    <script>
-      (function () {
-        try {
-          var pref = localStorage.getItem('nl.theme');
-          var isDark =
-            pref === 'dark' ||
-            (pref !== 'light' &&
-              window.matchMedia &&
-              window.matchMedia('(prefers-color-scheme: dark)').matches);
-          var root = document.documentElement;
-          if (isDark) root.classList.add('dark');
-          root.style.colorScheme = isDark ? 'dark' : 'light';
-        } catch (e) {
-          /* localStorage/matchMedia unavailable — default to light, matches
-             the CSS :root default so this is a safe no-op either way. */
-        }
-      })();
-    </script>
+    <script src="/theme-init.js"></script>
   </head>
   <body>
     <div id="root"></div>

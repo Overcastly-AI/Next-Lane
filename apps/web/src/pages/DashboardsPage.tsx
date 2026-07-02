@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import type { DashboardGadgetDto, DashboardSummaryDto } from '@next-lane/shared';
 import { useProject } from '@/api/projects';
 import { useMyRole } from '@/api/workspaces';
+import { useBoardRealtime } from '@/api/socket';
 import { canEdit } from '@/lib/permissions';
 import { errorMessage } from '@/lib/errorMessage';
 import {
@@ -118,6 +119,12 @@ export function DashboardsPage() {
 
   const dashboardsQuery = useDashboards(projectId);
   const dashboards = dashboardsQuery.data ?? [];
+
+  // Live-refresh this page: issue.* events (dashboard gadget data depends on
+  // the project's issues) and dashboard.updated (metadata/gadget CRUD from
+  // another tab/teammate) are both handled centrally in useBoardRealtime —
+  // subscribing here is what actually turns that on for this page.
+  useBoardRealtime(projectId);
 
   const [selectedId, setSelectedId] = useState<string | undefined>(undefined);
   useEffect(() => {

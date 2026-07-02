@@ -81,3 +81,17 @@ export function invalidateBoardFamily(
   void qc.invalidateQueries({ queryKey: qk.board(projectId) });
   void qc.invalidateQueries({ queryKey: ['boardView'] });
 }
+
+/**
+ * Invalidate every open dashboard's evaluated gadget data. Mirrors
+ * `invalidateBoardFamily`'s "invalidate the whole family" shape: an issue
+ * mutation doesn't know which dashboard(s) are currently open (a dashboard
+ * has no `boardId`-style handle to thread through), so a broad prefix-match
+ * invalidation on `['dashboardData']` is the same pragmatic tradeoff
+ * `invalidateBoardFamily` already made for `['boardView']`.
+ */
+export function invalidateDashboardDataFamily(
+  qc: import('@tanstack/react-query').QueryClient,
+): void {
+  void qc.invalidateQueries({ queryKey: ['dashboardData'] });
+}

@@ -1261,11 +1261,30 @@ function makeBulkUpdatePrisma() {
     activityLog: { createMany: jest.fn() },
   };
   const prisma = {
-    issue: { findUnique: jest.fn() },
+    issue: {
+      findUnique: jest.fn(),
+      // P2-1 (Pass-12): bulkUpdate's batch workflow-resolution preload fetches
+      // all of the batch's issue rows (id/projectId/sprintId) in ONE
+      // `findMany` rather than per-issue `findUnique`s. Default: every id in
+      // the batch resolves to the same project, no sprint — individual tests
+      // override this when they need a specific projectId/sprintId shape.
+      findMany: jest
+        .fn()
+        .mockImplementation(
+          ({ where }: { where: { id: { in: string[] } } }) =>
+            Promise.resolve(
+              where.id.in.map((id) => ({
+                id,
+                projectId: BULK_PROJECT,
+                sprintId: null,
+              })),
+            ),
+        ),
+    },
     project: { findUnique: jest.fn() },
     membership: { findUnique: jest.fn() },
     status: { findUnique: jest.fn() },
-    sprint: { findUnique: jest.fn() },
+    sprint: { findUnique: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
     user: { findUnique: jest.fn().mockResolvedValue({ name: 'Bulk Actor' }) },
     issueLabel: { upsert: jest.fn().mockResolvedValue({}) },
     // WF-1: update() (called per-issue by bulkUpdate()) resolves an enforced
@@ -1552,7 +1571,11 @@ describe('IssuesService.bulkUpdate — partial success', () => {
  */
 describe('IssuesService.bulkUpdate — workflow enforcement (item 6)', () => {
   let mocks: ReturnType<typeof makeBulkUpdatePrisma>;
-  let workflowSvc: { enforceTransition: jest.Mock; isEnforcementEnabled: jest.Mock };
+  let workflowSvc: {
+    enforceTransition: jest.Mock;
+    enforceTransitionForWorkflow: jest.Mock;
+    isEnforcementEnabled: jest.Mock;
+  };
   let service: IssuesService;
 
   beforeEach(() => {
@@ -1567,6 +1590,10 @@ describe('IssuesService.bulkUpdate — workflow enforcement (item 6)', () => {
 
     workflowSvc = {
       enforceTransition: jest.fn().mockResolvedValue(undefined),
+      // WF-1 named-workflow path (see P2-1 test below) — no-op by default,
+      // only exercised when a test configures `board.findMany` to return an
+      // enforced-workflow board.
+      enforceTransitionForWorkflow: jest.fn().mockResolvedValue(undefined),
       isEnforcementEnabled: jest.fn().mockResolvedValue(false),
     };
 
@@ -1668,6 +1695,122 @@ describe('IssuesService.bulkUpdate — workflow enforcement (item 6)', () => {
     // isEnforcementEnabled is called once (preload) not N times.
     expect(workflowSvc.isEnforcementEnabled).toHaveBeenCalledTimes(1);
   });
+
+  // ── P2-1 (Pass-12 engineering audit): resolveEnforcedWorkflowId N+1 ───────
+  it(
+    'preloads board.findMany O(1) (not O(issues)) for a named-workflow-enforced ' +
+      'batch, and resolves + enforces the named workflow per issue via the preload',
+    async () => {
+      // One KANBAN board with an enforced named workflow — visible to
+      // backlog issues (sprintId: null), matching every row's default shape
+      // from makeBulkUpdatePrisma's issue.findMany mock.
+      mocks.prisma.board.findMany.mockResolvedValue([
+        { id: 'board-1', type: 'KANBAN', isDefault: true, workflowId: 'wf-1' },
+      ]);
+
+      const ids = ['i1', 'i2', 'i3', 'i4', 'i5'];
+      mocks.prisma.issue.findUnique.mockImplementation(
+        ({ where }: { where: { id: string } }) =>
+          Promise.resolve(makeBulkIssueRow(where.id)),
+      );
+      mocks.tx.issue.update.mockImplementation(
+        ({ where }: { where: { id: string } }) =>
+          Promise.resolve(makeBulkIssueRow(where.id)),
+      );
+
+      const result = await service.bulkUpdate(BULK_USER, {
+        ids,
+        changes: { statusId: 'new-status' },
+      });
+
+      expect(result.updated).toBe(5);
+      expect(result.failed).toHaveLength(0);
+
+      // The whole point of the fix: ONE board query for the entire batch,
+      // not one per issue (previously 5, one per `update()` call).
+      expect(mocks.prisma.board.findMany).toHaveBeenCalledTimes(1);
+
+      // No sprint lookup at all — every issue in this batch is backlog
+      // (sprintId: null), so buildBulkWorkflowResolution never needs to
+      // query sprint state.
+      expect(mocks.prisma.sprint.findMany).not.toHaveBeenCalled();
+      expect(mocks.prisma.sprint.findUnique).not.toHaveBeenCalled();
+
+      // The preloaded resolution is actually load-bearing: every issue is
+      // enforced via the NAMED workflow (enforceTransitionForWorkflow), not
+      // the legacy per-project path (enforceTransition).
+      expect(workflowSvc.enforceTransitionForWorkflow).toHaveBeenCalledTimes(5);
+      for (const id of ids) {
+        expect(workflowSvc.enforceTransitionForWorkflow).toHaveBeenCalledWith(
+          'wf-1',
+          id,
+          'new-status',
+        );
+      }
+      expect(workflowSvc.enforceTransition).not.toHaveBeenCalled();
+    },
+  );
+
+  it(
+    'preloads sprint.findMany O(1) (once for all distinct sprints, not per issue) ' +
+      'when the batch spans multiple sprints',
+    async () => {
+      mocks.prisma.board.findMany.mockResolvedValue([
+        { id: 'board-1', type: 'KANBAN', isDefault: true, workflowId: 'wf-1' },
+      ]);
+      // Two distinct sprints across a 4-issue batch — should still be exactly
+      // ONE sprint.findMany call (not 4).
+      mocks.prisma.issue.findMany.mockResolvedValue([
+        { id: 'i1', projectId: BULK_PROJECT, sprintId: 'sprint-a' },
+        { id: 'i2', projectId: BULK_PROJECT, sprintId: 'sprint-a' },
+        { id: 'i3', projectId: BULK_PROJECT, sprintId: 'sprint-b' },
+        { id: 'i4', projectId: BULK_PROJECT, sprintId: null },
+      ]);
+      mocks.prisma.sprint.findMany.mockResolvedValue([
+        { id: 'sprint-a', state: 'ACTIVE' },
+        { id: 'sprint-b', state: 'PLANNED' },
+      ]);
+
+      mocks.prisma.issue.findUnique.mockImplementation(
+        ({ where }: { where: { id: string } }) =>
+          Promise.resolve({ ...makeBulkIssueRow(where.id), sprintId: where.id === 'i3' ? 'sprint-b' : where.id === 'i4' ? null : 'sprint-a' }),
+      );
+      mocks.tx.issue.update.mockImplementation(
+        ({ where }: { where: { id: string } }) =>
+          Promise.resolve(makeBulkIssueRow(where.id)),
+      );
+
+      await service.bulkUpdate(BULK_USER, {
+        ids: ['i1', 'i2', 'i3', 'i4'],
+        changes: { statusId: 'new-status' },
+      });
+
+      expect(mocks.prisma.board.findMany).toHaveBeenCalledTimes(1);
+      // ONE sprint.findMany call for the whole batch (2 distinct sprint ids),
+      // not one per issue.
+      expect(mocks.prisma.sprint.findMany).toHaveBeenCalledTimes(1);
+      expect(mocks.prisma.sprint.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: { in: expect.arrayContaining(['sprint-a', 'sprint-b']) } },
+        }),
+      );
+      expect(mocks.prisma.sprint.findUnique).not.toHaveBeenCalled();
+
+      // i1/i2 (sprint-a, ACTIVE) and i3 (sprint-b, PLANNED) → KANBAN board is
+      // only visible for i1/i2 (active sprint) and i4 (backlog, sprintId
+      // null) — matches BoardService's visibility rule.
+      expect(workflowSvc.enforceTransitionForWorkflow).toHaveBeenCalledWith('wf-1', 'i1', 'new-status');
+      expect(workflowSvc.enforceTransitionForWorkflow).toHaveBeenCalledWith('wf-1', 'i2', 'new-status');
+      expect(workflowSvc.enforceTransitionForWorkflow).toHaveBeenCalledWith('wf-1', 'i4', 'new-status');
+      expect(workflowSvc.enforceTransitionForWorkflow).not.toHaveBeenCalledWith('wf-1', 'i3', 'new-status');
+      // i3 falls through to the legacy path (no enforced workflow visible).
+      expect(workflowSvc.enforceTransition).toHaveBeenCalledWith(
+        'i3',
+        'new-status',
+        expect.anything(),
+      );
+    },
+  );
 });
 
 /**

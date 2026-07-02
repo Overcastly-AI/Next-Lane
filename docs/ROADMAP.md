@@ -295,17 +295,24 @@ pass — groom the board against this sequencing next.)*
    top of the queue since they block an entire platform on a just-shipped
    feature.
 2. **Reliability artifact gap — CSP blocks the dark-mode bootstrap script in
-   the real Docker image (P1, in flight).** The no-flash inline `<script>` in
-   `index.html` is silently dropped by production nginx's `script-src 'self'`
-   (no hash/nonce/`unsafe-inline`) — dark mode still works, but every reload
-   with a dark preference flashes light first and logs a CSP violation; this
-   is the same "green tests, broken shipped artifact" failure class that
-   already burned this project once, now recurring on a brand-new feature
-   because the existing `smoke-web-csp.sh` guard only ever asserted
-   `connect-src` (AUDIT-ENGINEERING.md Pass 12, P1-1). Fix: sha256-hash the
-   script into `nginx.conf`'s `script-src` (3 copies), plus a
-   Docker-artifact Playwright gate (not `vite preview`) for CSP-sensitive
-   specs so this class of regression can't recur silently again.
+   the real Docker image — ✅ shipped 2026-07-02 (Pass-12 fix batch).** The
+   no-flash bootstrap moved from an inline `<script>` in `index.html` to a
+   self-hosted static file (`public/theme-init.js`) loaded via a normal
+   BLOCKING `<script src="/theme-init.js">` — this satisfies production
+   nginx's strict `script-src 'self'` (no hash/nonce/`unsafe-inline` needed)
+   with the exact same no-flash guarantee, since it's a synchronous,
+   non-module script that still runs before the app bundle mounts. Closes
+   AUDIT-ENGINEERING.md Pass 12, P1-1. Hardened the regression guard rather
+   than just the instance: `scripts/smoke-web-csp.sh` gained a mode-3 check
+   that fetches the real served `index.html` + CSP header and FAILS if any
+   inline `<script>` (no `src=`) exists while `script-src` lacks
+   `unsafe-inline`/nonce/hash — this generalizes past this one bug to catch
+   the *next* accidental inline script too. Also added a Docker-artifact-style
+   Playwright check (`apps/web/e2e/csp-artifact.spec.ts`) that serves the real
+   built `dist/` bundle with the production CSP header via a tiny Node static
+   server and asserts zero `script-src` CSP violations + dark mode applies —
+   closes the "green tests, broken shipped artifact" gap for this class
+   without needing a full `docker compose` Playwright harness.
 3. **Admin controls depth (behind).** Real progress already shipped
    2026-07-02 (SSO/OIDC Phase 1, workspace-switcher search/recently-visited),
    but two blockers an evaluating enterprise/agency admin checks first
@@ -331,12 +338,18 @@ pass — groom the board against this sequencing next.)*
    AUDIT-PRODUCT.md Pass 12, 8/10) — this is what flipped Reporting
    Behind → Parity. Phase 2: cross-sprint trend view, cross-workspace gadget
    scoping, dashboard sharing/public read-only embed (reusing the existing
-   public-board share-token pattern). Also folds in engineering's own P1 for
-   this feature: **dashboards currently have zero realtime coverage** —
-   gadget data can go stale indefinitely with the tab open, no `staleTime`
-   refetch, no refocus refetch, no socket subscription
-   (AUDIT-ENGINEERING.md Pass 12, P1-2) — fix alongside a per-project/
-   per-dashboard gadget cap (engineering P2-2, currently unbounded).
+   public-board share-token pattern). **Realtime coverage ✅ shipped
+   2026-07-02 (Pass-12 fix batch):** `SocketEvents.DashboardUpdated` added
+   (`packages/shared`), emitted from `DashboardsService` on every
+   dashboard/gadget CRUD mutation (create/update/delete dashboard,
+   create/update/delete gadget) to the project room; `DashboardsPage`
+   subscribes via `useBoardRealtime(projectId)`, which now invalidates the
+   whole `['dashboardData']` query family on any `issue.*` event (mirroring
+   `invalidateBoardFamily`'s "invalidate the family, not a single key"
+   shape) and the specific dashboard's summary/detail/data on
+   `dashboard.updated` — closes AUDIT-ENGINEERING.md Pass 12, P1-2. Still
+   open: a per-project/per-dashboard gadget cap (engineering P2-2, currently
+   unbounded) — tracked separately, not part of this fix batch.
 
 **Re-affirmed Better, not part of this queue:** Board speed & feel, Workflow
 flexibility, and Keyboard-first ergonomics all re-verified with fresh Pass-12
@@ -375,6 +388,26 @@ column-completeness shipped** — re-verified this pass at 19 columns
 including Description, Component, Fix Versions, Parent, time estimates, and
 all custom fields (AUDIT-PRODUCT.md Pass 12); the README/first-impression
 surface overhaul remains owned by `oss-curator`, tracked there.
+
+**Pass-12 engineering fix batch — two more mechanical/perf findings closed
+2026-07-02 (in addition to the CSP and dashboards-realtime items above):**
+(1) **Tenant-isolation matrix gap closed** (AUDIT-ENGINEERING.md Pass 12,
+P2-3 — open for three consecutive audit passes): `tenant-isolation.integration.spec.ts`
+gained rows for personal-cards (PATCH/DELETE foreign card), quick-links
+(PATCH/DELETE foreign link), workspace `PATCH` + logo `POST`, GitHub
+integration (GET/PUT/DELETE config + issue github-links read), and
+dashboards (GET/PATCH/DELETE foreign dashboard, gadget CRUD, evaluated-data
+endpoint) — the matrix grew from ~72 to 94 rows, all 93 non-sanity-check rows
+confirmed BLOCKED against a real cross-tenant attempt. (2) **`resolveEnforcedWorkflowId`
+N+1 in bulk status updates fixed** (AUDIT-ENGINEERING.md Pass 12, P2-1):
+`bulkUpdate` now precomputes the WF-1 named-workflow resolution once per
+batch (`buildBulkWorkflowResolution` — one `board.findMany` + one
+`sprint.findMany` for the whole batch's distinct sprints, not per issue) and
+threads it through `MutationOpts.resolvedWorkflowId`, closing the gap where
+the existing bulk preload only ever fed the legacy fallback path, not the
+WF-1 resolution branch `enforceStatusChange` actually hits. New unit tests
+assert `board.findMany`/`sprint.findMany` call counts stay O(1) for a
+5+ issue, multi-sprint named-workflow-enforced batch.
 
 Everything below this line documents what already shipped; it is not being
 rewritten, only re-prioritized going forward per the ordering above.

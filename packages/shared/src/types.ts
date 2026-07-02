@@ -755,6 +755,14 @@ export const SocketEvents = {
   ProjectUpdated: 'project.updated',
   /** A project was permanently deleted. Payload is `{ id }`. */
   ProjectDeleted: 'project.deleted',
+  /**
+   * A dashboard's metadata (name/order) changed, or a gadget within it was
+   * created/updated/deleted. Payload is `{ dashboardId }` — clients refetch
+   * the affected dashboard's summary/detail/data queries rather than
+   * receiving the full nested DTO. Emitted from `DashboardsService` on every
+   * dashboard/gadget CRUD mutation.
+   */
+  DashboardUpdated: 'dashboard.updated',
 } as const;
 
 export type SocketEvent = (typeof SocketEvents)[keyof typeof SocketEvents];

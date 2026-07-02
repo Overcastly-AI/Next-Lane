@@ -123,4 +123,50 @@ CONNECT_SAME="$(printf '%s' "$CSP_SAME" \
 
 echo "==> [mode 2] PASS"
 
+# ───────────────── Mode 3: script-src vs. inline-<script> guard ─────────────
+# Regression guard for a SEPARATE bug class than connect-src: `index.html`
+# shipping a synchronous inline <script> (e.g. a dark-mode/no-FOUC bootstrap)
+# while `script-src` has no `'unsafe-inline'`/nonce/hash is silently and
+# deterministically blocked by CSP in the real served artifact, even though
+# it may pass fine against a harness (e.g. `vite preview`) that serves no CSP
+# header at all. We fetch the ACTUAL served `index.html` and the ACTUAL served
+# CSP header (both already captured above from mode 2 — same-origin config is
+# representative; the directive under test, script-src, does not vary between
+# modes) and cross-check them against each other, rather than statically
+# parsing nginx.conf, so this always reflects the real, post-entrypoint
+# artifact behavior.
+echo "==> [mode 3] script-src vs. inline <script> in served index.html"
+
+SCRIPT_SRC_SAME="$(printf '%s' "$CSP_SAME" \
+  | sed -nE "s/.*script-src([^;]*);.*/\1/p" \
+  | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')"
+[ -n "$SCRIPT_SRC_SAME" ] || fail "[mode 3] could not parse script-src from CSP: ${CSP_SAME}"
+echo "    script-src: ${SCRIPT_SRC_SAME}"
+
+SCRIPT_SRC_ALLOWS_INLINE=0
+if printf '%s' "$SCRIPT_SRC_SAME" | grep -qE "'unsafe-inline'|'nonce-|'sha256-|'sha384-|'sha512-"; then
+  SCRIPT_SRC_ALLOWS_INLINE=1
+fi
+
+# Find every <script ...> opening tag in the served HTML and flag any that has
+# no `src=` attribute — that's an inline script block, which CSP's `script-src`
+# governs via 'unsafe-inline'/nonce/hash (an external `src="..."` script,
+# self-hosted, is always allowed by plain `'self'` and is NOT what this check
+# is for).
+INLINE_SCRIPT_FOUND=0
+SCRIPT_TAGS="$(printf '%s' "$HTML_SAME" | grep -oE '<script[^>]*>' || true)"
+while IFS= read -r tag; do
+  [ -n "$tag" ] || continue
+  if ! printf '%s' "$tag" | grep -q ' src='; then
+    INLINE_SCRIPT_FOUND=1
+    echo "    inline <script> tag found: ${tag}"
+  fi
+done <<< "$SCRIPT_TAGS"
+
+if [ "$INLINE_SCRIPT_FOUND" = "1" ] && [ "$SCRIPT_SRC_ALLOWS_INLINE" = "0" ]; then
+  fail "[mode 3] served index.html contains an inline <script> with no src= attribute, but script-src (${SCRIPT_SRC_SAME}) has no 'unsafe-inline'/nonce/hash — this script will be SILENTLY BLOCKED by the browser in production. Move it to a self-hosted static file loaded via <script src=\"...\"> instead."
+fi
+
+echo "==> [mode 3] PASS (no inline <script> defeated by script-src, or script-src explicitly allows it)"
+
 echo "==> ALL SMOKE ASSERTIONS PASSED"

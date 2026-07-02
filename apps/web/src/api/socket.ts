@@ -8,7 +8,7 @@ import {
   type ProjectDto,
 } from '@next-lane/shared';
 import { API_URL, getToken } from './client';
-import { qk, invalidateBoardFamily } from './keys';
+import { qk, invalidateBoardFamily, invalidateDashboardDataFamily } from './keys';
 
 let socket: Socket | null = null;
 
@@ -57,6 +57,16 @@ export function useNotificationsRealtime(enabled: boolean): void {
 }
 
 const ALL_EVENTS: SocketEvent[] = Object.values(SocketEvents);
+
+/** Events that mean "an issue in this project changed" — dashboards' gadget
+ * data depends on the project's issue set, so any of these should refresh
+ * any open dashboard's evaluated data, the same way they refresh the board. */
+const ISSUE_EVENTS: SocketEvent[] = [
+  SocketEvents.IssueCreated,
+  SocketEvents.IssueUpdated,
+  SocketEvents.IssueMoved,
+  SocketEvents.IssueDeleted,
+];
 
 /**
  * Subscribe to a project's realtime room. On any board-affecting event we
@@ -126,6 +136,24 @@ export function useBoardRealtime(
           }
           void qc.invalidateQueries({ queryKey: qk.boards(projectId) });
           invalidateBoardFamily(qc, projectId);
+        }
+        if (ISSUE_EVENTS.includes(event)) {
+          // Dashboard gadget data is derived from the project's issue set —
+          // refresh every open dashboard's evaluated data so STAT/TABLE/
+          // BREAKDOWN/BURNDOWN numbers don't silently go stale while a
+          // teammate edits issues elsewhere.
+          invalidateDashboardDataFamily(qc);
+        }
+        if (event === SocketEvents.DashboardUpdated) {
+          // A dashboard's metadata changed or a gadget was added/edited/
+          // removed — refresh the project's dashboard list (tabs/gadgetCount)
+          // and the specific dashboard's detail + evaluated data.
+          const dashboardId = (payload as { dashboardId?: string } | null)?.dashboardId;
+          void qc.invalidateQueries({ queryKey: qk.dashboards(projectId) });
+          if (dashboardId) {
+            void qc.invalidateQueries({ queryKey: qk.dashboard(dashboardId) });
+            void qc.invalidateQueries({ queryKey: qk.dashboardData(dashboardId) });
+          }
         }
         handlerRef.current?.(event, payload);
       };

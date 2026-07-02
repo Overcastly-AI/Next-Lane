@@ -74,6 +74,12 @@ interface Tenant {
   pokerSessionId: string;
   personalColumnId: string;
   issueTemplateId: string;
+  // Pass-12 fix batch: personal-cards, quick-links, GitHub integration,
+  // dashboards + gadgets.
+  personalCardId: string;
+  quickLinkId: string;
+  dashboardId: string;
+  gadgetId: string;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -368,6 +374,57 @@ async function setupTenant(
       ? (JSON.parse(templateResp.body) as { id: string }).id
       : 'nonexistent-issue-template-id';
 
+  // ── Personal Card (user-owned; other users can't access by id) ────────────
+  const cardResp = await req(server, 'POST', '/me/personal-cards', token, {
+    columnId: personalColumnId,
+    title: `Card-${suffix}`,
+  });
+  const personalCardId =
+    cardResp.status === 201
+      ? (JSON.parse(cardResp.body) as { id: string }).id
+      : 'nonexistent-personal-card-id';
+
+  // ── Quick link (user-owned; other users can't access by id) ───────────────
+  const quickLinkResp = await req(server, 'POST', '/me/quick-links', token, {
+    label: `Link-${suffix}`,
+    url: 'https://example.com/tool',
+  });
+  const quickLinkId =
+    quickLinkResp.status === 201
+      ? (JSON.parse(quickLinkResp.body) as { id: string }).id
+      : 'nonexistent-quick-link-id';
+
+  // ── GitHub integration (project-scoped config; ADMIN-gated) ────────────────
+  await req(server, 'PUT', `/projects/${projectId}/github`, token, {
+    repoFullName: `acme/widgets-${suffix.toLowerCase()}`,
+    token: 'ghp_faketoken1234567890abcdef',
+  });
+
+  // ── Dashboard + gadget ───────────────────────────────────────────────────
+  const dashboardResp = await req(
+    server,
+    'POST',
+    `/projects/${projectId}/dashboards`,
+    token,
+    { name: `Dashboard-${suffix}` },
+  );
+  const dashboardId =
+    dashboardResp.status === 201
+      ? (JSON.parse(dashboardResp.body) as { id: string }).id
+      : 'nonexistent-dashboard-id';
+
+  const gadgetResp = await req(
+    server,
+    'POST',
+    `/dashboards/${dashboardId}/gadgets`,
+    token,
+    { title: `Gadget-${suffix}`, query: '', visualization: 'STAT' },
+  );
+  const gadgetId =
+    gadgetResp.status === 201
+      ? (JSON.parse(gadgetResp.body) as { id: string }).id
+      : 'nonexistent-gadget-id';
+
   return {
     token,
     userId,
@@ -386,6 +443,10 @@ async function setupTenant(
     pokerSessionId,
     personalColumnId,
     issueTemplateId,
+    personalCardId,
+    quickLinkId,
+    dashboardId,
+    gadgetId,
   };
 }
 
@@ -421,6 +482,17 @@ function buildMatrix(a: Tenant): Array<MatrixRow & { resolvedPath: string; resol
       label: 'GET workspace A audit-log',
       method: 'GET',
       path: (t) => `/workspaces/${t.workspaceId}/audit-log`,
+    },
+    {
+      label: 'PATCH workspace A (cross-tenant mutation)',
+      method: 'PATCH',
+      path: (t) => `/workspaces/${t.workspaceId}`,
+      body: () => ({ name: 'Hijacked workspace' }),
+    },
+    {
+      label: 'POST workspace A logo (cross-tenant mutation)',
+      method: 'POST',
+      path: (t) => `/workspaces/${t.workspaceId}/logo`,
     },
     {
       label: 'DELETE workspace A (cross-tenant mutation)',
@@ -844,6 +916,109 @@ function buildMatrix(a: Tenant): Array<MatrixRow & { resolvedPath: string; resol
       method: 'DELETE',
       path: (t) => `/me/personal-columns/${t.personalColumnId}`,
     },
+    {
+      label: "PATCH personal card A (cross-user card id)",
+      method: 'PATCH',
+      path: (t) => `/me/personal-cards/${t.personalCardId}`,
+      body: () => ({ title: 'Hijacked card' }),
+    },
+    {
+      label: "DELETE personal card A (cross-user card id)",
+      method: 'DELETE',
+      path: (t) => `/me/personal-cards/${t.personalCardId}`,
+    },
+
+    // ── Quick links ────────────────────────────────────────────────────────
+    // /me/quick-links (GET/POST) is always caller-scoped (own list, own
+    // create), so only the by-id verbs can be probed cross-tenant.
+    {
+      label: "PATCH quick link A (cross-user link id)",
+      method: 'PATCH',
+      path: (t) => `/me/quick-links/${t.quickLinkId}`,
+      body: () => ({ label: 'Hijacked link' }),
+    },
+    {
+      label: "DELETE quick link A (cross-user link id)",
+      method: 'DELETE',
+      path: (t) => `/me/quick-links/${t.quickLinkId}`,
+    },
+
+    // ── GitHub integration ────────────────────────────────────────────────────
+    {
+      label: 'GET GitHub integration for project A',
+      method: 'GET',
+      path: (t) => `/projects/${t.projectId}/github`,
+    },
+    {
+      label: 'PUT GitHub integration for project A',
+      method: 'PUT',
+      path: (t) => `/projects/${t.projectId}/github`,
+      body: () => ({
+        repoFullName: 'attacker/hijacked-repo',
+        token: 'ghp_hijacktoken1234567890abcdef',
+      }),
+    },
+    {
+      label: 'DELETE GitHub integration for project A',
+      method: 'DELETE',
+      path: (t) => `/projects/${t.projectId}/github`,
+    },
+    {
+      label: 'GET GitHub links for issue A',
+      method: 'GET',
+      path: (t) => `/issues/${t.issueId}/github-links`,
+    },
+
+    // ── Dashboards ───────────────────────────────────────────────────────────
+    {
+      label: 'GET dashboards for project A',
+      method: 'GET',
+      path: (t) => `/projects/${t.projectId}/dashboards`,
+    },
+    {
+      label: 'POST dashboard for project A',
+      method: 'POST',
+      path: (t) => `/projects/${t.projectId}/dashboards`,
+      body: () => ({ name: 'Injected dashboard' }),
+    },
+    {
+      label: 'GET dashboard A by id',
+      method: 'GET',
+      path: (t) => `/dashboards/${t.dashboardId}`,
+    },
+    {
+      label: 'GET dashboard A evaluated data',
+      method: 'GET',
+      path: (t) => `/dashboards/${t.dashboardId}/data`,
+    },
+    {
+      label: 'PATCH dashboard A',
+      method: 'PATCH',
+      path: (t) => `/dashboards/${t.dashboardId}`,
+      body: () => ({ name: 'Hijacked dashboard' }),
+    },
+    {
+      label: 'DELETE dashboard A',
+      method: 'DELETE',
+      path: (t) => `/dashboards/${t.dashboardId}`,
+    },
+    {
+      label: 'POST gadget on dashboard A',
+      method: 'POST',
+      path: (t) => `/dashboards/${t.dashboardId}/gadgets`,
+      body: () => ({ title: 'Injected gadget', query: '', visualization: 'STAT' }),
+    },
+    {
+      label: 'PATCH gadget A',
+      method: 'PATCH',
+      path: (t) => `/gadgets/${t.gadgetId}`,
+      body: () => ({ title: 'Hijacked gadget' }),
+    },
+    {
+      label: 'DELETE gadget A',
+      method: 'DELETE',
+      path: (t) => `/gadgets/${t.gadgetId}`,
+    },
 
     // ── Planning Poker ───────────────────────────────────────────────────────
     {
@@ -914,6 +1089,10 @@ function buildMatrix(a: Tenant): Array<MatrixRow & { resolvedPath: string; resol
         tenantA.sprintId,
         tenantA.statusId,
         tenantA.apiTokenId,
+        tenantA.dashboardId,
+        tenantA.gadgetId,
+        tenantA.personalCardId,
+        tenantA.quickLinkId,
       ].filter(Boolean);
 
       // Note: webhookId may be a placeholder string if webhook creation was
@@ -938,9 +1117,11 @@ function buildMatrix(a: Tenant): Array<MatrixRow & { resolvedPath: string; resol
       });
 
       it('matrix is populated (sanity check)', () => {
-        // Threshold updated to reflect the 5 additional feature families
-        // (work-logs, standups, issue-templates, personal-boards, planning-poker).
-        expect(matrix.length).toBeGreaterThan(65);
+        // Threshold updated (Pass-12 fix batch) to reflect the 5 additional
+        // resource families closing the third-consecutive-pass gap: personal
+        // cards, quick links, workspace PATCH + logo POST, GitHub integration
+        // (config + issue links), and dashboards/gadgets (CRUD + data).
+        expect(matrix.length).toBeGreaterThan(90);
       });
 
       /**

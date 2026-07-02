@@ -171,6 +171,48 @@ test.describe('Dashboards', () => {
     await expect(card.getByTestId('gadget-stat-value')).toHaveText('2', { timeout: 10_000 });
   });
 
+  // Pass-12 engineering audit P1-2: dashboards had zero realtime coverage —
+  // a STAT gadget's count silently went stale until a manual reload. Covers
+  // the fix: DashboardsPage subscribes to the project's socket room and
+  // invalidates the dashboard data cache on issue.* events.
+  test('STAT gadget count updates live when an issue is created via the API (no reload)', async ({
+    page,
+    request,
+  }) => {
+    const ctx = await setupIsolatedProject(page, request, {
+      label: 'dash-realtime',
+      projectName: 'Dashboard Realtime Test',
+      openBoard: false,
+    });
+
+    await createIssueWith(request, ctx.token, ctx.project.id, {
+      title: 'Existing high prio',
+      priority: 'HIGH',
+    });
+
+    await page.goto(`/projects/${ctx.project.id}/dashboards`);
+    await expect(page.getByTestId('dashboard-page')).toBeVisible({ timeout: 15_000 });
+
+    await createDashboard(page, 'Live overview');
+    await addGadget(page, { title: 'High priority', query: 'priority = HIGH' });
+
+    const card = page.getByTestId('dashboard-gadget').filter({ hasText: 'High priority' });
+    await expect(card).toBeVisible({ timeout: 10_000 });
+    await expect(card.getByTestId('gadget-stat-value')).toHaveText('1', { timeout: 10_000 });
+
+    // Create a second matching issue via the API — NOT through the page —
+    // while the dashboard stays open. The socket's issue.created event
+    // should invalidate the dashboard's evaluated data and the gadget should
+    // refresh to '2' entirely on its own, no page.reload() anywhere in this
+    // test.
+    await createIssueWith(request, ctx.token, ctx.project.id, {
+      title: 'New high prio via API',
+      priority: 'HIGH',
+    });
+
+    await expect(card.getByTestId('gadget-stat-value')).toHaveText('2', { timeout: 20_000 });
+  });
+
   test('BREAKDOWN gadget grouped by status renders bars with counts', async ({ page, request }) => {
     const ctx = await setupIsolatedProject(page, request, {
       label: 'dash-breakdown',

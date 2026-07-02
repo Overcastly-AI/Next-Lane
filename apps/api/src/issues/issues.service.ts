@@ -72,6 +72,22 @@ export interface MutationOpts {
    * - `true`: enforcement is on; proceed with the full transition check.
    */
   workflowEnforced?: boolean;
+
+  /**
+   * Pre-resolved WF-1 named-workflow id for this specific issue, computed
+   * once per batch by `bulkUpdate`'s preload (`buildBulkWorkflowResolution`)
+   * instead of letting `enforceStatusChange`'s `resolveEnforcedWorkflowId`
+   * branch re-query `board`/`sprint` for every issue in the batch (P2-1,
+   * Pass-12 engineering audit — the WF-1 unification's precomputation only
+   * ever fed the legacy fallback via `workflowEnforced`, not this path).
+   *
+   * - `undefined`: not pre-resolved (the default for `move()`/`update()`
+   *   called directly, outside `bulkUpdate`) — compute it normally.
+   * - `null`: pre-resolved to "no enforced named workflow applies" — fall
+   *   through to the legacy project-level path without a DB round trip.
+   * - `string`: pre-resolved workflow id — enforce it directly.
+   */
+  resolvedWorkflowId?: string | null;
 }
 
 /** Default number of issues returned by {@link IssuesService.findAll} per page. */
@@ -1061,6 +1077,35 @@ export class IssuesService {
       sprintActive = sprint?.state === SprintState.ACTIVE;
     }
 
+    return this.pickEnforcedWorkflowId(boards, sprintId, sprintActive);
+  }
+
+  /**
+   * Pure (no DB access) part of {@link resolveEnforcedWorkflowId}'s
+   * resolution: given an already-loaded set of the project's
+   * enforced-named-workflow boards and whether `sprintId` is currently
+   * ACTIVE, pick which workflow (if any) applies. Factored out so a batch
+   * caller (`buildBulkWorkflowResolution`) can reuse the exact same
+   * visibility/tie-break rules against boards/sprint-state it already loaded
+   * ONCE for the whole batch, instead of `resolveEnforcedWorkflowId`
+   * re-querying `board`/`sprint` per issue (P2-1, Pass-12 engineering audit).
+   */
+  private pickEnforcedWorkflowId(
+    // `type` is intentionally `string` (not the shared `BoardType` enum):
+    // callers pass Prisma's generated `$Enums.BoardType` rows directly (from
+    // `board.findMany`), which is nominally distinct from — though
+    // value-compatible with — `@next-lane/shared`'s `BoardType`.
+    boards: Array<{
+      id: string;
+      type: string;
+      isDefault: boolean;
+      workflowId: string | null;
+    }>,
+    sprintId: string | null,
+    sprintActive: boolean,
+  ): string | null {
+    if (boards.length === 0) return null;
+
     // Mirrors BoardService.buildIssueWhere's visibility rule.
     const visible = boards.filter((b) =>
       b.type === BoardType.SCRUM
@@ -1078,6 +1123,55 @@ export class IssuesService {
     // the default board's.
     const defaultBoard = visible.find((b) => b.isDefault);
     return (defaultBoard ?? visible[0]).workflowId as string;
+  }
+
+  /**
+   * Batch version of {@link resolveEnforcedWorkflowId} for `bulkUpdate`: loads
+   * the project's enforced-named-workflow boards ONCE (not once per issue)
+   * and the ACTIVE state of every DISTINCT sprint referenced in the batch in
+   * a single `findMany` (not once per issue), then applies the same
+   * resolution rule per issue in memory. Total DB round trips: O(1) board
+   * query + O(1) sprint query, vs. the previous O(issues) × (board query +
+   * conditional sprint query) — closes P2-1 (Pass-12 engineering audit).
+   */
+  private async buildBulkWorkflowResolution(
+    projectId: string,
+    issueRows: Array<{ id: string; sprintId: string | null }>,
+  ): Promise<Map<string, string | null>> {
+    const boards = await this.prisma.board.findMany({
+      where: { projectId, workflowId: { not: null }, workflow: { enforced: true } },
+      select: { id: true, type: true, isDefault: true, workflowId: true },
+    });
+
+    const activeSprintIds = new Set<string>();
+    if (boards.length > 0) {
+      const distinctSprintIds = [
+        ...new Set(
+          issueRows
+            .map((r) => r.sprintId)
+            .filter((id): id is string => id !== null),
+        ),
+      ];
+      if (distinctSprintIds.length > 0) {
+        const sprints = await this.prisma.sprint.findMany({
+          where: { id: { in: distinctSprintIds } },
+          select: { id: true, state: true },
+        });
+        for (const s of sprints) {
+          if (s.state === SprintState.ACTIVE) activeSprintIds.add(s.id);
+        }
+      }
+    }
+
+    const resolution = new Map<string, string | null>();
+    for (const row of issueRows) {
+      const sprintActive = row.sprintId ? activeSprintIds.has(row.sprintId) : false;
+      resolution.set(
+        row.id,
+        this.pickEnforcedWorkflowId(boards, row.sprintId, sprintActive),
+      );
+    }
+    return resolution;
   }
 
   /**
@@ -1132,10 +1226,19 @@ export class IssuesService {
       // No explicit board context — resolve one from the project's boards so
       // Triage / the drawer / bulk edit can't silently bypass a board's
       // enforced named workflow (WF-1).
-      const resolvedWorkflowId = await this.resolveEnforcedWorkflowId(
-        context.projectId,
-        context.sprintId,
-      );
+      //
+      // If the caller already pre-resolved this (bulkUpdate's batch preload,
+      // see buildBulkWorkflowResolution) use that directly — `undefined`
+      // means "not pre-resolved", `null` means "pre-resolved: none applies".
+      // This is what makes the batch preload actually load-bearing for this
+      // branch instead of only feeding the legacy fallback below (P2-1).
+      const resolvedWorkflowId =
+        opts?.resolvedWorkflowId !== undefined
+          ? opts.resolvedWorkflowId
+          : await this.resolveEnforcedWorkflowId(
+              context.projectId,
+              context.sprintId,
+            );
       if (resolvedWorkflowId) {
         return this.workflowSvc.enforceTransitionForWorkflow(
           resolvedWorkflowId,
@@ -1583,20 +1686,30 @@ export class IssuesService {
     // project (enforced by assertSameProject inside update()). Pre-load the
     // workflow enforcement flag ONCE for the project rather than letting each
     // per-issue enforceTransition() make its own project lookup (saves
-    // up to N × 1 DB queries for N issues in the batch).
+    // up to N × 1 DB queries for N issues in the batch), AND pre-resolve the
+    // WF-1 named-workflow id per issue (buildBulkWorkflowResolution) so the
+    // resolveEnforcedWorkflowId branch of enforceStatusChange doesn't re-query
+    // board/sprint per issue either (P2-1, Pass-12 engineering audit — the
+    // original preload only ever fed the legacy fallback, not this branch).
     //
-    // We derive the projectId from the first issue in the batch. If the first
-    // issue cannot be loaded (deleted / wrong tenant) we fall back to
-    // workflowEnforced=undefined so each update() handles it individually.
+    // We derive the projectId from the batch's issue rows (fetched once, also
+    // used to build the per-issue workflow resolution below). If none of the
+    // batch's issues can be loaded (all deleted / wrong tenant) we fall back
+    // to undefined hints so each update() handles it individually.
     let bulkWorkflowEnforced: boolean | undefined;
+    let resolvedWorkflowIds: Map<string, string | null> | undefined;
     if (changes.statusId !== undefined && ids.length > 0) {
-      const firstIssue = await this.prisma.issue.findUnique({
-        where: { id: ids[0] },
-        select: { projectId: true },
+      const issueRows = await this.prisma.issue.findMany({
+        where: { id: { in: ids } },
+        select: { id: true, projectId: true, sprintId: true },
       });
-      if (firstIssue) {
-        bulkWorkflowEnforced = await this.workflowSvc.isEnforcementEnabled(
-          firstIssue.projectId,
+      const projectId = issueRows[0]?.projectId;
+      if (projectId) {
+        bulkWorkflowEnforced =
+          await this.workflowSvc.isEnforcementEnabled(projectId);
+        resolvedWorkflowIds = await this.buildBulkWorkflowResolution(
+          projectId,
+          issueRows,
         );
       }
     }
@@ -1611,10 +1724,12 @@ export class IssuesService {
         // ActivityLog, realtime, webhooks, watcher notifications, and
         // automation events all fire exactly as for a single PATCH.
         //
-        // Pass the pre-loaded workflowEnforced hint so enforceTransition() can
-        // skip its own per-issue project lookup (saves 1 query per issue).
+        // Pass the pre-loaded workflowEnforced + resolvedWorkflowId hints so
+        // enforceStatusChange() can skip its own per-issue board/sprint
+        // lookups (saves up to 2 queries per issue in the batch).
         await this.update(userId, id, updateDto, {
           workflowEnforced: bulkWorkflowEnforced,
+          resolvedWorkflowId: resolvedWorkflowIds?.get(id),
         });
 
         // Apply label additions after the core update succeeds.
