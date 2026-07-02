@@ -109,6 +109,7 @@ development phase. A versioned release will be tagged once the v1 criteria in
 ### Added — Auth & security
 
 - Email/password authentication with JWT access tokens.
+- **SSO/OIDC** — generic, provider-agnostic OIDC login (Okta, Auth0, Keycloak, Authentik, Google, etc.) with PKCE/CSRF protection and JIT user provisioning.
 - **Personal API tokens (PATs)** for programmatic and agent access.
 - Password reset via SMTP email (link logged to console when SMTP is not
   configured — safe for development).
@@ -131,15 +132,79 @@ development phase. A versioned release will be tagged once the v1 criteria in
 - Redis-backed Socket.io adapter for horizontal API scaling.
 - BullMQ webhook delivery queue for durable, retried webhook fan-out.
 
+### Added — Workflow automation (SDLC)
+
+- **Configurable per-project workflows** — define issue types, statuses, and transitions for your project's SDLC.
+- **Per-board workflow assignment** — assign different workflows to different boards within the same project.
+- **Workflow visual graph editor** — design your SDLC with a drag-and-drop graph interface (nodes for statuses, edges for transitions).
+- **Workflow templates** — seed from built-in templates (simple, kanban, scrum, bug-triage).
+- **Transition gates** — require assignee, description, custom fields, issue links, or no open blockers before allowing a move.
+- **Issue templates** — create reusable issue templates (with default values for fields, description boilerplate, etc.); create issues from templates.
+
+### Added — Issues & estimation
+
+- **Checklists** — sub-task-like items within issues; track progress and completion.
+- **Time tracking / work logs** — log time spent on issues; track original estimate vs. actual hours; per-issue and per-sprint rollup.
+- **Components** — project-scoped issue groupings (e.g., "API", "UI", "Docs") with optional default assignee.
+- **Versions / Releases** — project-scoped release tracking (UNRELEASED / RELEASED / ARCHIVED states); M:N relationship with issues.
+- **WIP limits** — per-status column limits with visual warnings.
+- **Custom field values pinned as chips on cards** — show selected custom field values directly on board cards.
+- **Blocked badge** — visual indicator on cards with unresolved blocking issue links.
+
+### Added — Board & views
+
+- **Board swimlanes / grouping** — group issues by assignee, custom field, component, or version; URL-persisted.
+- **Per-board default filter** — auto-apply an NLQL filter when viewing a board.
+- **Filter state URL persistence** — board filters (including swimlane grouping) persist in the URL; shareable filtered views.
+
+### Added — Personal & quick links
+
+- **Personal board enhancements** — drag-to-reorder columns · card colors (user-selected) · due dates on personal cards · click-to-open detail drawer · column colors.
+- **Quick links** — personal shortcuts in the header with accent colors and collapsible groups.
+- **Workspace quick links** — per-user quick link bar for fast navigation.
+
+### Added — NLQL & markdown
+
+- **NLQL autocomplete** — intelligent suggestions for NLQL queries; reused in automation conditions and custom field filters.
+- **Mermaid diagram support** — render Mermaid diagrams in markdown descriptions and comments; lightbox zoom (click to view full-screen).
+
+### Added — Import & export
+
+- **CSV import** — import issues from Jira, GitHub, or Linear CSV exports with dry-run preview.
+- **Tracker importers** — dedicated importers for Jira, GitHub, and Linear; map fields and preserve issue relationships.
+- **CSV export completeness** — export all issue fields and metadata to CSV.
+
+### Added — Notifications
+
+- **Notifications center page** (`/notifications`) — unified inbox for all in-app notifications.
+- **Email notification delivery** — receive email digests for issue assignments, mentions, watchers, status changes, and automation actions.
+- **Notification preferences** — per-user granular control over email delivery.
+
+### Added — Workspace & collaboration
+
+- **Workspace settings page** — unified workspace management UI.
+- **Workspace member management** — invite, remove, and manage member roles.
+- **Workspace search & recents in header** — quick workspace switcher with search and recent workspace list.
+
+### Added — MCP (Model Context Protocol)
+
+- **MCP server** (`@next-lane/mcp`, 55 tools) — AI agents (Claude Desktop, Claude Code, any MCP host) can read and write workspace state via the same REST API.
+- **Tools for workflows/SDLC** — list, create, update, delete workflows · manage transitions and gates · assign workflows to boards.
+- **Tools for issues & tracking** — create, update, move, link issues · manage checklists, worklogs, and issue links.
+- **Tools for board management** — list/create/update boards · assign workflows · manage board-level filters and settings.
+- **Tools for org entities** — manage sprints, statuses, labels, components, versions, automations, saved filters, custom fields.
+- **Tool for user lists** — list workspace members (for @mention and assignee suggestions in agents).
+
 ### Added — Developer experience
 
-- pnpm monorepo: `apps/api` (NestJS), `apps/web` (React + Vite), `packages/shared`.
+- pnpm monorepo: `apps/api` (NestJS), `apps/web` (React + Vite), `apps/mcp` (MCP server), `packages/shared`.
 - Prisma schema as single source of truth; all changes via migrations.
 - Shared TypeScript types in `packages/shared` — no duplication.
 - Playwright e2e suite (desktop + mobile); CI workflow (typecheck + build + unit
   tests) + E2e workflow with Postgres/Redis service containers.
 - Claude Code agents, skills, and workflows (`.claude/`) for AI-assisted
   development.
+- **Cross-page state-coherence QA gates** — ensure workspace/board changes propagate correctly across all surfaces (navigation, deep-link, reload).
 
 ---
 

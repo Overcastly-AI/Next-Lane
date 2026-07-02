@@ -24,6 +24,7 @@ Next Lane is a self-hosted issue tracker designed to run on a single machine via
 |------|---------|
 | `apps/api` | NestJS backend — REST API, WebSocket gateway, Prisma data access |
 | `apps/web` | React + Vite single-page app |
+| `apps/mcp` | MCP (Model Context Protocol) server — 55 tools for AI agents to read/write workspace state |
 | `packages/shared` | Shared TypeScript types, enums, and API contracts used by both sides |
 | `docs` | Architecture, roadmap, research |
 | `.claude` | Claude Code skills, agents, and workflows for AI-assisted development |
@@ -32,11 +33,11 @@ Managed with **pnpm workspaces**.
 
 ## Backend (`apps/api`)
 
-- **NestJS** with the standard module/controller/service/dto pattern. Each domain (auth, users, projects, issues, boards, sprints, comments, labels) is a module.
+- **NestJS** with the standard module/controller/service/dto pattern. Modules by domain: `auth`, `users`, `workspaces`, `projects`, `boards`, `sprints`, `issues`, `custom-fields`, `components`, `versions`, `labels`, `comments`, `issue-links`, `issue-templates`, `checklist`, `work-logs`, `workflows`, `statuses`, `personal-boards`, `saved-filters`, `sprints`, `standups`, `poker`, `automations`, `notifications`, `webhooks`, `share-tokens`, `api-tokens`, `analytics`, `reports`, `roadmap`, `attachments`, `audit`, `search`, `realtime`, `mail`, `redis`, and `prisma`. Auth includes an optional `oidc` sub-module (SSO/OIDC with generic provider discovery).
 - **Prisma** as the ORM and migration tool. The schema is the single source of truth for the data model.
-- **PostgreSQL** for persistence. JSONB is used for custom fields (later phase).
-- **Auth**: JWT access tokens + refresh tokens, password hashing with argon2/bcrypt, route guards for RBAC.
-- **Realtime**: a Socket.io gateway broadcasts board/issue changes; Redis adapter enables horizontal scaling later.
+- **PostgreSQL** for persistence. JSONB is used for custom fields and color rules.
+- **Auth**: JWT access tokens + refresh tokens, password hashing with argon2/bcrypt, route guards for RBAC; optional OIDC/SSO with JIT user provisioning.
+- **Realtime**: a Socket.io gateway broadcasts board/issue/workspace changes; Redis adapter enables horizontal scaling.
 - **Validation**: `class-validator` DTOs at the controller boundary.
 - **API docs**: Swagger/OpenAPI served at `/api`.
 
@@ -49,9 +50,18 @@ Issues on a board (and in a sprint/backlog) are ordered by a `rank` **string** c
 - **React + Vite + TypeScript**, SPA.
 - **TanStack Query** for all server state (caching, optimistic updates on drag).
 - **Tailwind CSS + shadcn/ui** for styling and components.
-- **dnd-kit** for accessible drag-and-drop on the board.
-- **Socket.io client** subscribes to realtime board updates.
+- **dnd-kit** for accessible drag-and-drop on the board and personal board.
+- **Socket.io client** subscribes to realtime board/issue/workspace updates.
 - Talks to the API at `VITE_API_URL`.
+- **Mermaid.js** for rendering diagrams in markdown descriptions and comments.
+
+## MCP Server (`apps/mcp`)
+
+- **Model Context Protocol** server (stdio transport) with **55 tools** (21 read, 34 write).
+- Speaks MCP over stdio; makes authenticated HTTP calls to the Next Lane REST API using Personal Access Tokens (PATs).
+- Tools expose: projects, boards, workflows, statuses, issues, sprints, comments, worklogs, checklists, labels, components, versions, saved filters, automations, and more.
+- Allows AI agents (Claude Desktop, Claude Code, any MCP host) to **read and write** workspace state, including the workflow/SDLC graph itself.
+- See `apps/mcp/README.md` for the full tool reference and configuration.
 
 ## Data model (essentials)
 
