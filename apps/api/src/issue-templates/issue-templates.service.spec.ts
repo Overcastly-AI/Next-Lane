@@ -198,6 +198,9 @@ function makePrisma(opts: {
         },
       ),
     },
+    projectMembership: {
+      findUnique: jest.fn().mockResolvedValue(null),
+    },
     component: {
       findUnique: jest.fn().mockImplementation(
         ({ where }: { where: { id: string } }) => {

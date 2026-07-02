@@ -6,6 +6,7 @@ import {
   assertWorkspaceRole,
   assertProjectMember,
   assertProjectRole,
+  getEffectiveProjectRole,
 } from './membership.util';
 
 /**
@@ -30,9 +31,11 @@ function makePrisma() {
   return {
     membership: { findUnique: jest.fn() },
     project: { findUnique: jest.fn() },
+    projectMembership: { findUnique: jest.fn() },
   } as unknown as PrismaService & {
     membership: { findUnique: jest.Mock };
     project: { findUnique: jest.Mock };
+    projectMembership: { findUnique: jest.Mock };
   };
 }
 
@@ -181,6 +184,119 @@ describe('membership.util', () => {
       await expect(
         assertProjectRole(prisma, USER_ID, PROJECT_ID, Role.ADMIN),
       ).resolves.toBe(project);
+    });
+
+    it('a ProjectMembership override ELEVATES a workspace MEMBER to project ADMIN', async () => {
+      prisma.project.findUnique.mockResolvedValue(project);
+      prisma.membership.findUnique.mockResolvedValue({ role: Role.MEMBER });
+      prisma.projectMembership.findUnique.mockResolvedValue({
+        role: Role.ADMIN,
+      });
+
+      await expect(
+        assertProjectRole(prisma, USER_ID, PROJECT_ID, Role.ADMIN),
+      ).resolves.toBe(project);
+    });
+
+    it('a ProjectMembership override RESTRICTS a workspace MEMBER to project VIEWER', async () => {
+      prisma.project.findUnique.mockResolvedValue(project);
+      prisma.membership.findUnique.mockResolvedValue({ role: Role.MEMBER });
+      prisma.projectMembership.findUnique.mockResolvedValue({
+        role: Role.VIEWER,
+      });
+
+      await expect(
+        assertProjectRole(prisma, USER_ID, PROJECT_ID, Role.MEMBER),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('ignores a ProjectMembership override for a workspace ADMIN (admins always retain full access)', async () => {
+      prisma.project.findUnique.mockResolvedValue(project);
+      prisma.membership.findUnique.mockResolvedValue({ role: Role.ADMIN });
+      // A stray VIEWER override row (e.g. predating a promotion to ADMIN)
+      // must NOT downgrade the admin.
+      prisma.projectMembership.findUnique.mockResolvedValue({
+        role: Role.VIEWER,
+      });
+
+      await expect(
+        assertProjectRole(prisma, USER_ID, PROJECT_ID, Role.ADMIN),
+      ).resolves.toBe(project);
+      // The override lookup is short-circuited entirely for workspace admins.
+      expect(prisma.projectMembership.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('a stray ProjectMembership override never grants access without workspace membership (tenant isolation)', async () => {
+      prisma.project.findUnique.mockResolvedValue(project);
+      prisma.membership.findUnique.mockResolvedValue(null);
+      prisma.projectMembership.findUnique.mockResolvedValue({
+        role: Role.ADMIN,
+      });
+
+      await expect(
+        assertProjectRole(prisma, USER_ID, PROJECT_ID, Role.VIEWER),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(prisma.projectMembership.findUnique).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getEffectiveProjectRole', () => {
+    it('returns null when the user has no workspace membership', async () => {
+      prisma.membership.findUnique.mockResolvedValue(null);
+
+      const result = await getEffectiveProjectRole(
+        prisma,
+        USER_ID,
+        WORKSPACE_ID,
+        PROJECT_ID,
+      );
+
+      expect(result).toBeNull();
+      expect(prisma.projectMembership.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('returns the workspace role, unmarked, when no override row exists', async () => {
+      prisma.membership.findUnique.mockResolvedValue({ role: Role.MEMBER });
+      prisma.projectMembership.findUnique.mockResolvedValue(null);
+
+      const result = await getEffectiveProjectRole(
+        prisma,
+        USER_ID,
+        WORKSPACE_ID,
+        PROJECT_ID,
+      );
+
+      expect(result).toEqual({ role: Role.MEMBER, isOverride: false });
+    });
+
+    it('returns the override role, marked, when an override row exists for a non-admin', async () => {
+      prisma.membership.findUnique.mockResolvedValue({ role: Role.MEMBER });
+      prisma.projectMembership.findUnique.mockResolvedValue({
+        role: Role.VIEWER,
+      });
+
+      const result = await getEffectiveProjectRole(
+        prisma,
+        USER_ID,
+        WORKSPACE_ID,
+        PROJECT_ID,
+      );
+
+      expect(result).toEqual({ role: Role.VIEWER, isOverride: true });
+    });
+
+    it('always returns ADMIN unmarked for a workspace admin, ignoring any override', async () => {
+      prisma.membership.findUnique.mockResolvedValue({ role: Role.ADMIN });
+
+      const result = await getEffectiveProjectRole(
+        prisma,
+        USER_ID,
+        WORKSPACE_ID,
+        PROJECT_ID,
+      );
+
+      expect(result).toEqual({ role: Role.ADMIN, isOverride: false });
+      expect(prisma.projectMembership.findUnique).not.toHaveBeenCalled();
     });
   });
 

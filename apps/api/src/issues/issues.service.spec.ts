@@ -356,6 +356,7 @@ function makeMovePrisma() {
     issue: { findUnique: jest.fn(), findMany: jest.fn(), update: jest.fn() },
     project: { findUnique: jest.fn() },
     membership: { findUnique: jest.fn() },
+    projectMembership: { findUnique: jest.fn().mockResolvedValue(null) },
     status: { findUnique: jest.fn() },
     activityLog: { create: jest.fn() },
     board: { findUnique: jest.fn() },
@@ -594,6 +595,7 @@ describe('IssuesService.findAll pagination', () => {
       issue: { findMany: jest.fn() },
       project: { findUnique: jest.fn() },
       membership: { findUnique: jest.fn() },
+      projectMembership: { findUnique: jest.fn().mockResolvedValue(null) },
       $queryRaw: jest.fn(),
     };
   }
@@ -765,6 +767,7 @@ describe('IssuesService.findAll full-text search', () => {
       issue: { findMany: jest.fn() },
       project: { findUnique: jest.fn() },
       membership: { findUnique: jest.fn() },
+      projectMembership: { findUnique: jest.fn().mockResolvedValue(null) },
       $queryRaw: jest.fn(),
     };
   }
@@ -919,6 +922,7 @@ describe('IssuesService.update dueDate', () => {
       issue: { findUnique: jest.fn() },
       project: { findUnique: jest.fn() },
       membership: { findUnique: jest.fn() },
+      projectMembership: { findUnique: jest.fn().mockResolvedValue(null) },
       status: { findUnique: jest.fn() },
       sprint: { findUnique: jest.fn() },
       user: { findUnique: jest.fn().mockResolvedValue({ name: 'Actor' }) },
@@ -1063,6 +1067,7 @@ describe('IssuesService.update watcher fan-out', () => {
       issue: { findUnique: jest.fn() },
       project: { findUnique: jest.fn() },
       membership: { findUnique: jest.fn() },
+      projectMembership: { findUnique: jest.fn().mockResolvedValue(null) },
       status: { findUnique: jest.fn() },
       sprint: { findUnique: jest.fn() },
       user: { findUnique: jest.fn() },
@@ -1283,6 +1288,7 @@ function makeBulkUpdatePrisma() {
     },
     project: { findUnique: jest.fn() },
     membership: { findUnique: jest.fn() },
+    projectMembership: { findUnique: jest.fn().mockResolvedValue(null) },
     status: { findUnique: jest.fn() },
     sprint: { findUnique: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
     user: { findUnique: jest.fn().mockResolvedValue({ name: 'Bulk Actor' }) },
@@ -1951,6 +1957,9 @@ function makeCompCreatePrisma(opts: {
     membership: {
       findUnique: jest.fn().mockResolvedValue({ role: Role.MEMBER }),
     },
+    projectMembership: {
+      findUnique: jest.fn().mockResolvedValue(null),
+    },
     component: {
       findUnique: jest.fn().mockImplementation(({ where }: { where: { id: string } }) => {
         if (where.id === COMP_COMPONENT_ID) {
@@ -2141,6 +2150,9 @@ function makeEstimatePrisma(opts: {
     },
     membership: {
       findUnique: jest.fn().mockResolvedValue({ role: Role.MEMBER }),
+    },
+    projectMembership: {
+      findUnique: jest.fn().mockResolvedValue(null),
     },
     component: {
       findUnique: jest.fn().mockResolvedValue(null),

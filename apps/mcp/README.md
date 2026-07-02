@@ -2,13 +2,17 @@
 
 A [Model Context Protocol](https://modelcontextprotocol.io) server that lets
 external AI agents — **Claude Desktop**, **Claude Code**, and any other MCP host
-— **read and write** a Next Lane project's **workflows / SDLC** and core
-entities (projects, boards, statuses, issues).
+— **read and write** a Next Lane instance end-to-end: **88 tools** covering
+workflows / SDLC, issues (incl. links, labels, comments, checklists, worklogs),
+boards, statuses, sprints, components, versions, custom fields, saved NLQL
+filters, automation rules, dashboards, and per-project role overrides.
 
-This is the "workflows editable & readable from MCP" surface: an agent can list a
-project's statuses, design a workflow from a template, add/edit/delete
-transitions and gates, attach a workflow to a board, and create or move issues —
-all through your running Next Lane instance's REST API.
+This is Next Lane's **agent-native wedge** (`docs/VISION.md`): an agent can list
+a project's statuses, design a workflow from a template, add/edit/delete
+transitions and gates, attach a workflow to a board, and create, move, link, and
+triage issues — all through your running Next Lane instance's REST API. MCP
+exposure is a standing part of every new feature's definition of done, so this
+surface grows in lockstep with the product.
 
 It is a **thin, additive** package: it makes authenticated HTTP calls to the
 Next Lane API. It requires no schema or backend changes and stores nothing.
@@ -151,6 +155,7 @@ Then run `claude mcp list` to confirm it is connected.
 | `list_dashboards`   | List a project's configurable dashboards (`projectId`).               |
 | `get_dashboard`     | Get a dashboard with all its gadgets, ordered by grid position (`dashboardId`). |
 | `get_dashboard_data` | Evaluate every gadget on a dashboard server-side; per-gadget `error` on a bad query/config instead of a 500 (`dashboardId`). |
+| `list_project_role_overrides` | List a project's effective members (workspace role, effective role, `isOverride` flag) (`projectId`). |
 
 ### Write (SDLC)
 
@@ -192,6 +197,7 @@ Then run `claude mcp list` to confirm it is connected.
 | `mark_notification_read` / `mark_all_notifications_read` | Mark one or all of the caller's notifications read. |
 | `create_dashboard` / `update_dashboard` / `delete_dashboard` | Create a project dashboard; rename/reorder; delete (gadgets cascade). |
 | `create_dashboard_gadget` / `update_dashboard_gadget` / `delete_dashboard_gadget` | Add / edit / remove a gadget — an NLQL `query` + `visualization` (STAT/TABLE/BREAKDOWN/BURNDOWN) + `config`. Update merges `config` rather than replacing it. |
+| `set_project_role_override` / `remove_project_role_override` | Elevate/restrict (or revert) a workspace member's role scoped to one project. Requires effective project ADMIN; refuses to override a workspace admin. |
 
 `create_issue` / `update_issue` also accept `originalEstimateMinutes` (time-tracking estimate) and `customFields` (partial, keyed by field id).
 

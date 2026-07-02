@@ -219,6 +219,7 @@ function makePrisma(opts: {
       findFirst: projectFindFirst,
     },
     membership: { findUnique: membershipFindUnique },
+    projectMembership: { findUnique: jest.fn().mockResolvedValue(null) },
     issueLink: {
       findUnique: linkFindUnique,
       findFirst: linkFindFirst,

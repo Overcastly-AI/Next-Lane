@@ -124,6 +124,9 @@ function makePrisma(
         },
       ),
     },
+    projectMembership: {
+      findUnique: jest.fn().mockResolvedValue(null),
+    },
   };
 
   return prisma as unknown as PrismaService;

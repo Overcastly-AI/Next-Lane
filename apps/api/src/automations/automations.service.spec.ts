@@ -30,6 +30,9 @@ function makePrisma() {
     membership: {
       findUnique: jest.fn().mockResolvedValue({ role: Role.ADMIN }),
     },
+    projectMembership: {
+      findUnique: jest.fn().mockResolvedValue(null),
+    },
     automationRule: {
       findMany: jest.fn().mockResolvedValue([]),
       findUnique: jest.fn(),

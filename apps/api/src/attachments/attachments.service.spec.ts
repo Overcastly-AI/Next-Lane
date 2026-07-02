@@ -136,6 +136,9 @@ function makePrisma(opts: {
         return Promise.resolve(null);
       }),
     },
+    projectMembership: {
+      findUnique: jest.fn().mockResolvedValue(null),
+    },
     attachment: {
       create: jest.fn().mockResolvedValue(makeAttachmentRow()),
       findMany: jest.fn().mockResolvedValue([makeAttachmentRow()]),

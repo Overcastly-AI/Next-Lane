@@ -118,6 +118,10 @@ describe('tool registry', () => {
       'create_dashboard_gadget',
       'update_dashboard_gadget',
       'delete_dashboard_gadget',
+      // Per-project role override — schema + backend (2026-07-02)
+      'list_project_role_overrides',
+      'set_project_role_override',
+      'remove_project_role_override',
     ];
     for (const name of expected) expect(names).toContain(name);
     // No duplicate names.
@@ -619,6 +623,43 @@ describe('tool registry', () => {
     await tool('delete_dashboard_gadget').handler({ id: 'g1' }, client);
     const [url, init] = fetchImpl.mock.calls[0];
     expect(url).toBe('http://localhost:4000/api/gadgets/g1');
+    expect((init as RequestInit).method).toBe('DELETE');
+  });
+
+  it('list_project_role_overrides GETs /projects/:id/members', async () => {
+    const { client, fetchImpl } = clientWith(200, [
+      { userId: 'u1', workspaceRole: 'MEMBER', effectiveRole: 'ADMIN', isOverride: true },
+    ]);
+    const res = await tool('list_project_role_overrides').handler({ projectId: 'p1' }, client);
+    expect(fetchImpl.mock.calls[0][0]).toBe('http://localhost:4000/api/projects/p1/members');
+    expect(res.content[0].text).toContain('isOverride');
+  });
+
+  it('set_project_role_override PUTs role to /projects/:id/members/:userId/role', async () => {
+    const { client, fetchImpl } = clientWith(200, {
+      userId: 'u1',
+      effectiveRole: 'ADMIN',
+      isOverride: true,
+    });
+    await tool('set_project_role_override').handler(
+      { projectId: 'p1', userId: 'u1', role: 'ADMIN' },
+      client,
+    );
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toBe('http://localhost:4000/api/projects/p1/members/u1/role');
+    expect((init as RequestInit).method).toBe('PUT');
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({ role: 'ADMIN' });
+  });
+
+  it('remove_project_role_override DELETEs /projects/:id/members/:userId/role', async () => {
+    const { client, fetchImpl } = clientWith(200, {
+      userId: 'u1',
+      effectiveRole: 'MEMBER',
+      isOverride: false,
+    });
+    await tool('remove_project_role_override').handler({ projectId: 'p1', userId: 'u1' }, client);
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toBe('http://localhost:4000/api/projects/p1/members/u1/role');
     expect((init as RequestInit).method).toBe('DELETE');
   });
 });

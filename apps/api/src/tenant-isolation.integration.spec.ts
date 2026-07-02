@@ -518,6 +518,24 @@ function buildMatrix(a: Tenant): Array<MatrixRow & { resolvedPath: string; resol
       path: (t) => `/projects/${t.projectId}`,
     },
 
+    // ── Per-project role overrides ────────────────────────────────────────────
+    {
+      label: 'GET project A effective members',
+      method: 'GET',
+      path: (t) => `/projects/${t.projectId}/members`,
+    },
+    {
+      label: "PUT project A member role override (B tries to elevate self)",
+      method: 'PUT',
+      path: (t) => `/projects/${t.projectId}/members/${t.userId}/role`,
+      body: () => ({ role: 'ADMIN' }),
+    },
+    {
+      label: "DELETE project A member role override (cross-tenant mutation)",
+      method: 'DELETE',
+      path: (t) => `/projects/${t.projectId}/members/${t.userId}/role`,
+    },
+
     // ── Issue ──────────────────────────────────────────────────────────────
     {
       label: 'GET issue A',

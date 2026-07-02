@@ -15,6 +15,7 @@ import { OidcModule } from './auth/oidc/oidc.module';
 import { UsersModule } from './users/users.module';
 import { WorkspacesModule } from './workspaces/workspaces.module';
 import { ProjectsModule } from './projects/projects.module';
+import { ProjectMembershipsModule } from './project-memberships/project-memberships.module';
 import { StatusesModule } from './statuses/statuses.module';
 import { IssuesModule } from './issues/issues.module';
 import { CommentsModule } from './comments/comments.module';
@@ -143,6 +144,7 @@ const isProd = process.env.NODE_ENV === 'production';
     UsersModule,
     WorkspacesModule,
     ProjectsModule,
+    ProjectMembershipsModule,
     StatusesModule,
     IssuesModule,
     CommentsModule,

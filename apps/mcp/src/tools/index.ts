@@ -166,6 +166,10 @@ const gateSchema = z
   })
   .describe('A single transition gate rule.');
 
+const roleEnum = z
+  .enum(['ADMIN', 'MEMBER', 'VIEWER'])
+  .describe('ADMIN > MEMBER > VIEWER (workspace or per-project role).');
+
 // ---------------------------------------------------------------------------
 // Read tools
 // ---------------------------------------------------------------------------
@@ -594,6 +598,21 @@ const readTools: ToolDef[] = [
     inputSchema: { dashboardId: z.string().describe('Dashboard id.') },
     handler: (args, client) =>
       client.get(`/dashboards/${args.dashboardId}/data`).then(jsonResult),
+  },
+  {
+    name: 'list_project_role_overrides',
+    group: 'read',
+    description:
+      'List a project’s EFFECTIVE members: every workspace member, each with ' +
+      'their workspace role, their effective role on this project, and ' +
+      'whether that role comes from a per-project override (`isOverride`). ' +
+      'Use to find a userId for set_project_role_override / ' +
+      'remove_project_role_override.',
+    inputSchema: {
+      projectId: z.string().describe('Project id to list effective members for.'),
+    },
+    handler: (args, client) =>
+      client.get(`/projects/${args.projectId}/members`).then(jsonResult),
   },
 ];
 
@@ -1678,6 +1697,43 @@ const writeTools: ToolDef[] = [
     description: 'Delete a gadget from a dashboard. Requires project MEMBER+.',
     inputSchema: { id: z.string().describe('Gadget id.') },
     handler: (args, client) => client.delete(`/gadgets/${args.id}`).then(jsonResult),
+  },
+  {
+    name: 'set_project_role_override',
+    group: 'write',
+    description:
+      'Set (create or replace) a per-project role override for a workspace ' +
+      'member — e.g. elevate a MEMBER to project ADMIN, or restrict them to ' +
+      'project VIEWER, scoped to this project only. Requires EFFECTIVE ' +
+      'project ADMIN (a project override can itself grant this, not just ' +
+      'workspace ADMIN). Refuses to override a workspace ADMIN (they always ' +
+      'have full access).',
+    inputSchema: {
+      projectId: z.string().describe('Project id.'),
+      userId: z.string().describe('Target user id (must be a member of the project’s workspace).'),
+      role: roleEnum,
+    },
+    handler: (args, client) =>
+      client
+        .put(`/projects/${args.projectId}/members/${args.userId}/role`, {
+          role: args.role,
+        })
+        .then(jsonResult),
+  },
+  {
+    name: 'remove_project_role_override',
+    group: 'write',
+    description:
+      'Clear a project role override, reverting the user back to inheriting ' +
+      'their workspace role on this project. Requires EFFECTIVE project ADMIN.',
+    inputSchema: {
+      projectId: z.string().describe('Project id.'),
+      userId: z.string().describe('Target user id.'),
+    },
+    handler: (args, client) =>
+      client
+        .delete(`/projects/${args.projectId}/members/${args.userId}/role`)
+        .then(jsonResult),
   },
 ];
 

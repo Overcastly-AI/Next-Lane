@@ -195,6 +195,9 @@ function makePrisma(
         },
       ),
     },
+    projectMembership: {
+      findUnique: jest.fn().mockResolvedValue(null),
+    },
     $transaction: jest.fn().mockImplementation(async (ops: unknown[]) => {
       // Execute each operation in sequence (they are already promises or
       // functions returning promises). Return an array of results.

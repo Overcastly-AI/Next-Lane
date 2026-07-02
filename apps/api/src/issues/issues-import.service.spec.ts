@@ -119,6 +119,9 @@ function buildMocks(opts: PrismaMockOpts = {}): Mocks {
         members.map((m) => ({ user: { id: m.id, email: m.email }, workspaceId: WORKSPACE_ID })),
       ),
     },
+    projectMembership: {
+      findUnique: jest.fn().mockResolvedValue(null),
+    },
     status: {
       findMany: jest.fn().mockResolvedValue(statuses),
     },

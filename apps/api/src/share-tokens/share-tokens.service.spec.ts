@@ -41,6 +41,7 @@ interface MockPrisma {
   };
   project: { findUnique: jest.Mock };
   membership: { findUnique: jest.Mock };
+  projectMembership: { findUnique: jest.Mock };
 }
 
 function makePrisma(): MockPrisma {
@@ -53,6 +54,7 @@ function makePrisma(): MockPrisma {
     },
     project: { findUnique: jest.fn() },
     membership: { findUnique: jest.fn() },
+    projectMembership: { findUnique: jest.fn().mockResolvedValue(null) },
   };
 }
 

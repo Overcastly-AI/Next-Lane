@@ -14,6 +14,8 @@
 // add_issue_templates — applied 2026-06-29.
 // add_github_integration — applied 2026-07-02.
 // add_dashboards — applied 2026-07-02.
+// add_instance_admin_oidc_config — applied 2026-07-02.
+// add_project_membership — applied 2026-07-02.
 // Deferred to feature slices (do not add here without a feature branch):
 //   - pgvector embedding column (Phase 6)
 //   - GitLab / Gitea connections, auto-link-on-PR-open (Phase 9 follow-up)
@@ -220,6 +222,9 @@ model User {
 
   // Personal quick links (user-defined shortcuts to external apps)
   quickLinks QuickLink[]
+
+  // Per-project role overrides (sparse — most users have none; see ProjectMembership)
+  projectMemberships ProjectMembership[]
 }
 
 /// A user-defined shortcut to an external URL (their own apps/tools), shown in
@@ -380,9 +385,54 @@ model Project {
   // Configurable dashboards (NLQL-native gadget framework)
   dashboards             Dashboard[]
 
+  // Per-project role overrides (sparse — absence means "inherit workspace role")
+  projectMemberships     ProjectMembership[]
+
   @@unique([workspaceId, key])
   @@index([workspaceId])
   @@index([leadId])
+}
+
+// ---------------------------------------------------------------------------
+// Per-project role override (admin depth — agency/enterprise multi-project access)
+// ---------------------------------------------------------------------------
+
+/// An OVERRIDE of a user's effective role on a single project, layered above
+/// the workspace-wide `Membership.role`. Sparse by design: the ABSENCE of a
+/// row for (projectId, userId) means "inherit the workspace role" — this
+/// table is never backfilled for every member, only written when an admin
+/// explicitly elevates (e.g. workspace MEMBER -> project ADMIN) or restricts
+/// (e.g. workspace MEMBER -> project VIEWER) a user's access to one project.
+///
+/// Resolution rule (single source of truth: `getEffectiveProjectRole` in
+/// `apps/api/src/common/membership.util.ts`):
+///   1. The user must have a workspace `Membership` row at all — a stray
+///      `ProjectMembership` row never grants access on its own (tenant
+///      isolation: project role can only narrow/widen an *existing*
+///      workspace relationship, never create one).
+///   2. Workspace ADMINs always retain full access — any override row for a
+///      workspace ADMIN is ignored when resolving the effective role (and
+///      rejected at write time by the service layer), so an override can
+///      never accidentally lock out — or be used to redundantly re-grant —
+///      an admin.
+///   3. Otherwise, an existing `ProjectMembership` row's `role` wins over the
+///      workspace `Membership.role` (both elevating and restricting).
+///   4. Absent an override, the workspace `Membership.role` applies
+///      unchanged — zero behavior change for every project without one.
+model ProjectMembership {
+  id        String   @id @default(cuid())
+  projectId String
+  userId    String
+  role      Role
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+  @@index([projectId])
+  @@index([userId])
 }
 
 // ---------------------------------------------------------------------------

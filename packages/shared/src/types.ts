@@ -58,6 +58,33 @@ export interface MembershipDto {
   user: UserDto;
 }
 
+/**
+ * A project's EFFECTIVE member row: one per workspace member of the
+ * project's workspace, combining their workspace-wide role with any
+ * project-scoped `ProjectMembership` override.
+ *
+ * `effectiveRole` is what actually governs access to this project —
+ * `workspaceRole` when `isOverride` is false, or the override's role when
+ * true. See `apps/api/src/common/membership.util.ts` (`getEffectiveProjectRole`)
+ * for the resolution rule (workspace admins always resolve to ADMIN,
+ * unmarked, regardless of any stray override row).
+ */
+export interface ProjectMemberDto {
+  userId: string;
+  user: UserDto;
+  /** The user's role in the project's workspace (Membership.role). */
+  workspaceRole: Role;
+  /** The role that actually applies for this project. */
+  effectiveRole: Role;
+  /** True when `effectiveRole` came from a per-project override, not the workspace role. */
+  isOverride: boolean;
+}
+
+/** Body for `PUT /projects/:id/members/:userId/role` — set a project role override. */
+export interface SetProjectRoleOverrideDto {
+  role: Role;
+}
+
 export interface WorkspaceDto {
   id: string;
   name: string;

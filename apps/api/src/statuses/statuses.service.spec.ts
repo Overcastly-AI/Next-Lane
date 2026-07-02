@@ -127,6 +127,9 @@ function makePrisma(opts: {
     membership: {
       findUnique: jest.fn().mockResolvedValue({ role }),
     },
+    projectMembership: {
+      findUnique: jest.fn().mockResolvedValue(null),
+    },
   };
 
   return prisma as unknown as PrismaService;
