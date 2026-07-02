@@ -92,6 +92,73 @@ test.describe('Sidebar — desktop', () => {
     });
   });
 
+  test('Roadmap is reachable one click from the sidebar (Phase 2)', async ({
+    page,
+    request,
+  }) => {
+    const ctx = await setup(page, request);
+
+    await page.goto(`/projects/${ctx.projectId}/board`);
+    const sidebar = page.getByTestId('nav-sidebar');
+    await expect(sidebar).toContainText(ctx.projectName, { timeout: 15_000 });
+
+    // The active project's views expand directly under it — Roadmap is a
+    // single visible click, never behind ProjectNav's "More" dropdown.
+    const roadmapLink = sidebar
+      .getByTestId('nav-sidebar-view')
+      .filter({ hasText: 'Roadmap' });
+    await expect(roadmapLink).toBeVisible();
+    await expect(roadmapLink).toHaveAttribute('href', `/projects/${ctx.projectId}/roadmap`);
+    await roadmapLink.click();
+
+    await expect(page).toHaveURL(new RegExp(`/projects/${ctx.projectId}/roadmap`), {
+      timeout: 15_000,
+    });
+    await expect(page.getByRole('heading', { name: 'Roadmap' })).toBeVisible({
+      timeout: 15_000,
+    });
+  });
+
+  test('Workspace Branding is reachable from the sidebar for an admin (Phase 2)', async ({
+    page,
+    request,
+  }) => {
+    const ctx = await setup(page, request);
+
+    const brandingLink = page.getByTestId('nav-sidebar-branding');
+    await expect(brandingLink).toBeVisible({ timeout: 15_000 });
+    await expect(brandingLink).toHaveAttribute('href', `/workspaces/${ctx.workspaceId}/branding`);
+    await brandingLink.click();
+
+    await expect(page).toHaveURL(new RegExp(`/workspaces/${ctx.workspaceId}/branding`), {
+      timeout: 15_000,
+    });
+    await expect(page.getByRole('heading', { name: /branding/i }).first()).toBeVisible({
+      timeout: 15_000,
+    });
+  });
+
+  test('board filter chip opens Board settings pre-scrolled to the filter field (Phase 2)', async ({
+    page,
+    request,
+  }) => {
+    const ctx = await setup(page, request);
+
+    await page.goto(`/projects/${ctx.projectId}/board`);
+    await expect(page.getByTestId('board-switcher')).toBeVisible({ timeout: 15_000 });
+
+    // No filter configured yet — the empty-state "+ Default filter" chip
+    // opens the same editor as the filled indicator does once set.
+    const emptyChip = page.getByTestId('board-filter-chip');
+    await expect(emptyChip).toBeVisible({ timeout: 15_000 });
+    await emptyChip.click();
+
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible({ timeout: 5_000 });
+    await expect(dialog.getByText('Board settings')).toBeVisible();
+    await expect(page.getByTestId('board-default-filter')).toBeFocused({ timeout: 5_000 });
+  });
+
   test('collapse-to-rail state persists across reload', async ({ page, request }) => {
     await setup(page, request);
 

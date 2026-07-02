@@ -76,3 +76,57 @@ export function ChevronDownSmallIcon({ className }: { className?: string }) {
     </svg>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Per-project view icons (Phase 2 — sidebar sub-nav: Board / Backlog /
+// Roadmap / Reports). Same 2px-stroke / 24-unit / monochrome vocabulary.
+// ---------------------------------------------------------------------------
+
+export function ViewBoardIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M9 4v16M15 4v16" />
+    </svg>
+  );
+}
+
+export function ViewBacklogIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M8 6h13M8 12h13M8 18h13" />
+      <path d="M3 6h.01M3 12h.01M3 18h.01" />
+    </svg>
+  );
+}
+
+export function ViewRoadmapIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M3 6h8M3 12h13M3 18h6" />
+      <circle cx="17" cy="6" r="1.5" fill="currentColor" stroke="none" />
+      <circle cx="20" cy="18" r="1.5" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+export function ViewReportsIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M4 19V10M12 19V5M20 19v-6" />
+      <path d="M3 19h18" />
+    </svg>
+  );
+}
+
+/** Workspace Branding — a paint-swatch glyph, distinct from the Settings gear. */
+export function BrandingIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M12 21a8 8 0 0 1 0-16 7 7 0 0 1 7 7c0 1.5-1 2.5-2.5 2.5H15a1.5 1.5 0 0 0-1 2.6c.3.3.5.7.5 1.1A2 2 0 0 1 12 21z" />
+      <circle cx="7.5" cy="10.5" r="1" fill="currentColor" stroke="none" />
+      <circle cx="10.5" cy="7" r="1" fill="currentColor" stroke="none" />
+      <circle cx="15" cy="7.5" r="1" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}

@@ -20,19 +20,25 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, matchPath } from 'react-router-dom';
-import type { ProjectDto } from '@next-lane/shared';
+import { Role, type ProjectDto } from '@next-lane/shared';
 import { cn } from '@/lib/cn';
 import { useProjects } from '@/api/projects';
+import { useMyRole } from '@/api/workspaces';
 import { useWorkspaceContext } from '@/contexts/WorkspaceContext';
 import { useSwitchWorkspace } from '@/lib/useSwitchWorkspace';
 import { WorkspaceSwitcherMenuContent } from './WorkspaceSwitcherMenuContent';
 import {
+  BrandingIcon,
   ChevronDownSmallIcon,
   InsightsIcon,
   MyBoardIcon,
   MyWorkIcon,
   NotificationsIcon,
   SettingsIcon,
+  ViewBacklogIcon,
+  ViewBoardIcon,
+  ViewReportsIcon,
+  ViewRoadmapIcon,
 } from './sidebarIcons';
 
 // ---------------------------------------------------------------------------
@@ -129,6 +135,59 @@ function ProjectRow({
       </span>
       {!collapsed && <span className="min-w-0 flex-1 truncate">{project.name}</span>}
     </Link>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Per-project views (Phase 2) — Board / Backlog / Roadmap / Reports, shown
+// directly under the active project so the Gantt-style Roadmap (previously
+// buried in ProjectNav's "More" dropdown) is one visible click away.
+// `ProjectNav` itself is left untouched — it still serves mobile + tab
+// context — this is purely additive.
+// ---------------------------------------------------------------------------
+
+const PROJECT_VIEWS = [
+  { to: 'board', label: 'Board', Icon: ViewBoardIcon },
+  { to: 'backlog', label: 'Backlog', Icon: ViewBacklogIcon },
+  { to: 'roadmap', label: 'Roadmap', Icon: ViewRoadmapIcon },
+  { to: 'reports', label: 'Reports', Icon: ViewReportsIcon },
+] as const;
+
+function ProjectViewsSubNav({
+  projectId,
+  onNavigate,
+}: {
+  projectId: string;
+  onNavigate?: () => void;
+}) {
+  const location = useLocation();
+  return (
+    <div className="ml-4 mt-0.5 space-y-0.5 border-l border-ink-100 pl-2.5">
+      {PROJECT_VIEWS.map((view) => {
+        const to = `/projects/${projectId}/${view.to}`;
+        const active =
+          location.pathname === to || location.pathname.startsWith(`${to}/`);
+        return (
+          <Link
+            key={view.to}
+            to={to}
+            onClick={onNavigate}
+            aria-current={active ? 'page' : undefined}
+            data-testid="nav-sidebar-view"
+            className={cn(
+              'flex items-center gap-2 rounded-md px-2 py-1 text-[13px] transition-colors duration-[120ms]',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal-500 focus-visible:ring-offset-1',
+              active
+                ? 'font-semibold text-signal-700'
+                : 'text-ink-500 hover:bg-ink-50 hover:text-ink-800',
+            )}
+          >
+            <view.Icon className={cn('h-3.5 w-3.5 shrink-0', active ? 'text-signal-600' : 'text-ink-400')} />
+            <span className="min-w-0 flex-1 truncate">{view.label}</span>
+          </Link>
+        );
+      })}
+    </div>
   );
 }
 
@@ -245,6 +304,8 @@ export interface SidebarNavContentProps {
 export function SidebarNavContent({ collapsed, onNavigate }: SidebarNavContentProps) {
   const { activeWorkspace } = useWorkspaceContext();
   const projectsQuery = useProjects(activeWorkspace?.id);
+  const myRole = useMyRole(activeWorkspace?.id);
+  const isWorkspaceAdmin = myRole === Role.ADMIN;
   const location = useLocation();
 
   const projectMatch = matchPath('/projects/:projectId/*', location.pathname);
@@ -274,15 +335,27 @@ export function SidebarNavContent({ collapsed, onNavigate }: SidebarNavContentPr
           <p className="px-2.5 py-2 text-xs text-ink-400">No projects yet.</p>
         )}
         <div className="space-y-0.5">
-          {projectsQuery.data?.map((project) => (
-            <ProjectRow
-              key={project.id}
-              project={project}
-              active={project.id === activeProjectId}
-              collapsed={collapsed}
-              onNavigate={onNavigate}
-            />
-          ))}
+          {projectsQuery.data?.map((project) => {
+            const isActiveProject = project.id === activeProjectId;
+            return (
+              <div key={project.id}>
+                <ProjectRow
+                  project={project}
+                  active={isActiveProject}
+                  collapsed={collapsed}
+                  onNavigate={onNavigate}
+                />
+                {/* Expand the active project's views (Board / Backlog /
+                    Roadmap / Reports) so the Gantt-style Roadmap — previously
+                    two clicks deep in ProjectNav's "More" menu — is one
+                    visible click away. Skipped when collapsed to rail (no
+                    room, and the rail is icon-only by design). */}
+                {isActiveProject && !collapsed && (
+                  <ProjectViewsSubNav projectId={project.id} onNavigate={onNavigate} />
+                )}
+              </div>
+            );
+          })}
         </div>
       </nav>
 
@@ -306,7 +379,7 @@ export function SidebarNavContent({ collapsed, onNavigate }: SidebarNavContentPr
       </div>
 
       {activeWorkspace && (
-        <div className="border-t border-ink-100 px-2 py-2">
+        <div className="space-y-0.5 border-t border-ink-100 px-2 py-2">
           <SidebarRow
             to={`/workspaces/${activeWorkspace.id}/settings`}
             active={location.pathname === `/workspaces/${activeWorkspace.id}/settings`}
@@ -315,6 +388,20 @@ export function SidebarNavContent({ collapsed, onNavigate }: SidebarNavContentPr
             collapsed={collapsed}
             onNavigate={onNavigate}
           />
+          {/* Branding — previously 2+ clicks deep (chip → dropdown →
+              settings tab) with no visual cue it existed. Admin-gated the
+              same way `WorkspaceBrandingPage` itself gates: ADMIN only. */}
+          {isWorkspaceAdmin && (
+            <SidebarRow
+              to={`/workspaces/${activeWorkspace.id}/branding`}
+              active={location.pathname === `/workspaces/${activeWorkspace.id}/branding`}
+              icon={<BrandingIcon className="h-4 w-4" />}
+              label="Branding"
+              collapsed={collapsed}
+              onNavigate={onNavigate}
+              testId="nav-sidebar-branding"
+            />
+          )}
         </div>
       )}
     </>

@@ -318,6 +318,9 @@ export function BoardPage() {
 
   // ── Controls opening the Card Colors tab inside the BoardSettingsModal via the toolbar button.
   const [openColorsTab, setOpenColorsTab] = useState(false);
+  // ── Controls opening the Default filter field inside the BoardSettingsModal
+  // via the toolbar's filter chip / empty-state affordance (Phase 2 nav discoverability).
+  const [openFilterField, setOpenFilterField] = useState(false);
 
   const { exportCsv, isExporting } = useExportCsv({
     projectId,
@@ -745,6 +748,8 @@ export function BoardPage() {
             onBoardDeleted={handleBoardDeleted}
             openColorsTab={openColorsTab}
             onColorsTabOpened={() => setOpenColorsTab(false)}
+            openFilterField={openFilterField}
+            onFilterFieldOpened={() => setOpenFilterField(false)}
           />
 
           {/* Board workflow assignment */}
@@ -832,11 +837,23 @@ export function BoardPage() {
           />
         </div>
 
-        {/* Active board default-filter indicator — explains why the board is scoped. */}
-        {board?.board?.filterQuery?.trim() && (
-          <div
+        {/* Active board default-filter affordance — explains why the board is
+            scoped AND (Phase 2 nav discoverability) is a clickable entry
+            point straight into the settings field that controls it, since
+            the mechanism itself is otherwise invisible unless you already
+            know Board settings → General has a "Default filter" field. */}
+        {board?.board?.filterQuery?.trim() ? (
+          <button
+            type="button"
             data-testid="board-filter-indicator"
-            className="flex items-center gap-1.5 text-[11px] text-ink-500"
+            onClick={() => setOpenFilterField(true)}
+            aria-label={`Board default filter: ${board.board.filterQuery}. Edit.`}
+            title="Edit this board's default filter"
+            className={cn(
+              'flex items-center gap-1.5 rounded-md px-1 py-0.5 text-[11px] text-ink-500 transition-colors',
+              'hover:bg-ink-50 hover:text-ink-700',
+              'focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-500 focus-visible:ring-offset-1',
+            )}
           >
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" d="M3 4h18l-7 8v6l-4 2v-8z" />
@@ -845,7 +862,27 @@ export function BoardPage() {
             <code className="rounded bg-ink-50 px-1.5 py-0.5 font-mono text-[11px] text-ink-700 ring-1 ring-inset ring-ink-200">
               {board.board.filterQuery}
             </code>
-          </div>
+          </button>
+        ) : (
+          editable && (
+            <button
+              type="button"
+              data-testid="board-filter-chip"
+              onClick={() => setOpenFilterField(true)}
+              aria-label="Set a default filter for this board"
+              title="Set a default filter for this board"
+              className={cn(
+                'flex items-center gap-1 rounded-md border border-dashed border-ink-200 px-1.5 py-0.5 text-[11px] text-ink-400 transition-colors',
+                'hover:border-ink-300 hover:bg-ink-50 hover:text-ink-600',
+                'focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-500 focus-visible:ring-offset-1',
+              )}
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                <path strokeLinecap="round" d="M12 5v14M5 12h14" />
+              </svg>
+              <span>Default filter</span>
+            </button>
+          )
         )}
 
         {/* Card color legend — only when there are labeled rules */}

@@ -172,6 +172,13 @@ interface BoardSettingsModalProps {
   onDeleted: () => void;
   /** Initial tab to open (default: 'general'). */
   initialTab?: SettingsTab;
+  /**
+   * When true (and `initialTab` is 'general'), the modal scrolls the Default
+   * filter field into view and focuses it as soon as it opens — used by the
+   * board toolbar's filter-chip affordance (Phase 2 nav/discoverability) so
+   * clicking the chip lands the user directly in the field, not just the tab.
+   */
+  focusFilterField?: boolean;
 }
 
 function BoardSettingsModal({
@@ -181,6 +188,7 @@ function BoardSettingsModal({
   projectId,
   onDeleted,
   initialTab = 'general',
+  focusFilterField = false,
 }: BoardSettingsModalProps) {
   const toast = useToast();
   const updateBoard = useUpdateBoard(projectId);
@@ -192,6 +200,7 @@ function BoardSettingsModal({
   const [type, setType] = useState<BoardType>(board.type);
   const [filterQuery, setFilterQuery] = useState(board.filterQuery ?? '');
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const filterFieldRef = useRef<HTMLDivElement>(null);
 
   // Keep form in sync when the board prop changes (e.g. switcher navigates).
   useEffect(() => {
@@ -200,6 +209,18 @@ function BoardSettingsModal({
     setFilterQuery(board.filterQuery ?? '');
     setActiveTab(initialTab);
   }, [board.id, board.name, board.type, board.filterQuery, initialTab]);
+
+  // Scroll/focus the Default filter field when opened via the toolbar chip.
+  useEffect(() => {
+    if (!open || !focusFilterField || activeTab !== 'general') return;
+    const raf = requestAnimationFrame(() => {
+      filterFieldRef.current?.scrollIntoView({ block: 'center' });
+      filterFieldRef.current
+        ?.querySelector<HTMLInputElement | HTMLTextAreaElement>('input, textarea')
+        ?.focus();
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [open, focusFilterField, activeTab]);
 
   const cfDefs = useMemo(
     () =>
@@ -387,7 +408,7 @@ function BoardSettingsModal({
                 ))}
               </Select>
             </div>
-            <div className="space-y-1.5">
+            <div className="space-y-1.5" ref={filterFieldRef}>
               <p className="block text-xs font-semibold text-slate-600" aria-hidden="true">
                 Default filter{' '}
                 <span className="font-normal text-slate-400">(NLQL — always applied to this board)</span>
@@ -470,6 +491,14 @@ export interface BoardSwitcherProps {
   openColorsTab?: boolean;
   /** Callback to reset `openColorsTab` after the modal has opened. */
   onColorsTabOpened?: () => void;
+  /**
+   * When true the settings modal for the selected board opens immediately on
+   * the "General" tab with the Default filter field scrolled into view and
+   * focused. Used by the board toolbar's filter-chip affordance.
+   */
+  openFilterField?: boolean;
+  /** Callback to reset `openFilterField` after the modal has opened. */
+  onFilterFieldOpened?: () => void;
 }
 
 /**
@@ -483,6 +512,8 @@ export function BoardSwitcher({
   onBoardDeleted,
   openColorsTab = false,
   onColorsTabOpened,
+  openFilterField = false,
+  onFilterFieldOpened,
 }: BoardSwitcherProps) {
   const boardsQuery = useBoards(projectId);
   const boards = boardsQuery.data ?? [];
@@ -492,6 +523,7 @@ export function BoardSwitcher({
   const [showCreate, setShowCreate] = useState(false);
   const [settingsBoard, setSettingsBoard] = useState<BoardSummaryDto | null>(null);
   const [settingsInitialTab, setSettingsInitialTab] = useState<SettingsTab>('general');
+  const [focusFilterOnOpen, setFocusFilterOnOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // When parent asks to open the colors tab for the selected board, do so.
@@ -501,6 +533,15 @@ export function BoardSwitcher({
     setSettingsInitialTab('colors');
     onColorsTabOpened?.();
   }, [openColorsTab, selected, onColorsTabOpened]);
+
+  // When parent asks to open the Default filter field (toolbar chip), do so.
+  useEffect(() => {
+    if (!openFilterField || !selected) return;
+    setSettingsBoard(selected);
+    setSettingsInitialTab('general');
+    setFocusFilterOnOpen(true);
+    onFilterFieldOpened?.();
+  }, [openFilterField, selected, onFilterFieldOpened]);
 
   // Close the dropdown when clicking outside or pressing Escape.
   useEffect(() => {
@@ -659,6 +700,7 @@ export function BoardSwitcher({
                           e.stopPropagation();
                           setSettingsBoard(board);
                           setSettingsInitialTab('general');
+                          setFocusFilterOnOpen(false);
                           setOpen(false);
                         }}
                       >
@@ -723,11 +765,16 @@ export function BoardSwitcher({
       {settingsBoard && (
         <BoardSettingsModal
           open={!!settingsBoard}
-          onClose={() => { setSettingsBoard(null); setSettingsInitialTab('general'); }}
+          onClose={() => {
+            setSettingsBoard(null);
+            setSettingsInitialTab('general');
+            setFocusFilterOnOpen(false);
+          }}
           board={settingsBoard}
           projectId={projectId}
           onDeleted={onBoardDeleted}
           initialTab={settingsInitialTab}
+          focusFilterField={focusFilterOnOpen}
         />
       )}
     </>
