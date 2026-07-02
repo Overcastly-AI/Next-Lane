@@ -120,7 +120,7 @@ export function LoginPage() {
           <a
             href={`${API_URL}/api/auth/oidc/login`}
             data-testid="sso-login-button"
-            className="flex w-full items-center justify-center rounded-md border border-ink-200 bg-white px-4 py-2 text-sm font-medium text-ink-700 shadow-sm transition-colors duration-[120ms] hover:bg-ink-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal-500"
+            className="flex w-full items-center justify-center rounded-md border border-ink-200 bg-surface px-4 py-2 text-sm font-medium text-ink-700 shadow-sm transition-colors duration-[120ms] hover:bg-ink-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal-500"
           >
             Continue with {ssoLabel}
           </a>

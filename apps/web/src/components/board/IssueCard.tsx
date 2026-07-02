@@ -119,7 +119,7 @@ export const IssueCard = forwardRef<HTMLDivElement, IssueCardProps>(
            * - Ink-tinted shadow
            * - Subtle border that steps up on hover
            */
-          'group relative rounded-md border border-ink-200 bg-white shadow-card',
+          'group relative rounded-md border border-ink-200 bg-surface shadow-card',
           'transition-all duration-[120ms]',
           'hover:border-ink-300 hover:shadow-cardHover hover:-translate-y-px',
           dragging && 'opacity-40',

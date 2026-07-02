@@ -391,7 +391,7 @@ export function TriagePage() {
       {/* ----------------------------------------------------------------- */}
       {/* Header toolbar                                                       */}
       {/* ----------------------------------------------------------------- */}
-      <div className="sticky top-0 z-10 flex flex-wrap items-center gap-3 border-b border-slate-200 bg-white px-4 py-3 sm:px-6">
+      <div className="sticky top-0 z-10 flex flex-wrap items-center gap-3 border-b border-slate-200 bg-surface px-4 py-3 sm:px-6">
         <div className="flex min-w-0 flex-1 items-center gap-3">
           {filteredIssues.length > 0 && (
             <BulkSelectAll
@@ -467,7 +467,7 @@ export function TriagePage() {
             onClick={() => setShowHelp((v) => !v)}
             aria-label="Show keyboard shortcuts (?)"
             title="Keyboard shortcuts (?)"
-            className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-500 hover:bg-slate-50"
+            className="rounded-md border border-slate-200 bg-surface px-2 py-1 text-xs font-medium text-slate-500 hover:bg-slate-50"
           >
             ?
           </button>
@@ -569,7 +569,7 @@ export function TriagePage() {
       {/* Footer keyboard legend (compact, desktop only)                      */}
       {/* ----------------------------------------------------------------- */}
       <footer
-        className="hidden border-t border-slate-100 bg-white px-4 py-2 sm:flex sm:flex-wrap sm:items-center sm:gap-4"
+        className="hidden border-t border-slate-100 bg-surface px-4 py-2 sm:flex sm:flex-wrap sm:items-center sm:gap-4"
         aria-label="Keyboard shortcut legend"
       >
         <KbdHint keys="j/k" label="Navigate" />
@@ -799,7 +799,7 @@ function InlinePicker({
       role="dialog"
       aria-label={`Picker: ${picker}`}
       data-testid={`triage-picker-${picker}`}
-      className="absolute right-4 z-20 max-h-72 min-w-48 overflow-y-auto rounded-xl border border-slate-200 bg-white p-1 shadow-xl outline-none sm:right-6"
+      className="absolute right-4 z-20 max-h-72 min-w-48 overflow-y-auto rounded-xl border border-slate-200 bg-surface p-1 shadow-xl outline-none sm:right-6"
       style={{ top: topOffset + 4 }}
       onKeyDown={(e) => {
         if (e.key === 'Escape') {
@@ -989,7 +989,7 @@ function ShortcutHelp({
         onClick={onClose}
         aria-hidden="true"
       />
-      <div className="relative z-50 w-full max-w-sm rounded-xl bg-white p-5 shadow-2xl">
+      <div className="relative z-50 w-full max-w-sm rounded-xl bg-surface p-5 shadow-2xl">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-slate-900">
             Triage keyboard shortcuts
@@ -1077,7 +1077,7 @@ function Shell({
         <ProjectBreadcrumb primary={projectName} />
       </AppHeader>
       {projectId && <TriagePageNav projectId={projectId} />}
-      <main className="flex min-h-0 flex-1 flex-col bg-white">{children}</main>
+      <main className="flex min-h-0 flex-1 flex-col bg-surface">{children}</main>
     </div>
   );
 }
@@ -1092,7 +1092,7 @@ function TriagePageNav({ projectId }: { projectId: string }) {
     { to: `/projects/${projectId}/settings`, label: 'Settings' },
   ];
   return (
-    <nav className="flex items-center gap-1 border-b border-slate-200 bg-white px-4">
+    <nav className="flex items-center gap-1 border-b border-slate-200 bg-surface px-4">
       {tabs.map((tab) => (
         <NavLink
           key={tab.to}

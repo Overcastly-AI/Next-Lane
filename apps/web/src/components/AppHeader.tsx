@@ -4,6 +4,7 @@ import { Logo } from './Logo';
 import { Avatar } from './ui/Avatar';
 import { NotificationBell } from './NotificationBell';
 import { QuickLinksMenu } from './QuickLinksMenu';
+import { ThemeToggle } from './ThemeToggle';
 import { WorkspaceSwitcherMenuContent } from './nav/WorkspaceSwitcherMenuContent';
 import { useAuth } from '@/auth/AuthContext';
 import { useCommandPalette } from './CommandPaletteProvider';
@@ -124,7 +125,7 @@ function WorkspaceChip() {
           onKeyDown={(e) => {
             if (e.key === 'Escape') setOpen(false);
           }}
-          className="absolute left-0 z-30 mt-1 w-64 overflow-hidden rounded-xl border border-ink-100 bg-white py-1 shadow-dropdown animate-nl-fade-in"
+          className="absolute left-0 z-30 mt-1 w-64 overflow-hidden rounded-xl border border-ink-100 bg-surface py-1 shadow-dropdown animate-nl-fade-in"
         >
           <WorkspaceSwitcherMenuContent
             onSelect={(ws) => {
@@ -149,7 +150,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
   const navigate = useNavigate();
 
   return (
-    <header className="sticky top-0 z-30 flex flex-wrap items-center gap-x-2 gap-y-1.5 border-b border-ink-200 bg-white/96 backdrop-blur-sm px-4 py-2 sm:h-13 sm:flex-nowrap sm:gap-3 sm:py-0">
+    <header className="sticky top-0 z-30 flex flex-wrap items-center gap-x-2 gap-y-1.5 border-b border-ink-200 bg-surface/95 backdrop-blur-sm px-4 py-2 sm:h-13 sm:flex-nowrap sm:gap-3 sm:py-0">
       {/* Sidebar drawer toggle — only below the lg breakpoint, where the
           persistent sidebar becomes an overlay drawer. */}
       <button
@@ -231,7 +232,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
           <path strokeLinecap="round" d="M21 21l-4.3-4.3" />
         </svg>
         <span className="text-xs">Search</span>
-        <kbd className="rounded border border-ink-200 bg-white px-1 py-0.5 font-mono text-[10px] text-ink-400">
+        <kbd className="rounded border border-ink-200 bg-surface px-1 py-0.5 font-mono text-[10px] text-ink-400">
           ⌘K
         </kbd>
       </button>
@@ -268,7 +269,10 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
               onClick={() => setMenuOpen(false)}
               aria-hidden="true"
             />
-            <div className="absolute right-0 z-20 mt-2 w-56 overflow-hidden rounded-xl border border-ink-100 bg-white py-1 shadow-dropdown animate-nl-fade-in">
+            <div
+              data-testid="user-menu-dropdown"
+              className="absolute right-0 z-20 mt-2 w-56 overflow-hidden rounded-xl border border-ink-100 bg-surface py-1 shadow-dropdown animate-nl-fade-in"
+            >
               {user && (
                 <div className="border-b border-ink-100 px-3 py-2.5">
                   <p className="truncate text-sm font-semibold text-ink-900">
@@ -277,6 +281,10 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
                   <p className="truncate text-xs text-ink-500">{user.email}</p>
                 </div>
               )}
+              <div className="border-b border-ink-100 px-3 py-2.5">
+                <p className="mb-1.5 text-xs font-semibold text-ink-500">Theme</p>
+                <ThemeToggle />
+              </div>
               {/* Primary nav — shown here on mobile, where the header links are
                   hidden to keep the bar from overflowing. */}
               <div className="border-b border-ink-100 py-1 md:hidden">

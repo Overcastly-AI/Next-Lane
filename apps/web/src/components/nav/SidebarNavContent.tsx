@@ -263,7 +263,7 @@ function WorkspaceSection({ collapsed }: { collapsed: boolean }) {
             if (e.key === 'Escape') setMenuOpen(false);
           }}
           className={cn(
-            'absolute z-30 mt-1 w-64 overflow-hidden rounded-xl border border-ink-100 bg-white py-1 shadow-dropdown animate-nl-fade-in',
+            'absolute z-30 mt-1 w-64 overflow-hidden rounded-xl border border-ink-100 bg-surface py-1 shadow-dropdown animate-nl-fade-in',
             collapsed ? 'left-full top-0 ml-2' : 'left-2 top-full',
           )}
         >

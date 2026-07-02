@@ -251,7 +251,7 @@ export function WorkspaceAuditLogPage() {
           />
         ) : (
           <>
-            <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-card">
+            <div className="overflow-x-auto rounded-xl border border-slate-200 bg-surface shadow-card">
               <table
                 className="min-w-full text-left"
                 aria-label="Audit log events"

@@ -754,7 +754,7 @@ export function WorkflowGraph({
       {/* Empty transitions hint */}
       {hasNodes && transitions.length === 0 && !isConnecting && (
         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-          <p className="rounded-md bg-white/80 px-3 py-1.5 text-xs text-ink-500 shadow-xs">
+          <p className="rounded-md bg-surface/80 px-3 py-1.5 text-xs text-ink-500 shadow-xs">
             {isAdmin
               ? 'Click a node\'s \"+\" handle to draw a transition arrow.'
               : 'No transitions defined yet.'}
@@ -838,7 +838,7 @@ function ConnectHandle({
             ? 'bg-signal-100 border-signal-400 text-signal-700'
             : isConnecting
               ? 'bg-signal-50 border-signal-300 text-signal-600 hover:bg-signal-100'
-              : 'bg-white border-ink-300 text-ink-500 hover:bg-signal-50 hover:border-signal-300 hover:text-signal-600',
+              : 'bg-surface border-ink-300 text-ink-500 hover:bg-signal-50 hover:border-signal-300 hover:text-signal-600',
         )}
       >
         {isSource ? '×' : '+'}

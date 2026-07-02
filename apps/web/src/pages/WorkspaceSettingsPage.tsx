@@ -54,7 +54,7 @@ function DeleteWorkspaceDialog({
         onClick={onCancel}
         aria-hidden="true"
       />
-      <div className="relative z-10 w-full max-w-md rounded-xl border border-ink-200 bg-white p-6 shadow-xl">
+      <div className="relative z-10 w-full max-w-md rounded-xl border border-ink-200 bg-surface p-6 shadow-xl">
         <h2
           id="delete-ws-dialog-title"
           className="mb-2 text-base font-semibold text-ink-900"
@@ -203,7 +203,7 @@ export function WorkspaceSettingsPage() {
               General settings
             </h1>
           </div>
-          <section className="rounded-xl border border-ink-200 bg-white p-5 shadow-card">
+          <section className="rounded-xl border border-ink-200 bg-surface p-5 shadow-card">
             <p className="text-sm text-ink-500">
               Workspace name:{' '}
               <span className="font-semibold text-ink-900">
@@ -239,7 +239,7 @@ export function WorkspaceSettingsPage() {
         <div className="space-y-5">
           {/* Name section */}
           <section
-            className="rounded-xl border border-ink-200 bg-white p-5 shadow-card"
+            className="rounded-xl border border-ink-200 bg-surface p-5 shadow-card"
             aria-labelledby="ws-name-heading"
           >
             <h2
@@ -283,7 +283,7 @@ export function WorkspaceSettingsPage() {
 
           {/* Danger zone */}
           <section
-            className="rounded-xl border border-red-200 bg-white p-5"
+            className="rounded-xl border border-red-200 bg-surface p-5"
             aria-labelledby="danger-zone-heading"
             data-testid="workspace-danger-zone"
           >

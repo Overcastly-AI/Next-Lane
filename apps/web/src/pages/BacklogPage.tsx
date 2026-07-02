@@ -324,7 +324,7 @@ export function BacklogPage() {
               <>
                 <Link
                   to={`/projects/${projectId}/poker`}
-                  className="inline-flex h-9 items-center gap-1.5 rounded-md border border-ink-200 bg-white px-3.5 text-sm font-semibold text-ink-700 shadow-xs transition-all duration-[120ms] hover:bg-ink-50 hover:border-ink-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-500"
+                  className="inline-flex h-9 items-center gap-1.5 rounded-md border border-ink-200 bg-surface px-3.5 text-sm font-semibold text-ink-700 shadow-xs transition-all duration-[120ms] hover:bg-ink-50 hover:border-ink-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-500"
                 >
                   ♠ Estimate / Poker
                 </Link>
@@ -702,7 +702,7 @@ function Section({
   return (
     <section
       data-testid={testId}
-      className="rounded-xl border border-slate-200 bg-white shadow-card"
+      className="rounded-xl border border-slate-200 bg-surface shadow-card"
     >
       <header className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-4 py-3">
         {selectAll && <div className="shrink-0">{selectAll}</div>}
@@ -903,7 +903,7 @@ function MoveMenu({
         onClick={() => setOpen((v) => !v)}
         disabled={targets.length === 0}
         className={cn(
-          'inline-flex h-8 items-center gap-1 rounded-md border border-slate-300 bg-white px-2 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50',
+          'inline-flex h-8 items-center gap-1 rounded-md border border-slate-300 bg-surface px-2 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50',
           'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300',
           'disabled:cursor-not-allowed disabled:opacity-50',
         )}
@@ -916,7 +916,7 @@ function MoveMenu({
       {open && targets.length > 0 && (
         <div
           role="menu"
-          className="absolute right-0 z-20 mt-1 w-44 rounded-lg border border-slate-200 bg-white py-1 shadow-cardHover"
+          className="absolute right-0 z-20 mt-1 w-44 rounded-lg border border-slate-200 bg-surface py-1 shadow-cardHover"
         >
           {targets.map((t) => (
             <button

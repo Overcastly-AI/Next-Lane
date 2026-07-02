@@ -46,7 +46,7 @@ export function NotificationPreferencesSection() {
   return (
     <section
       data-testid="notification-preferences"
-      className="rounded-xl border border-ink-200 bg-white p-4 shadow-card sm:p-5"
+      className="rounded-xl border border-ink-200 bg-surface p-4 shadow-card sm:p-5"
     >
       <div className="mb-4">
         <h2 className="text-sm font-semibold text-ink-900">Notifications</h2>
@@ -78,7 +78,7 @@ export function NotificationPreferencesSection() {
           <span
             aria-hidden="true"
             className={cn(
-              'inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform duration-200',
+              'inline-block h-3.5 w-3.5 rounded-full bg-surface shadow transition-transform duration-200',
               enabled ? 'translate-x-4' : 'translate-x-1',
             )}
           />

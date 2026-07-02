@@ -96,7 +96,7 @@ export function CustomFieldsSection({
   }
 
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:p-5">
+    <section className="rounded-xl border border-slate-200 bg-surface p-4 shadow-card sm:p-5">
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
           <h2 className="text-sm font-semibold text-slate-900">
@@ -331,7 +331,7 @@ function AddCustomFieldModal({
             data-testid="custom-field-type"
             value={type}
             onChange={(e) => setType(e.target.value as CustomFieldType)}
-            className="w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-700 transition-colors focus:outline-none focus:ring-2 focus:ring-brand-400"
+            className="w-full rounded-md border border-slate-200 bg-surface px-2 py-1.5 text-sm text-slate-700 transition-colors focus:outline-none focus:ring-2 focus:ring-brand-400"
           >
             {CUSTOM_FIELD_TYPES.map((t) => (
               <option key={t} value={t}>
@@ -353,7 +353,7 @@ function AddCustomFieldModal({
               onChange={(e) => setOptionsRaw(e.target.value)}
               rows={4}
               placeholder={"Option A\nOption B\nOption C"}
-              className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 placeholder:text-slate-400 transition-colors focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200"
+              className="w-full rounded-md border border-slate-200 bg-surface px-3 py-2 text-sm text-slate-700 placeholder:text-slate-400 transition-colors focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200"
             />
           </Field>
         )}
@@ -523,7 +523,7 @@ function EditCustomFieldModal({
               value={optionsRaw}
               onChange={(e) => setOptionsRaw(e.target.value)}
               rows={4}
-              className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 placeholder:text-slate-400 transition-colors focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200"
+              className="w-full rounded-md border border-slate-200 bg-surface px-3 py-2 text-sm text-slate-700 placeholder:text-slate-400 transition-colors focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200"
             />
           </Field>
         )}

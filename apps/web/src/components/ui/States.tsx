@@ -65,7 +65,7 @@ export function EmptyState({
   icon?: ReactNode;
 }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-ink-200 bg-white/60 py-14 text-center">
+    <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-ink-200 bg-surface/60 py-14 text-center">
       {icon && <div className="text-ink-300">{icon}</div>}
       <div>
         <p className="text-sm font-semibold text-ink-700">{title}</p>

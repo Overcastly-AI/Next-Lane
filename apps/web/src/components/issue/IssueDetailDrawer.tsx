@@ -93,14 +93,14 @@ export function IssueDetailDrawer({
   return createPortal(
     <div className="fixed inset-0 z-50 flex justify-end">
       <div
-        className="absolute inset-0 bg-ink-900/25 backdrop-blur-[1px]"
+        className="absolute inset-0 bg-scrim/25 backdrop-blur-[1px]"
         onClick={onClose}
         aria-hidden="true"
       />
       <aside
         ref={panelRef}
         tabIndex={-1}
-        className="nl-drawer-animate relative z-10 flex h-full w-full max-w-2xl flex-col bg-white shadow-modal outline-none border-l border-ink-200"
+        className="nl-drawer-animate relative z-10 flex h-full w-full max-w-2xl flex-col bg-surface shadow-modal outline-none border-l border-ink-200"
         role="dialog"
         aria-modal="true"
       >
@@ -765,7 +765,7 @@ function VersionsField({
                   role="listbox"
                   aria-multiselectable="true"
                   aria-label="Select versions"
-                  className="absolute left-0 top-full z-20 mt-1 max-h-48 min-w-[180px] overflow-y-auto rounded-md border border-ink-200 bg-white py-1 shadow-md"
+                  className="absolute left-0 top-full z-20 mt-1 max-h-48 min-w-[180px] overflow-y-auto rounded-md border border-ink-200 bg-surface py-1 shadow-md"
                 >
                   {versions.map((v) => {
                     const selected = currentIds.has(v.id);
@@ -784,7 +784,7 @@ function VersionsField({
                             'flex h-4 w-4 shrink-0 items-center justify-center rounded border',
                             selected
                               ? 'border-signal-500 bg-signal-500 text-white'
-                              : 'border-ink-300 bg-white',
+                              : 'border-ink-300 bg-surface',
                           ].join(' ')}
                           aria-hidden="true"
                         >
@@ -873,7 +873,7 @@ function DueDateField({
               'rounded border px-2 py-1 text-sm transition-colors duration-[120ms] focus:outline-none focus:ring-2 focus:ring-signal-400 ' +
               (isOverdue
                 ? 'border-amber-300 bg-amber-50 text-amber-800'
-                : 'border-ink-200 bg-white text-ink-700')
+                : 'border-ink-200 bg-surface text-ink-700')
             }
           />
           {dueDate && (

@@ -38,7 +38,7 @@ function SectionCard({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:p-5">
+    <section className="rounded-xl border border-slate-200 bg-surface p-4 shadow-card sm:p-5">
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
           <h2 className="text-sm font-semibold text-slate-900">{title}</h2>
@@ -89,7 +89,7 @@ function NewTokenBanner({
           <div className="mt-3 flex items-center gap-2">
             <code
               data-testid="share-token-url"
-              className="min-w-0 flex-1 break-all rounded border border-green-200 bg-white px-2.5 py-1.5 font-mono text-xs text-slate-800"
+              className="min-w-0 flex-1 break-all rounded border border-green-200 bg-surface px-2.5 py-1.5 font-mono text-xs text-slate-800"
             >
               {url}
             </code>

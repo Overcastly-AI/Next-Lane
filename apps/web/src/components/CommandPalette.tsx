@@ -246,13 +246,13 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
       aria-label="Command palette"
     >
       <div
-        className="fixed inset-0 bg-ink-900/35 backdrop-blur-[1px]"
+        className="fixed inset-0 bg-scrim/35 backdrop-blur-[1px]"
         onClick={onClose}
         aria-hidden="true"
       />
       <div
         ref={panelRef}
-        className="relative z-10 w-full max-w-xl overflow-hidden rounded-xl bg-white shadow-modal ring-1 ring-ink-200/60"
+        className="relative z-10 w-full max-w-xl overflow-hidden rounded-xl bg-surface shadow-modal ring-1 ring-ink-200/60"
         onKeyDown={onKeyDown}
       >
         <div className="flex items-center gap-2 border-b border-ink-100 px-4">

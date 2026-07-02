@@ -40,7 +40,7 @@ export function Modal({
     >
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-ink-900/35 backdrop-blur-[2px] animate-nl-fade-in"
+        className="fixed inset-0 bg-scrim/35 backdrop-blur-[2px] animate-nl-fade-in"
         onClick={onClose}
         aria-hidden="true"
       />
@@ -49,7 +49,7 @@ export function Modal({
         ref={panelRef}
         tabIndex={-1}
         className={cn(
-          'nl-modal-animate relative z-10 mt-8 w-full rounded-xl bg-white shadow-modal outline-none',
+          'nl-modal-animate relative z-10 mt-8 w-full rounded-xl bg-surface shadow-modal outline-none',
           'border border-ink-200',
           size,
         )}

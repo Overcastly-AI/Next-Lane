@@ -149,7 +149,7 @@ function InviteForm({ workspaceId }: { workspaceId: string }) {
   return (
     <form
       onSubmit={handleSubmit}
-      className="mb-5 rounded-xl border border-ink-200 bg-white p-4 shadow-card sm:p-5"
+      className="mb-5 rounded-xl border border-ink-200 bg-surface p-4 shadow-card sm:p-5"
       data-testid="invite-member-form"
       aria-label="Invite a new member"
     >
@@ -292,7 +292,7 @@ export function WorkspaceMembersPage() {
             onRetry={() => void membersQuery.refetch()}
           />
         ) : (
-          <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:p-5">
+          <section className="rounded-xl border border-slate-200 bg-surface p-4 shadow-card sm:p-5">
             <div className="mb-3 flex items-center justify-between">
               <h2 className="text-sm font-semibold text-slate-900">
                 {members.length}{' '}

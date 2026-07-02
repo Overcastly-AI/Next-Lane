@@ -57,7 +57,8 @@
    * Signal accent scale — electric cobalt #2563EB defaults.
    * These variables are the single source of truth for the accent color system.
    * applyBrandColor.ts overwrites them at runtime when a workspace sets a
-   * custom brandColor; removing the inline overrides restores these defaults.
+   * custom brandColor; removing the inline overrides restores these defaults
+   * (light) / the `.dark` block's dark-tuned scale below (dark).
    *
    * Exact hex values preserved from the previous static Tailwind scale so the
    * rendered output is byte-identical when no workspace brand color is set.
@@ -78,6 +79,135 @@
   --nl-accent-light:   var(--nl-signal-100);
   --nl-accent-dim:     var(--nl-signal-700);
   --nl-accent-faint:   var(--nl-signal-50);
+
+  /*
+   * ── Ink neutral scale ──────────────────────────────────────────────────
+   * Graphite-ink with a cool blue undertone (~220°). Role of each shade is
+   * FIXED across light and dark (only the literal color changes):
+   *   50/100  — faintest wash / muted fill (hover backgrounds, subtle fills)
+   *   200/300 — default / strong border (300 doubles as disabled text)
+   *   400/500 — muted text / secondary icons & placeholders
+   *   600     — secondary text
+   *   700/800 — body text / near-headings
+   *   900     — primary text
+   * (Previously a static Tailwind scale; now CSS-var-backed so `.dark` below
+   * can redefine every `ink-*` utility class app-wide with zero per-component
+   * changes — this is THE token-layer fix for dark mode.)
+   */
+  --nl-ink-50:  #f4f6f9;
+  --nl-ink-100: #edf0f5;
+  --nl-ink-200: #dde1e9;
+  --nl-ink-300: #c4cad6;
+  --nl-ink-400: #8b95a8;
+  --nl-ink-500: #6b7280;
+  --nl-ink-600: #4b5563;
+  --nl-ink-700: #374151;
+  --nl-ink-800: #1f2937;
+  --nl-ink-900: #111827;
+
+  /*
+   * ── Legacy/secondary neutral scales ────────────────────────────────────
+   * `slate` and `gray` are pre-token-system stragglers still used directly
+   * across ~35 components (PulseDashboardPage, board toolbars, settings
+   * sections, etc.). Rather than a hundred-file find/replace, they're wired
+   * to CSS vars too — light values byte-identical to Tailwind's stock
+   * palette, dark values unified with the `ink` dark scale (below) so there
+   * is no visible seam between "ink" and "slate" surfaces in dark mode.
+   */
+  --nl-slate-50:  #f8fafc;
+  --nl-slate-100: #f1f5f9;
+  --nl-slate-200: #e2e8f0;
+  --nl-slate-300: #cbd5e1;
+  --nl-slate-400: #94a3b8;
+  --nl-slate-500: #64748b;
+  --nl-slate-600: #475569;
+  --nl-slate-700: #334155;
+  --nl-slate-800: #1e293b;
+  --nl-slate-900: #0f172a;
+
+  --nl-gray-50:  #f9fafb;
+  --nl-gray-100: #f3f4f6;
+  --nl-gray-200: #e5e7eb;
+  --nl-gray-300: #d1d5db;
+  --nl-gray-400: #9ca3af;
+  --nl-gray-500: #6b7280;
+  --nl-gray-600: #4b5563;
+  --nl-gray-700: #374151;
+  --nl-gray-800: #1f2937;
+  --nl-gray-900: #111827;
+
+  /*
+   * ── Semantic status scales (error / warning / success / info) ─────────
+   * Light values are Tailwind's stock palette (byte-identical). Dark values
+   * (below) are re-derived from each scale's 600 anchor using the same
+   * mix-toward-canvas/mix-toward-paper approach as `applyBrandColor.ts`, so
+   * washes read as dark tints and text/icon shades stay vivid and legible.
+   */
+  --nl-red-50:  #fef2f2;
+  --nl-red-100: #fee2e2;
+  --nl-red-200: #fecaca;
+  --nl-red-300: #fca5a5;
+  --nl-red-400: #f87171;
+  --nl-red-500: #ef4444;
+  --nl-red-600: #dc2626;
+  --nl-red-700: #b91c1c;
+  --nl-red-800: #991b1b;
+  --nl-red-900: #7f1d1d;
+
+  --nl-amber-50:  #fffbeb;
+  --nl-amber-100: #fef3c7;
+  --nl-amber-200: #fde68a;
+  --nl-amber-300: #fcd34d;
+  --nl-amber-400: #fbbf24;
+  --nl-amber-500: #f59e0b;
+  --nl-amber-600: #d97706;
+  --nl-amber-700: #b45309;
+  --nl-amber-800: #92400e;
+  --nl-amber-900: #78350f;
+
+  --nl-emerald-50:  #ecfdf5;
+  --nl-emerald-100: #d1fae5;
+  --nl-emerald-200: #a7f3d0;
+  --nl-emerald-300: #6ee7b7;
+  --nl-emerald-400: #34d399;
+  --nl-emerald-500: #10b981;
+  --nl-emerald-600: #059669;
+  --nl-emerald-700: #047857;
+  --nl-emerald-800: #065f46;
+  --nl-emerald-900: #064e3b;
+
+  --nl-green-50:  #f0fdf4;
+  --nl-green-100: #dcfce7;
+  --nl-green-200: #bbf7d0;
+  --nl-green-300: #86efac;
+  --nl-green-400: #4ade80;
+  --nl-green-500: #22c55e;
+  --nl-green-600: #16a34a;
+  --nl-green-700: #15803d;
+  --nl-green-800: #166534;
+  --nl-green-900: #14532d;
+
+  --nl-blue-50:  #eff6ff;
+  --nl-blue-100: #dbeafe;
+  --nl-blue-200: #bfdbfe;
+  --nl-blue-300: #93c5fd;
+  --nl-blue-400: #60a5fa;
+  --nl-blue-500: #3b82f6;
+  --nl-blue-600: #2563eb;
+  --nl-blue-700: #1d4ed8;
+  --nl-blue-800: #1e40af;
+  --nl-blue-900: #1e3a8a;
+
+  --nl-orange-50:  #fff7ed;
+  --nl-orange-100: #ffedd5;
+  --nl-orange-200: #fed7aa;
+  --nl-orange-300: #fdba74;
+  --nl-orange-400: #fb923c;
+  --nl-orange-500: #f97316;
+  --nl-orange-600: #ea580c;
+  --nl-orange-700: #c2410c;
+  --nl-orange-800: #9a3412;
+  --nl-orange-900: #7c2d12;
 
   /* Canvas — cool graphite-ink paper, faint blue undertone */
   --nl-canvas:         #f4f6f9; /* graphite-50: slightly cooler than slate-50 */
@@ -108,6 +238,13 @@
   --nl-column-bg:        #edf0f5; /* graphite-100 */
   --nl-column-border:    #dde1e9; /* graphite-200 */
 
+  /*
+   * Scrim — modal/drawer backdrop dimmer. Intentionally identical in light
+   * and dark (see tailwind.config.js `scrim` comment): a translucent
+   * near-black overlay dims the page correctly either way.
+   */
+  --nl-scrim: #0d0f14;
+
   /* Radii */
   --nl-radius-xs:   0.1875rem;  /* 3px  — tighter, more engineered */
   --nl-radius-sm:   0.3125rem;  /* 5px  — badges, chips */
@@ -125,6 +262,197 @@
 
   /* Board lane stagger — merge-in animation base delay */
   --nl-stagger-base:     40ms;
+
+  /*
+   * Shadows — 2-tier ambient shadow system, ink-tinted. Dark mode (below)
+   * trades soft ambient blur (reads "muddy" on a dark canvas) for a crisp
+   * 1px border-tinted shadow instead, per the design-elevation directive.
+   */
+  --nl-shadow-xs:        0 1px 2px 0 rgb(17 24 39 / 0.05);
+  --nl-shadow-sm:        0 1px 3px 0 rgb(17 24 39 / 0.07), 0 1px 2px -1px rgb(17 24 39 / 0.05);
+  --nl-shadow-card:      0 1px 3px 0 rgb(17 24 39 / 0.06), 0 1px 2px -1px rgb(17 24 39 / 0.04);
+  --nl-shadow-cardHover: 0 4px 16px -2px rgb(17 24 39 / 0.12), 0 2px 6px -2px rgb(17 24 39 / 0.07);
+  --nl-shadow-modal:     0 24px 64px -12px rgb(17 24 39 / 0.28), 0 8px 24px -8px rgb(17 24 39 / 0.12);
+  --nl-shadow-dropdown:  0 4px 16px -4px rgb(17 24 39 / 0.14), 0 2px 6px -2px rgb(17 24 39 / 0.07);
+  --nl-shadow-signal:    0 0 0 3px rgb(37 99 235 / 0.18);  /* cobalt glow for focus */
+}
+
+/* ── Dark mode — token layer, applied ONCE so every component inherits ───── */
+/*
+ * Design approach: each `ink-*` shade keeps its ROLE (see the comment above)
+ * across modes — only the literal color changes. Canvas/surface deepen to a
+ * graphite-blue near-black (NOT pure black — keeps the cool undertone
+ * identity); text brightens to a soft off-white (NOT pure white — softer on
+ * the eyes, avoids halation against the dark canvas). The `signal-600` /
+ * `red-600` / `amber-600` / `emerald-600` / `green-600` / `blue-600` /
+ * `orange-600` anchors are UNCHANGED between modes (same brand/semantic
+ * identity everywhere); shades below the anchor mix toward the dark canvas
+ * instead of white (so washes read as dark tints, not bright patches), and
+ * shades above mix toward a bright paper tone instead of black (so text/icon
+ * shades stay vivid and legible — verified ≥4.5:1 against both canvas and
+ * surface for every text-role pairing).
+ */
+.dark {
+  color-scheme: dark;
+
+  --nl-ink-50:  #161a23;
+  --nl-ink-100: #1c212c;
+  --nl-ink-200: #2a3040;
+  --nl-ink-300: #3c4356;
+  --nl-ink-400: #7d859c;
+  --nl-ink-500: #98a0b5;
+  --nl-ink-600: #aeb5c7;
+  --nl-ink-700: #c7cbd9;
+  --nl-ink-800: #dfe2ea;
+  --nl-ink-900: #f3f5f8;
+
+  /* slate / gray unified with the ink dark scale — no visible seam */
+  --nl-slate-50:  var(--nl-ink-50);
+  --nl-slate-100: var(--nl-ink-100);
+  --nl-slate-200: var(--nl-ink-200);
+  --nl-slate-300: var(--nl-ink-300);
+  --nl-slate-400: var(--nl-ink-400);
+  --nl-slate-500: var(--nl-ink-500);
+  --nl-slate-600: var(--nl-ink-600);
+  --nl-slate-700: var(--nl-ink-700);
+  --nl-slate-800: var(--nl-ink-800);
+  --nl-slate-900: var(--nl-ink-900);
+
+  --nl-gray-50:  var(--nl-ink-50);
+  --nl-gray-100: var(--nl-ink-100);
+  --nl-gray-200: var(--nl-ink-200);
+  --nl-gray-300: var(--nl-ink-300);
+  --nl-gray-400: var(--nl-ink-400);
+  --nl-gray-500: var(--nl-ink-500);
+  --nl-gray-600: var(--nl-ink-600);
+  --nl-gray-700: var(--nl-ink-700);
+  --nl-gray-800: var(--nl-ink-800);
+  --nl-gray-900: var(--nl-ink-900);
+
+  --nl-signal-50:  #0f172a;
+  --nl-signal-100: #111e3b;
+  --nl-signal-200: #152a59;
+  --nl-signal-300: #193980;
+  --nl-signal-400: #1e4baf;
+  --nl-signal-500: #235cda;
+  --nl-signal-600: #2563eb;
+  --nl-signal-700: #5c8aee;
+  --nl-signal-800: #8cabf0;
+  --nl-signal-900: #b8caf2;
+
+  --nl-red-50:  #221116;
+  --nl-red-100: #321317;
+  --nl-red-200: #4f161a;
+  --nl-red-300: #751b1d;
+  --nl-red-400: #a22021;
+  --nl-red-500: #cb2425;
+  --nl-red-600: #dc2626;
+  --nl-red-700: #e05e60;
+  --nl-red-800: #e48e91;
+  --nl-red-900: #e7babe;
+
+  --nl-amber-50:  #211913;
+  --nl-amber-100: #322211;
+  --nl-amber-200: #4e3010;
+  --nl-amber-300: #73430d;
+  --nl-amber-400: #a05a0a;
+  --nl-amber-500: #c96f07;
+  --nl-amber-600: #d97706;
+  --nl-amber-700: #de9849;
+  --nl-amber-800: #e2b582;
+  --nl-amber-900: #e6cfb6;
+
+  --nl-emerald-50:  #0c1d1d;
+  --nl-emerald-100: #0c2723;
+  --nl-emerald-200: #0a3a2f;
+  --nl-emerald-300: #09533f;
+  --nl-emerald-400: #077051;
+  --nl-emerald-500: #068b62;
+  --nl-emerald-600: #059669;
+  --nl-emerald-700: #45af90;
+  --nl-emerald-800: #7dc4b1;
+  --nl-emerald-900: #afd7d0;
+
+  --nl-green-50:  #0e1e19;
+  --nl-green-100: #0f2a1e;
+  --nl-green-200: #103e25;
+  --nl-green-300: #12592f;
+  --nl-green-400: #137a3b;
+  --nl-green-500: #159746;
+  --nl-green-600: #16a34a;
+  --nl-green-700: #52b87a;
+  --nl-green-800: #85caa2;
+  --nl-green-900: #b4dbc8;
+
+  --nl-blue-50:  #0f172a;
+  --nl-blue-100: #111e3b;
+  --nl-blue-200: #152a59;
+  --nl-blue-300: #193980;
+  --nl-blue-400: #1e4baf;
+  --nl-blue-500: #235cda;
+  --nl-blue-600: #2563eb;
+  --nl-blue-700: #5c8aee;
+  --nl-blue-800: #8cabf0;
+  --nl-blue-900: #b8caf2;
+
+  --nl-orange-50:  #231613;
+  --nl-orange-100: #351c13;
+  --nl-orange-200: #542611;
+  --nl-orange-300: #7c3410;
+  --nl-orange-400: #ac440e;
+  --nl-orange-500: #d8520d;
+  --nl-orange-600: #ea580c;
+  --nl-orange-700: #ea824d;
+  --nl-orange-800: #eba685;
+  --nl-orange-900: #ebc7b8;
+
+  /* Signal accent aliases follow the dark signal scale automatically */
+  --nl-accent:         var(--nl-signal-600);
+  --nl-accent-light:   var(--nl-signal-100);
+  --nl-accent-dim:     var(--nl-signal-700);
+  --nl-accent-faint:   var(--nl-signal-50);
+
+  /* Canvas / surfaces — deep graphite-blue, NOT pure black */
+  --nl-canvas:         #0d0f14;
+  --nl-surface:        #141821; /* cards, inputs */
+  --nl-surface-raised: #181c26; /* dropdowns, popovers */
+  --nl-surface-overlay:#1b202b; /* modals — highest elevation */
+
+  /* Borders — mirror the ink dark scale's border-role shades */
+  --nl-border:         var(--nl-ink-200);
+  --nl-border-muted:   var(--nl-ink-100);
+  --nl-border-strong:  var(--nl-ink-300);
+
+  /* Text — mirrors ink dark scale's text-role shades */
+  --nl-text-primary:   var(--nl-ink-900);
+  --nl-text-secondary: var(--nl-ink-600);
+  --nl-text-muted:     var(--nl-ink-400);
+  --nl-text-disabled:  var(--nl-ink-300);
+
+  /* Status arc */
+  --nl-status-todo-dot:  var(--nl-ink-500);
+  --nl-status-todo-bg:   var(--nl-canvas);
+  --nl-status-ip-dot:    var(--nl-signal-600);
+  --nl-status-ip-bg:     var(--nl-signal-50);
+  --nl-status-done-dot:  var(--nl-emerald-600);
+  --nl-status-done-bg:   var(--nl-emerald-100);
+
+  /* Board lane surface */
+  --nl-column-bg:        var(--nl-ink-100);
+  --nl-column-border:    var(--nl-ink-200);
+
+  /*
+   * Shadows — replace soft ambient blur with a crisp 1px border-tinted
+   * shadow (a `0 0 0 1px` "fake border" layer) plus a tighter, darker blur
+   * for elevation. Reads as a defined edge instead of a muddy halo.
+   */
+  --nl-shadow-xs:        0 0 0 1px var(--nl-border);
+  --nl-shadow-sm:        0 0 0 1px var(--nl-border), 0 1px 3px 0 rgb(0 0 0 / 0.4);
+  --nl-shadow-card:      0 0 0 1px var(--nl-border), 0 1px 2px 0 rgb(0 0 0 / 0.3);
+  --nl-shadow-cardHover: 0 0 0 1px var(--nl-border-strong), 0 4px 16px -4px rgb(0 0 0 / 0.5);
+  --nl-shadow-modal:     0 0 0 1px var(--nl-border-strong), 0 24px 64px -12px rgb(0 0 0 / 0.65);
+  --nl-shadow-dropdown:  0 0 0 1px var(--nl-border), 0 4px 16px -4px rgb(0 0 0 / 0.55);
+  --nl-shadow-signal:    0 0 0 3px rgb(37 99 235 / 0.32);  /* cobalt glow reads dimmer on dark; boosted */
 }
 
 /* ── Base ─────────────────────────────────────────────────────────────────── */

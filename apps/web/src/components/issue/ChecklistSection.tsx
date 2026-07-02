@@ -269,7 +269,7 @@ function AddItemInput({ issueId }: { issueId: string }) {
           'flex-1 rounded border border-dashed border-ink-200 bg-transparent px-2 py-1.5 text-sm text-ink-800 placeholder:text-ink-400',
           'transition-colors duration-[120ms]',
           'hover:border-signal-300 hover:bg-signal-50/30',
-          'focus:border-signal-400 focus:bg-white focus:outline-none focus:ring-0',
+          'focus:border-signal-400 focus:bg-surface focus:outline-none focus:ring-0',
           'disabled:cursor-not-allowed disabled:opacity-60',
         ].join(' ')}
       />
@@ -278,7 +278,7 @@ function AddItemInput({ issueId }: { issueId: string }) {
         disabled={!text.trim() || add.isPending}
         aria-label="Add checklist item"
         className={[
-          'shrink-0 rounded border border-ink-200 bg-white px-2.5 py-1.5 text-xs font-medium text-ink-600',
+          'shrink-0 rounded border border-ink-200 bg-surface px-2.5 py-1.5 text-xs font-medium text-ink-600',
           'transition-colors duration-[120ms]',
           'hover:border-signal-400 hover:bg-signal-50 hover:text-signal-700',
           'focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-400',

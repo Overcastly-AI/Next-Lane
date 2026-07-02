@@ -121,7 +121,7 @@ export function WorkflowsManager({
     <section
       id="workflows-manager"
       data-testid="workflows-manager"
-      className="rounded-xl border border-ink-200 bg-white p-4 shadow-card sm:p-5"
+      className="rounded-xl border border-ink-200 bg-surface p-4 shadow-card sm:p-5"
     >
       {/* Section header */}
       <div className="mb-4 flex items-start justify-between gap-3">
@@ -186,7 +186,7 @@ export function WorkflowsManager({
                 'focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-400',
                 selectedId === wf.id
                   ? 'border-signal-200 bg-signal-50 shadow-xs'
-                  : 'border-ink-150 bg-ink-50 hover:border-ink-200 hover:bg-white hover:shadow-xs',
+                  : 'border-ink-150 bg-ink-50 hover:border-ink-200 hover:bg-surface hover:shadow-xs',
               )}
             >
               <div className="flex items-center gap-2.5">
@@ -380,7 +380,7 @@ function WorkflowDetailPanel({
                 role="group"
                 aria-label="Workflow view mode"
                 data-testid="workflow-graph-toggle"
-                className="flex rounded-lg border border-ink-200 bg-white overflow-hidden"
+                className="flex rounded-lg border border-ink-200 bg-surface overflow-hidden"
               >
                 <button
                   type="button"
@@ -638,7 +638,7 @@ function WorkflowNameEditor({
         onChange={(e) => setDraft(e.target.value)}
         onBlur={handleBlur}
         onKeyDown={handleKeyDown}
-        className="h-7 min-w-0 flex-1 rounded border border-signal-300 bg-white px-2 text-sm font-semibold text-ink-800 focus:outline-none focus:ring-2 focus:ring-signal-200"
+        className="h-7 min-w-0 flex-1 rounded border border-signal-300 bg-surface px-2 text-sm font-semibold text-ink-800 focus:outline-none focus:ring-2 focus:ring-signal-200"
       />
     );
   }
@@ -678,7 +678,7 @@ function EnforcementToggle({
   return (
     <div className={cn(
       'rounded-lg border px-4 py-3 transition-colors duration-[120ms]',
-      enforced ? 'border-signal-200 bg-signal-50/50' : 'border-ink-200 bg-white',
+      enforced ? 'border-signal-200 bg-signal-50/50' : 'border-ink-200 bg-surface',
     )}>
       <div className="flex items-start gap-3">
         <button
@@ -699,7 +699,7 @@ function EnforcementToggle({
           <span
             aria-hidden="true"
             className={cn(
-              'inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform duration-200',
+              'inline-block h-3.5 w-3.5 rounded-full bg-surface shadow transition-transform duration-200',
               enforced ? 'translate-x-4' : 'translate-x-1',
             )}
           />
@@ -797,7 +797,7 @@ function TransitionGroupView({
           <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M12 5l7 7-7 7" />
         </svg>
       </div>
-      <ul className="divide-y divide-ink-100 rounded-lg border border-ink-150 bg-white shadow-xs">
+      <ul className="divide-y divide-ink-100 rounded-lg border border-ink-150 bg-surface shadow-xs">
         {transitions.map((t) => {
           const toStatus = statusById.get(t.toStatusId);
           return (
@@ -1418,7 +1418,7 @@ function GateEditor({
 // ---------------------------------------------------------------------------
 
 const selectClass =
-  'h-9 w-full appearance-none rounded border border-ink-200 bg-white px-3 pr-8 text-sm text-ink-900 ' +
+  'h-9 w-full appearance-none rounded border border-ink-200 bg-surface px-3 pr-8 text-sm text-ink-900 ' +
   'transition-all duration-[120ms] hover:border-ink-300 ' +
   'focus:border-signal-500 focus:outline-none focus:ring-2 focus:ring-signal-200 ' +
   "bg-[url('data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 fill=%22none%22 viewBox=%220 0 24 24%22 stroke=%22%238b95a8%22 stroke-width=%222%22><path stroke-linecap=%22round%22 stroke-linejoin=%22round%22 d=%22M19 9l-7 7-7-7%22/></svg>')] bg-[length:14px] bg-[right_0.5rem_center] bg-no-repeat";

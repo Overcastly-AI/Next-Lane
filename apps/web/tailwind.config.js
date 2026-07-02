@@ -1,5 +1,48 @@
+/**
+ * All DISPATCH palette scales below are CSS-custom-property-backed (defined
+ * in `src/index.css`'s `:root` for light and `.dark` for dark) so the entire
+ * token layer — including every existing component that already consumes
+ * `ink-*` / `slate-*` / `red-*` / etc. Tailwind classes — gets dark mode for
+ * free with ZERO per-component changes. See `docs/BACKLOG.md` "Light / dark
+ * mode" and the design rationale comment block at the top of `index.css`.
+ *
+ * `withOpacity` restores Tailwind's `/NN` opacity-modifier support for these
+ * CSS-var colors (e.g. `bg-ink-900/35`) via `color-mix()` — the var itself
+ * stays a plain hex string (so e.g. `getComputedStyle(...).getPropertyValue
+ * ('--nl-signal-600')` in e2e tests keeps returning a hex value, unaffected)
+ * while Tailwind utilities that consume it can still apply opacity.
+ * `color-mix()` is supported by all evergreen browsers (Chrome 111+, Firefox
+ * 113+, Safari 16.4+) — well within this app's self-hosted target range.
+ *
+ * NOTE: Tailwind's textColor/backgroundColor/etc. corePlugins ALWAYS invoke a
+ * function-based color with an `opacityValue`, even with no `/NN` modifier —
+ * in that case it's the *string* `"var(--tw-text-opacity)"` (the legacy
+ * `text-opacity-*` utility's variable, defaulting to 1), not `undefined` and
+ * not a plain number. This app doesn't use those legacy opacity utilities, so
+ * anything that isn't a genuine numeric string from an explicit `/NN`
+ * modifier is treated as "fully opaque" and passed straight through.
+ */
+function withOpacity(varName) {
+  return ({ opacityValue }) => {
+    const n = typeof opacityValue === 'string' ? Number(opacityValue) : NaN;
+    if (Number.isNaN(n)) return `var(${varName})`;
+    return `color-mix(in srgb, var(${varName}) ${n * 100}%, transparent)`;
+  };
+}
+
+/** Build a full 50–900 shade map for a CSS-var-backed color family. */
+function varScale(prefix) {
+  const shades = ['50', '100', '200', '300', '400', '500', '600', '700', '800', '900'];
+  return Object.fromEntries(shades.map((s) => [s, withOpacity(`--nl-${prefix}-${s}`)]));
+}
+
 /** @type {import('tailwindcss').Config} */
 export default {
+  // Class-based dark mode: a `.dark` class on <html>, toggled synchronously
+  // before first paint (see index.html's inline bootstrap script) and kept in
+  // sync by ThemeContext. Never media-query-only — a manual toggle needs a
+  // class to override the OS preference.
+  darkMode: 'class',
   content: ['./index.html', './src/**/*.{ts,tsx}'],
   theme: {
     extend: {
@@ -8,22 +51,16 @@ export default {
          * DISPATCH palette — graphite-ink neutrals with cool blue undertone (~220°).
          * NOT flat gray (hue 0°), not warm slate, not cream.
          * Named "ink" to be evocative: the dispatch board is ink on paper.
+         *
+         * Role of each shade is fixed across light AND dark (only the literal
+         * color changes): 50/100 = faint wash / muted fill, 200/300 = default
+         * / strong border (+ disabled text), 400-600 = muted → secondary
+         * text, 700-900 = body → primary text. See index.css for exact values.
          */
-        ink: {
-          50:  '#f4f6f9',  // canvas — very faint graphite wash
-          100: '#edf0f5',  // surface borders, muted fills
-          200: '#dde1e9',  // default border
-          300: '#c4cad6',  // strong border, disabled text
-          400: '#8b95a8',  // muted text
-          500: '#6b7280',  // secondary icons, placeholders
-          600: '#4b5563',  // secondary text
-          700: '#374151',  // body text mid
-          800: '#1f2937',  // near-headings
-          900: '#111827',  // primary text — near-black with blue cast
-        },
+        ink: varScale('ink'),
 
         /*
-         * Signal accent — electric cobalt #2563EB.
+         * Signal accent — electric cobalt #2563EB by default.
          * Used ONLY for: primary buttons, active nav states, in-progress status
          * signals, focus rings, and the issue-key chip. Everything else is ink.
          *
@@ -31,43 +68,20 @@ export default {
          * Reads as "signal", "priority", "active dispatch" — not generic SaaS
          * indigo (#6366f1 which reads purple), not teal/cyan (old brand),
          * not sky-blue (too soft). Passes WCAG AA on white at all weights ≥500.
+         *
+         * CSS-var backed so runtime theming can swap the full 50–900 scale
+         * when a workspace sets a custom brandColor (`applyBrandColor.ts`) —
+         * that function is dark-mode-aware too: it mixes toward the dark
+         * canvas/paper endpoints instead of white/black when `.dark` is
+         * active, so a custom brand color composes correctly with dark mode.
          */
-        /*
-         * Signal accent — CSS-var backed so runtime theming can swap the full
-         * 50–900 scale when a workspace sets a custom brandColor.
-         * The `:root` defaults in index.css initialise these to the exact same
-         * electric-cobalt hex values that were previously hard-coded here, so the
-         * rendered output is byte-identical when no workspace brand color is set.
-         */
-        signal: {
-          50:  'var(--nl-signal-50)',
-          100: 'var(--nl-signal-100)',
-          200: 'var(--nl-signal-200)',
-          300: 'var(--nl-signal-300)',
-          400: 'var(--nl-signal-400)',
-          500: 'var(--nl-signal-500)',
-          600: 'var(--nl-signal-600)',
-          700: 'var(--nl-signal-700)',
-          800: 'var(--nl-signal-800)',
-          900: 'var(--nl-signal-900)',
-        },
+        signal: varScale('signal'),
 
         /*
          * Legacy alias — kept so existing `brand-*` classes in components
          * continue to resolve without a mass find-replace. Points to signal vars.
          */
-        brand: {
-          50:  'var(--nl-signal-50)',
-          100: 'var(--nl-signal-100)',
-          200: 'var(--nl-signal-200)',
-          300: 'var(--nl-signal-300)',
-          400: 'var(--nl-signal-400)',
-          500: 'var(--nl-signal-500)',
-          600: 'var(--nl-signal-600)',
-          700: 'var(--nl-signal-700)',
-          800: 'var(--nl-signal-800)',
-          900: 'var(--nl-signal-900)',
-        },
+        brand: varScale('signal'),
 
         /*
          * Status-progression palette — semantic signal arc.
@@ -76,13 +90,55 @@ export default {
          * done: eucalyptus (resolved, arrived)
          */
         status: {
-          todo:            '#6b7280', // ink-500 — resting
-          'todo-bg':       '#f4f6f9', // ink-50
-          inprogress:      '#2563EB', // cobalt signal — in motion
-          'inprogress-bg': '#eff6ff', // signal-50
-          done:            '#059669', // eucalyptus — arrived
-          'done-bg':       '#d1fae5', // emerald-100
+          todo:            withOpacity('--nl-status-todo-dot'),
+          'todo-bg':       withOpacity('--nl-canvas'),
+          inprogress:      withOpacity('--nl-signal-600'),
+          'inprogress-bg': withOpacity('--nl-signal-50'),
+          done:            withOpacity('--nl-status-done-dot'),
+          'done-bg':       withOpacity('--nl-emerald-100'),
         },
+
+        /*
+         * Neutral/semantic Tailwind-default scales, re-pointed at CSS vars so
+         * every existing `slate-*` / `red-*` / `amber-*` / `emerald-*` /
+         * `green-*` / `blue-*` / `gray-*` / `orange-*` usage across the app
+         * (badges, chips, status text, form validation, chart colors) gets
+         * dark-mode-legible values automatically — the "handful of stragglers
+         * that bypass tokens" fixed once at the token layer instead of
+         * hundreds of per-component edits. Light-mode values are byte-
+         * identical to Tailwind's stock palette (see index.css `:root`).
+         */
+        slate:   varScale('slate'),
+        red:     varScale('red'),
+        amber:   varScale('amber'),
+        emerald: varScale('emerald'),
+        green:   varScale('green'),
+        blue:    varScale('blue'),
+        gray:    varScale('gray'),
+        orange:  varScale('orange'),
+
+        /*
+         * Surface — replaces the many hardcoded `bg-white` card/input/modal
+         * backgrounds with a token that becomes a dark elevated surface in
+         * dark mode. `white` itself is left untouched (Tailwind default,
+         * literal #fff) because `text-white` is deliberately used for
+         * high-contrast text on colored buttons/badges in BOTH modes.
+         */
+        surface: {
+          DEFAULT: withOpacity('--nl-surface'),
+          raised:  withOpacity('--nl-surface-raised'),
+          overlay: withOpacity('--nl-surface-overlay'),
+        },
+        canvas: withOpacity('--nl-canvas'),
+
+        /**
+         * Scrim — modal/drawer backdrop dimmer. Deliberately NOT dark-mode
+         * aware (same value in both modes): a translucent near-black overlay
+         * correctly dims the page whether the canvas underneath is light or
+         * already dark. Decoupled from `ink-900` (which DOES flip to a light
+         * text color in dark mode) specifically so backdrops never invert.
+         */
+        scrim: withOpacity('--nl-scrim'),
       },
 
       fontFamily: {
@@ -171,14 +227,20 @@ export default {
       },
 
       boxShadow: {
-        /* 2-tier shadow system — ink-tinted, not warm gray */
-        'xs':        '0 1px 2px 0 rgb(17 24 39 / 0.05)',
-        'sm':        '0 1px 3px 0 rgb(17 24 39 / 0.07), 0 1px 2px -1px rgb(17 24 39 / 0.05)',
-        'card':      '0 1px 3px 0 rgb(17 24 39 / 0.06), 0 1px 2px -1px rgb(17 24 39 / 0.04)',
-        'cardHover': '0 4px 16px -2px rgb(17 24 39 / 0.12), 0 2px 6px -2px rgb(17 24 39 / 0.07)',
-        'modal':     '0 24px 64px -12px rgb(17 24 39 / 0.28), 0 8px 24px -8px rgb(17 24 39 / 0.12)',
-        'dropdown':  '0 4px 16px -4px rgb(17 24 39 / 0.14), 0 2px 6px -2px rgb(17 24 39 / 0.07)',
-        'signal':    '0 0 0 3px rgb(37 99 235 / 0.18)',  /* cobalt glow for focus */
+        /*
+         * 2-tier shadow system — ink-tinted, not warm gray. CSS-var backed
+         * (see index.css `:root`/`.dark`) so dark mode can swap soft ambient
+         * shadows (which read as "muddy" on a dark canvas) for a crisp
+         * 1px border-tinted shadow instead — per CLAUDE.md's design-elevation
+         * guidance, "reduce/replace shadows with borders in dark".
+         */
+        'xs':        'var(--nl-shadow-xs)',
+        'sm':        'var(--nl-shadow-sm)',
+        'card':      'var(--nl-shadow-card)',
+        'cardHover': 'var(--nl-shadow-cardHover)',
+        'modal':     'var(--nl-shadow-modal)',
+        'dropdown':  'var(--nl-shadow-dropdown)',
+        'signal':    'var(--nl-shadow-signal)',  /* cobalt glow for focus */
       },
 
       transitionDuration: {

@@ -27,7 +27,7 @@ function SectionCard({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-xl border border-ink-200 bg-white p-4 shadow-card sm:p-5">
+    <section className="rounded-xl border border-ink-200 bg-surface p-4 shadow-card sm:p-5">
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
           <h2 className="text-sm font-semibold text-ink-900">{title}</h2>
@@ -241,7 +241,7 @@ function WebhookRow({
           >
             <span
               className={cn(
-                'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
+                'inline-block h-4 w-4 transform rounded-full bg-surface shadow transition-transform',
                 webhook.active ? 'translate-x-4' : 'translate-x-0.5',
               )}
             />

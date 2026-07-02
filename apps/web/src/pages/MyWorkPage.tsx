@@ -147,7 +147,7 @@ function Section({
       {issues.length === 0 ? (
         <EmptyState title={emptyTitle} description={emptyDescription} action={emptyAction} />
       ) : (
-        <ul className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <ul className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-surface">
           {issues.map((issue) => (
             <IssueRow key={issue.id} issue={issue} onOpen={onOpen} />
           ))}

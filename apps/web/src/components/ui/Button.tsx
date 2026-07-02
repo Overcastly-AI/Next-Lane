@@ -21,7 +21,7 @@ const variants: Record<Variant, string> = {
   primary:
     'bg-signal-600 text-white hover:bg-signal-700 focus-visible:ring-signal-500 disabled:bg-signal-300 shadow-xs border border-signal-700/20',
   secondary:
-    'bg-white text-ink-700 border border-ink-200 hover:bg-ink-50 hover:border-ink-300 focus-visible:ring-signal-500 shadow-xs',
+    'bg-surface text-ink-700 border border-ink-200 hover:bg-ink-50 hover:border-ink-300 focus-visible:ring-signal-500 shadow-xs',
   ghost:
     'bg-transparent text-ink-600 hover:bg-ink-100 hover:text-ink-900 focus-visible:ring-signal-500',
   danger:

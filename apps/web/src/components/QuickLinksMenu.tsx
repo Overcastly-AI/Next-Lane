@@ -18,7 +18,7 @@ import { ColorSwatchPicker } from '@/components/ui/ColorSwatchPicker';
 import { errorMessage } from '@/lib/errorMessage';
 
 const inputCls =
-  'h-7 w-full rounded border border-ink-200 bg-white px-2 text-xs text-ink-900 placeholder:text-ink-400 focus:border-signal-500 focus:outline-none focus:ring-1 focus:ring-signal-200';
+  'h-7 w-full rounded border border-ink-200 bg-surface px-2 text-xs text-ink-900 placeholder:text-ink-400 focus:border-signal-500 focus:outline-none focus:ring-1 focus:ring-signal-200';
 
 const UNGROUPED = '__ungrouped__';
 
@@ -362,7 +362,7 @@ export function QuickLinksMenu() {
         <div
           role="menu"
           aria-label="Quick links"
-          className="absolute right-0 z-30 mt-2 w-72 overflow-hidden rounded-xl border border-ink-100 bg-white shadow-dropdown animate-nl-fade-in"
+          className="absolute right-0 z-30 mt-2 w-72 overflow-hidden rounded-xl border border-ink-100 bg-surface shadow-dropdown animate-nl-fade-in"
         >
           <div className="border-b border-ink-100 px-3 py-2.5">
             <p className="text-sm font-semibold text-ink-900">Quick links</p>

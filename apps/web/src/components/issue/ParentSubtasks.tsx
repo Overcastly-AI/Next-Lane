@@ -169,7 +169,7 @@ function ParentPicker({
         <div
           role="dialog"
           aria-label="Set parent issue"
-          className="absolute left-0 z-20 mt-2 w-72 rounded-lg border border-slate-200 bg-white p-2 shadow-cardHover"
+          className="absolute left-0 z-20 mt-2 w-72 rounded-lg border border-slate-200 bg-surface p-2 shadow-cardHover"
         >
           <Input
             autoFocus

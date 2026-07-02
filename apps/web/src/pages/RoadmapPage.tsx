@@ -57,7 +57,7 @@ export function RoadmapPage() {
         </div>
 
         <section
-          className="rounded-xl border border-ink-200 bg-white p-4 shadow-card sm:p-5"
+          className="rounded-xl border border-ink-200 bg-surface p-4 shadow-card sm:p-5"
           aria-label="Roadmap timeline"
         >
           {roadmapQuery.isLoading ? (

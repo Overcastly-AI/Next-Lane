@@ -44,7 +44,7 @@ export function PresenceAvatars({ viewers, className }: PresenceAvatarsProps) {
             user={{ name: viewer.name, avatarColor: viewer.avatarColor }}
             size="sm"
             title={viewer.name}
-            className="ring-2 ring-white"
+            className="ring-2 ring-surface"
           />
         ))}
         {overflow > 0 && (
@@ -53,7 +53,7 @@ export function PresenceAvatars({ viewers, className }: PresenceAvatarsProps) {
             className={cn(
               'inline-flex h-6 w-6 items-center justify-center rounded-full',
               'bg-slate-200 text-[10px] font-semibold text-slate-600',
-              'ring-2 ring-white',
+              'ring-2 ring-surface',
             )}
           >
             +{overflow}

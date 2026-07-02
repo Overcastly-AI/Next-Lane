@@ -385,7 +385,7 @@ function CustomFieldValueInput({
       return (
         <div className="space-y-1">
           <span className={labelClass}>Values</span>
-          <div className="space-y-1 rounded border border-ink-200 bg-white p-2">
+          <div className="space-y-1 rounded border border-ink-200 bg-surface p-2">
             {field.options.map((o) => (
               <label key={o} className="flex items-center gap-2 text-sm text-ink-700">
                 <input

@@ -33,7 +33,7 @@ export function Avatar({ user, size = 'sm', className, title }: AvatarProps) {
     <span
       title={title ?? user.name}
       className={cn(
-        'inline-flex items-center justify-center rounded-full font-bold uppercase text-white ring-2 ring-white',
+        'inline-flex items-center justify-center rounded-full font-bold uppercase text-white ring-2 ring-surface',
         sizes[size],
         className,
       )}

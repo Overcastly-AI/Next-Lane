@@ -121,7 +121,7 @@ export function ProjectAnalyticsPage() {
 
           {/* Flow chart */}
           <section
-            className="rounded-xl border border-ink-200 bg-white p-4 shadow-card sm:p-5"
+            className="rounded-xl border border-ink-200 bg-surface p-4 shadow-card sm:p-5"
             aria-labelledby="project-flow-heading"
           >
             <div className="mb-3">
@@ -152,7 +152,7 @@ export function ProjectAnalyticsPage() {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {/* Cycle-time distribution */}
             <section
-              className="rounded-xl border border-ink-200 bg-white p-4 shadow-card sm:p-5"
+              className="rounded-xl border border-ink-200 bg-surface p-4 shadow-card sm:p-5"
               aria-labelledby="cycle-dist-heading"
             >
               <div className="mb-3">
@@ -189,7 +189,7 @@ export function ProjectAnalyticsPage() {
 
             {/* Workload by assignee */}
             <section
-              className="rounded-xl border border-ink-200 bg-white p-4 shadow-card sm:p-5"
+              className="rounded-xl border border-ink-200 bg-surface p-4 shadow-card sm:p-5"
               aria-labelledby="workload-heading"
             >
               <div className="mb-3">

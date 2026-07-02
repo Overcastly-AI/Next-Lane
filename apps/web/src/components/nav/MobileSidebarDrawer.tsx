@@ -30,7 +30,7 @@ export function MobileSidebarDrawer() {
     <div className="fixed inset-0 z-40 flex lg:hidden" role="presentation">
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-ink-900/35 backdrop-blur-[2px] animate-nl-fade-in"
+        className="fixed inset-0 bg-scrim/35 backdrop-blur-[2px] animate-nl-fade-in"
         onClick={closeMobile}
         aria-hidden="true"
       />
@@ -42,7 +42,7 @@ export function MobileSidebarDrawer() {
         aria-modal="true"
         aria-label="Navigation"
         data-testid="nav-sidebar-drawer"
-        className="nl-sidebar-drawer-animate relative z-10 flex h-full w-72 max-w-[85vw] flex-col border-r border-ink-200 bg-white shadow-modal outline-none"
+        className="nl-sidebar-drawer-animate relative z-10 flex h-full w-72 max-w-[85vw] flex-col border-r border-ink-200 bg-surface shadow-modal outline-none"
       >
         <div className="flex items-center justify-between border-b border-ink-100 px-3 py-2.5">
           <span className="font-display text-sm font-semibold tracking-[-0.01em] text-ink-900">

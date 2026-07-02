@@ -178,20 +178,20 @@ function EstimateField({
                 'focus:outline-none focus:ring-2 focus:ring-signal-400',
                 error
                   ? 'border-red-300 bg-red-50 text-red-800'
-                  : 'border-ink-200 bg-white text-ink-800 hover:border-signal-300',
+                  : 'border-ink-200 bg-surface text-ink-800 hover:border-signal-300',
               ].join(' ')}
             />
             <button
               type="button"
               onClick={commit}
-              className="shrink-0 rounded border border-ink-200 bg-white px-2.5 py-1.5 text-xs font-medium text-ink-600 transition-colors duration-[120ms] hover:border-signal-400 hover:bg-signal-50 hover:text-signal-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-400"
+              className="shrink-0 rounded border border-ink-200 bg-surface px-2.5 py-1.5 text-xs font-medium text-ink-600 transition-colors duration-[120ms] hover:border-signal-400 hover:bg-signal-50 hover:text-signal-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-400"
             >
               Save
             </button>
             <button
               type="button"
               onClick={() => { setEditing(false); setError(''); }}
-              className="shrink-0 rounded border border-ink-200 bg-white px-2.5 py-1.5 text-xs font-medium text-ink-500 transition-colors duration-[120ms] hover:bg-ink-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-ink-300"
+              className="shrink-0 rounded border border-ink-200 bg-surface px-2.5 py-1.5 text-xs font-medium text-ink-500 transition-colors duration-[120ms] hover:bg-ink-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-ink-300"
             >
               Cancel
             </button>
@@ -405,7 +405,7 @@ function LogWorkForm({ issueId }: { issueId: string }) {
               'placeholder:text-ink-400',
               error
                 ? 'border-red-300 bg-red-50 text-red-800'
-                : 'border-ink-200 bg-white text-ink-800 hover:border-signal-300',
+                : 'border-ink-200 bg-surface text-ink-800 hover:border-signal-300',
             ].join(' ')}
           />
           <input
@@ -416,7 +416,7 @@ function LogWorkForm({ issueId }: { issueId: string }) {
             disabled={add.isPending}
             aria-label="Work log note"
             autoComplete="off"
-            className="rounded border border-ink-200 bg-white px-2 py-1.5 text-sm text-ink-800 placeholder:text-ink-400 hover:border-signal-300 focus:border-signal-400 focus:outline-none focus:ring-0 disabled:cursor-not-allowed disabled:opacity-60"
+            className="rounded border border-ink-200 bg-surface px-2 py-1.5 text-sm text-ink-800 placeholder:text-ink-400 hover:border-signal-300 focus:border-signal-400 focus:outline-none focus:ring-0 disabled:cursor-not-allowed disabled:opacity-60"
           />
           {error && (
             <p id="log-work-err" role="alert" className="text-xs text-red-600">
@@ -430,7 +430,7 @@ function LogWorkForm({ issueId }: { issueId: string }) {
           disabled={!durationRaw.trim() || add.isPending}
           aria-label="Log time"
           className={[
-            'mt-0 shrink-0 rounded border border-ink-200 bg-white px-2.5 py-1.5 text-xs font-medium text-ink-600',
+            'mt-0 shrink-0 rounded border border-ink-200 bg-surface px-2.5 py-1.5 text-xs font-medium text-ink-600',
             'transition-colors duration-[120ms]',
             'hover:border-signal-400 hover:bg-signal-50 hover:text-signal-700',
             'focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-400',

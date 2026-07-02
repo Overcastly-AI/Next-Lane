@@ -40,7 +40,7 @@ function SectionCard({
 }) {
   return (
     <section
-      className="rounded-xl border border-ink-200 bg-white p-4 shadow-card sm:p-5"
+      className="rounded-xl border border-ink-200 bg-surface p-4 shadow-card sm:p-5"
       data-testid="github-section"
     >
       <div className="mb-4 flex items-start justify-between gap-3">
@@ -234,7 +234,7 @@ export function GithubSection({
               <p className="text-xs text-ink-500">
                 In your GitHub repo, go to <strong>Settings → Webhooks → Add webhook</strong>.
                 Paste the URL and secret below, set content type to{' '}
-                <code className="rounded bg-white px-1 py-0.5 font-mono">application/json</code>,
+                <code className="rounded bg-surface px-1 py-0.5 font-mono">application/json</code>,
                 and select the <strong>Pushes</strong> and <strong>Pull requests</strong> events.
               </p>
               <CopyField label="Payload URL" value={integration.webhookUrl} testId="github-webhook-url" />

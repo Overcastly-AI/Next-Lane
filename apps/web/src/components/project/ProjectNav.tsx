@@ -157,7 +157,7 @@ function MoreMenu({ projectId, open, onClose, menuRef }: MoreMenuProps) {
       onBlur={handleBlur}
       className={cn(
         'absolute left-0 top-full z-50 mt-1',
-        'w-44 rounded-md border border-ink-200 bg-white py-1',
+        'w-44 rounded-md border border-ink-200 bg-surface py-1',
         'shadow-dropdown',
         'motion-safe:animate-nl-fade-in',
       )}
@@ -263,7 +263,7 @@ export function ProjectNav({ projectId }: { projectId: string }) {
   return (
     <nav
       aria-label="Project navigation"
-      className="flex items-center border-b border-ink-200 bg-white px-2 sm:px-4"
+      className="flex items-center border-b border-ink-200 bg-surface px-2 sm:px-4"
     >
       {/* Primary tabs — always visible */}
       <div className="flex min-w-0 flex-1 items-center">

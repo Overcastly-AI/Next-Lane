@@ -335,7 +335,7 @@ function ActiveItemCard({
   return (
     <IssueCardWrapper issueId={item.issueId}>
       {(issue) => (
-        <div className="rounded-xl border border-ink-200 bg-white shadow-card">
+        <div className="rounded-xl border border-ink-200 bg-surface shadow-card">
           {/* Issue header */}
           <div className="flex items-start gap-3 border-b border-ink-100 px-5 py-4">
             <IssueTypeIcon
@@ -598,7 +598,7 @@ function DeckHand({
               'disabled:cursor-not-allowed disabled:opacity-40',
               isSelected
                 ? 'border-signal-600 bg-signal-600 text-white shadow-signal scale-110'
-                : 'border-ink-200 bg-white text-ink-700 hover:border-signal-400 hover:bg-signal-50 hover:text-signal-700',
+                : 'border-ink-200 bg-surface text-ink-700 hover:border-signal-400 hover:bg-signal-50 hover:text-signal-700',
             )}
           >
             {card}
@@ -685,7 +685,7 @@ function PokerItemRow({
           'focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-500',
           isActive
             ? 'border-signal-400 bg-signal-50 shadow-xs'
-            : 'border-ink-200 bg-white hover:border-ink-300 hover:bg-ink-50',
+            : 'border-ink-200 bg-surface hover:border-ink-300 hover:bg-ink-50',
           !editable && 'cursor-default',
         )}
       >

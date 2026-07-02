@@ -29,6 +29,7 @@ import type { WorkspaceDto } from '@next-lane/shared';
 import { applyBrandColor } from '@/lib/applyBrandColor';
 import { useWorkspaces } from '@/api/workspaces';
 import { useAuth } from '@/auth/AuthContext';
+import { useTheme } from '@/contexts/ThemeContext';
 
 interface WorkspaceContextValue {
   /** The workspace currently treated as "active" for theming and header display. */
@@ -122,11 +123,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     [workspaces, activeId],
   );
 
-  // Apply (or remove) CSS variable overrides whenever the active workspace or
-  // its brandColor changes.
+  // Apply (or remove) CSS variable overrides whenever the active workspace,
+  // its brandColor, OR the resolved light/dark mode changes — the generated
+  // scale differs by mode (see applyBrandColor.ts), so a theme toggle must
+  // regenerate it even though the brand color itself didn't change.
+  const { resolvedTheme } = useTheme();
   useEffect(() => {
     applyBrandColor(activeWorkspace?.brandColor ?? null);
-  }, [activeWorkspace?.brandColor, activeWorkspace?.id]);
+  }, [activeWorkspace?.brandColor, activeWorkspace?.id, resolvedTheme]);
 
   const setActiveWorkspaceId = useCallback((id: string) => {
     setActiveId(id);

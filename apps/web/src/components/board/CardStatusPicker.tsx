@@ -193,7 +193,7 @@ export function CardStatusPicker({
           data-testid="card-status-menu"
           className={cn(
             'absolute left-0 top-6 z-50 min-w-[10rem] rounded-lg border border-ink-200',
-            'bg-white py-1 shadow-dropdown',
+            'bg-surface py-1 shadow-dropdown',
           )}
         >
           {statuses.map((s) => {

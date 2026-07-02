@@ -136,7 +136,7 @@ export function Mermaid({ code }: { code: string }) {
     >
       <div
         data-testid="mermaid-diagram"
-        className="nl-mermaid group relative my-3 overflow-hidden rounded-lg border border-ink-100 bg-white"
+        className="nl-mermaid group relative my-3 overflow-hidden rounded-lg border border-ink-100 bg-surface"
       >
         {/*
           Click anywhere on the diagram to open the zoom lightbox. stopPropagation
@@ -166,7 +166,7 @@ export function Mermaid({ code }: { code: string }) {
         {/* Hover/focus affordance so the zoom is discoverable. */}
         <span
           aria-hidden="true"
-          className="pointer-events-none absolute right-2 top-2 hidden items-center gap-1 rounded-md bg-white/90 px-1.5 py-0.5 text-[10px] font-medium text-ink-500 ring-1 ring-ink-200 backdrop-blur-sm group-hover:flex group-focus-within:flex"
+          className="pointer-events-none absolute right-2 top-2 hidden items-center gap-1 rounded-md bg-surface/90 px-1.5 py-0.5 text-[10px] font-medium text-ink-500 ring-1 ring-ink-200 backdrop-blur-sm group-hover:flex group-focus-within:flex"
         >
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
             <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.3-4.3M11 8v6M8 11h6M18 11a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -185,7 +185,7 @@ export function Mermaid({ code }: { code: string }) {
           >
             {/* Backdrop */}
             <div
-              className="fixed inset-0 bg-ink-900/40 backdrop-blur-[2px] animate-nl-fade-in"
+              className="fixed inset-0 bg-scrim/40 backdrop-blur-[2px] animate-nl-fade-in"
               onClick={() => setZoomOpen(false)}
               aria-hidden="true"
             />
@@ -193,7 +193,7 @@ export function Mermaid({ code }: { code: string }) {
             <div
               ref={lightboxRef}
               tabIndex={-1}
-              className="nl-modal-animate relative z-10 flex h-[92vh] w-full max-w-[96vw] flex-col overflow-hidden rounded-xl border border-ink-200 bg-white shadow-modal outline-none"
+              className="nl-modal-animate relative z-10 flex h-[92vh] w-full max-w-[96vw] flex-col overflow-hidden rounded-xl border border-ink-200 bg-surface shadow-modal outline-none"
             >
               <div className="flex items-center justify-between border-b border-ink-100 px-4 py-3">
                 <h2 className="font-display text-sm font-semibold tracking-[-0.01em] text-ink-900">
@@ -246,7 +246,7 @@ export function Mermaid({ code }: { code: string }) {
               {/* Canvas fills the remaining height and scrolls. */}
               <div
                 data-testid="mermaid-zoom-canvas"
-                className="flex-1 overflow-auto bg-white p-4"
+                className="flex-1 overflow-auto bg-surface p-4"
               >
                 <div
                   className="inline-block origin-top-left transition-transform duration-100"

@@ -3,9 +3,11 @@
  * rows are selected. Renders inside a portal so it floats above all page
  * content regardless of scroll position.
  *
- * Design: Dispatch tokens (ink/signal). The bar uses the same ink-800 surface
- * that the AppHeader uses so the "selected" state reads as a dispatch command
- * strip — intentional, authoritative, not a generic modal.
+ * Design: Dispatch tokens (ink/signal). The bar is a deliberately
+ * theme-invariant dark command strip — same look in light AND dark app mode
+ * (pinned to literal hex, not the `ink-*`/`signal-*` tokens which flip
+ * meaning under dark mode) — "selected" reads as an authoritative dispatch
+ * strip, not a generic modal.
  *
  * Mobile: At ≤639 px the controls collapse into a compact two-row layout
  * (selects stack, buttons stay inline). No horizontal overflow at 390 px.
@@ -148,9 +150,16 @@ export function BulkActionBar({
       aria-label="Bulk actions"
       data-testid="bulk-action-bar"
       className={cn(
+        // Deliberately theme-invariant "dark chrome" — this floating command
+        // strip always reads as an authoritative dark toolbar, in BOTH light
+        // and dark app mode (same rationale as e.g. VS Code's dark status
+        // bar). Pinned to literal hex (the light-mode ink-900/700/etc values)
+        // rather than the `ink-*`/`signal-*` tokens, which flip meaning in
+        // dark mode (`ink-900` becomes a near-white TEXT color there) — see
+        // docs/BACKLOG.md "Light / dark mode" and index.css's `.dark` block.
         'fixed inset-x-0 bottom-0 z-50',
-        'border-t border-ink-700/60',
-        'bg-ink-900 text-white',
+        'border-t border-[#374151]/60',
+        'bg-[#111827] text-white',
         'shadow-[0_-4px_24px_-4px_rgb(17_24_39/0.45)]',
         'animate-nl-fade-in',
       )}
@@ -169,7 +178,7 @@ export function BulkActionBar({
         </span>
 
         {/* Divider — desktop only */}
-        <span className="hidden h-5 w-px shrink-0 bg-ink-700 sm:block" aria-hidden="true" />
+        <span className="hidden h-5 w-px shrink-0 bg-[#374151] sm:block" aria-hidden="true" />
 
         {/* Controls row — wraps on mobile */}
         <div className="flex flex-wrap items-center gap-2">
@@ -255,10 +264,10 @@ export function BulkActionBar({
               onClick={() => setLabelPickerOpen((v) => !v)}
               className={cn(
                 'inline-flex h-8 items-center gap-1.5 rounded border px-2.5 text-xs font-medium transition-all duration-[120ms]',
-                'focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-400 focus-visible:ring-offset-1 focus-visible:ring-offset-ink-900',
+                'focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-400 focus-visible:ring-offset-1 focus-visible:ring-offset-[#111827]',
                 labelIds.length > 0
-                  ? 'border-signal-500 bg-signal-900/60 text-signal-200'
-                  : 'border-ink-600 bg-ink-800 text-ink-300 hover:border-ink-500 hover:text-white',
+                  ? 'border-signal-500 bg-[#1e3a8a]/60 text-[#bfdbfe]'
+                  : 'border-[#4b5563] bg-[#1f2937] text-[#c4cad6] hover:border-[#6b7280] hover:text-white',
               )}
             >
               <svg
@@ -288,12 +297,12 @@ export function BulkActionBar({
               <div
                 role="dialog"
                 aria-label="Pick labels to add"
-                className="absolute bottom-full left-0 z-50 mb-2 min-w-[160px] rounded-lg border border-ink-700 bg-ink-800 p-1 shadow-dropdown"
+                className="absolute bottom-full left-0 z-50 mb-2 min-w-[160px] rounded-lg border border-[#374151] bg-[#1f2937] p-1 shadow-dropdown"
                 onKeyDown={(e) => {
                   if (e.key === 'Escape') setLabelPickerOpen(false);
                 }}
               >
-                <p className="mb-1 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-ink-400">
+                <p className="mb-1 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-[#8b95a8]">
                   Add labels
                 </p>
                 {labels.map((label) => {
@@ -311,14 +320,14 @@ export function BulkActionBar({
                             : [...prev, label.id],
                         );
                       }}
-                      className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-xs text-ink-200 hover:bg-ink-700 focus:bg-ink-700 focus:outline-none"
+                      className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-xs text-[#dde1e9] hover:bg-[#374151] focus:bg-[#374151] focus:outline-none"
                     >
                       <span
                         className={cn(
                           'flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-sm border',
                           checked
                             ? 'border-signal-500 bg-signal-600 text-white'
-                            : 'border-ink-500',
+                            : 'border-[#6b7280]',
                         )}
                         aria-hidden="true"
                       >
@@ -353,7 +362,7 @@ export function BulkActionBar({
               </div>
             )}
             {labelPickerOpen && labels.length === 0 && (
-              <div className="absolute bottom-full left-0 z-50 mb-2 rounded-lg border border-ink-700 bg-ink-800 p-3 text-xs text-ink-400 shadow-dropdown">
+              <div className="absolute bottom-full left-0 z-50 mb-2 rounded-lg border border-[#374151] bg-[#1f2937] p-3 text-xs text-[#8b95a8] shadow-dropdown">
                 No labels in this project yet.
               </div>
             )}
@@ -381,7 +390,7 @@ export function BulkActionBar({
             variant="ghost"
             disabled={isPending}
             onClick={handleClear}
-            className="text-ink-300 hover:bg-ink-700 hover:text-white"
+            className="text-[#c4cad6] hover:bg-[#374151] hover:text-white"
           >
             Clear
           </Button>
@@ -421,10 +430,10 @@ function BarSelect({
         onChange={(e) => onChange(e.target.value)}
         className={cn(
           'h-8 appearance-none rounded border px-2.5 pr-7 text-xs font-medium transition-all duration-[120ms]',
-          'focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-400 focus-visible:ring-offset-1 focus-visible:ring-offset-ink-900',
+          'focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-400 focus-visible:ring-offset-1 focus-visible:ring-offset-[#111827]',
           value === UNSET
-            ? 'border-ink-600 bg-ink-800 text-ink-300 hover:border-ink-500 hover:text-white'
-            : 'border-signal-500 bg-signal-900/60 text-signal-200',
+            ? 'border-[#4b5563] bg-[#1f2937] text-[#c4cad6] hover:border-[#6b7280] hover:text-white'
+            : 'border-signal-500 bg-[#1e3a8a]/60 text-[#bfdbfe]',
           // Custom chevron
           "bg-[url('data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 fill=%22none%22 viewBox=%220 0 24 24%22 stroke=%22%238b95a8%22 stroke-width=%222%22><path stroke-linecap=%22round%22 stroke-linejoin=%22round%22 d=%22M19 9l-7 7-7-7%22/></svg>')] bg-[length:12px] bg-[right_0.4rem_center] bg-no-repeat",
         )}
@@ -469,7 +478,7 @@ export function BulkSelectCheckbox({
           'flex h-4 w-4 items-center justify-center rounded border transition-all duration-[120ms]',
           checked
             ? 'border-signal-600 bg-signal-600 text-white'
-            : 'border-ink-300 bg-white hover:border-signal-400',
+            : 'border-ink-300 bg-surface hover:border-signal-400',
         )}
         aria-hidden="true"
       >
@@ -537,7 +546,7 @@ export function BulkSelectAll({
           'flex h-4 w-4 items-center justify-center rounded border transition-all duration-[120ms]',
           isAll || isIndeterminate
             ? 'border-signal-600 bg-signal-600 text-white'
-            : 'border-ink-300 bg-white hover:border-signal-400',
+            : 'border-ink-300 bg-surface hover:border-signal-400',
         )}
         aria-hidden="true"
       >

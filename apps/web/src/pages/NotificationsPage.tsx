@@ -165,7 +165,7 @@ function NotificationRow({ notification: n, onAction }: RowProps) {
           'group flex w-full items-start gap-3 border-b border-ink-100 px-4 py-3.5 text-left outline-none last:border-0',
           'transition-colors duration-[120ms] hover:bg-ink-50',
           'focus-visible:bg-ink-50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-signal-500',
-          n.read ? 'bg-white' : 'bg-signal-50/50',
+          n.read ? 'bg-surface' : 'bg-signal-50/50',
         )}
         aria-label={`${n.message}${n.read ? '' : ' (unread)'}`}
       >
@@ -245,7 +245,7 @@ function FilterPills({ active, onChange, counts }: FilterPillsProps) {
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal-500 focus-visible:ring-offset-1',
               isActive
                 ? 'border-signal-600 bg-signal-600 text-white shadow-sm'
-                : 'border-ink-200 bg-white text-ink-600 hover:border-ink-300 hover:bg-ink-50 hover:text-ink-900',
+                : 'border-ink-200 bg-surface text-ink-600 hover:border-ink-300 hover:bg-ink-50 hover:text-ink-900',
             )}
           >
             {opt.label}
@@ -253,7 +253,7 @@ function FilterPills({ active, onChange, counts }: FilterPillsProps) {
               <span
                 className={cn(
                   'rounded-full px-1.5 py-px text-[10px] font-semibold leading-none',
-                  isActive ? 'bg-white/25 text-white' : 'bg-ink-100 text-ink-600',
+                  isActive ? 'bg-surface/25 text-white' : 'bg-ink-100 text-ink-600',
                 )}
               >
                 {count}
@@ -355,7 +355,7 @@ export function NotificationsPage() {
               onClick={onMarkAll}
               disabled={markAll.isPending}
               className={cn(
-                'inline-flex items-center gap-1.5 rounded-lg border border-ink-200 bg-white px-3 py-1.5 text-sm font-medium text-ink-700',
+                'inline-flex items-center gap-1.5 rounded-lg border border-ink-200 bg-surface px-3 py-1.5 text-sm font-medium text-ink-700',
                 'shadow-xs transition-colors duration-[120ms]',
                 'hover:border-ink-300 hover:bg-ink-50 hover:text-ink-900',
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal-500 focus-visible:ring-offset-1',
@@ -390,7 +390,7 @@ export function NotificationsPage() {
 
         {/* Loading skeletons */}
         {isLoading && (
-          <div className="overflow-hidden rounded-xl border border-ink-200 bg-white shadow-xs">
+          <div className="overflow-hidden rounded-xl border border-ink-200 bg-surface shadow-xs">
             <ul aria-label="Loading notifications" aria-busy="true">
               {Array.from({ length: 6 }).map((_, i) => (
                 <NotificationSkeleton key={i} />
@@ -401,7 +401,7 @@ export function NotificationsPage() {
 
         {/* Error state */}
         {isError && !isLoading && (
-          <div className="rounded-xl border border-ink-200 bg-white shadow-xs">
+          <div className="rounded-xl border border-ink-200 bg-surface shadow-xs">
             <ErrorState error={error} onRetry={() => refetch()} />
           </div>
         )}
@@ -437,7 +437,7 @@ export function NotificationsPage() {
 
         {/* Notification list */}
         {!isLoading && !isError && filtered.length > 0 && (
-          <div className="overflow-hidden rounded-xl border border-ink-200 bg-white shadow-xs">
+          <div className="overflow-hidden rounded-xl border border-ink-200 bg-surface shadow-xs">
             <ul aria-label="Notifications" role="list">
               {filtered.map((n) => (
                 <NotificationRow

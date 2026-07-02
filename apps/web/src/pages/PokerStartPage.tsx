@@ -111,7 +111,7 @@ export function PokerStartPage() {
                 <Link
                   to={`/projects/${projectId}/poker/${session.id}`}
                   className={cn(
-                    'flex items-center gap-3 rounded-xl border border-ink-200 bg-white',
+                    'flex items-center gap-3 rounded-xl border border-ink-200 bg-surface',
                     'px-4 py-3 shadow-card transition-all duration-[120ms]',
                     'hover:border-signal-300 hover:shadow-cardHover',
                     'focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-500',
@@ -299,7 +299,7 @@ function CreateSessionModal({
               value={selectedSprintId}
               onChange={(e) => handleSprintChange(e.target.value)}
               className={cn(
-                'w-full rounded border border-ink-200 bg-white px-3 py-2 text-sm text-ink-900',
+                'w-full rounded border border-ink-200 bg-surface px-3 py-2 text-sm text-ink-900',
                 'focus:border-signal-400 focus:outline-none focus:ring-2 focus:ring-signal-200',
               )}
             >

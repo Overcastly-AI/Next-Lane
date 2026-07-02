@@ -88,7 +88,7 @@ export function NotificationBell() {
           <div
             role="menu"
             aria-label="Notifications"
-            className="absolute right-0 z-20 mt-2 flex max-h-[28rem] w-80 flex-col overflow-hidden rounded-xl border border-ink-100 bg-white shadow-dropdown sm:w-96"
+            className="absolute right-0 z-20 mt-2 flex max-h-[28rem] w-80 flex-col overflow-hidden rounded-xl border border-ink-100 bg-surface shadow-dropdown sm:w-96"
           >
             <div className="flex items-center justify-between border-b border-ink-100 px-3 py-2">
               <p className="font-display text-sm font-semibold text-ink-900">Notifications</p>

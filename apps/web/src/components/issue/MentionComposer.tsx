@@ -277,7 +277,7 @@ export const MentionComposer = forwardRef<
           aria-label="Select a member to mention"
           className={cn(
             'absolute top-full left-0 z-50 mt-1 w-72',
-            'max-h-48 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-cardHover',
+            'max-h-48 overflow-y-auto rounded-lg border border-slate-200 bg-surface shadow-cardHover',
           )}
         >
           {hasResults ? (

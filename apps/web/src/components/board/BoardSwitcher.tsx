@@ -574,7 +574,7 @@ export function BoardSwitcher({
           aria-label={selected ? `Board: ${selected.name}` : 'Select board'}
           onClick={() => setOpen((v) => !v)}
           className={cn(
-            'inline-flex h-8 items-center gap-2 rounded-lg border border-slate-200 bg-white px-2.5 text-sm font-semibold text-slate-800',
+            'inline-flex h-8 items-center gap-2 rounded-lg border border-slate-200 bg-surface px-2.5 text-sm font-semibold text-slate-800',
             'transition-colors hover:bg-slate-50 hover:border-slate-300',
             'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200',
             open && 'border-brand-300 bg-brand-50',
@@ -625,7 +625,7 @@ export function BoardSwitcher({
             aria-label="Board list"
             className={cn(
               'absolute left-0 top-full z-30 mt-1 min-w-[220px] rounded-xl border border-slate-200',
-              'bg-white p-1.5 shadow-dropdown',
+              'bg-surface p-1.5 shadow-dropdown',
             )}
           >
             {/* Board list */}

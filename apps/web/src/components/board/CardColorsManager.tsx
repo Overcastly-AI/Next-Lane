@@ -92,7 +92,7 @@ function ColorPicker({ value, onChange, 'data-testid': testId }: ColorPickerProp
               'hover:scale-110 active:scale-95',
               value.toLowerCase() === c.hex.toLowerCase()
                 ? 'border-slate-800 ring-2 ring-slate-400 ring-offset-1'
-                : 'border-white shadow-xs',
+                : 'border-surface shadow-xs',
             )}
           />
         ))}
@@ -173,7 +173,7 @@ function RuleRowEditor({
     <div
       data-testid="color-rule-row"
       data-rule-id={rule.id}
-      className="rounded-lg border border-slate-200 bg-white p-3 shadow-xs"
+      className="rounded-lg border border-slate-200 bg-surface p-3 shadow-xs"
     >
       {/* Header row: rule number + reorder + delete */}
       <div className="mb-2 flex items-center justify-between gap-2">

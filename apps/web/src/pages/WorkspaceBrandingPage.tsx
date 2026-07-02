@@ -113,7 +113,7 @@ function LogoSection({ workspaceId }: { workspaceId: string }) {
 
   return (
     <section
-      className="rounded-xl border border-ink-200 bg-white p-5 shadow-card"
+      className="rounded-xl border border-ink-200 bg-surface p-5 shadow-card"
       aria-labelledby="logo-section-heading"
     >
       <h2 id="logo-section-heading" className="mb-1 text-sm font-semibold text-ink-900">
@@ -143,7 +143,7 @@ function LogoSection({ workspaceId }: { workspaceId: string }) {
           <label
             htmlFor="logo-upload-input"
             className={cn(
-              'inline-flex cursor-pointer items-center gap-2 rounded-md border border-ink-200 bg-white px-3.5 py-2 text-sm font-semibold text-ink-700 shadow-xs transition-colors duration-[120ms]',
+              'inline-flex cursor-pointer items-center gap-2 rounded-md border border-ink-200 bg-surface px-3.5 py-2 text-sm font-semibold text-ink-700 shadow-xs transition-colors duration-[120ms]',
               'hover:border-ink-300 hover:bg-ink-50 focus-within:ring-2 focus-within:ring-signal-200',
               upload.isPending && 'cursor-not-allowed opacity-60',
             )}
@@ -297,7 +297,7 @@ function ColorSection({ workspaceId }: { workspaceId: string }) {
 
   return (
     <section
-      className="rounded-xl border border-ink-200 bg-white p-5 shadow-card"
+      className="rounded-xl border border-ink-200 bg-surface p-5 shadow-card"
       aria-labelledby="color-section-heading"
       data-testid="branding-settings"
     >
@@ -414,7 +414,7 @@ function ColorSection({ workspaceId }: { workspaceId: string }) {
             aria-hidden="true"
           >
             <span
-              className="h-1.5 w-1.5 rounded-full bg-white/80"
+              className="h-1.5 w-1.5 rounded-full bg-surface/80"
               aria-hidden="true"
             />
             In Progress

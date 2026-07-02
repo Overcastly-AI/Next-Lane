@@ -15,7 +15,7 @@ export function OnboardingPanel({
   return (
     <div
       data-testid="onboarding-panel"
-      className="mx-auto max-w-lg rounded-2xl border border-dashed border-brand-200 bg-white px-8 py-10 text-center shadow-card"
+      className="mx-auto max-w-lg rounded-2xl border border-dashed border-brand-200 bg-surface px-8 py-10 text-center shadow-card"
     >
       {/* Brand mark */}
       <div className="mb-5 flex justify-center">

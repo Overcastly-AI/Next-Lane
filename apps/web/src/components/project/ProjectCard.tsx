@@ -10,7 +10,7 @@ export function ProjectCard({
   return (
     <button
       onClick={onClick}
-      className="group flex flex-col items-start gap-3 rounded-xl border border-ink-200 bg-white p-4 text-left shadow-card transition-all duration-[120ms] hover:-translate-y-0.5 hover:border-signal-200 hover:shadow-cardHover focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-400"
+      className="group flex flex-col items-start gap-3 rounded-xl border border-ink-200 bg-surface p-4 text-left shadow-card transition-all duration-[120ms] hover:-translate-y-0.5 hover:border-signal-200 hover:shadow-cardHover focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-400"
     >
       {/* Project key badge — cobalt fill */}
       <span className="flex h-9 w-9 items-center justify-center rounded font-display text-sm font-bold bg-signal-50 text-signal-700 border border-signal-100 group-hover:bg-signal-100 transition-colors duration-[120ms]">

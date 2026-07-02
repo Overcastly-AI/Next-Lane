@@ -65,7 +65,7 @@ export function ComponentsSection({
 
   return (
     <section
-      className="rounded-xl border border-ink-200 bg-white p-4 shadow-card sm:p-5"
+      className="rounded-xl border border-ink-200 bg-surface p-4 shadow-card sm:p-5"
       data-testid="components-section"
     >
       <div className="mb-4 flex items-start justify-between gap-3">
@@ -306,7 +306,7 @@ function AddComponentModal({
             id="comp-assignee"
             value={defaultAssigneeId}
             onChange={(e) => setDefaultAssigneeId(e.target.value)}
-            className="w-full rounded border border-ink-200 bg-white px-2 py-1.5 text-sm text-ink-800 transition-colors duration-[120ms] hover:border-ink-300 focus:border-signal-400 focus:outline-none focus:ring-2 focus:ring-signal-200"
+            className="w-full rounded border border-ink-200 bg-surface px-2 py-1.5 text-sm text-ink-800 transition-colors duration-[120ms] hover:border-ink-300 focus:border-signal-400 focus:outline-none focus:ring-2 focus:ring-signal-200"
           >
             <option value="">None</option>
             {users.map((u) => (
@@ -427,7 +427,7 @@ function EditComponentModal({
             id="ecomp-assignee"
             value={defaultAssigneeId}
             onChange={(e) => setDefaultAssigneeId(e.target.value)}
-            className="w-full rounded border border-ink-200 bg-white px-2 py-1.5 text-sm text-ink-800 transition-colors duration-[120ms] hover:border-ink-300 focus:border-signal-400 focus:outline-none focus:ring-2 focus:ring-signal-200"
+            className="w-full rounded border border-ink-200 bg-surface px-2 py-1.5 text-sm text-ink-800 transition-colors duration-[120ms] hover:border-ink-300 focus:border-signal-400 focus:outline-none focus:ring-2 focus:ring-signal-200"
           >
             <option value="">None</option>
             {users.map((u) => (

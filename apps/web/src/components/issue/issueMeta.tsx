@@ -72,7 +72,11 @@ export function PriorityIcon({
           className="w-[3px] rounded-sm"
           style={{
             height: `${n * 25}%`,
-            backgroundColor: n <= bars ? color : '#e5e7eb',
+            // Unfilled bars use the `ink-200` border-role token (not a literal
+            // hex) so they stay a subtle dim tick rather than a bright patch
+            // in dark mode — filled bars keep their fixed, mode-invariant
+            // saturated priority hue (legible on both canvases either way).
+            backgroundColor: n <= bars ? color : 'var(--nl-ink-200)',
           }}
         />
       ))}

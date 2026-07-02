@@ -13,6 +13,7 @@
 import { cn } from '@/lib/cn';
 import { useSidebarContext } from '@/contexts/SidebarContext';
 import { SidebarNavContent } from './SidebarNavContent';
+import { ThemeToggle } from '@/components/ThemeToggle';
 import { RailChevronIcon } from './sidebarIcons';
 
 export function AppSidebar() {
@@ -32,12 +33,18 @@ export function AppSidebar() {
       data-testid="nav-sidebar"
       aria-label="Primary"
       className={cn(
-        'sticky top-0 hidden h-screen shrink-0 flex-col border-r border-ink-200 bg-white lg:flex',
+        'sticky top-0 hidden h-screen shrink-0 flex-col border-r border-ink-200 bg-surface lg:flex',
         'transition-[width] duration-[180ms] motion-reduce:transition-none',
         collapsed ? 'w-14' : 'w-60',
       )}
     >
       <SidebarNavContent collapsed={collapsed} />
+
+      {/* Utility area — theme toggle sits above the collapse control, mirrors
+          the "Personal"/"Workspace settings" section pattern above it. */}
+      <div className={cn('border-t border-ink-100 p-2', collapsed && 'flex justify-center')}>
+        <ThemeToggle collapsed={collapsed} />
+      </div>
 
       <div className="border-t border-ink-100 p-2">
         <button

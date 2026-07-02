@@ -67,7 +67,7 @@ export function BoardWorkflowSelector({
           disabled={assignWorkflow.isPending}
           aria-label="Board workflow"
           className={cn(
-            'h-7 appearance-none rounded-md border border-slate-200 bg-white pl-2 pr-7 text-xs font-medium text-slate-700',
+            'h-7 appearance-none rounded-md border border-slate-200 bg-surface pl-2 pr-7 text-xs font-medium text-slate-700',
             'transition-colors hover:border-slate-300',
             'focus:border-signal-400 focus:outline-none focus:ring-2 focus:ring-signal-200',
             assignWorkflow.isPending && 'opacity-50 cursor-not-allowed',

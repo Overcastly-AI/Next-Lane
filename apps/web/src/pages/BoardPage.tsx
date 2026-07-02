@@ -908,7 +908,7 @@ export function BoardPage() {
                 'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200',
                 colorRules.length > 0
                   ? 'border-signal-300 bg-signal-50 text-signal-700 hover:bg-signal-100'
-                  : 'border-ink-200 bg-white text-ink-600 hover:bg-ink-50',
+                  : 'border-ink-200 bg-surface text-ink-600 hover:bg-ink-50',
               )}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
@@ -1206,7 +1206,7 @@ function LabelFilter({
           'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200',
           count > 0
             ? 'border-brand-300 bg-brand-50 text-brand-700'
-            : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50',
+            : 'border-slate-300 bg-surface text-slate-700 hover:bg-slate-50',
         )}
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
@@ -1220,7 +1220,7 @@ function LabelFilter({
         <div
           role="dialog"
           aria-label="Filter by label"
-          className="absolute left-0 z-20 mt-2 w-60 rounded-lg border border-slate-200 bg-white p-2 shadow-cardHover"
+          className="absolute left-0 z-20 mt-2 w-60 rounded-lg border border-slate-200 bg-surface p-2 shadow-cardHover"
         >
           {labels.length === 0 ? (
             <p className="px-1 py-2 text-xs text-slate-400">No labels yet.</p>
@@ -1343,7 +1343,7 @@ function MultiSelectFilter<T extends string>({
           'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200',
           count > 0
             ? 'border-brand-300 bg-brand-50 text-brand-700'
-            : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50',
+            : 'border-slate-300 bg-surface text-slate-700 hover:bg-slate-50',
         )}
       >
         {icon}
@@ -1354,7 +1354,7 @@ function MultiSelectFilter<T extends string>({
         <div
           role="dialog"
           aria-label={ariaLabel}
-          className="absolute left-0 z-20 mt-2 w-52 rounded-lg border border-slate-200 bg-white p-2 shadow-cardHover"
+          className="absolute left-0 z-20 mt-2 w-52 rounded-lg border border-slate-200 bg-surface p-2 shadow-cardHover"
         >
           <ul className="max-h-64 space-y-0.5 overflow-y-auto">
             {options.map((opt) => {
@@ -1586,7 +1586,7 @@ function QuickFilterBar({
               'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200',
               active
                 ? 'border-brand-600 bg-brand-600 text-white hover:bg-brand-700'
-                : 'border-ink-200 bg-white text-ink-600 hover:border-ink-300 hover:bg-ink-50',
+                : 'border-ink-200 bg-surface text-ink-600 hover:border-ink-300 hover:bg-ink-50',
             )}
           >
             {preset.icon}
@@ -1793,7 +1793,7 @@ function NlqlQueryBar({
                 'inline-flex h-9 items-center gap-1.5 rounded-lg border px-2.5 text-sm transition-colors',
                 'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200',
                 savedFilters.length > 0
-                  ? 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
+                  ? 'border-slate-300 bg-surface text-slate-700 hover:bg-slate-50'
                   : 'border-slate-200 bg-slate-50 text-slate-400',
               )}
             >
@@ -1809,7 +1809,7 @@ function NlqlQueryBar({
               <div
                 role="menu"
                 aria-label="Saved filters menu"
-                className="absolute left-0 z-30 mt-1.5 w-64 rounded-lg border border-slate-200 bg-white shadow-cardHover"
+                className="absolute left-0 z-30 mt-1.5 w-64 rounded-lg border border-slate-200 bg-surface shadow-cardHover"
               >
                 <div className="border-b border-slate-100 px-3 py-2">
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
@@ -1903,7 +1903,7 @@ function NlqlQueryBar({
               aria-label="NLQL query help"
               aria-expanded={helpOpen}
               onClick={() => setHelpOpen((v) => !v)}
-              className="inline-flex h-9 w-9 items-center justify-center rounded border border-ink-200 bg-white text-ink-500 transition-colors duration-[120ms] hover:bg-ink-50 hover:text-ink-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-200"
+              className="inline-flex h-9 w-9 items-center justify-center rounded border border-ink-200 bg-surface text-ink-500 transition-colors duration-[120ms] hover:bg-ink-50 hover:text-ink-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-200"
             >
               <span className="text-xs font-bold leading-none">?</span>
             </button>
@@ -1912,7 +1912,7 @@ function NlqlQueryBar({
               <div
                 role="dialog"
                 aria-label="NLQL help"
-                className="absolute right-0 z-30 mt-1.5 w-72 rounded-lg border border-slate-200 bg-white p-3 shadow-cardHover"
+                className="absolute right-0 z-30 mt-1.5 w-72 rounded-lg border border-slate-200 bg-surface p-3 shadow-cardHover"
               >
                 <p className="mb-2 text-xs font-semibold text-slate-700">Query language reference</p>
                 <div className="space-y-1.5 text-xs text-slate-600">
@@ -2138,7 +2138,7 @@ function GroupBySelector({
           'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200',
           value
             ? 'border-brand-300 bg-brand-50 text-brand-700'
-            : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50',
+            : 'border-slate-300 bg-surface text-slate-700 hover:bg-slate-50',
         )}
       >
         {/* Rows/swimlane icon */}
@@ -2157,7 +2157,7 @@ function GroupBySelector({
         <div
           role="menu"
           aria-label="Group by menu"
-          className="absolute left-0 z-20 mt-2 w-44 rounded-lg border border-slate-200 bg-white p-1.5 shadow-cardHover"
+          className="absolute left-0 z-20 mt-2 w-44 rounded-lg border border-slate-200 bg-surface p-1.5 shadow-cardHover"
         >
           {/* None option */}
           <button

@@ -54,7 +54,7 @@ export function ReportsPage() {
 
         {/* Velocity */}
         <section
-          className="rounded-xl border border-ink-200 bg-white p-4 shadow-card sm:p-5"
+          className="rounded-xl border border-ink-200 bg-surface p-4 shadow-card sm:p-5"
           aria-labelledby="velocity-heading"
         >
           <div className="mb-3 flex items-center justify-between">
@@ -91,7 +91,7 @@ export function ReportsPage() {
 
         {/* Burndown */}
         <section
-          className="rounded-xl border border-ink-200 bg-white p-4 shadow-card sm:p-5"
+          className="rounded-xl border border-ink-200 bg-surface p-4 shadow-card sm:p-5"
           aria-labelledby="burndown-heading"
         >
           <div className="mb-3 flex items-center justify-between gap-3">
@@ -156,7 +156,7 @@ export function ReportsPage() {
 
         {/* Cumulative Flow Diagram */}
         <section
-          className="rounded-xl border border-ink-200 bg-white p-4 shadow-card sm:p-5"
+          className="rounded-xl border border-ink-200 bg-surface p-4 shadow-card sm:p-5"
           aria-labelledby="cfd-heading"
         >
           <div className="mb-3 flex items-center justify-between gap-3">

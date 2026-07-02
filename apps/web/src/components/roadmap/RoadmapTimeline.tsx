@@ -194,7 +194,7 @@ export function RoadmapTimeline({
                 type="button"
                 onClick={() => onOpenEpic(e.id)}
                 data-testid="roadmap-epic-nodate"
-                className="flex items-center justify-between rounded-md border border-slate-200 bg-white px-3 py-2 text-left text-sm hover:border-brand-300 hover:bg-brand-50"
+                className="flex items-center justify-between rounded-md border border-slate-200 bg-surface px-3 py-2 text-left text-sm hover:border-brand-300 hover:bg-brand-50"
               >
                 <span className="flex items-center gap-2">
                   <span className="font-mono text-xs text-slate-400">{e.key}</span>

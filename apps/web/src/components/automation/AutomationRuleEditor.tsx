@@ -371,7 +371,7 @@ export function AutomationRuleEditor({
               >
                 <span
                   className={cn(
-                    'inline-block h-4 w-4 transform rounded-full bg-white shadow transition duration-200',
+                    'inline-block h-4 w-4 transform rounded-full bg-surface shadow transition duration-200',
                     enabled ? 'translate-x-4' : 'translate-x-0',
                   )}
                 />

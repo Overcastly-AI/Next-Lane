@@ -104,7 +104,7 @@ function LinkRow({
   return (
     <div
       data-testid="issue-link-row"
-      className="flex items-center gap-1.5 rounded-md border border-ink-100 bg-white px-2 py-1.5 transition-colors duration-[120ms] hover:border-ink-200"
+      className="flex items-center gap-1.5 rounded-md border border-ink-100 bg-surface px-2 py-1.5 transition-colors duration-[120ms] hover:border-ink-200"
     >
       <button
         type="button"

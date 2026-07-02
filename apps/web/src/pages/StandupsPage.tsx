@@ -152,7 +152,7 @@ function DateSelector({
         type="button"
         aria-label="Previous day"
         onClick={() => onChange(offsetDate(date, -1))}
-        className="inline-flex h-8 w-8 items-center justify-center rounded border border-ink-200 bg-white text-ink-500 hover:bg-ink-50 hover:text-ink-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-200 transition-colors duration-[120ms]"
+        className="inline-flex h-8 w-8 items-center justify-center rounded border border-ink-200 bg-surface text-ink-500 hover:bg-ink-50 hover:text-ink-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-200 transition-colors duration-[120ms]"
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
           <path strokeLinecap="round" strokeLinejoin="round" d="M15 18l-6-6 6-6" />
@@ -171,7 +171,7 @@ function DateSelector({
         onChange={(e) => {
           if (e.target.value) onChange(e.target.value);
         }}
-        className="h-8 rounded border border-ink-200 bg-white px-2 text-sm text-ink-900 focus:border-signal-500 focus:outline-none focus:ring-2 focus:ring-signal-200 transition-all duration-[120ms]"
+        className="h-8 rounded border border-ink-200 bg-surface px-2 text-sm text-ink-900 focus:border-signal-500 focus:outline-none focus:ring-2 focus:ring-signal-200 transition-all duration-[120ms]"
       />
 
       <span className="min-w-[4.5rem] text-center text-sm font-medium text-ink-700">
@@ -183,7 +183,7 @@ function DateSelector({
         aria-label="Next day"
         disabled={date >= today}
         onClick={() => onChange(offsetDate(date, 1))}
-        className="inline-flex h-8 w-8 items-center justify-center rounded border border-ink-200 bg-white text-ink-500 hover:bg-ink-50 hover:text-ink-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-200 disabled:cursor-not-allowed disabled:opacity-40 transition-colors duration-[120ms]"
+        className="inline-flex h-8 w-8 items-center justify-center rounded border border-ink-200 bg-surface text-ink-500 hover:bg-ink-50 hover:text-ink-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-200 disabled:cursor-not-allowed disabled:opacity-40 transition-colors duration-[120ms]"
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
           <path strokeLinecap="round" strokeLinejoin="round" d="M9 18l6-6-6-6" />
@@ -296,7 +296,7 @@ function MyStandupCard({
     return (
       <section
         aria-label="My standup"
-        className="rounded-xl border border-ink-200 bg-white p-5 shadow-card"
+        className="rounded-xl border border-ink-200 bg-surface p-5 shadow-card"
       >
         <LoadingState label="Loading your standup…" />
       </section>
@@ -307,7 +307,7 @@ function MyStandupCard({
     return (
       <section
         aria-label="My standup"
-        className="rounded-xl border border-ink-200 bg-white p-5 shadow-card"
+        className="rounded-xl border border-ink-200 bg-surface p-5 shadow-card"
       >
         <ErrorState error={error} onRetry={onRetry} />
       </section>
@@ -320,7 +320,7 @@ function MyStandupCard({
   return (
     <section
       aria-labelledby="my-standup-heading"
-      className="rounded-xl border border-ink-200 bg-white shadow-card"
+      className="rounded-xl border border-ink-200 bg-surface shadow-card"
     >
       {/* Card header */}
       <div className="flex items-center justify-between gap-3 border-b border-ink-100 px-5 py-3">
@@ -342,7 +342,7 @@ function MyStandupCard({
           disabled={prefillQuery.isFetching || isPending}
           onClick={() => void handlePrefill()}
           className={cn(
-            'inline-flex items-center gap-1.5 rounded border border-ink-200 bg-white px-3 py-1.5 text-xs font-medium text-ink-600',
+            'inline-flex items-center gap-1.5 rounded border border-ink-200 bg-surface px-3 py-1.5 text-xs font-medium text-ink-600',
             'hover:bg-ink-50 hover:border-ink-300 hover:text-ink-900',
             'focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-200',
             'disabled:cursor-not-allowed disabled:opacity-50',
@@ -561,7 +561,7 @@ function BlockerIssuePicker({
           onFocus={() => setOpen(true)}
           disabled={disabled}
           className={cn(
-            'h-9 w-full rounded border border-ink-200 bg-white px-3 text-sm text-ink-900',
+            'h-9 w-full rounded border border-ink-200 bg-surface px-3 text-sm text-ink-900',
             'placeholder:text-ink-400 transition-all duration-[120ms]',
             'hover:border-ink-300',
             'focus:border-signal-500 focus:outline-none focus:ring-2 focus:ring-signal-200',
@@ -572,7 +572,7 @@ function BlockerIssuePicker({
           <ul
             role="listbox"
             aria-label="Blocker issue options"
-            className="absolute z-20 mt-1 max-h-52 w-full overflow-y-auto rounded-lg border border-ink-200 bg-white py-1 shadow-cardHover"
+            className="absolute z-20 mt-1 max-h-52 w-full overflow-y-auto rounded-lg border border-ink-200 bg-surface py-1 shadow-cardHover"
           >
             {filtered.map((issue) => {
               const checked = selectedSet.has(issue.id);
@@ -614,7 +614,7 @@ function BlockerIssuePicker({
           </ul>
         )}
         {open && term && filtered.length === 0 && (
-          <div className="absolute z-20 mt-1 w-full rounded-lg border border-ink-200 bg-white p-3 shadow-cardHover">
+          <div className="absolute z-20 mt-1 w-full rounded-lg border border-ink-200 bg-surface p-3 shadow-cardHover">
             <p className="text-sm text-ink-400">No issues match "{search}".</p>
           </div>
         )}
@@ -713,7 +713,7 @@ function StandupEntryCard({
       data-testid="standup-entry"
       aria-label={`Standup entry by ${entry.user?.name ?? 'Unknown'}`}
       className={cn(
-        'rounded-xl border bg-white shadow-card',
+        'rounded-xl border bg-surface shadow-card',
         hasBlockers ? 'border-amber-200' : 'border-ink-200',
       )}
     >

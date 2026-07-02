@@ -13,6 +13,32 @@
       falls back to import.meta.env.VITE_API_URL → 'http://localhost:4000'.
     -->
     <script src="/config.js" onerror="/* config.js absent — dev/preview mode */"></script>
+    <!--
+      Synchronous theme bootstrap — runs before any CSS/JS bundle paints so
+      there is no flash of the wrong theme. Mirrors the `nl.theme` preference
+      written by ThemeContext (src/contexts/ThemeContext.tsx): 'light' |
+      'dark' | 'system' (default, falls back to `prefers-color-scheme`).
+      Kept deliberately tiny and dependency-free — this is the ONE place in
+      the app allowed to touch the DOM before React mounts.
+    -->
+    <script>
+      (function () {
+        try {
+          var pref = localStorage.getItem('nl.theme');
+          var isDark =
+            pref === 'dark' ||
+            (pref !== 'light' &&
+              window.matchMedia &&
+              window.matchMedia('(prefers-color-scheme: dark)').matches);
+          var root = document.documentElement;
+          if (isDark) root.classList.add('dark');
+          root.style.colorScheme = isDark ? 'dark' : 'light';
+        } catch (e) {
+          /* localStorage/matchMedia unavailable — default to light, matches
+             the CSS :root default so this is a safe no-op either way. */
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -118,7 +118,7 @@ export function LabelPicker({
         <div
           role="dialog"
           aria-label="Edit labels"
-          className="absolute right-0 z-20 mt-2 w-72 rounded-lg border border-slate-200 bg-white p-2 shadow-cardHover"
+          className="absolute right-0 z-20 mt-2 w-72 rounded-lg border border-slate-200 bg-surface p-2 shadow-cardHover"
         >
           <LabelList
             labels={allLabels}

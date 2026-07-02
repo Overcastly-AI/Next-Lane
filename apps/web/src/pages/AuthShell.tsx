@@ -29,7 +29,7 @@ export function AuthShell({
             )}
           </div>
         </div>
-        <div className="rounded-xl border border-ink-200 bg-white p-6 shadow-modal">
+        <div className="rounded-xl border border-ink-200 bg-surface p-6 shadow-modal">
           {children}
         </div>
         {footer && <div className="mt-5 text-center">{footer}</div>}

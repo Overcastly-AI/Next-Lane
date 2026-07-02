@@ -66,7 +66,7 @@ function ShareErrorView({ message }: { message: string }) {
     message.toLowerCase().includes('not found');
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-slate-50 p-6">
-      <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-8 shadow-card text-center">
+      <div className="w-full max-w-md rounded-xl border border-slate-200 bg-surface p-8 shadow-card text-center">
         <div className="mb-4 flex justify-center">
           <span className="flex h-12 w-12 items-center justify-center rounded-full bg-red-100">
             <svg
@@ -160,7 +160,7 @@ export function SharedBoardPage() {
       {/* Read-only banner */}
       <header
         data-testid="shared-board-header"
-        className="flex shrink-0 items-center justify-between gap-4 border-b border-slate-200 bg-white px-4 py-3 shadow-sm"
+        className="flex shrink-0 items-center justify-between gap-4 border-b border-slate-200 bg-surface px-4 py-3 shadow-sm"
       >
         <div className="flex min-w-0 items-center gap-3">
           {/* Minimal brand mark */}

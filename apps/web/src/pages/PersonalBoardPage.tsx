@@ -324,7 +324,7 @@ function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex h-screen flex-col overflow-x-clip">
       <AppHeader />
-      <div className="flex items-center justify-between border-b border-ink-100 bg-white px-4 py-2.5">
+      <div className="flex items-center justify-between border-b border-ink-100 bg-surface px-4 py-2.5">
         <div>
           <h1 className="font-display text-sm font-bold tracking-[-0.01em] text-ink-900">
             My Board
@@ -533,7 +533,7 @@ function PersonalColumn({
                 <div
                   role="menu"
                   aria-label="Column color"
-                  className="absolute right-0 top-full z-30 mt-1 w-max rounded-lg border border-ink-200 bg-white p-2 shadow-dropdown"
+                  className="absolute right-0 top-full z-30 mt-1 w-max rounded-lg border border-ink-200 bg-surface p-2 shadow-dropdown"
                 >
                   <ColorSwatchPicker
                     value={column.color}
@@ -722,7 +722,7 @@ function PersonalCard({
             : undefined
         }
         className={cn(
-          'group relative cursor-pointer rounded-lg border border-ink-200 bg-white px-3 py-2.5 shadow-xs',
+          'group relative cursor-pointer rounded-lg border border-ink-200 bg-surface px-3 py-2.5 shadow-xs',
           'transition-shadow duration-[120ms]',
           dragging && 'shadow-cardHover opacity-50 rotate-[0.5deg]',
           !dragging && 'hover:shadow-card',
@@ -947,7 +947,7 @@ function MoveCardMenu({
       role="menu"
       aria-label="Move card to column"
       onBlur={handleBlur}
-      className="absolute left-0 top-full z-30 mt-1 w-44 rounded-lg border border-ink-200 bg-white py-1 shadow-dropdown"
+      className="absolute left-0 top-full z-30 mt-1 w-44 rounded-lg border border-ink-200 bg-surface py-1 shadow-dropdown"
     >
       {columns.map((col) => (
         <button
@@ -1011,7 +1011,7 @@ function AddCardComposer({
   return (
     <form
       onSubmit={(e) => void handleSubmit(e)}
-      className="rounded-lg border border-signal-300 bg-white p-2 shadow-xs"
+      className="rounded-lg border border-signal-300 bg-surface p-2 shadow-xs"
     >
       <input
         ref={inputRef}
@@ -1024,7 +1024,7 @@ function AddCardComposer({
         onKeyDown={(e) => {
           if (e.key === 'Escape') onClose();
         }}
-        className="w-full rounded border border-ink-200 bg-white px-2 py-1.5 text-sm text-ink-900 placeholder:text-ink-400 focus:border-signal-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-200"
+        className="w-full rounded border border-ink-200 bg-surface px-2 py-1.5 text-sm text-ink-900 placeholder:text-ink-400 focus:border-signal-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-200"
         aria-label="New card title"
       />
       <div className="mt-2 flex items-center gap-1.5">
@@ -1461,7 +1461,7 @@ function AddColumnForm() {
 
 function PersonalCardOverlay({ card }: { card: PersonalCardDto }) {
   return (
-    <div className="w-72 rounded-lg border border-ink-200 bg-white px-3 py-2.5 shadow-cardHover rotate-[1deg]">
+    <div className="w-72 rounded-lg border border-ink-200 bg-surface px-3 py-2.5 shadow-cardHover rotate-[1deg]">
       {card.promotedIssueId && (
         <span className="mb-1.5 inline-flex items-center gap-1 rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">
           Promoted

@@ -105,7 +105,7 @@ export function CustomFieldInput({
             onChange={(e: ChangeEvent<HTMLInputElement>) =>
               onChange(e.target.value || null)
             }
-            className="rounded-md border border-slate-200 bg-white px-2 py-1 text-sm text-slate-700 transition-colors focus:outline-none focus:ring-2 focus:ring-brand-400 disabled:cursor-not-allowed disabled:opacity-60"
+            className="rounded-md border border-slate-200 bg-surface px-2 py-1 text-sm text-slate-700 transition-colors focus:outline-none focus:ring-2 focus:ring-brand-400 disabled:cursor-not-allowed disabled:opacity-60"
           />
         </Field>
       );
@@ -148,7 +148,7 @@ export function CustomFieldInput({
             onChange={(e: ChangeEvent<HTMLSelectElement>) =>
               onChange(e.target.value || null)
             }
-            className="w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-700 transition-colors focus:outline-none focus:ring-2 focus:ring-brand-400 disabled:cursor-not-allowed disabled:opacity-60"
+            className="w-full rounded-md border border-slate-200 bg-surface px-2 py-1.5 text-sm text-slate-700 transition-colors focus:outline-none focus:ring-2 focus:ring-brand-400 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {!definition.required && <option value="">— None —</option>}
             {definition.options.map((opt) => (
@@ -173,7 +173,7 @@ export function CustomFieldInput({
         <Field label={label} htmlFor={`${testId}-0`}>
           <div
             data-testid={testId}
-            className="flex flex-col gap-1 rounded-md border border-slate-200 bg-white px-2 py-2"
+            className="flex flex-col gap-1 rounded-md border border-slate-200 bg-surface px-2 py-2"
           >
             {definition.options.length === 0 ? (
               <span className="text-xs text-slate-400">No options defined</span>

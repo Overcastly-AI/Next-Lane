@@ -103,7 +103,7 @@ function EnableToggle({
       <span
         aria-hidden="true"
         className={cn(
-          'inline-block h-4 w-4 transform rounded-full bg-white shadow transition duration-200',
+          'inline-block h-4 w-4 transform rounded-full bg-surface shadow transition duration-200',
           enabled ? 'translate-x-4' : 'translate-x-0',
         )}
       />
@@ -459,7 +459,7 @@ function RulesTab({
   }
 
   return (
-    <div className="overflow-hidden rounded-xl border border-ink-200 bg-white shadow-card">
+    <div className="overflow-hidden rounded-xl border border-ink-200 bg-surface shadow-card">
       <ul className="divide-y divide-ink-100">
         {rules.map((rule) => (
           <RuleRow

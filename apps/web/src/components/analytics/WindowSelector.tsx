@@ -33,7 +33,7 @@ export function WindowSelector({
           data-testid={`${testId}-${opt.value}`}
           className={`rounded-md px-3 py-1 text-xs font-semibold transition-all duration-[120ms] focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-300 ${
             days === opt.value
-              ? 'bg-white text-signal-700 shadow-xs'
+              ? 'bg-surface text-signal-700 shadow-xs'
               : 'text-ink-500 hover:text-ink-800'
           }`}
         >

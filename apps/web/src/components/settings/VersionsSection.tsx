@@ -117,7 +117,7 @@ export function VersionsSection({
 
   return (
     <section
-      className="rounded-xl border border-ink-200 bg-white p-4 shadow-card sm:p-5"
+      className="rounded-xl border border-ink-200 bg-surface p-4 shadow-card sm:p-5"
       data-testid="versions-section"
     >
       <div className="mb-4 flex items-start justify-between gap-3">
@@ -457,7 +457,7 @@ function AddVersionModal({
             aria-label="Release date"
             value={releaseDate}
             onChange={(e) => setReleaseDate(e.target.value)}
-            className="rounded border border-ink-200 bg-white px-2 py-1.5 text-sm text-ink-800 transition-colors duration-[120ms] hover:border-ink-300 focus:border-signal-400 focus:outline-none focus:ring-2 focus:ring-signal-200"
+            className="rounded border border-ink-200 bg-surface px-2 py-1.5 text-sm text-ink-800 transition-colors duration-[120ms] hover:border-ink-300 focus:border-signal-400 focus:outline-none focus:ring-2 focus:ring-signal-200"
           />
         </Field>
       </form>
@@ -570,7 +570,7 @@ function EditVersionModal({
             aria-label="Release date"
             value={releaseDate}
             onChange={(e) => setReleaseDate(e.target.value)}
-            className="rounded border border-ink-200 bg-white px-2 py-1.5 text-sm text-ink-800 transition-colors duration-[120ms] hover:border-ink-300 focus:border-signal-400 focus:outline-none focus:ring-2 focus:ring-signal-200"
+            className="rounded border border-ink-200 bg-surface px-2 py-1.5 text-sm text-ink-800 transition-colors duration-[120ms] hover:border-ink-300 focus:border-signal-400 focus:outline-none focus:ring-2 focus:ring-signal-200"
           />
         </Field>
       </form>

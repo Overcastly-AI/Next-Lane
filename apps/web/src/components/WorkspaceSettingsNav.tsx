@@ -25,7 +25,7 @@ const navLinkClass = ({ isActive }: { isActive: boolean }) =>
 export function WorkspaceSettingsNav({ workspaceId }: WorkspaceSettingsNavProps) {
   return (
     <nav
-      className="flex items-center gap-1 border-b border-ink-100 bg-white px-4 py-1"
+      className="flex items-center gap-1 border-b border-ink-100 bg-surface px-4 py-1"
       aria-label="Workspace settings navigation"
       data-testid="workspace-settings-nav"
     >

@@ -124,7 +124,7 @@ export function WorkflowSection({
   return (
     <section
       data-testid="workflow-settings"
-      className="rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:p-5"
+      className="rounded-xl border border-slate-200 bg-surface p-4 shadow-card sm:p-5"
     >
       {/* Section header */}
       <div className="mb-4 flex items-start justify-between gap-3">
@@ -291,7 +291,7 @@ function EnforcementToggle({
           <span
             aria-hidden="true"
             className={cn(
-              'inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform duration-200',
+              'inline-block h-3.5 w-3.5 rounded-full bg-surface shadow transition-transform duration-200',
               enforced ? 'translate-x-4' : 'translate-x-1',
             )}
           />
@@ -887,7 +887,7 @@ function GateEditor({
 // ---------------------------------------------------------------------------
 
 const selectClass =
-  'h-9 w-full appearance-none rounded border border-ink-200 bg-white px-3 pr-8 text-sm text-ink-900 ' +
+  'h-9 w-full appearance-none rounded border border-ink-200 bg-surface px-3 pr-8 text-sm text-ink-900 ' +
   'transition-all duration-[120ms] hover:border-ink-300 ' +
   'focus:border-signal-500 focus:outline-none focus:ring-2 focus:ring-signal-200 ' +
   "bg-[url('data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 fill=%22none%22 viewBox=%220 0 24 24%22 stroke=%22%238b95a8%22 stroke-width=%222%22><path stroke-linecap=%22round%22 stroke-linejoin=%22round%22 d=%22M19 9l-7 7-7-7%22/></svg>')] bg-[length:14px] bg-[right_0.5rem_center] bg-no-repeat";

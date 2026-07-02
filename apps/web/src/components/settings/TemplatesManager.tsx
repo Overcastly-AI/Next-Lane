@@ -106,7 +106,7 @@ export function TemplatesManager({
 
   return (
     <section
-      className="rounded-xl border border-ink-200 bg-white p-4 shadow-card sm:p-5"
+      className="rounded-xl border border-ink-200 bg-surface p-4 shadow-card sm:p-5"
       data-testid="templates-manager"
     >
       <div className="mb-4 flex items-start justify-between gap-3">
@@ -314,7 +314,7 @@ function TemplateFormFields({
             id={`${formId}-type`}
             value={issueType}
             onChange={(e) => onIssueTypeChange(e.target.value as IssueType)}
-            className="w-full rounded border border-ink-200 bg-white px-2 py-1.5 text-sm text-ink-800 transition-colors duration-[120ms] hover:border-ink-300 focus:border-signal-400 focus:outline-none focus:ring-2 focus:ring-signal-200"
+            className="w-full rounded border border-ink-200 bg-surface px-2 py-1.5 text-sm text-ink-800 transition-colors duration-[120ms] hover:border-ink-300 focus:border-signal-400 focus:outline-none focus:ring-2 focus:ring-signal-200"
           >
             {ISSUE_TYPES.map((t) => (
               <option key={t} value={t}>
@@ -329,7 +329,7 @@ function TemplateFormFields({
             id={`${formId}-priority`}
             value={priority}
             onChange={(e) => onPriorityChange(e.target.value)}
-            className="w-full rounded border border-ink-200 bg-white px-2 py-1.5 text-sm text-ink-800 transition-colors duration-[120ms] hover:border-ink-300 focus:border-signal-400 focus:outline-none focus:ring-2 focus:ring-signal-200"
+            className="w-full rounded border border-ink-200 bg-surface px-2 py-1.5 text-sm text-ink-800 transition-colors duration-[120ms] hover:border-ink-300 focus:border-signal-400 focus:outline-none focus:ring-2 focus:ring-signal-200"
           >
             <option value="">No default</option>
             {PRIORITIES.map((p) => (
@@ -367,7 +367,7 @@ function TemplateFormFields({
           id={`${formId}-assignee`}
           value={defaultAssigneeId}
           onChange={(e) => onDefaultAssigneeIdChange(e.target.value)}
-          className="w-full rounded border border-ink-200 bg-white px-2 py-1.5 text-sm text-ink-800 transition-colors duration-[120ms] hover:border-ink-300 focus:border-signal-400 focus:outline-none focus:ring-2 focus:ring-signal-200"
+          className="w-full rounded border border-ink-200 bg-surface px-2 py-1.5 text-sm text-ink-800 transition-colors duration-[120ms] hover:border-ink-300 focus:border-signal-400 focus:outline-none focus:ring-2 focus:ring-signal-200"
         >
           <option value="">None</option>
           {users.map((u) => (
@@ -384,7 +384,7 @@ function TemplateFormFields({
             id={`${formId}-component`}
             value={componentId}
             onChange={(e) => onComponentIdChange(e.target.value)}
-            className="w-full rounded border border-ink-200 bg-white px-2 py-1.5 text-sm text-ink-800 transition-colors duration-[120ms] hover:border-ink-300 focus:border-signal-400 focus:outline-none focus:ring-2 focus:ring-signal-200"
+            className="w-full rounded border border-ink-200 bg-surface px-2 py-1.5 text-sm text-ink-800 transition-colors duration-[120ms] hover:border-ink-300 focus:border-signal-400 focus:outline-none focus:ring-2 focus:ring-signal-200"
           >
             <option value="">None</option>
             {components.map((c) => (
@@ -411,7 +411,7 @@ function TemplateFormFields({
                     'flex cursor-pointer items-center gap-1.5 rounded border px-2 py-1 text-xs transition-colors duration-[120ms]',
                     checked
                       ? 'border-signal-300 bg-signal-50 text-signal-700'
-                      : 'border-ink-200 bg-white text-ink-600 hover:border-ink-300',
+                      : 'border-ink-200 bg-surface text-ink-600 hover:border-ink-300',
                   )}
                 >
                   <input

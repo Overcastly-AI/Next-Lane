@@ -86,7 +86,7 @@ export function FromTemplateMenu({
         disabled={createFromTemplate.isPending}
         onClick={() => setOpen((v) => !v)}
         className={cn(
-          'inline-flex h-9 items-center gap-1.5 rounded-md border border-ink-200 bg-white px-3.5 text-sm font-semibold text-ink-700 shadow-xs transition-all duration-[120ms]',
+          'inline-flex h-9 items-center gap-1.5 rounded-md border border-ink-200 bg-surface px-3.5 text-sm font-semibold text-ink-700 shadow-xs transition-all duration-[120ms]',
           'hover:bg-ink-50 hover:border-ink-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-500',
           createFromTemplate.isPending && 'cursor-wait opacity-60',
         )}
@@ -114,7 +114,7 @@ export function FromTemplateMenu({
           role="menu"
           aria-label="Issue templates"
           className={cn(
-            'absolute right-0 z-50 mt-1.5 min-w-[200px] max-w-[280px] overflow-hidden rounded-lg border border-ink-200 bg-white shadow-dropdown',
+            'absolute right-0 z-50 mt-1.5 min-w-[200px] max-w-[280px] overflow-hidden rounded-lg border border-ink-200 bg-surface shadow-dropdown',
             'motion-safe:animate-nl-fade-in',
           )}
         >

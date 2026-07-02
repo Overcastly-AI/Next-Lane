@@ -13,6 +13,7 @@ import { RequireAuth } from '@/auth/RequireAuth';
 import { ToastProvider } from '@/components/ui/Toast';
 import { CommandPaletteProvider } from '@/components/CommandPaletteProvider';
 import { WorkspaceProvider } from '@/contexts/WorkspaceContext';
+import { ThemeProvider } from '@/contexts/ThemeContext';
 import { SidebarProvider } from '@/contexts/SidebarContext';
 import { AppSidebar } from '@/components/nav/AppSidebar';
 import { MobileSidebarDrawer } from '@/components/nav/MobileSidebarDrawer';
@@ -107,6 +108,7 @@ export default function App() {
       <BrowserRouter>
         <AuthProvider>
           <ToastProvider>
+          <ThemeProvider>
           <WorkspaceProvider>
           <SidebarProvider>
           <CommandPaletteProvider>
@@ -220,6 +222,7 @@ export default function App() {
           </CommandPaletteProvider>
           </SidebarProvider>
           </WorkspaceProvider>
+          </ThemeProvider>
           </ToastProvider>
         </AuthProvider>
       </BrowserRouter>

@@ -66,7 +66,7 @@ export function PersonalAnalyticsPage() {
       <AppHeader />
 
       {/* Sub-header */}
-      <div className="flex items-center justify-between border-b border-ink-100 bg-white px-4 py-2.5">
+      <div className="flex items-center justify-between border-b border-ink-100 bg-surface px-4 py-2.5">
         <div>
           <h1 className="font-display text-sm font-bold tracking-[-0.01em] text-ink-900">
             My Analytics
@@ -145,7 +145,7 @@ export function PersonalAnalyticsPage() {
 
           {/* Throughput chart */}
           <section
-            className="rounded-xl border border-ink-200 bg-white p-4 shadow-card sm:p-5"
+            className="rounded-xl border border-ink-200 bg-surface p-4 shadow-card sm:p-5"
             aria-labelledby="throughput-heading"
           >
             <div className="mb-3">
@@ -176,7 +176,7 @@ export function PersonalAnalyticsPage() {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {/* By type */}
             <section
-              className="rounded-xl border border-ink-200 bg-white p-4 shadow-card sm:p-5"
+              className="rounded-xl border border-ink-200 bg-surface p-4 shadow-card sm:p-5"
               aria-labelledby="bytype-heading"
             >
               <h2
@@ -211,7 +211,7 @@ export function PersonalAnalyticsPage() {
 
             {/* By priority */}
             <section
-              className="rounded-xl border border-ink-200 bg-white p-4 shadow-card sm:p-5"
+              className="rounded-xl border border-ink-200 bg-surface p-4 shadow-card sm:p-5"
               aria-labelledby="bypriority-heading"
             >
               <h2
@@ -247,7 +247,7 @@ export function PersonalAnalyticsPage() {
 
           {/* Personal board mini-stats */}
           <section
-            className="rounded-xl border border-ink-200 bg-white p-4 shadow-card sm:p-5"
+            className="rounded-xl border border-ink-200 bg-surface p-4 shadow-card sm:p-5"
             aria-labelledby="board-stats-heading"
             data-testid="personal-board-stats"
           >
