@@ -50,6 +50,58 @@ head start). We win on **structural advantages they can't match**:
 If a capability doesn't exploit one of those four advantages, it's table stakes
 we ship to be credible — not where we differentiate.
 
+## The operating question
+
+Every roadmap decision, backlog item, and code review ultimately answers one
+question, per the founder's direct mandate:
+
+> **"Is this better than Jira?" If not, keep working and figure out how to be.**
+
+This is a deliberately higher bar than "a cheaper alternative" or "an
+open-source clone." The four structural advantages above are *why we can
+win* — moats the incumbent cannot follow us into no matter how much it
+spends. But they are not, by themselves, an answer to the operating
+question. A team that has run the incumbent for years, opens Next Lane, and
+finds it merely "free and good enough" has not been won. They have to feel
+that their daily driver got *better* the day they switched — faster,
+sharper, more theirs, more legible to the agents that now write half their
+code — not just cheaper.
+
+Concretely, the operating question resolves to a **daily-driver test**:
+could we hand this instance, today, to a team that has used the incumbent
+for years, and have them prefer it within the first week — not because it's
+free, but because the board is faster, the search is sharper, the workflow
+bends to their process instead of the other way around, and an agent can
+read/write their tracker in ways the incumbent structurally cannot allow?
+Where the honest answer is "not yet," that gap is the highest-priority work,
+full stop — ahead of any new pillar or moonshot. The scorecard below exists
+to keep that answer honest, not to flatter us.
+
+## Better-than-Jira scorecard
+
+Grounded in what's actually shipped (`docs/ROADMAP.md`) and the two
+independent Pass-11 audits (`docs/AUDIT-PRODUCT.md`, `docs/AUDIT-ENGINEERING.md`,
+both 2026-07-01/07-02). Re-scored by the vision-steward whenever the roadmap
+materially changes.
+
+| Dimension | Verdict | Evidence |
+|---|---|---|
+| Board speed & feel | **Better** | The DnD board has been rated 5/5 in every product-audit pass since Pass 3 — fractional-rank optimistic drag, live presence, WIP limits, swimlanes, blocked-link and custom-field card-face chips (AUDIT-PRODUCT.md Pass 11). It also runs with zero network hop to a third-party cloud and zero per-seat automation throttling — speed the incumbent can't structurally match on your own hardware. |
+| Workflow flexibility | **Better** | Per-board named workflows with a visual graph editor, transition gates, and one-click templates (Phase 5, ROADMAP.md) — and, uniquely, the workflow definition is readable *and editable* over MCP by an AI agent (`@next-lane/mcp`, 18 tools). No closed per-seat tracker exposes its SDLC to an agent this way. |
+| Keyboard-first ergonomics | **Better** | A command palette (Cmd-K) plus a dedicated keyboard triage mode (`j`/`k` navigate, `s`/`p`/`a`/`l` inline pickers, `?` help overlay) go deeper than the incumbent's shortcut set — a genuine power-user differentiator, not table stakes. |
+| Search & query power | Parity | NLQL (query language + saved/shared filters + full-text search) shows "none" gap vs. the leader baseline in the Pass-11 parity scorecard (AUDIT-PRODUCT.md). The power is there; the incumbent's 20-year JQL install base and muscle memory is a maturity/ecosystem gap that shipping more features alone won't close. |
+| Onboarding / first-hour experience | Parity | In-app onboarding is a rated strength across four consecutive audit passes ("zero dead ends," guided first-project flow, strong empty states). But self-hosting itself (Docker Compose, env config) is real setup friction a cloud incumbent's instant signup doesn't have — the two roughly cancel out today. |
+| Reporting | Behind | Burndown/velocity/CFD exist per-sprint, but there is still no configurable dashboard/gadget grid — rated a flat 3 vs. 5 for four consecutive audit passes (Pass 8/9/10/11, AUDIT-PRODUCT.md) — and no cross-sprint trend reporting. Advanced/configurable reporting is a genuine incumbent strength we have not matched. |
+| Integrations | Behind | Phase 9 "Developer Graph" (GitHub/GitLab/Gitea two-way linking, PR/CI status, auto-transition) is still 🔭 vision — unshipped. Import/export is file-based only, no live OAuth pull (rated 4 vs. 5, AUDIT-PRODUCT.md Pass 11). No marketplace. This is where the incumbent's 20-year ecosystem is a real, unclosed moat. |
+| Mobile | Behind | Responsive web only — no native app, while the incumbent ships native iOS/Android with offline support. Pass 11 also found an open mobile-specific defect (header identity legibility during workspace/project navigation, AUDIT-PRODUCT.md) — mobile is currently our weakest coherence surface, not just a missing feature. |
+| Reliability / coherence-of-state | Behind | Two *independent* Pass-11 audits (2026-07-01) found the same defect class the same day: the workspace/tenant context could silently disagree with the page you were looking at, on up to 7 of 15 routes (AUDIT-PRODUCT.md, AUDIT-ENGINEERING.md). The specific instances shipped fixed 2026-07-02 (ROADMAP.md), but the *pattern* — opt-in context sync instead of route-derived truth — is still structural and both auditors flagged it as a recurrence risk. A mature 20-year product doesn't have this bug class at all. |
+| Admin controls | Behind | No SSO/OIDC; no per-project role override (rated 3 vs. 5, AUDIT-PRODUCT.md Pass 11); the workspace switcher has no search/filter at scale (rated 2 vs. 4, reproduced live at 50+ workspaces in the demo account). Admin/permission depth is where enterprise self-hosters will judge us hardest. |
+
+**Tally as of 2026-07-02: 3 better / 2 parity / 5 behind.** This is the
+honest current state, not a target. The backlog-groomer sequences work to
+flip "behind" rows first — see the "Better-than-Jira gaps" note in
+`docs/BACKLOG.md`.
+
 ## The pillars (what "better than the incumbent" means here)
 
 1. **Core PM parity** *(Phase 5 — largely shipped)* — be a credible daily driver

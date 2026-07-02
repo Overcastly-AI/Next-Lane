@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { SprintDto, SprintState } from '@next-lane/shared';
 import { request } from './client';
-import { qk } from './keys';
+import { qk, invalidateBoardFamily } from './keys';
 
 export interface CreateSprintInput {
   name: string;
@@ -45,7 +45,7 @@ export function useUpdateSprint(projectId: string) {
       // sprint, so refresh both the sprint list, the project issues, and the board.
       void qc.invalidateQueries({ queryKey: qk.sprints(projectId) });
       void qc.invalidateQueries({ queryKey: qk.projectIssues(projectId) });
-      void qc.invalidateQueries({ queryKey: qk.board(projectId) });
+      invalidateBoardFamily(qc, projectId);
     },
   });
 }
@@ -58,7 +58,7 @@ export function useDeleteSprint(projectId: string) {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: qk.sprints(projectId) });
       void qc.invalidateQueries({ queryKey: qk.projectIssues(projectId) });
-      void qc.invalidateQueries({ queryKey: qk.board(projectId) });
+      invalidateBoardFamily(qc, projectId);
     },
   });
 }

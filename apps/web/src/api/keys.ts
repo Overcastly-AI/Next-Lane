@@ -53,3 +53,21 @@ export const qk = {
   /** Personal quick links for the current user. */
   quickLinks: ['quickLinks'] as const,
 };
+
+/**
+ * Invalidate every cache entry that renders board content for a project: the
+ * legacy project-default key AND all board-id-keyed board views (prefix match
+ * on ['boardView'] — the mutation doesn't know which board the user has open).
+ *
+ * Mutation hooks that change issues WITHOUT taking a `boardId` param (issue
+ * update, bulk edit, sprint lifecycle, custom-field values) must use this:
+ * invalidating only `qk.board(projectId)` refreshes a cache nothing renders
+ * from, leaving the visible boardView stale until the global staleTime lapses.
+ */
+export function invalidateBoardFamily(
+  qc: import('@tanstack/react-query').QueryClient,
+  projectId: string,
+): void {
+  void qc.invalidateQueries({ queryKey: qk.board(projectId) });
+  void qc.invalidateQueries({ queryKey: ['boardView'] });
+}

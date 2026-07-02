@@ -11,7 +11,7 @@ import {
   type Priority,
 } from '@next-lane/shared';
 import { request } from './client';
-import { qk } from './keys';
+import { qk, invalidateBoardFamily } from './keys';
 
 /**
  * @deprecated Use `useBoardDefault` from `@/api/boards` for new code.
@@ -167,7 +167,7 @@ export function useUpdateIssue() {
           : list,
       );
       void qc.invalidateQueries({ queryKey: qk.issue(updated.id) });
-      void qc.invalidateQueries({ queryKey: qk.board(vars.projectId) });
+      invalidateBoardFamily(qc, vars.projectId);
       void qc.invalidateQueries({ queryKey: qk.projectIssues(vars.projectId) });
     },
   });
@@ -212,7 +212,7 @@ export function useBulkUpdateIssues() {
       }),
     onSuccess: (_result, vars) => {
       void qc.invalidateQueries({ queryKey: qk.projectIssues(vars.projectId) });
-      void qc.invalidateQueries({ queryKey: qk.board(vars.projectId) });
+      invalidateBoardFamily(qc, vars.projectId);
       // Invalidate individual issue caches for touched ids
       for (const id of vars.ids) {
         void qc.invalidateQueries({ queryKey: qk.issue(id) });
@@ -275,7 +275,7 @@ export function useAssignIssueToSprint(projectId: string) {
     },
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: listKey });
-      void qc.invalidateQueries({ queryKey: qk.board(projectId) });
+      invalidateBoardFamily(qc, projectId);
     },
   });
 }

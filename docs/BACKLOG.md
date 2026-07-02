@@ -4,6 +4,33 @@ Single prioritized board maintained by the **backlog-groomer**, fed by the two i
 
 Format: `- [ ] (P1, M) title — description [src]` · P0 critical / P1 now / P2 next / P3 later · size S/M/L. Checked `[x]` = done.
 
+> **Better-than-Jira gaps** (vision-steward, 2026-07-02) — per the founder's
+> operating question ("Is this better than Jira?" — `docs/VISION.md` §
+> The operating question), the full honest scorecard lives in
+> `docs/VISION.md` § Better-than-Jira scorecard (currently 3 dimensions
+> better, 2 parity, 5 behind). The five highest-leverage gaps, in
+> switcher-impact order, are candidate items for the backlog-groomer to
+> formally size/sequence — do not treat these as already-scoped Ready items:
+> 1. **Structural tenant-context fix** (route-derived "you are here" instead
+>    of opt-in `useSyncActiveWorkspace` calls) — retires the whole
+>    cross-page coherence bug class both Pass-11 audits hit independently,
+>    rather than chasing it page-by-page as new routes ship.
+> 2. **SSO/OIDC + per-project role override** — closes the admin-controls
+>    gap (rated 3 vs 5) that is a hard blocker for enterprise/agency
+>    self-hosters evaluating a switch, regardless of feature depth elsewhere.
+> 3. **SCM integration kickoff (GitHub two-way linking first)** — starts
+>    closing Phase 9 Developer Graph, the largest unshipped integrations gap
+>    and the one engineering teams (the incumbent's core segment) expect on
+>    day one.
+> 4. **Configurable dashboard / gadget grid for the Pulse home page** — the
+>    last flat-3 reporting/admin parity gap, carried unaddressed across four
+>    consecutive audit passes (Pass 8/9/10/11).
+> 5. **Mobile identity legibility + native/PWA-quality pass** — mobile is
+>    rated behind on both feature completeness (no native app) and an open
+>    coherence defect (header truncates the wrong identity string on narrow
+>    viewports), compounding gap #1 on the platform least equipped to
+>    self-check.
+
 > Groom state (2026-06-30): All Phase 3 items complete. Phase 5 major slice shipped — custom
 > fields, NLQL + saved filters, NLQL query autocomplete, planning poker, issue links, bulk edit,
 > personal boards, personal/team analytics, CSV export + import (frontend + backend), workspace

@@ -6,7 +6,7 @@ import type {
 } from '@next-lane/shared';
 import { CustomFieldType } from '@next-lane/shared';
 import { request } from './client';
-import { qk } from './keys';
+import { qk, invalidateBoardFamily } from './keys';
 
 // Re-export so consumers can import from one place.
 export type { CustomFieldDefinitionDto, CustomFieldValue };
@@ -124,7 +124,7 @@ export function useUpdateIssueCustomFields() {
       ),
     onSuccess: (_updated, vars) => {
       void qc.invalidateQueries({ queryKey: qk.issue(vars.issueId) });
-      void qc.invalidateQueries({ queryKey: qk.board(vars.projectId) });
+      invalidateBoardFamily(qc, vars.projectId);
     },
   });
 }
