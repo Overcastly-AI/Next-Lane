@@ -16,6 +16,7 @@ import { GithubSection } from '@/components/settings/GithubSection';
 import { ShareSection } from '@/components/settings/ShareSection';
 import { CustomFieldsSection } from '@/components/settings/CustomFieldsSection';
 import { ComponentsSection } from '@/components/settings/ComponentsSection';
+import { MembersSection } from '@/components/settings/MembersSection';
 import { TemplatesManager } from '@/components/settings/TemplatesManager';
 import { VersionsSection } from '@/components/settings/VersionsSection';
 import { WorkflowSection } from '@/components/settings/WorkflowSection';
@@ -137,6 +138,8 @@ export function SettingsPage() {
           description={project.description}
           editable={editable}
         />
+
+        <MembersSection projectId={projectId} />
 
         <ColumnsSection projectId={projectId} editable={editable} isAdmin={isAdmin} />
 
