@@ -1039,3 +1039,201 @@ Scope: VitePress documentation site served at `http://localhost:4173/Next-Lane/`
 - `issue/IssueDetailDrawer.tsx` and its sub-panels — still partially uses pre-Dispatch patterns.
 - `CommandPalette.tsx` — not yet elevated.
 - `project/ProjectCard.tsx` · `project/CreateProjectModal.tsx` — not yet elevated.
+
+---
+
+## Settings robustness sweep — 2026-07-02
+
+**Scope.** Founder directive ("Settings pages should be more robust"),
+independent QA pass by `qa-tester` (not the implementer) against every
+project-settings section (Details, Columns, Labels, Components, Versions,
+Custom fields, Workflow/Workflows manager entry, Templates, Webhooks, GitHub,
+Share) and all four workspace-settings pages (General, Members, Audit log,
+Branding). Workflow-builder canvas surfaces are explicitly **out of scope**
+(owned by a parallel sweep). Method: real running stack (web :3000, API :4000,
+seeded demo + fresh isolated fixtures via the API), Chromium via Playwright,
+per-keystroke typing (`pressSequentially`, never `.fill()`), deliberately
+invalid input on every field found, desktop full sweep + mobile smoke on the
+four heaviest surfaces (Project Settings page, Workspace Members, Workspace
+Branding, Webhooks modal). Evidence (screenshots) captured for every finding
+below; regression coverage added in
+`apps/web/e2e/settings-robustness.spec.ts` (6 green tests locking in correct
+behavior found during the sweep + 4 `test.fixme()` tests, tagged
+`SETTINGS-1..4`, that encode the desired correct behavior for each confirmed
+defect — un-fixme once fixed).
+
+**Verdict: REJECT for the Members page and Branding hex validation (P1/P2
+defects below); ACCEPT for the remainder of the swept surfaces**, which held
+up well under adversarial input (empty/whitespace-only/too-long/malformed
+URL/malformed repo format/negative-zero-decimal WIP limits/duplicate names on
+Components·Versions·Templates all correctly rejected with friendly,
+entity-specific messages).
+
+### Defects (prioritized)
+
+**P1 — SETTINGS-1: Self-inviting your own email in the workspace "Invite
+member" form silently strips your last admin seat, with no recovery path.**
+- **Where:** `/workspaces/:id/members` → "Invite member" form.
+- **Repro:** As the sole admin of a workspace, type your own email address
+  into the "Invite member" email field (role select defaults to **Member**)
+  and click Invite.
+- **Observed:** The form reuses the generic `addMember` upsert
+  (`WorkspaceMembersPage.tsx#InviteForm` → `useAddMember` →
+  `workspaces.service.ts#addMember`, which upserts-by-email with **no check
+  for "is this the actor's own membership" and no last-admin guard** — the
+  same absence exists in `removeMember`). The toast reads "Invited
+  you@example.com as MEMBER." and the UI immediately loses every admin
+  affordance: the Invite form, the per-row role Select, and "Remove" buttons
+  all disappear (screenshots: `21-member-self-invite.png` — form gone, badge
+  now MEMBER). Reloading the page (`22-locked-out-branding.png`) and
+  navigating to Branding/General confirm the demotion is **persisted
+  server-side, not a stale client cache** — the workspace is now permanently
+  admin-less with zero recovery path in the UI (no other member exists to
+  promote the account back).
+- **Why P1:** Silent, irreversible loss of administrative control over a
+  workspace and everything in it, triggered by an ordinary form with no
+  confirmation step — exactly the class of defect the founder's "more
+  robust" directive is aimed at. The row-level `MemberRow` UI *does* correctly
+  hide the role Select for `isMe` (see `audit-log.spec.ts`'s "ADMIN sees
+  Remove button on other members, not on self" coverage) — but that guard is
+  bypassed entirely via the Invite form's free-text email field, which has no
+  self-email or last-admin check.
+- **Root cause (for the fix batch):** `apps/api/src/workspaces/workspaces.service.ts#addMember`
+  (and, defense-in-depth, `#removeMember`) need a last-admin invariant: reject
+  (409/400) any role-change or removal that would leave a workspace with zero
+  ADMIN members, with a friendly message. The frontend `InviteForm` should
+  also warn/confirm when the typed email matches the signed-in user.
+- **Regression test:** `settings-robustness.spec.ts` → `SETTINGS-1` (`test.fixme`).
+- **Evidence:** `20-member-nonexistent.png` (form pre-demotion, showing
+  Invite/Remove present), `21-member-self-invite.png` (post-demotion, no
+  admin affordances), `22-locked-out-branding.png` (permanent lockout,
+  General/Branding both show "Admin access required" after reload).
+
+**P2 — SETTINGS-2: Workspace branding accent-color hex validation mismatches
+between client and server (3-digit shorthand).**
+- **Where:** `/workspaces/:id/branding` → Accent color → Hex value input.
+- **Repro:** Type `#fff` and click "Save color".
+- **Observed:** The client-side regex
+  (`/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/` in `WorkspaceBrandingPage.tsx`)
+  accepts 3-digit hex, live-previews it as valid, and does **not** revert it
+  on blur — so the Save button looks fully enabled and correct. The backend
+  DTO (`UpdateWorkspaceDto.brandColor`) only accepts 6-digit hex; the PATCH
+  returns 400 with `"brandColor must be a valid 6-digit hex color (e.g.
+  #1a2b3c) or null"`, and that raw, camelCase-field-name message is surfaced
+  verbatim in the error toast (`18-3digit-hex-error-toast.png`). A user has no
+  way to know from the UI alone that 3-digit shorthand — completely standard
+  CSS hex syntax — is rejected until they hit Save and get a technical error.
+  (Separately, malformed non-hex input like `notahex` *is* handled
+  gracefully: the `onBlur` handler silently reverts it to the last-saved
+  color before Save is ever clicked — but note that revert is also silent,
+  with no inline "that wasn't a valid color" feedback; see P3 below.)
+- **Why P2:** Reproducible functional break (save fails) directly matching
+  the QA charter's "malformed hex" requirement; confusing, technical error
+  copy.
+- **Regression test:** `settings-robustness.spec.ts` → `SETTINGS-2` (`test.fixme`).
+- **Evidence:** `17-3digit-hex-clean.png`, `18-3digit-hex-error-toast.png`.
+
+**P2 — SETTINGS-3: Board columns (statuses) allow duplicate names.**
+- **Where:** Project Settings → Columns → "+ Add column".
+- **Repro:** Add a column named exactly `To Do` to a project that already has
+  a "To Do" column.
+- **Observed:** Accepted with no error — the board and Settings list now show
+  two columns both named "To Do" (`07-dup-column.png`, toast "Added column
+  'To Do'."). `Status` has no `@@unique([projectId, name])` constraint,
+  unlike `Label`/`Component`/`Version` (all `@@unique([projectId, name])`,
+  all correctly rejected with friendly 409s — see `components.spec.ts`'s
+  "duplicate component name shows friendly error" and the equivalent in
+  `versions.spec.ts`). Confusing on the board itself and ambiguous for any
+  future name-keyed lookup.
+- **Why P2:** Real, reproducible, user-visible confusion; inconsistent with
+  every sibling entity (Labels/Components/Versions all guard this).
+- **Regression test:** `settings-robustness.spec.ts` → `SETTINGS-3` (`test.fixme`).
+- **Evidence:** `07-dup-column.png`.
+
+**P2 — SETTINGS-4: Duplicate label name shows a raw, generic backend error
+instead of a friendly per-entity message.**
+- **Where:** Project Settings → Labels → "New label" form.
+- **Repro:** Create a label named `bug`, then try to create a second label
+  also named `bug`.
+- **Observed:** Correctly **rejected** (unlike columns — `Label` does have
+  `@@unique([projectId, name])`), but `labels.service.ts` never catches the
+  Prisma `P2002` the way `components.service.ts` / `versions.service.ts` /
+  `issue-templates.service.ts` do (each throws a friendly
+  `ConflictException('A component/version/template named "X" already
+  exists…')`). The generic `AllExceptionsFilter` fallback message — `"A
+  record with this value already exists."` — leaks straight into the toast
+  (`05-dup-label.png`), instead of `A label named "bug" already exists.`
+- **Why P2:** Directly contradicts the QA charter's "error toasts on server
+  4xx are friendly" requirement; visibly inconsistent with three sibling
+  entities that already got this right.
+- **Regression test:** `settings-robustness.spec.ts` → `SETTINGS-4` (`test.fixme`).
+- **Evidence:** `05-dup-label.png`.
+
+**P3 — Backend validation messages leak internal field/enum names into
+user-facing toasts (polish, several surfaces).**
+- GitHub integration: malformed `owner/repo` value shows
+  `"repoFullName must be in "owner/repo" format"` verbatim (camelCase DTO
+  field name) — `14-github-malformed.png`. A friendly rewrite ("Repository
+  must be in owner/repo format, e.g. acme/widgets") would match the rest of
+  the app's voice.
+- Custom fields: a SELECT/MULTI_SELECT field saved with zero options shows
+  `Custom field type "SELECT" requires at least one option` — the raw
+  upper-case enum value, not the friendly label ("Select (single)") shown in
+  the type dropdown — `23-customfield-select-nooptions.png`.
+- Workspace branding: see SETTINGS-2 above (`brandColor` field name leak).
+- **Why P3:** Cosmetic/voice inconsistency only — every one of these paths
+  *does* correctly block the invalid save and show *some* error; this is a
+  polish pass, not a functional break. Not gated by a dedicated regression
+  test (folded into the SETTINGS-2 fixme's assertion that no raw `brandColor`
+  string should ever reach the user).
+
+**P3 — Trailing-space-only edits leave Save looking "stuck" with no
+explanation (Project details name, Workspace name).**
+- Both `SettingsPage.tsx#DetailsSection` and `WorkspaceSettingsPage.tsx`
+  compute "dirty" as `draftValue.trim() !== savedValue` — correct in that a
+  whitespace-only edit is genuinely a no-op once trimmed, but a user who adds
+  only trailing spaces gets zero feedback for why Save stayed disabled
+  (no hint text, no shake, nothing). Low severity (the underlying behavior —
+  refusing to save a no-op — is correct) but worth a one-line hint if this
+  page gets revisited. Locked in as *correct* current behavior (not a
+  defect) in `settings-robustness.spec.ts`'s "a trailing-space-only edit does
+  not falsely enable Save" test, since disabling Save here is the right call
+  — only the missing affordance is a nice-to-have.
+
+### What held up well (adversarial testing passed)
+
+- Project details: empty name / >80-char name (native `maxLength`) / trailing
+  whitespace all correctly block Save; rename persists across reload **and**
+  updates the header breadcrumb (cross-page coherence) — see
+  `settings-robustness.spec.ts`.
+- Columns: WIP limit correctly rejects `0` and negative values (native
+  `min=1`) and decimals (native `step=1`) before any request is sent.
+- Webhooks: malformed URL (native `type=url`) and too-short secret (native
+  `minlength=8`) both block submit client-side with a clear native tooltip;
+  no request sent.
+- GitHub integration: malformed `owner/repo` format rejected server-side
+  (`@Matches` DTO decorator) with a visible toast; no integration created.
+- Components / Versions / Issue templates: duplicate names correctly
+  rejected with friendly, entity-specific 409 messages (existing coverage in
+  `components.spec.ts`, `versions.spec.ts`, `issue-templates.spec.ts`).
+- Members: inviting a syntactically-malformed email is blocked by native
+  `type=email` validation; inviting a validly-formatted but unregistered
+  email surfaces a clear "User not found" toast (`20-member-nonexistent.png`).
+- Rapid double-click on "Add label": the submit button disables itself the
+  instant the mutation starts pending (`create.isPending`), so a fast
+  double-click cannot create two rows — verified directly (Playwright's
+  second click attempt failed with "element is not enabled" — i.e. the
+  button was already disabled by the time the second click landed).
+- Mobile (390×844): Project Settings (full page), Workspace Members,
+  Workspace Branding, and the Webhooks "Add webhook" modal all render with
+  **zero horizontal overflow** (`document.documentElement.scrollWidth -
+  clientWidth === 0` on every surface checked).
+
+### Defect count summary
+
+| Priority | Count |
+|---|---|
+| P1 | 1 |
+| P2 | 3 |
+| P3 | 2 (grouped: message-leak polish, trailing-space affordance) |
+
