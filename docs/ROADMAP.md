@@ -328,15 +328,35 @@ pass — groom the board against this sequencing next.)*
    server and asserts zero `script-src` CSP violations + dark mode applies —
    closes the "green tests, broken shipped artifact" gap for this class
    without needing a full `docker compose` Playwright harness.
-3. **Admin controls depth (behind).** Real progress already shipped
-   2026-07-02 (SSO/OIDC Phase 1, workspace-switcher search/recently-visited),
-   but two blockers an evaluating enterprise/agency admin checks first
-   remain: (a) **in-app SSO/OIDC configuration screen** — provider/client
-   id/secret/issuer/label from a settings page, encrypted at rest mirroring
-   the GitHub PAT pattern already shipped, instead of an env-var edit + API
-   redeploy; (b) **per-project role override** (`ProjectMembership` layer) —
-   still schema-confirmed absent, carried since Pass 9 (AUDIT-PRODUCT.md
-   Pass 12).
+3. **Admin controls depth (behind, narrowing).** Real progress already
+   shipped 2026-07-02 (SSO/OIDC Phase 1, workspace-switcher search/
+   recently-visited), and one of the two remaining blockers closed the same
+   day this pass: (a) **in-app SSO/OIDC configuration screen — ✅ shipped
+   2026-07-02.** An instance admin now configures provider/client
+   id/secret/issuer/label from `/admin/sso` instead of an env-var edit + API
+   redeploy — client secret AES-256-GCM-encrypted at rest via the shared
+   crypto util extracted from the GitHub PAT pattern
+   (`apps/api/src/common/crypto/secret-crypto.util.ts`, both
+   `github-crypto.util.ts` and the new `oidc-secret-crypto.util.ts` delegate
+   to it); env vars still WIN over the DB config when set (12-factor,
+   read-only "env-managed" banner in that state); a save takes effect on the
+   very next login attempt/`GET /auth/providers` poll — NO API restart
+   (`OidcService`'s discovery-client cache is keyed by a config fingerprint,
+   not a process-lifetime singleton). New instance-level `User.isInstanceAdmin`
+   (additive migration, first-ever user on a fresh install defaults true,
+   oldest existing user backfilled on upgrade) gates it — deliberately
+   narrower than workspace `Membership.role: ADMIN`, since this is a
+   secret-bearing instance-wide setting. 33 new API unit tests (encryption
+   round-trip, env>DB precedence, secret never serialized, instance-admin
+   gate) — 1554 API tests green; new `apps/web/e2e/admin-sso-settings.spec.ts`
+   (non-admin sees no nav entry + access-denied route; admin configures +
+   enables via per-keystroke typing; the login page's SSO button appears with
+   zero API restart; disable removes it) green desktop+mobile; MCP: not
+   exposed — instance SSO secrets are not agent-appropriate (mirrors the
+   existing GitHub-config skip in `apps/mcp/README.md`). (b) **per-project
+   role override** (`ProjectMembership` layer) — still schema-confirmed
+   absent, carried since Pass 9 (AUDIT-PRODUCT.md Pass 12), now the sole
+   remaining blocker in this row.
 4. **Integrations depth (behind, GitHub v1 de-risked).** GitHub integration
    v1 is confirmed genuinely working end-to-end this pass — a real
    HMAC-SHA256 signed webhook round trip (push + pull_request), correct

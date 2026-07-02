@@ -18,6 +18,8 @@ import { OidcService } from './oidc.service';
 import type { PrismaService } from '../../prisma/prisma.service';
 import type { JwtService } from '@nestjs/jwt';
 import type { AuthService } from '../auth.service';
+import { getOidcButtonLabel, getOidcEnvConfig } from './oidc.config';
+import type { OidcConfigService } from '../../admin-settings/oidc-config.service';
 
 jest.mock('openid-client', () => ({
   Issuer: { discover: jest.fn() },
@@ -41,6 +43,7 @@ interface MockPrisma {
   user: {
     findUnique: jest.Mock;
     create: jest.Mock;
+    count: jest.Mock;
   };
 }
 
@@ -49,7 +52,29 @@ function makePrisma(): MockPrisma {
     user: {
       findUnique: jest.fn(),
       create: jest.fn(),
+      // Non-zero by default (an existing installation with users already) so
+      // JIT-provisioned test users are NOT accidentally instance-admin'd;
+      // individual tests override this when they care.
+      count: jest.fn().mockResolvedValue(1),
     },
+  };
+}
+
+/**
+ * Stand-in for `OidcConfigService` whose `getEffectiveConfig()` mirrors the
+ * real env-precedence rule by reading the actual env vars at call time — so
+ * the existing `setEnv()`/`clearEnv()` helpers below keep controlling
+ * "configured or not" exactly as before this refactor, with no other test
+ * changes required.
+ */
+function makeOidcConfigService(): jest.Mocked<Pick<OidcConfigService, 'getEffectiveConfig' | 'isConfigured'>> {
+  return {
+    getEffectiveConfig: jest.fn(async () => {
+      const env = getOidcEnvConfig();
+      if (!env) return null;
+      return { ...env, label: getOidcButtonLabel(), source: 'env' as const };
+    }),
+    isConfigured: jest.fn(async () => getOidcEnvConfig() !== null),
   };
 }
 
@@ -86,16 +111,19 @@ describe('OidcService', () => {
   let prisma: MockPrisma;
   let jwt: jest.Mocked<Pick<JwtService, 'sign' | 'verify'>>;
   let authService: jest.Mocked<Pick<AuthService, 'issueSession'>>;
+  let oidcConfigService: jest.Mocked<Pick<OidcConfigService, 'getEffectiveConfig' | 'isConfigured'>>;
   let service: OidcService;
 
   beforeEach(() => {
     prisma = makePrisma();
     jwt = makeJwt();
     authService = makeAuthService();
+    oidcConfigService = makeOidcConfigService();
     service = new OidcService(
       prisma as unknown as PrismaService,
       jwt as unknown as JwtService,
       authService as unknown as AuthService,
+      oidcConfigService as unknown as OidcConfigService,
     );
 
     CLIENT_MOCK.authorizationUrl.mockReset().mockReturnValue('https://idp.example.com/authorize?foo=bar');
@@ -310,6 +338,7 @@ describe('OidcService', () => {
         name: 'Alice',
         avatarColor: '#6366f1',
         emailNotifications: true,
+        isInstanceAdmin: false,
         createdAt: new Date('2024-01-01T00:00:00Z'),
       };
       prisma.user.findUnique.mockResolvedValue(existingUser);
@@ -346,6 +375,7 @@ describe('OidcService', () => {
         name: 'New Person',
         avatarColor: '#22c55e',
         emailNotifications: true,
+        isInstanceAdmin: false,
         createdAt: new Date('2024-06-01T00:00:00Z'),
       };
       prisma.user.create.mockResolvedValue(createdUser);

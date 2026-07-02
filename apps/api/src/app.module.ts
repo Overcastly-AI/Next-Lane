@@ -50,6 +50,7 @@ import { IssueTemplatesModule } from './issue-templates/issue-templates.module';
 import { WorkLogsModule } from './work-logs/work-logs.module';
 import { GithubModule } from './github/github.module';
 import { DashboardsModule } from './dashboards/dashboards.module';
+import { AdminSettingsModule } from './admin-settings/admin-settings.module';
 import { HealthController } from './health.controller';
 
 const isProd = process.env.NODE_ENV === 'production';
@@ -176,6 +177,7 @@ const isProd = process.env.NODE_ENV === 'production';
     WorkLogsModule,
     GithubModule,
     DashboardsModule,
+    AdminSettingsModule,
   ],
   controllers: [HealthController],
   providers: [

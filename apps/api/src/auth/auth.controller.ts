@@ -1,14 +1,14 @@
 import { Body, Controller, Get, HttpCode, Patch, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
-import { AuthService, toUserDto } from './auth.service';
+import { AuthService, toMeDto } from './auth.service';
 import { RegisterDto, LoginDto, ForgotPasswordDto, ResetPasswordDto } from './dto/auth.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { Public } from './public.decorator';
 import { CurrentUser, AuthUser } from './current-user.decorator';
 import { PrismaService } from '../prisma/prisma.service';
 import { PasswordResetService } from './password-reset.service';
-import { isOidcConfigured, getOidcButtonLabel } from './oidc/oidc.config';
+import { OidcConfigService } from '../admin-settings/oidc-config.service';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -26,6 +26,7 @@ export class AuthController {
     private readonly auth: AuthService,
     private readonly prisma: PrismaService,
     private readonly passwordReset: PasswordResetService,
+    private readonly oidcConfig: OidcConfigService,
   ) {}
 
   @Public()
@@ -44,14 +45,17 @@ export class AuthController {
    * Public, unauthenticated capability probe for login-surface features.
    * The frontend uses this to decide whether to render the "Continue with
    * SSO" button on LoginPage — never assume a provider is configured.
+   * Reflects the LIVE effective config (env vars, or an enabled in-app-admin-
+   * configured DB config) — no API restart needed after a settings-screen save.
    */
   @Public()
   @Get('providers')
-  providers(): { oidc: { enabled: boolean; label: string } } {
+  async providers(): Promise<{ oidc: { enabled: boolean; label: string } }> {
+    const config = await this.oidcConfig.getEffectiveConfig();
     return {
       oidc: {
-        enabled: isOidcConfigured(),
-        label: getOidcButtonLabel(),
+        enabled: config !== null,
+        label: config?.label ?? 'Single sign-on',
       },
     };
   }
@@ -91,7 +95,7 @@ export class AuthController {
     const full = await this.prisma.user.findUniqueOrThrow({
       where: { id: user.id },
     });
-    return toUserDto(full);
+    return toMeDto(full);
   }
 
   /**

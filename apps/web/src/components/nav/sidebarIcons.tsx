@@ -143,6 +143,16 @@ export function BrandingIcon({ className }: { className?: string }) {
   );
 }
 
+/** Instance-admin SSO/OIDC settings — a shield glyph, distinct from the workspace Settings gear/Branding swatch. */
+export function ShieldIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M12 3l7 3.5v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9v-5L12 3z" />
+      <path d="M9.5 12l1.8 1.8L14.5 10" />
+    </svg>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Theme toggle icons (Light / Dark / System) — used by `ThemeToggle.tsx` in
 // both the sidebar utility area and the header user menu.

@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { getJwtExpiresIn, getJwtSecret } from '../auth.config';
 import { AuthModule } from '../auth.module';
+import { AdminSettingsModule } from '../../admin-settings/admin-settings.module';
 import { OidcController } from './oidc.controller';
 import { OidcService } from './oidc.service';
 
@@ -17,10 +18,16 @@ import { OidcService } from './oidc.service';
  * Reuses AuthModule's JwtModule registration for signing/verifying the
  * short-lived OIDC state token — same secret, independent `typ` claim guards
  * against confusion with real session tokens.
+ *
+ * Also imports `AdminSettingsModule` for `OidcConfigService` — the resolver
+ * for the effective config (env vars win, else the in-app-admin-configured
+ * DB row). No cycle: `AdminSettingsModule` imports neither `AuthModule` nor
+ * this module.
  */
 @Module({
   imports: [
     AuthModule,
+    AdminSettingsModule,
     JwtModule.register({
       secret: getJwtSecret(),
       signOptions: { expiresIn: getJwtExpiresIn() },

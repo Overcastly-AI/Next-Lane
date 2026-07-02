@@ -5,17 +5,24 @@
  * and the happy-path cookie/redirect wiring on `login`. `handleCallback`'s
  * business logic itself is covered by oidc.service.spec.ts — here we only
  * assert the controller wires the cookie/redirect envelope correctly.
+ *
+ * "Configured" is entirely delegated to `OidcService.isConfigured()` (which
+ * itself reflects env vars OR an enabled in-app-admin-configured DB config —
+ * see `OidcConfigService`), so these tests control it via the mocked
+ * `isConfigured()` return value rather than setting env vars directly.
  */
 
 import { NotFoundException } from '@nestjs/common';
 import { OidcController } from './oidc.controller';
 import type { OidcService } from './oidc.service';
 
-function makeOidcService(): jest.Mocked<Pick<OidcService, 'resolveRedirectUri' | 'buildAuthorizationRequest' | 'handleCallback'>> {
+function makeOidcService(): jest.Mocked<Pick<OidcService, 'resolveRedirectUri' | 'buildAuthorizationRequest' | 'handleCallback' | 'isConfigured'>> {
   return {
     resolveRedirectUri: jest.fn().mockReturnValue('https://api.example.com/api/auth/oidc/callback'),
     buildAuthorizationRequest: jest.fn(),
     handleCallback: jest.fn(),
+    // Configured by default; individual tests override.
+    isConfigured: jest.fn().mockResolvedValue(true),
   };
 }
 
@@ -41,35 +48,10 @@ function makeRes() {
 }
 
 describe('OidcController', () => {
-  const originalEnv = {
-    OIDC_ISSUER_URL: process.env.OIDC_ISSUER_URL,
-    OIDC_CLIENT_ID: process.env.OIDC_CLIENT_ID,
-    OIDC_CLIENT_SECRET: process.env.OIDC_CLIENT_SECRET,
-  };
-
-  afterEach(() => {
-    for (const [k, v] of Object.entries(originalEnv)) {
-      if (v === undefined) delete process.env[k];
-      else process.env[k] = v;
-    }
-  });
-
-  function setConfigured() {
-    process.env.OIDC_ISSUER_URL = 'https://idp.example.com';
-    process.env.OIDC_CLIENT_ID = 'client-1';
-    process.env.OIDC_CLIENT_SECRET = 'shh';
-  }
-
-  function setUnconfigured() {
-    delete process.env.OIDC_ISSUER_URL;
-    delete process.env.OIDC_CLIENT_ID;
-    delete process.env.OIDC_CLIENT_SECRET;
-  }
-
   describe('disabled when unconfigured', () => {
     it('GET /auth/oidc/login throws 404 and never calls OidcService', async () => {
-      setUnconfigured();
       const oidc = makeOidcService();
+      oidc.isConfigured.mockResolvedValue(false);
       const controller = new OidcController(oidc as unknown as OidcService);
 
       await expect(controller.login(makeReq(), makeRes())).rejects.toBeInstanceOf(NotFoundException);
@@ -77,8 +59,8 @@ describe('OidcController', () => {
     });
 
     it('GET /auth/oidc/callback throws 404 and never calls OidcService', async () => {
-      setUnconfigured();
       const oidc = makeOidcService();
+      oidc.isConfigured.mockResolvedValue(false);
       const controller = new OidcController(oidc as unknown as OidcService);
 
       await expect(controller.callback(makeReq(), makeRes(), {})).rejects.toBeInstanceOf(NotFoundException);
@@ -88,7 +70,6 @@ describe('OidcController', () => {
 
   describe('login (configured)', () => {
     it('sets a short-lived httpOnly state cookie and redirects to the provider authorization URL', async () => {
-      setConfigured();
       const oidc = makeOidcService();
       oidc.buildAuthorizationRequest.mockResolvedValue({
         url: 'https://idp.example.com/authorize?state=abc',
@@ -114,7 +95,6 @@ describe('OidcController', () => {
 
   describe('callback (configured)', () => {
     it('clears the state cookie, redirects to the SPA sso-complete route with the token on success', async () => {
-      setConfigured();
       const oidc = makeOidcService();
       oidc.handleCallback.mockResolvedValue({
         accessToken: 'jwt-abc',
@@ -124,6 +104,7 @@ describe('OidcController', () => {
           name: 'A',
           avatarColor: '#fff',
           emailNotifications: true,
+          isInstanceAdmin: false,
           createdAt: new Date().toISOString(),
         },
       });
@@ -146,7 +127,6 @@ describe('OidcController', () => {
     });
 
     it('redirects back to /login with a sanitised error on failure, never a raw 500 page', async () => {
-      setConfigured();
       const oidc = makeOidcService();
       const { BadRequestException } = await import('@nestjs/common');
       oidc.handleCallback.mockRejectedValue(new BadRequestException('SSO state mismatch — possible CSRF attempt'));

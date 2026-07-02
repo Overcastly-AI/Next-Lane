@@ -26,6 +26,7 @@ import { useProjects } from '@/api/projects';
 import { useMyRole } from '@/api/workspaces';
 import { useWorkspaceContext } from '@/contexts/WorkspaceContext';
 import { useSwitchWorkspace } from '@/lib/useSwitchWorkspace';
+import { useAuth } from '@/auth/AuthContext';
 import { WorkspaceSwitcherMenuContent } from './WorkspaceSwitcherMenuContent';
 import {
   BrandingIcon,
@@ -35,6 +36,7 @@ import {
   MyWorkIcon,
   NotificationsIcon,
   SettingsIcon,
+  ShieldIcon,
   ViewBacklogIcon,
   ViewBoardIcon,
   ViewDashboardsIcon,
@@ -308,6 +310,8 @@ export function SidebarNavContent({ collapsed, onNavigate }: SidebarNavContentPr
   const projectsQuery = useProjects(activeWorkspace?.id);
   const myRole = useMyRole(activeWorkspace?.id);
   const isWorkspaceAdmin = myRole === Role.ADMIN;
+  const { user } = useAuth();
+  const isInstanceAdmin = !!user?.isInstanceAdmin;
   const location = useLocation();
 
   const projectMatch = matchPath('/projects/:projectId/*', location.pathname);
@@ -379,6 +383,30 @@ export function SidebarNavContent({ collapsed, onNavigate }: SidebarNavContentPr
           />
         ))}
       </div>
+
+      {/* Instance-admin section — deliberately NOT gated on activeWorkspace
+          (this is instance-wide, not workspace-scoped), unlike the block
+          below it. Only ever visible to the instance's designated admin
+          (User.isInstanceAdmin), a strictly narrower gate than workspace
+          Membership.role: ADMIN. */}
+      {isInstanceAdmin && (
+        <div className="space-y-0.5 border-t border-ink-100 px-2 py-2">
+          {!collapsed && (
+            <p className="px-2.5 pb-1 pt-0.5 text-[11px] font-semibold uppercase tracking-wide text-ink-400">
+              Instance admin
+            </p>
+          )}
+          <SidebarRow
+            to="/admin/sso"
+            active={location.pathname === '/admin/sso'}
+            icon={<ShieldIcon className="h-4 w-4" />}
+            label="SSO / OIDC"
+            collapsed={collapsed}
+            onNavigate={onNavigate}
+            testId="nav-sidebar-admin-sso"
+          />
+        </div>
+      )}
 
       {activeWorkspace && (
         <div className="space-y-0.5 border-t border-ink-100 px-2 py-2">

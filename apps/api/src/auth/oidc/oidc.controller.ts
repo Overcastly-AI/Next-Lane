@@ -7,9 +7,10 @@
  * request body — the browser round-trips it to the identity provider and
  * back automatically.
  *
- * When OIDC is not configured (`isOidcConfigured()` false) both routes
- * respond 404 — the feature is fully absent, not just hidden, for
- * self-hosters who never set the env vars.
+ * When OIDC is not configured (`OidcService.isConfigured()` false — env vars
+ * unset AND no enabled DB config saved from the admin settings screen) both
+ * routes respond 404 — the feature is fully absent, not just hidden, for
+ * self-hosters who never set it up.
  */
 
 import { BadRequestException, Controller, Get, NotFoundException, Query, Req, Res } from '@nestjs/common';
@@ -17,7 +18,6 @@ import { ApiExcludeController } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
 import { Public } from '../public.decorator';
 import { OidcService } from './oidc.service';
-import { isOidcConfigured } from './oidc.config';
 
 /** Name of the short-lived cookie carrying the signed state/nonce/PKCE-verifier token. */
 const STATE_COOKIE = 'nl_oidc_state';
@@ -49,7 +49,7 @@ export class OidcController {
   @Public()
   @Get('login')
   async login(@Req() req: Request, @Res() res: Response): Promise<void> {
-    if (!isOidcConfigured()) {
+    if (!(await this.oidc.isConfigured())) {
       throw new NotFoundException('SSO is not configured on this server');
     }
 
@@ -73,7 +73,7 @@ export class OidcController {
     @Res() res: Response,
     @Query() query: Record<string, string>,
   ): Promise<void> {
-    if (!isOidcConfigured()) {
+    if (!(await this.oidc.isConfigured())) {
       throw new NotFoundException('SSO is not configured on this server');
     }
 

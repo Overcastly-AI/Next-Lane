@@ -89,6 +89,28 @@ export async function assertProjectMember(
 }
 
 /**
+ * Ensure `userId` is this instance's designated instance-level admin —
+ * distinct from workspace-level `Membership.role: ADMIN`, which is scoped to
+ * a single workspace and not conservative enough for instance-wide secrets
+ * (e.g. the SSO/OIDC configuration screen). Throws ForbiddenException
+ * otherwise. See `User.isInstanceAdmin` in schema.prisma for how this flag
+ * is assigned (first user on a fresh install / backfilled oldest user on an
+ * existing install).
+ */
+export async function assertInstanceAdmin(
+  prisma: PrismaService,
+  userId: string,
+): Promise<void> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { isInstanceAdmin: true },
+  });
+  if (!user?.isInstanceAdmin) {
+    throw new ForbiddenException('Requires instance-admin access');
+  }
+}
+
+/**
  * Ensure `userId` is a member of the workspace owning `projectId` with at least
  * `minRole` (ADMIN > MEMBER > VIEWER). Returns the project (with its
  * workspace), throws ForbiddenException if not a member or role insufficient.

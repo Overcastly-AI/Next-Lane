@@ -46,6 +46,7 @@ import { AutomationsPage } from '@/pages/AutomationsPage';
 import { WorkspaceBrandingPage } from '@/pages/WorkspaceBrandingPage';
 import { WorkspaceSettingsPage } from '@/pages/WorkspaceSettingsPage';
 import { NotificationsPage } from '@/pages/NotificationsPage';
+import { AdminSsoSettingsPage } from '@/pages/AdminSsoSettingsPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -167,6 +168,20 @@ export default function App() {
               element={
                 <RequireAuth>
                   <NotificationsPage />
+                </RequireAuth>
+              }
+            />
+            {/*
+              Instance-level admin settings — gated inside the page on
+              User.isInstanceAdmin (client-side UX only; the server enforces
+              it independently on every request). Not workspace/project
+              scoped, so it lives alongside the other top-level routes.
+            */}
+            <Route
+              path="/admin/sso"
+              element={
+                <RequireAuth>
+                  <AdminSsoSettingsPage />
                 </RequireAuth>
               }
             />

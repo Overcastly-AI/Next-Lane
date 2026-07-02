@@ -1,9 +1,8 @@
 import {
-  createCipheriv,
-  createDecipheriv,
-  createHash,
-  randomBytes,
-} from 'node:crypto';
+  deriveEncryptionKey,
+  encryptSecret,
+  decryptSecret,
+} from '../common/crypto/secret-crypto.util';
 
 /**
  * At-rest encryption for the GitHub PAT stored on `GithubIntegration.tokenEncrypted`.
@@ -20,34 +19,26 @@ import {
  * operators to mint yet another secret. Self-hosters who want key separation
  * (e.g. so rotating JWT_SECRET doesn't invalidate stored GitHub tokens) can
  * set GITHUB_TOKEN_ENCRYPTION_KEY explicitly.
+ *
+ * The actual AES-256-GCM implementation lives in the shared
+ * `common/crypto/secret-crypto.util.ts` helper (extracted so the OIDC
+ * client-secret encryption — `auth/oidc/oidc-secret-crypto.util.ts` — reuses
+ * the exact same audited primitive instead of a second copy); this file's
+ * public behavior/env vars are unchanged.
  */
 function getEncryptionKey(): Buffer {
-  const raw =
-    process.env.GITHUB_TOKEN_ENCRYPTION_KEY?.trim() ||
-    process.env.JWT_SECRET?.trim() ||
-    '';
-  // SHA-256 digest always yields exactly 32 bytes regardless of input length,
-  // which is exactly what AES-256 needs as a key.
-  return createHash('sha256').update(raw).digest();
+  return deriveEncryptionKey(
+    process.env.GITHUB_TOKEN_ENCRYPTION_KEY,
+    process.env.JWT_SECRET,
+  );
 }
-
-const IV_BYTES = 12; // recommended IV length for AES-GCM
-const ALGO = 'aes-256-gcm';
 
 /**
  * Encrypt a raw GitHub PAT for storage. Output format: "<iv>:<authTag>:<ciphertext>"
  * (all hex-encoded) so it round-trips through a single TEXT column.
  */
 export function encryptGithubToken(plainToken: string): string {
-  const key = getEncryptionKey();
-  const iv = randomBytes(IV_BYTES);
-  const cipher = createCipheriv(ALGO, key, iv);
-  const ciphertext = Buffer.concat([
-    cipher.update(plainToken, 'utf8'),
-    cipher.final(),
-  ]);
-  const authTag = cipher.getAuthTag();
-  return [iv.toString('hex'), authTag.toString('hex'), ciphertext.toString('hex')].join(':');
+  return encryptSecret(plainToken, getEncryptionKey());
 }
 
 /**
@@ -55,17 +46,5 @@ export function encryptGithubToken(plainToken: string): string {
  * malformed or the auth tag does not verify (tampered/wrong key).
  */
 export function decryptGithubToken(encoded: string): string {
-  const parts = encoded.split(':');
-  if (parts.length !== 3) {
-    throw new Error('Malformed encrypted GitHub token');
-  }
-  const [ivHex, tagHex, dataHex] = parts;
-  const key = getEncryptionKey();
-  const decipher = createDecipheriv(ALGO, key, Buffer.from(ivHex, 'hex'));
-  decipher.setAuthTag(Buffer.from(tagHex, 'hex'));
-  const plaintext = Buffer.concat([
-    decipher.update(Buffer.from(dataHex, 'hex')),
-    decipher.final(),
-  ]);
-  return plaintext.toString('utf8');
+  return decryptSecret(encoded, getEncryptionKey());
 }

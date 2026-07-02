@@ -157,6 +157,13 @@ model User {
   passwordHash         String
   avatarColor          String   @default("#6366f1")
   emailNotifications   Boolean  @default(true)
+  /// Instance-level admin flag — gates instance-wide settings (e.g. the
+  /// in-app SSO/OIDC configuration screen) that are distinct from
+  /// workspace-level `Membership.role: ADMIN`. Defaults to true for the
+  /// very first user created on a fresh install (see `AuthService.register`'s
+  /// isFirstUser check); already-provisioned installs are backfilled to the
+  /// oldest existing user by the migration that adds this column.
+  isInstanceAdmin      Boolean  @default(false)
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
@@ -1421,6 +1428,32 @@ enum GithubLinkKind {
 ///   repo webhook settings ("Secret" field); the inbound webhook receiver
 ///   verifies `X-Hub-Signature-256` against this value before processing any
 ///   payload. Generated once at creation; not rotated by a plain PUT (v1).
+/// Instance-level SSO/OIDC configuration, editable from an in-app admin
+/// settings screen (`GET`/`PATCH /admin/oidc-config`, instance-admin gated)
+/// instead of requiring an env-var edit + API redeploy. Single-row table —
+/// always addressed by the fixed id `"singleton"` (see
+/// `OIDC_CONFIG_SINGLETON_ID` in `oidc-config.service.ts`).
+///
+/// Precedence: `OIDC_ISSUER_URL`/`OIDC_CLIENT_ID`/`OIDC_CLIENT_SECRET` env
+/// vars WIN over this table when all three are set (12-factor: operators who
+/// pin config in the environment keep that behavior unchanged) — this row is
+/// the fallback/UI-editable path for self-hosters who'd rather configure SSO
+/// from the app than redeploy. `clientSecretEncrypted` mirrors
+/// `GithubIntegration.tokenEncrypted` exactly (AES-256-GCM, reversible —
+/// the OIDC client needs the raw secret for token exchange — via the shared
+/// `apps/api/src/common/crypto/secret-crypto.util.ts` helper); never
+/// returned by any API response (`OidcConfigDto.hasClientSecret` only).
+model OidcConfig {
+  id                    String   @id
+  enabled               Boolean  @default(false)
+  issuerUrl             String?
+  clientId              String?
+  clientSecretEncrypted String?
+  label                 String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
 model GithubIntegration {
   id             String   @id @default(cuid())
   projectId      String   @unique

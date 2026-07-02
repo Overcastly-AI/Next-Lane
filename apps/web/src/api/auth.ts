@@ -1,4 +1,4 @@
-import type { AuthResponse, UpdateProfileDto, UserDto } from '@next-lane/shared';
+import type { AuthResponse, MeDto, UpdateProfileDto } from '@next-lane/shared';
 import { request, setToken, clearAuth, USER_KEY } from './client';
 
 export interface RegisterInput {
@@ -34,8 +34,8 @@ export async function login(input: LoginInput): Promise<AuthResponse> {
   return persist(res);
 }
 
-export async function me(): Promise<UserDto> {
-  return request<UserDto>('/auth/me');
+export async function me(): Promise<MeDto> {
+  return request<MeDto>('/auth/me');
 }
 
 export interface AuthProvidersResponse {
@@ -55,8 +55,8 @@ export async function getAuthProviders(): Promise<AuthProvidersResponse> {
  * Update the current user's profile (name, notification preferences). Returns
  * the fresh UserDto and refreshes the cached copy used for instant UI.
  */
-export async function updateProfile(input: UpdateProfileDto): Promise<UserDto> {
-  const user = await request<UserDto>('/auth/me', {
+export async function updateProfile(input: UpdateProfileDto): Promise<MeDto> {
+  const user = await request<MeDto>('/auth/me', {
     method: 'PATCH',
     body: input,
   });
@@ -69,11 +69,11 @@ export function logout(): void {
 }
 
 /** Read the cached user (best-effort) for instant UI before `me` resolves. */
-export function cachedUser(): UserDto | null {
+export function cachedUser(): MeDto | null {
   const raw = localStorage.getItem(USER_KEY);
   if (!raw) return null;
   try {
-    return JSON.parse(raw) as UserDto;
+    return JSON.parse(raw) as MeDto;
   } catch {
     return null;
   }

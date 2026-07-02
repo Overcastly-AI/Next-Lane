@@ -26,12 +26,19 @@ async function main() {
   // Users
   const demo = await prisma.user.upsert({
     where: { email: 'demo@nextlane.dev' },
-    update: {},
+    // Demo is the designated instance admin for local/CI environments
+    // (surfaces the in-app SSO/OIDC admin settings screen + any other
+    // instance-admin-gated UI without a separate bootstrap step). On a real
+    // self-host, the first user to register gets this automatically
+    // (AuthService.register) — this upsert just makes it explicit/idempotent
+    // here since seed.ts bypasses AuthService.
+    update: { isInstanceAdmin: true },
     create: {
       email: 'demo@nextlane.dev',
       name: 'Demo User',
       passwordHash: password,
       avatarColor: '#6366f1',
+      isInstanceAdmin: true,
     },
   });
   const alex = await prisma.user.upsert({

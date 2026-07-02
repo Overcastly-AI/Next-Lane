@@ -8,7 +8,7 @@ import * as argon2 from 'argon2';
 import { PrismaService } from '../prisma/prisma.service';
 import { RegisterDto, LoginDto } from './dto/auth.dto';
 import type { UpdateProfileDto } from './dto/update-profile.dto';
-import type { AuthResponse, UserDto } from '@next-lane/shared';
+import type { AuthResponse, MeDto, UserDto } from '@next-lane/shared';
 
 @Injectable()
 export class AuthService {
@@ -23,6 +23,12 @@ export class AuthService {
     });
     if (existing) throw new ConflictException('Email already registered');
 
+    // The very first user ever created on a fresh install becomes the
+    // instance admin — no separate bootstrap step required. Already-
+    // provisioned installs are backfilled by the migration that added this
+    // column instead (see schema.prisma's User.isInstanceAdmin doc comment).
+    const isFirstUser = (await this.prisma.user.count()) === 0;
+
     const passwordHash = await argon2.hash(dto.password);
     const user = await this.prisma.user.create({
       data: {
@@ -30,6 +36,7 @@ export class AuthService {
         name: dto.name,
         passwordHash,
         avatarColor: randomColor(),
+        isInstanceAdmin: isFirstUser,
       },
     });
     return this.sign(user);
@@ -51,10 +58,11 @@ export class AuthService {
     name: string;
     avatarColor: string;
     emailNotifications: boolean;
+    isInstanceAdmin: boolean;
     createdAt: Date;
   }): AuthResponse {
     const accessToken = this.jwt.sign({ sub: user.id, email: user.email });
-    return { accessToken, user: toUserDto(user) };
+    return { accessToken, user: toMeDto(user) };
   }
 
   /**
@@ -68,12 +76,13 @@ export class AuthService {
     name: string;
     avatarColor: string;
     emailNotifications: boolean;
+    isInstanceAdmin: boolean;
     createdAt: Date;
   }): AuthResponse {
     return this.sign(user);
   }
 
-  async updateProfile(userId: string, dto: UpdateProfileDto): Promise<UserDto> {
+  async updateProfile(userId: string, dto: UpdateProfileDto): Promise<MeDto> {
     const data: { name?: string; emailNotifications?: boolean } = {};
     if (dto.name !== undefined) data.name = dto.name;
     if (dto.emailNotifications !== undefined) data.emailNotifications = dto.emailNotifications;
@@ -82,10 +91,18 @@ export class AuthService {
       where: { id: userId },
       data,
     });
-    return toUserDto(updated);
+    return toMeDto(updated);
   }
 }
 
+/**
+ * Maps a Prisma `User` row (or any subset carrying these core fields) to the
+ * public `UserDto` shape used EVERYWHERE a user is embedded as a reference
+ * (comment author, issue assignee/reporter, attachment uploader, etc.) —
+ * deliberately does NOT include `isInstanceAdmin`, which is only meaningful
+ * for "yourself" (see `toMeDto` below) and would otherwise force every
+ * embedding call site across the app to select/supply that column.
+ */
 export function toUserDto(user: {
   id: string;
   email: string;
@@ -101,6 +118,27 @@ export function toUserDto(user: {
     avatarColor: user.avatarColor,
     emailNotifications: user.emailNotifications,
     createdAt: user.createdAt.toISOString(),
+  };
+}
+
+/**
+ * Maps a Prisma `User` row to the fuller `MeDto` shape — `UserDto` plus
+ * `isInstanceAdmin` — used only for the authenticated user's OWN profile
+ * (login/register/`GET`+`PATCH /auth/me`/SSO session), never as an embedded
+ * reference to someone else.
+ */
+export function toMeDto(user: {
+  id: string;
+  email: string;
+  name: string;
+  avatarColor: string;
+  emailNotifications: boolean;
+  isInstanceAdmin: boolean;
+  createdAt: Date;
+}): MeDto {
+  return {
+    ...toUserDto(user),
+    isInstanceAdmin: user.isInstanceAdmin,
   };
 }
 

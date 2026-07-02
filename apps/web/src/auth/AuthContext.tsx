@@ -5,13 +5,13 @@ import {
   type ReactNode,
 } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import type { UserDto } from '@next-lane/shared';
+import type { MeDto } from '@next-lane/shared';
 import { me as fetchMe, cachedUser, logout as doLogout } from '@/api/auth';
 import { getToken } from '@/api/client';
 import { qk } from '@/api/keys';
 
 interface AuthContextValue {
-  user: UserDto | null;
+  user: MeDto | null;
   isLoading: boolean;
   isError: boolean;
   isAuthenticated: boolean;

@@ -205,6 +205,13 @@ Then run `claude mcp list` to confirm it is connected.
   web app.
 - **Workspace/project deletion** and other irreversible, non-confirmable
   destructive actions are intentionally out of scope for the same reason.
+- **Instance SSO/OIDC configuration** (`GET`/`PATCH /admin/oidc-config` — the
+  in-app admin settings screen, `apps/web/src/pages/AdminSsoSettingsPage.tsx`)
+  is instance-admin-only and secret-bearing (an OIDC client secret), the same
+  shape of risk as the GitHub integration above; it is deliberately **not**
+  wired as an MCP tool. Manage SSO from that settings page (or the
+  `OIDC_ISSUER_URL`/`OIDC_CLIENT_ID`/`OIDC_CLIENT_SECRET` env vars, which take
+  precedence when set) in the web app.
 
 ## Development
 

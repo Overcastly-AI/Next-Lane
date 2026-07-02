@@ -1,7 +1,8 @@
 /**
- * OidcService — SSO/OIDC Phase 1: single, env-configured generic OIDC
- * provider (works with Okta/Auth0/Keycloak/Authentik/etc via standard
- * discovery).
+ * OidcService — SSO/OIDC: a single, effective OIDC provider (env-configured
+ * Phase 1, or the in-app admin-configured DB fallback — see
+ * `OidcConfigService` for the precedence rule) that works with any
+ * standards-compliant IdP (Okta/Auth0/Keycloak/Authentik/etc via discovery).
  *
  * Flow:
  *   1. `buildAuthorizationRequest()` — generates state/nonce/PKCE, builds the
@@ -14,21 +15,24 @@
  *      then JIT-provisions (find-by-email or create) the user and issues the
  *      same JWT session shape `AuthService.login`/`register` issue.
  *
- * The OIDC client is discovered lazily and cached for the process lifetime
- * (discovery is a network round-trip; the issuer's metadata does not change
- * at runtime for a given deployment).
+ * The OIDC client is discovered lazily (a network round-trip) and cached
+ * keyed by a fingerprint of the *effective* config (issuer + client id +
+ * a hash of the secret) — so an admin editing the config from the in-app
+ * settings screen takes effect on the very next login attempt, with zero API
+ * restart: the fingerprint changes, the cache misses, discovery re-runs.
  */
 
 import { BadRequestException, Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
-import { randomBytes } from 'crypto';
+import { createHash, randomBytes } from 'crypto';
 import { Issuer, generators } from 'openid-client';
 import type { Client, TokenSet } from 'openid-client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuthService, randomColor } from '../auth.service';
 import type { AuthResponse } from '@next-lane/shared';
-import { getOidcEnvConfig, getOidcRedirectUriOverride } from './oidc.config';
+import { getOidcRedirectUriOverride } from './oidc.config';
+import { OidcConfigService, type EffectiveOidcConfig } from '../../admin-settings/oidc-config.service';
 
 interface OidcStatePayload {
   typ: 'oidc_state';
@@ -43,16 +47,28 @@ export interface RedirectUriRequest {
   get(name: string): string | undefined;
 }
 
+function fingerprintConfig(config: EffectiveOidcConfig): string {
+  return createHash('sha256')
+    .update(`${config.issuerUrl}::${config.clientId}::${config.clientSecret}`)
+    .digest('hex');
+}
+
 @Injectable()
 export class OidcService {
   private readonly logger = new Logger(OidcService.name);
-  private clientPromise: Promise<Client> | null = null;
+  private cachedClient: { fingerprint: string; client: Client } | null = null;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
     private readonly authService: AuthService,
+    private readonly oidcConfig: OidcConfigService,
   ) {}
+
+  /** Whether SSO is currently usable (env-configured or a saved+enabled DB config). Reflects live state, no restart needed. */
+  async isConfigured(): Promise<boolean> {
+    return this.oidcConfig.isConfigured();
+  }
 
   /** Resolves the callback URL: explicit `OIDC_REDIRECT_URI` override, else derived from the incoming request. */
   resolveRedirectUri(req: RedirectUriRequest): string {
@@ -162,36 +178,45 @@ export class OidcService {
     return statePayload;
   }
 
-  /** Lazily discovers and caches the OIDC client for the configured issuer. */
+  /**
+   * Lazily discovers and caches the OIDC client for the currently-effective
+   * config. Cached under a fingerprint of that config (issuer + client id +
+   * a hash of the secret) so any change — env unchanged but the DB config
+   * edited via the admin settings screen, or vice versa — busts the cache
+   * on the very next call instead of serving a stale client until restart.
+   */
   private async getClient(): Promise<Client> {
-    const env = getOidcEnvConfig();
-    if (!env) {
+    const config = await this.oidcConfig.getEffectiveConfig();
+    if (!config) {
       throw new ServiceUnavailableException('OIDC is not configured');
     }
-    if (!this.clientPromise) {
-      this.clientPromise = Issuer.discover(env.issuerUrl)
-        .then(
-          (issuer) =>
-            new issuer.Client({
-              client_id: env.clientId,
-              client_secret: env.clientSecret,
-              response_types: ['code'],
-            }),
-        )
-        .catch((err) => {
-          // Reset the cache on failure so a later request can retry discovery
-          // (e.g. the IdP was briefly unreachable when the API started).
-          this.clientPromise = null;
-          throw err;
-        });
+
+    const fingerprint = fingerprintConfig(config);
+    if (this.cachedClient?.fingerprint === fingerprint) {
+      return this.cachedClient.client;
     }
-    return this.clientPromise;
+
+    // Only cache on success — a failed discovery (e.g. IdP briefly
+    // unreachable, or an admin-typo'd issuer URL) is never cached, so the
+    // very next attempt retries cleanly instead of being stuck.
+    const issuer = await Issuer.discover(config.issuerUrl);
+    const client = new issuer.Client({
+      client_id: config.clientId,
+      client_secret: config.clientSecret,
+      response_types: ['code'],
+    });
+    this.cachedClient = { fingerprint, client };
+    return client;
   }
 
   /** Find-by-email or JIT-create a user for a successful SSO login. */
   private async findOrProvisionUser(email: string, name: string) {
     const existing = await this.prisma.user.findUnique({ where: { email } });
     if (existing) return existing;
+
+    // The very first user ever created on a fresh install becomes the
+    // instance admin, same rule as password registration (AuthService.register).
+    const isFirstUser = (await this.prisma.user.count()) === 0;
 
     // Random, unusable password — this account can only authenticate via SSO
     // unless the user later sets a password through "forgot password".
@@ -204,6 +229,7 @@ export class OidcService {
         name,
         passwordHash,
         avatarColor: randomColor(),
+        isInstanceAdmin: isFirstUser,
       },
     });
   }

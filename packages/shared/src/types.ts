@@ -29,6 +29,18 @@ export interface UserDto {
   emailNotifications: boolean;
 }
 
+/**
+ * The authenticated user's own profile — `UserDto` plus fields that only
+ * make sense for "yourself", never as an embedded reference on someone
+ * else's data (a comment's author, an issue's assignee, an attachment's
+ * uploader, etc. all stay plain `UserDto`). Returned by login/register,
+ * `GET`/`PATCH /auth/me`, and the SSO/OIDC callback session.
+ */
+export interface MeDto extends UserDto {
+  /** Instance-level admin flag — gates instance-wide settings (e.g. the in-app SSO/OIDC configuration screen), distinct from workspace-level `MembershipDto.role: ADMIN`. */
+  isInstanceAdmin: boolean;
+}
+
 /** Body for PATCH /auth/me — updates the current user's own profile. */
 export interface UpdateProfileDto {
   name?: string;
@@ -37,7 +49,7 @@ export interface UpdateProfileDto {
 
 export interface AuthResponse {
   accessToken: string;
-  user: UserDto;
+  user: MeDto;
 }
 
 export interface MembershipDto {
@@ -835,6 +847,46 @@ export interface WebhookEventPayload {
   projectId: string;
   timestamp: string;
   data: unknown;
+}
+
+// ── Instance-level admin settings: SSO/OIDC configuration screen ────────────
+
+/**
+ * Instance-wide SSO/OIDC configuration, as seen by the in-app admin settings
+ * screen (`GET`/`PATCH /admin/oidc-config`, instance-admin gated).
+ *
+ * `envManaged: true` means `OIDC_ISSUER_URL`/`OIDC_CLIENT_ID`/
+ * `OIDC_CLIENT_SECRET` are all set in the environment — those values win over
+ * any stored DB config, and the UI renders a read-only "env-managed" banner
+ * instead of an editable form (a save would silently be overridden, so the
+ * server rejects it outright rather than accepting a no-op write).
+ *
+ * `hasClientSecret` is the only signal about the secret ever returned — the
+ * raw value (env or DB, encrypted or not) is never included in any response.
+ */
+export interface OidcConfigDto {
+  envManaged: boolean;
+  /** Effective enabled state: true whenever env-managed (env presence implies on), otherwise the DB row's own `enabled` flag. */
+  enabled: boolean;
+  issuerUrl: string | null;
+  clientId: string | null;
+  label: string;
+  hasClientSecret: boolean;
+  /** ISO timestamp of the last DB save; null when env-managed or never configured. */
+  updatedAt: string | null;
+}
+
+/**
+ * Body for `PATCH /admin/oidc-config`. Every field is optional — a partial
+ * save (e.g. just flipping `enabled`) merges onto the existing stored row.
+ * `clientSecret` is write-only: omit it to keep the currently-stored secret.
+ */
+export interface UpdateOidcConfigInput {
+  enabled?: boolean;
+  issuerUrl?: string;
+  clientId?: string;
+  clientSecret?: string;
+  label?: string;
 }
 
 // ── GitHub integration (Phase 9 — Developer Graph, v1 two-way link) ─────────

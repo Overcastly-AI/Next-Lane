@@ -11,6 +11,7 @@ import { getJwtExpiresIn, getJwtSecret } from './auth.config';
 import { PasswordResetService } from './password-reset.service';
 import { ApiTokensModule } from '../api-tokens/api-tokens.module';
 import { MailModule } from '../mail/mail.module';
+import { AdminSettingsModule } from '../admin-settings/admin-settings.module';
 
 @Module({
   imports: [
@@ -24,6 +25,11 @@ import { MailModule } from '../mail/mail.module';
     ApiTokensModule,
     // MailModule provides MailService for SMTP / dev-log email delivery.
     MailModule,
+    // AdminSettingsModule provides OidcConfigService for AuthController's
+    // GET /auth/providers capability probe (reflects env OR in-app-admin-
+    // configured SSO, whichever is effective). No cycle: AdminSettingsModule
+    // does not import AuthModule.
+    AdminSettingsModule,
   ],
   controllers: [AuthController],
   providers: [
