@@ -108,6 +108,16 @@ describe('tool registry', () => {
       'bulk_update_issues',
       'mark_notification_read',
       'mark_all_notifications_read',
+      // Configurable dashboards — Phase 1 (2026-07-02)
+      'list_dashboards',
+      'get_dashboard',
+      'get_dashboard_data',
+      'create_dashboard',
+      'update_dashboard',
+      'delete_dashboard',
+      'create_dashboard_gadget',
+      'update_dashboard_gadget',
+      'delete_dashboard_gadget',
     ];
     for (const name of expected) expect(names).toContain(name);
     // No duplicate names.
@@ -544,5 +554,71 @@ describe('tool registry', () => {
     await expect(
       tool('delete_workflow').handler({ id: 'wf1' }, client),
     ).rejects.toThrow(/forbidden \[HTTP 403\]/);
+  });
+
+  it('list_dashboards builds the correct project-scoped URL', async () => {
+    const { client, fetchImpl } = clientWith(200, [{ id: 'd1' }]);
+    await tool('list_dashboards').handler({ projectId: 'p1' }, client);
+    expect(fetchImpl.mock.calls[0][0]).toBe(
+      'http://localhost:4000/api/projects/p1/dashboards',
+    );
+  });
+
+  it('get_dashboard_data GETs /dashboards/:id/data', async () => {
+    const { client, fetchImpl } = clientWith(200, { dashboardId: 'd1', gadgets: [] });
+    await tool('get_dashboard_data').handler({ dashboardId: 'd1' }, client);
+    expect(fetchImpl.mock.calls[0][0]).toBe(
+      'http://localhost:4000/api/dashboards/d1/data',
+    );
+  });
+
+  it('create_dashboard POSTs name to /projects/:id/dashboards', async () => {
+    const { client, fetchImpl } = clientWith(200, { id: 'd1' });
+    await tool('create_dashboard').handler({ projectId: 'p1', name: 'Team overview' }, client);
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toBe('http://localhost:4000/api/projects/p1/dashboards');
+    expect((init as RequestInit).method).toBe('POST');
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({
+      name: 'Team overview',
+    });
+  });
+
+  it('create_dashboard_gadget POSTs query + visualization + config to /dashboards/:id/gadgets', async () => {
+    const { client, fetchImpl } = clientWith(200, { id: 'g1' });
+    await tool('create_dashboard_gadget').handler(
+      {
+        dashboardId: 'd1',
+        title: 'By status',
+        query: 'status != Done',
+        visualization: 'BREAKDOWN',
+        config: { field: 'status' },
+      },
+      client,
+    );
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toBe('http://localhost:4000/api/dashboards/d1/gadgets');
+    expect((init as RequestInit).method).toBe('POST');
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({
+      title: 'By status',
+      query: 'status != Done',
+      visualization: 'BREAKDOWN',
+      config: { field: 'status' },
+    });
+  });
+
+  it('update_dashboard_gadget PATCHes /gadgets/:id', async () => {
+    const { client, fetchImpl } = clientWith(200, { id: 'g1' });
+    await tool('update_dashboard_gadget').handler({ id: 'g1', title: 'Renamed' }, client);
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toBe('http://localhost:4000/api/gadgets/g1');
+    expect((init as RequestInit).method).toBe('PATCH');
+  });
+
+  it('delete_dashboard_gadget DELETEs /gadgets/:id', async () => {
+    const { client, fetchImpl } = clientWith(200, null);
+    await tool('delete_dashboard_gadget').handler({ id: 'g1' }, client);
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toBe('http://localhost:4000/api/gadgets/g1');
+    expect((init as RequestInit).method).toBe('DELETE');
   });
 });

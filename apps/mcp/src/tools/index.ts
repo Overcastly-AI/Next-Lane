@@ -123,6 +123,33 @@ const templateEnum = z
       'reopen path).',
   );
 
+const dashboardVisualizationEnum = z
+  .enum(['STAT', 'TABLE', 'BREAKDOWN', 'BURNDOWN'])
+  .describe(
+    'STAT = single count; TABLE = compact issue list; BREAKDOWN = counts ' +
+      "grouped by config.field; BURNDOWN = sprint burndown scoped to the " +
+      'single sprint the query resolves to.',
+  );
+
+const dashboardGadgetConfigSchema = z
+  .object({
+    position: z.number().int().min(0).optional().describe('Grid order, lower renders earlier.'),
+    size: z.number().int().min(1).max(2).optional().describe('Grid column span (1 or 2).'),
+    field: z
+      .string()
+      .optional()
+      .describe(
+        'BREAKDOWN only (required): status/assignee/priority/type/label/component, ' +
+          'or a custom SELECT field key.',
+      ),
+    columns: z
+      .array(z.string())
+      .optional()
+      .describe('TABLE only: subset of key/title/status/assignee/points (default all).'),
+    limit: z.number().int().min(1).max(50).optional().describe('TABLE only: max rows.'),
+  })
+  .describe('Visualization + grid-layout settings for a gadget.');
+
 const gateSchema = z
   .object({
     type: z
@@ -534,6 +561,39 @@ const readTools: ToolDef[] = [
       });
       return { content: [{ type: 'text' as const, text: String(csv) }] };
     },
+  },
+  {
+    name: 'list_dashboards',
+    group: 'read',
+    description:
+      'List a project’s configurable dashboards (id, name, order, gadget count).',
+    inputSchema: {
+      projectId: z.string().describe('Project id to list dashboards for.'),
+    },
+    handler: (args, client) =>
+      client.get(`/projects/${args.projectId}/dashboards`).then(jsonResult),
+  },
+  {
+    name: 'get_dashboard',
+    group: 'read',
+    description:
+      'Get a dashboard with all of its gadgets (id, title, NLQL query, ' +
+      'visualization, config), ordered by grid position.',
+    inputSchema: { dashboardId: z.string().describe('Dashboard id.') },
+    handler: (args, client) =>
+      client.get(`/dashboards/${args.dashboardId}`).then(jsonResult),
+  },
+  {
+    name: 'get_dashboard_data',
+    group: 'read',
+    description:
+      'Evaluate every gadget on a dashboard server-side (filters the ' +
+      'project’s issues through each gadget’s NLQL query, then shapes the ' +
+      'result per visualization). A gadget with an invalid query or ' +
+      'unresolvable config gets a per-gadget `error` field instead of data.',
+    inputSchema: { dashboardId: z.string().describe('Dashboard id.') },
+    handler: (args, client) =>
+      client.get(`/dashboards/${args.dashboardId}/data`).then(jsonResult),
   },
 ];
 
@@ -1515,6 +1575,97 @@ const writeTools: ToolDef[] = [
     description: 'Mark all of the caller’s notifications as read.',
     inputSchema: {},
     handler: (_args, client) => client.post('/notifications/read-all').then(jsonResult),
+  },
+  {
+    name: 'create_dashboard',
+    group: 'write',
+    description:
+      'Create a dashboard in a project (a per-project view holding NLQL-native ' +
+      'gadgets). Requires project MEMBER+.',
+    inputSchema: {
+      projectId: z.string().describe('Project the dashboard belongs to.'),
+      name: z.string().min(1).max(80).describe('Dashboard name.'),
+    },
+    handler: (args, client) =>
+      client
+        .post(`/projects/${args.projectId}/dashboards`, { name: args.name })
+        .then(jsonResult),
+  },
+  {
+    name: 'update_dashboard',
+    group: 'write',
+    description: 'Rename a dashboard and/or change its display order. Requires project MEMBER+.',
+    inputSchema: {
+      id: z.string().describe('Dashboard id.'),
+      name: z.string().min(1).max(80).optional(),
+      order: z.number().int().min(0).optional(),
+    },
+    handler: (args, client) =>
+      client
+        .patch(`/dashboards/${args.id}`, { name: args.name, order: args.order })
+        .then(jsonResult),
+  },
+  {
+    name: 'delete_dashboard',
+    group: 'write',
+    description: 'Delete a dashboard. Its gadgets cascade. Requires project MEMBER+.',
+    inputSchema: { id: z.string().describe('Dashboard id.') },
+    handler: (args, client) => client.delete(`/dashboards/${args.id}`).then(jsonResult),
+  },
+  {
+    name: 'create_dashboard_gadget',
+    group: 'write',
+    description:
+      'Add a gadget to a dashboard: an NLQL `query` (empty string matches ' +
+      'every issue in the project) rendered as `visualization`. BREAKDOWN ' +
+      'gadgets require `config.field`. Requires project MEMBER+.',
+    inputSchema: {
+      dashboardId: z.string().describe('Dashboard to add the gadget to.'),
+      title: z.string().min(1).max(120).describe('Gadget title.'),
+      query: z.string().max(2000).describe('NLQL query; empty string = all issues.'),
+      visualization: dashboardVisualizationEnum,
+      config: dashboardGadgetConfigSchema.optional(),
+    },
+    handler: (args, client) =>
+      client
+        .post(`/dashboards/${args.dashboardId}/gadgets`, {
+          title: args.title,
+          query: args.query,
+          visualization: args.visualization,
+          config: args.config,
+        })
+        .then(jsonResult),
+  },
+  {
+    name: 'update_dashboard_gadget',
+    group: 'write',
+    description:
+      'Update a gadget’s title, NLQL query, visualization, and/or config ' +
+      '(config is merged with the existing value, not replaced). Requires ' +
+      'project MEMBER+.',
+    inputSchema: {
+      id: z.string().describe('Gadget id.'),
+      title: z.string().min(1).max(120).optional(),
+      query: z.string().max(2000).optional(),
+      visualization: dashboardVisualizationEnum.optional(),
+      config: dashboardGadgetConfigSchema.optional(),
+    },
+    handler: (args, client) =>
+      client
+        .patch(`/gadgets/${args.id}`, {
+          title: args.title,
+          query: args.query,
+          visualization: args.visualization,
+          config: args.config,
+        })
+        .then(jsonResult),
+  },
+  {
+    name: 'delete_dashboard_gadget',
+    group: 'write',
+    description: 'Delete a gadget from a dashboard. Requires project MEMBER+.',
+    inputSchema: { id: z.string().describe('Gadget id.') },
+    handler: (args, client) => client.delete(`/gadgets/${args.id}`).then(jsonResult),
   },
 ];
 

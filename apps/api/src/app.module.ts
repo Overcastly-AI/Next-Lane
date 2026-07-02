@@ -49,6 +49,7 @@ import { ChecklistModule } from './checklist/checklist.module';
 import { IssueTemplatesModule } from './issue-templates/issue-templates.module';
 import { WorkLogsModule } from './work-logs/work-logs.module';
 import { GithubModule } from './github/github.module';
+import { DashboardsModule } from './dashboards/dashboards.module';
 import { HealthController } from './health.controller';
 
 const isProd = process.env.NODE_ENV === 'production';
@@ -174,6 +175,7 @@ const isProd = process.env.NODE_ENV === 'production';
     IssueTemplatesModule,
     WorkLogsModule,
     GithubModule,
+    DashboardsModule,
   ],
   controllers: [HealthController],
   providers: [

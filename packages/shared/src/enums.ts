@@ -91,11 +91,27 @@ export enum NotificationType {
   WATCHED_UPDATED = 'WATCHED_UPDATED',
 }
 
+/**
+ * How a dashboard gadget renders the issues its NLQL query matches.
+ * Keep in sync with the Prisma `DashboardGadgetVisualization` enum.
+ */
+export enum DashboardGadgetVisualization {
+  /** A single count. */
+  STAT = 'STAT',
+  /** A compact list of matching issues. */
+  TABLE = 'TABLE',
+  /** Counts grouped by a field (status/assignee/priority/type/label/component/custom). */
+  BREAKDOWN = 'BREAKDOWN',
+  /** Sprint burndown, scoped to the single sprint the query's issues belong to. */
+  BURNDOWN = 'BURNDOWN',
+}
+
 export const ISSUE_TYPES = Object.values(IssueType);
 export const PRIORITIES = Object.values(Priority);
 export const STATUS_CATEGORIES = Object.values(StatusCategory);
 export const BOARD_TYPES = Object.values(BoardType);
 export const CUSTOM_FIELD_TYPES = Object.values(CustomFieldType);
+export const DASHBOARD_GADGET_VISUALIZATIONS = Object.values(DashboardGadgetVisualization);
 
 /** Display + ordering metadata for priorities (highest first). */
 export const PRIORITY_ORDER: Record<Priority, number> = {

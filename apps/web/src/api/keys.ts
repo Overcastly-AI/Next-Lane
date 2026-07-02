@@ -56,6 +56,12 @@ export const qk = {
   authProviders: ['authProviders'] as const,
   /** Linked GitHub PRs/commits/branches for an issue (Development section). */
   githubLinks: (issueId: string) => ['githubLinks', issueId] as const,
+  /** Dashboard summaries for a project (the dashboards list/tabs). */
+  dashboards: (projectId: string) => ['dashboards', projectId] as const,
+  /** A single dashboard's metadata + gadgets. */
+  dashboard: (dashboardId: string) => ['dashboard', dashboardId] as const,
+  /** A dashboard's evaluated gadget data. */
+  dashboardData: (dashboardId: string) => ['dashboardData', dashboardId] as const,
 };
 
 /**

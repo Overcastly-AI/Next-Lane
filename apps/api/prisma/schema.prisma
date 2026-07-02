@@ -13,6 +13,7 @@
 // add_time_tracking — applied 2026-06-29.
 // add_issue_templates — applied 2026-06-29.
 // add_github_integration — applied 2026-07-02.
+// add_dashboards — applied 2026-07-02.
 // Deferred to feature slices (do not add here without a feature branch):
 //   - pgvector embedding column (Phase 6)
 //   - GitLab / Gitea connections, auto-link-on-PR-open (Phase 9 follow-up)
@@ -61,6 +62,16 @@ enum SprintState {
 enum BoardType {
   KANBAN
   SCRUM
+}
+
+/// How a DashboardGadget renders its NLQL query result.
+/// STAT = single count; TABLE = compact issue list; BREAKDOWN = counts
+/// grouped by a field; BURNDOWN = sprint burndown scoped to the query's sprint.
+enum DashboardGadgetVisualization {
+  STAT
+  TABLE
+  BREAKDOWN
+  BURNDOWN
 }
 
 enum Role {
@@ -358,6 +369,9 @@ model Project {
 
   // GitHub integration (Phase 9 — Developer Graph, v1 two-way link)
   githubIntegration      GithubIntegration?
+
+  // Configurable dashboards (NLQL-native gadget framework)
+  dashboards             Dashboard[]
 
   @@unique([workspaceId, key])
   @@index([workspaceId])
@@ -1443,5 +1457,53 @@ model IssueGithubLink {
 
   @@unique([issueId, kind, externalId])
   @@index([issueId])
+}
+
+// ---------------------------------------------------------------------------
+// Dashboards (configurable, NLQL-native gadget framework)
+// ---------------------------------------------------------------------------
+
+/// A per-project dashboard: an ordered collection of gadgets. Projects can
+/// have multiple dashboards (e.g. "Team overview", "Bug triage"); `order`
+/// controls the tab/list order.
+model Dashboard {
+  id        String   @id @default(cuid())
+  projectId String
+  name      String
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  gadgets DashboardGadget[]
+
+  @@index([projectId])
+}
+
+/// A single gadget on a dashboard. Every gadget — built-in-feeling or fully
+/// custom — is defined the same way: an NLQL `query` (evaluated through the
+/// shared validator/evaluator, no parallel query path) plus a `visualization`
+/// that shapes the filtered issue set for display.
+///
+/// `config` is a small JSON bag holding visualization-specific + grid-layout
+/// settings (e.g. `{ field: "status" }` for BREAKDOWN, `{ columns: [...],
+/// limit: 10 }` for TABLE, and `{ position, size }` for every gadget's place
+/// in the dashboard's CSS grid). Kept as JSON rather than dedicated columns
+/// so new visualization types (Phase 2) don't need a schema migration.
+model DashboardGadget {
+  id            String                       @id @default(cuid())
+  dashboardId   String
+  title         String
+  /// NLQL query string — the single source of truth for which issues this
+  /// gadget covers. Validated server-side before every evaluation.
+  query         String
+  visualization DashboardGadgetVisualization @default(STAT)
+  config        Json?
+  createdAt     DateTime                     @default(now())
+  updatedAt     DateTime                     @updatedAt
+
+  dashboard Dashboard @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
+
+  @@index([dashboardId])
 }
 

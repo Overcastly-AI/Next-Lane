@@ -14,6 +14,7 @@ import type {
   AutomationRunStatus,
   WorkflowGateType,
   VersionState,
+  DashboardGadgetVisualization,
 } from './enums';
 
 /** API DTO shapes shared between server and client. These mirror Prisma models
@@ -1474,4 +1475,168 @@ export interface UpdateIssueTemplateDto {
   defaultAssigneeId?: string | null;
   componentId?: string | null;
   labelIds?: string[];
+}
+
+// ---------------------------------------------------------------------------
+// Dashboards (configurable, NLQL-native gadget framework)
+// ---------------------------------------------------------------------------
+
+/**
+ * Visualization + grid-layout settings for a single gadget. Every field is
+ * optional and interpreted per `visualization`:
+ *  - BREAKDOWN: `field` (status/assignee/priority/type/label/component, or a
+ *    custom SELECT field's key) — required to compute the gadget.
+ *  - TABLE: `columns` (subset of key/title/status/assignee/points; defaults
+ *    to all) and `limit` (max rows, server-capped).
+ *  - All gadgets: `position` (grid order, lower = earlier) and `size` (grid
+ *    span in columns; 1 = default, 2 = wide).
+ */
+export interface DashboardGadgetConfig {
+  position?: number;
+  size?: number;
+  field?: string;
+  columns?: string[];
+  limit?: number;
+}
+
+/** A single gadget on a dashboard. */
+export interface DashboardGadgetDto {
+  id: string;
+  dashboardId: string;
+  title: string;
+  /** NLQL query — the single source of truth for which issues this gadget covers. */
+  query: string;
+  visualization: DashboardGadgetVisualization;
+  config: DashboardGadgetConfig;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** A dashboard summary — used in the per-project dashboard list. */
+export interface DashboardSummaryDto {
+  id: string;
+  projectId: string;
+  name: string;
+  order: number;
+  gadgetCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Full dashboard view: metadata + every gadget, ordered by config.position. */
+export interface DashboardDto {
+  id: string;
+  projectId: string;
+  name: string;
+  order: number;
+  gadgets: DashboardGadgetDto[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Body for POST /projects/:projectId/dashboards */
+export interface CreateDashboardDto {
+  name: string;
+}
+
+/** Body for PATCH /dashboards/:id */
+export interface UpdateDashboardDto {
+  name?: string;
+  order?: number;
+}
+
+/** Body for POST /dashboards/:id/gadgets */
+export interface CreateDashboardGadgetDto {
+  title: string;
+  query: string;
+  visualization: DashboardGadgetVisualization;
+  config?: DashboardGadgetConfig;
+}
+
+/** Body for PATCH /gadgets/:id */
+export interface UpdateDashboardGadgetDto {
+  title?: string;
+  query?: string;
+  visualization?: DashboardGadgetVisualization;
+  config?: DashboardGadgetConfig;
+}
+
+/** A STAT gadget's computed data: a single count. */
+export interface DashboardStatGadgetData {
+  kind: 'STAT';
+  count: number;
+}
+
+/** One row in a TABLE gadget. */
+export interface DashboardTableRow {
+  id: string;
+  key: string;
+  title: string;
+  status: string;
+  assignee: string | null;
+  points: number | null;
+}
+
+/** A TABLE gadget's computed data: a capped list of matching issues. */
+export interface DashboardTableGadgetData {
+  kind: 'TABLE';
+  columns: string[];
+  rows: DashboardTableRow[];
+  truncated: boolean;
+}
+
+/** One bucket in a BREAKDOWN gadget. */
+export interface DashboardBreakdownBucket {
+  key: string;
+  count: number;
+}
+
+/** A BREAKDOWN gadget's computed data: counts grouped by `field`. */
+export interface DashboardBreakdownGadgetData {
+  kind: 'BREAKDOWN';
+  field: string;
+  buckets: DashboardBreakdownBucket[];
+}
+
+/**
+ * A BURNDOWN gadget's computed data — the standard sprint burndown series,
+ * scoped to the single sprint the gadget's query resolves to.
+ */
+export interface DashboardBurndownGadgetData {
+  kind: 'BURNDOWN';
+  sprintId: string;
+  sprintName: string;
+  totalCommitted: number;
+  series: BurndownPointDto[];
+}
+
+export type DashboardGadgetResultData =
+  | DashboardStatGadgetData
+  | DashboardTableGadgetData
+  | DashboardBreakdownGadgetData
+  | DashboardBurndownGadgetData;
+
+/**
+ * One gadget's evaluated result within a dashboard's data payload. `data` is
+ * present on success; `error` is present (and `data` absent) when the
+ * gadget's stored NLQL query fails validation/evaluation or its config can't
+ * be resolved (e.g. a BREAKDOWN gadget with an unknown `field`, or a
+ * BURNDOWN gadget whose query doesn't resolve to exactly one sprint) — this
+ * never surfaces as a 500, so one bad gadget can't break the whole dashboard.
+ */
+export interface DashboardGadgetResult {
+  gadgetId: string;
+  title: string;
+  visualization: DashboardGadgetVisualization;
+  config: DashboardGadgetConfig;
+  data?: DashboardGadgetResultData;
+  error?: string;
+}
+
+/** GET /dashboards/:id/data response — every gadget's evaluated result. */
+export interface DashboardDataDto {
+  dashboardId: string;
+  gadgets: DashboardGadgetResult[];
+  /** True when the project's issue set was capped before gadget evaluation. */
+  issuesTruncated: boolean;
 }

@@ -49,6 +49,7 @@ const PRIMARY_TABS = [
 
 const MORE_TABS = [
   { to: 'analytics',   label: 'Analytics'  },
+  { to: 'dashboards',  label: 'Dashboards' },
   { to: 'roadmap',     label: 'Roadmap'    },
   { to: 'poker',       label: 'Poker'      },
   { to: 'standups',    label: 'Standup'    },

@@ -119,6 +119,18 @@ export function ViewReportsIcon({ className }: { className?: string }) {
   );
 }
 
+/** Dashboards — a 4-tile grid, distinct from the bar-chart Reports glyph. */
+export function ViewDashboardsIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="3" y="3" width="8" height="8" rx="1.5" />
+      <rect x="13" y="3" width="8" height="5" rx="1.5" />
+      <rect x="13" y="10" width="8" height="11" rx="1.5" />
+      <rect x="3" y="13" width="8" height="8" rx="1.5" />
+    </svg>
+  );
+}
+
 /** Workspace Branding — a paint-swatch glyph, distinct from the Settings gear. */
 export function BrandingIcon({ className }: { className?: string }) {
   return (

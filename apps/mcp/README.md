@@ -148,6 +148,9 @@ Then run `claude mcp list` to confirm it is connected.
 | `list_notifications`| List the caller's notifications, newest first.                        |
 | `get_unread_notification_count` | Get the caller's unread notification count.               |
 | `get_project_csv`   | Export a project's issues as **raw CSV text** (`projectId`, optional NLQL `q`). |
+| `list_dashboards`   | List a project's configurable dashboards (`projectId`).               |
+| `get_dashboard`     | Get a dashboard with all its gadgets, ordered by grid position (`dashboardId`). |
+| `get_dashboard_data` | Evaluate every gadget on a dashboard server-side; per-gadget `error` on a bad query/config instead of a 500 (`dashboardId`). |
 
 ### Write (SDLC)
 
@@ -187,6 +190,8 @@ Then run `claude mcp list` to confirm it is connected.
 | `create_issue_from_template`    | Create an issue from an issue template, with per-field overrides. |
 | `bulk_update_issues`            | Apply the same status/assignee/priority/sprint/type/label change to up to 100 issues at once. |
 | `mark_notification_read` / `mark_all_notifications_read` | Mark one or all of the caller's notifications read. |
+| `create_dashboard` / `update_dashboard` / `delete_dashboard` | Create a project dashboard; rename/reorder; delete (gadgets cascade). |
+| `create_dashboard_gadget` / `update_dashboard_gadget` / `delete_dashboard_gadget` | Add / edit / remove a gadget — an NLQL `query` + `visualization` (STAT/TABLE/BREAKDOWN/BURNDOWN) + `config`. Update merges `config` rather than replacing it. |
 
 `create_issue` / `update_issue` also accept `originalEstimateMinutes` (time-tracking estimate) and `customFields` (partial, keyed by field id).
 

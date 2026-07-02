@@ -27,6 +27,7 @@ import { PulseDashboardPage } from '@/pages/PulseDashboardPage';
 import { MyWorkPage } from '@/pages/MyWorkPage';
 import { BoardPage } from '@/pages/BoardPage';
 import { BacklogPage } from '@/pages/BacklogPage';
+import { DashboardsPage } from '@/pages/DashboardsPage';
 import { ReportsPage } from '@/pages/ReportsPage';
 import { RoadmapPage } from '@/pages/RoadmapPage';
 import { SettingsPage } from '@/pages/SettingsPage';
@@ -187,6 +188,7 @@ export default function App() {
             >
               <Route path="board" element={<BoardPage />} />
               <Route path="backlog" element={<BacklogPage />} />
+              <Route path="dashboards" element={<DashboardsPage />} />
               <Route path="reports" element={<ReportsPage />} />
               <Route path="analytics" element={<ProjectAnalyticsPage />} />
               <Route path="roadmap" element={<RoadmapPage />} />
