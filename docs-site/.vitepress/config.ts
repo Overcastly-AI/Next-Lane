@@ -44,7 +44,7 @@ export default defineConfig({
       'meta',
       {
         property: 'og:image',
-        content: 'https://overcastly-ai.github.io/Next-Lane/screenshots/board-desktop.png',
+        content: 'https://overcastly-ai.github.io/Next-Lane/screenshots/board-dark-desktop.png',
       },
     ],
   ],

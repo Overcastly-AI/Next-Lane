@@ -30,10 +30,20 @@ Last reshoot: **2026-07-03** (post-sidebar, dark mode, and design-elevation work
 
 ## Consumers
 
-- Root `README.md` references `home/board/backlog/drawer/login` desktop + `home/board/login` mobile.
-- `docs-site/` uses **copies** under `docs-site/public/screenshots/` (`board-desktop.png`,
-  `drawer-desktop.png`, `backlog-desktop.png` — including the landing-page hero). After a
-  reshoot here, those copies must be refreshed too.
+- Root `README.md` — hero (`home-desktop`), a light/dark board pair
+  (`board-desktop` + `board-dark-desktop`), a mobile trio (`board-mobile` +
+  `sidebar-mobile` + `home-mobile`), `drawer-desktop` + `backlog-desktop`, and
+  a collapsible "More screenshots" section covering `dashboard-desktop`,
+  `roadmap-desktop`, `workflow-graph-desktop`, `agent-context-desktop`,
+  `board-swimlanes-desktop`, `nlql-autocomplete-desktop`,
+  `drawer-worklogs-desktop`, and `login-desktop`.
+- `docs-site/` uses **copies of every file in this directory** under
+  `docs-site/public/screenshots/` — the landing-page hero and og:image use
+  `board-dark-desktop.png` (the site's default theme is dark); `index.md`,
+  `guide/features.md`, and `guide/agents-mcp.md` each reference the shots
+  relevant to what they document. After a reshoot here, re-copy the whole
+  directory (`cp docs/screenshots/*.png docs-site/public/screenshots/`) and
+  re-run `pnpm --filter @next-lane/docs docs:build` before pushing.
 
 ## Reshooting
 

@@ -30,6 +30,11 @@ in lockstep with the product.
   secret-bearing operations deliberately kept off the MCP surface, and PAT
   scopes to restrict what a token can touch.
 
+![Agent context panel in project settings](/screenshots/agent-context-desktop.png)
+
+*The per-project agent-context document — a handoff each run reads first and
+writes last, with a measured staleness signal.*
+
 ---
 
 ## Connecting

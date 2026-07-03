@@ -72,8 +72,15 @@ a hot-reload dev setup are in [Quickstart](#-quickstart) below.
 <br/>
 
 <div align="center">
-  <img src="docs/screenshots/board-desktop.png" alt="Kanban board (desktop)" width="49%" />
+  <img src="docs/screenshots/board-desktop.png" alt="Kanban board, light mode (desktop)" width="49%" />
+  <img src="docs/screenshots/board-dark-desktop.png" alt="Kanban board, dark mode (desktop)" width="49%" />
+</div>
+
+<br/>
+
+<div align="center">
   <img src="docs/screenshots/board-mobile.png" alt="Kanban board (mobile)" width="24%" />
+  <img src="docs/screenshots/sidebar-mobile.png" alt="Mobile navigation drawer (mobile)" width="24%" />
   <img src="docs/screenshots/home-mobile.png" alt="Dashboard (mobile)" width="24%" />
 </div>
 
@@ -84,12 +91,38 @@ a hot-reload dev setup are in [Quickstart](#-quickstart) below.
   <img src="docs/screenshots/backlog-desktop.png" alt="Backlog view (desktop)" width="49%" />
 </div>
 
+<details>
+<summary><strong>More screenshots</strong> — dashboards, roadmap/Gantt, the visual workflow builder, NLQL autocomplete, agent context, and more</summary>
+
 <br/>
 
 <div align="center">
-  <img src="docs/screenshots/login-desktop.png" alt="Login (desktop)" width="49%" />
-  <img src="docs/screenshots/login-mobile.png" alt="Login (mobile)" width="24%" />
+  <img src="docs/screenshots/dashboard-desktop.png" alt="Dashboards — STAT, TABLE, BREAKDOWN, BURNDOWN gadgets (desktop)" width="49%" />
+  <img src="docs/screenshots/roadmap-desktop.png" alt="Roadmap / Gantt timeline (desktop)" width="49%" />
 </div>
+
+<br/>
+
+<div align="center">
+  <img src="docs/screenshots/workflow-graph-desktop.png" alt="Visual workflow graph builder (desktop)" width="49%" />
+  <img src="docs/screenshots/agent-context-desktop.png" alt="Agent-context handoff panel (desktop)" width="49%" />
+</div>
+
+<br/>
+
+<div align="center">
+  <img src="docs/screenshots/board-swimlanes-desktop.png" alt="Board grouped into swimlanes (desktop)" width="49%" />
+  <img src="docs/screenshots/nlql-autocomplete-desktop.png" alt="NLQL query bar with autocomplete (desktop)" width="49%" />
+</div>
+
+<br/>
+
+<div align="center">
+  <img src="docs/screenshots/drawer-worklogs-desktop.png" alt="Issue drawer — checklist and time tracking (desktop)" width="49%" />
+  <img src="docs/screenshots/login-desktop.png" alt="Login (desktop)" width="49%" />
+</div>
+
+</details>
 
 ## Why Next Lane
 

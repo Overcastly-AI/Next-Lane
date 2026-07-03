@@ -9,8 +9,8 @@ hero:
     real-time collaboration — running on your own hardware. Zero seats to buy.
     No data leaves your infrastructure.
   image:
-    src: /screenshots/board-desktop.png
-    alt: Next Lane Kanban board showing issues in To Do, In Progress, and Done columns
+    src: /screenshots/board-dark-desktop.png
+    alt: Next Lane Kanban board in dark mode showing issues in To Do, In Progress, and Done columns
   actions:
     - theme: brand
       text: Get Started
@@ -99,9 +99,25 @@ See the full [Features](./guide/features) guide and the
 
 ## Screenshots
 
-![Next Lane board view](/screenshots/board-desktop.png)
+![NLQL autocomplete](/screenshots/nlql-autocomplete-desktop.png)
 
-*Kanban board — drag cards between columns, see live presence avatars, apply conditional card colors.*
+*NLQL query bar mid-autocomplete — one query language for search, saved filters, automations, and dashboards, live-filtering the board as you type.*
+
+![Dashboards](/screenshots/dashboard-desktop.png)
+
+*Dashboards — STAT, TABLE, BREAKDOWN, and BURNDOWN gadgets, each backed by an NLQL query, on real sprint data.*
+
+![Roadmap / Gantt timeline](/screenshots/roadmap-desktop.png)
+
+*Roadmap — epic timelines with date-range bars, % complete, sprint bars, and a today line.*
+
+![Workflow graph builder](/screenshots/workflow-graph-desktop.png)
+
+*Visual workflow graph builder — statuses as nodes, transitions as edges, enforced per board.*
+
+![Agent context panel](/screenshots/agent-context-desktop.png)
+
+*Persistent per-project agent-context handoff document, with a staleness signal so the next agent session knows when to re-verify.*
 
 ![Issue detail drawer](/screenshots/drawer-desktop.png)
 

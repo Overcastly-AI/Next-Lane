@@ -42,6 +42,10 @@ Multiple boards per project, each independently configured.
 
 ![Board view](/screenshots/board-desktop.png)
 
+![Board grouped into swimlanes](/screenshots/board-swimlanes-desktop.png)
+
+*Swimlanes — the same board grouped by issue type, with a per-lane count.*
+
 ---
 
 ## Issues
@@ -71,6 +75,10 @@ Issues are the core unit of work. Every issue has:
 The issue detail drawer opens in-panel without leaving the board.
 
 ![Issue detail drawer](/screenshots/drawer-desktop.png)
+
+![Issue drawer scrolled to checklist and time tracking](/screenshots/drawer-worklogs-desktop.png)
+
+*Checklist progress and time tracking (logged vs. estimate) inside the same drawer.*
 
 ### Issue templates
 
@@ -126,6 +134,8 @@ title ~ "checkout" OR text ~ "payment"
 type — in the board query bar, saved-filter editor, and automation condition
 editor alike. Invalid queries report the exact parse position.
 
+![NLQL autocomplete in the board query bar](/screenshots/nlql-autocomplete-desktop.png)
+
 ### Saved filters
 
 Save any NLQL query with a name (star icon next to the query bar). Filters are
@@ -153,6 +163,10 @@ per board (Project Settings → Workflows).
 - Enforcement is consistent everywhere: board drag-and-drop, the drawer's
   status dropdown, triage, bulk edit, and the MCP `move_issue` tool all pass
   through the same check.
+
+![Visual workflow graph builder](/screenshots/workflow-graph-desktop.png)
+
+*A named "Engineering Flow" workflow — statuses as nodes, transitions as edges, enforced.*
 
 ---
 
@@ -187,6 +201,8 @@ gadget is an NLQL query plus a visualization**:
 Gadgets live on a grid, can be reordered by drag-and-drop, refresh in real
 time when project issues change, and report per-gadget errors on a bad query
 instead of failing the whole dashboard.
+
+![Dashboards with STAT, BREAKDOWN, BURNDOWN, and TABLE gadgets](/screenshots/dashboard-desktop.png)
 
 ---
 
@@ -230,6 +246,8 @@ instead of failing the whole dashboard.
   distribution, and per-assignee workload.
 - **Personal analytics** (`/me/analytics`) — your own throughput, cycle time,
   and breakdowns.
+
+![Roadmap / Gantt timeline](/screenshots/roadmap-desktop.png)
 
 ---
 
