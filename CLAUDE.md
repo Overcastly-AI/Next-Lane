@@ -148,3 +148,44 @@ This project is built by a **team of specialized AI agents**, not one generalist
 ## Known environment constraints (this build session)
 
 - Outbound network is restricted to package registries (npm/pypi/etc.) and Anthropic. General GitHub and arbitrary web are **blocked** by egress policy. Use npm packages, not git clones, for dependencies.
+
+### Environment recipe (hard-won — follow exactly, every agent)
+
+- **Killing a stale API:** ONLY `pkill -9 -f 'dist/main[.]js'` (bracket pattern).
+  NEVER `pkill -f "node dist/main.js"` — the plain string matches the harness
+  shell's own cmdline and kills your session's launcher (silent exit-1, empty logs).
+- **Starting the API:** rebuild with `cd apps/api && rm -rf dist *.tsbuildinfo && pnpm build`
+  (stale `.tsbuildinfo` produces a partial `dist/` with missing-module crashes),
+  then start it **in a separate Bash call** with `RATE_LIMIT_DISABLED=true`
+  (e2e without it mass-fails with 429s).
+- **Playwright:** base URL `http://localhost:3000`, never `127.0.0.1` (API CORS
+  allowlist). Workspace slugs are globally unique — always unique-suffix
+  workspace/user names in specs. Per-keystroke typing (`pressSequentially`)
+  where the suite does that, not `.fill()`.
+- **Run gates in the foreground.** Never end your turn waiting on your own
+  backgrounded build/test run — run it with a timeout and read the result.
+  An agent that pauses "until tests finish" stalls the whole org.
+
+### Multi-agent orchestration protocol
+
+- **File territories.** Parallel agents get explicitly disjoint file territories
+  in their briefs (e.g. one holds `apps/mcp/**`, another `apps/api/**`). Respect
+  them: never edit, revert, or commit another agent's in-flight files. If you
+  find foreign uncommitted work in shared files (e.g. `schema.prisma`), build
+  alongside it and stage only your own hunks (`git add -p`).
+- **Commit protocol (every agent):** stage your own files explicitly — never
+  `git add -A`. Push with `git push -u origin <branch>`; on rejection,
+  `git pull --rebase` and retry. Commit only when your full gates are green
+  (never push red), and tick ROADMAP/BACKLOG in the same commit.
+- **Liveness (orchestrator duty).** Container restarts and usage-limit pauses
+  kill agents silently. On every wakeup, check in-flight agents' task-output
+  mtimes; >30 min stale without a known long-running gate = investigate, reap,
+  and relaunch (a dead agent once went unnoticed ~7h — never again). Uncommitted
+  work left by a dead agent is preserved and reconciled by its relauncher, not
+  reverted.
+- **Verify before trusting.** The orchestrator independently re-runs a targeted
+  slice of every completed agent's gates (typecheck + touched suites) before
+  reporting its work as done.
+- **Founder updates are results-first.** Lead with what shipped and the
+  evidence (numbers, screenshots), then what's running, then what's next —
+  and send progress proactively at meaningful milestones, not only when asked.
