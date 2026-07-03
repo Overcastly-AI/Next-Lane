@@ -119,6 +119,7 @@ This project is built by a **team of specialized AI agents**, not one generalist
 - `qa-tester` — **independent** Playwright QA / user-acceptance testing (desktop + mobile). Keep QA separate from whoever wrote the code.
 - `frontend-qa` — front-end QA / UX engineer: audits every component for visual consistency, design-system adherence, accessibility, responsive behavior, and missing states; files feedback to the dev team in `docs/UI-REVIEW.md` (read-only on app code).
 - `doc-syncer` — cheap-model (haiku), commit-driven doc reconciler for the surfaces the same-commit rule doesn't cover (ARCHITECTURE.md, CHANGELOG.md, docs-site guide facts, README claims). Run it at the end of every build-loop iteration.
+- `mcp-consumer-qa` — agent-experience (AX) QA: exercises the product through `@next-lane/mcp` tools only, doing a realistic PM job while measuring bytes-per-answer, calls-per-question, misfire affordances, and error quality; files evidence-backed frictions to `docs/MCP-QA.md`. Run it whenever the MCP surface changes and at least once per audit cycle — agent UX regressions must be caught by us, not by users' agents.
 
 **Skills** (`.claude/skills/`) — invoke the matching skill before the work:
 - Build process: `brainstorming` → `writing-plans` → `test-driven-development` / `subagent-driven-development` → `requesting-code-review` → `verification-before-completion` → `finishing-a-development-branch` (vendored from Superpowers).
