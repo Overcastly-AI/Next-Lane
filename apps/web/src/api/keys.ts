@@ -71,6 +71,9 @@ export const qk = {
    * override) — the Members section on the project settings page.
    */
   projectMembers: (projectId: string) => ['projectMembers', projectId] as const,
+  /** A project's agent-context handoff document (content + staleness). */
+  projectAgentContext: (projectId: string) =>
+    ['projectAgentContext', projectId] as const,
 };
 
 /**

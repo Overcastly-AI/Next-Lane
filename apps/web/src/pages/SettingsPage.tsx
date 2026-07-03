@@ -6,6 +6,7 @@ import { useStatuses, useLabels } from '@/api/meta';
 import { useUpdateStatus, useDeleteStatus } from '@/api/statuses';
 import { useCreateLabel, useDeleteLabel, useUpdateLabel } from '@/api/labels';
 import { useMyRole, useWorkspaceMembers } from '@/api/workspaces';
+import { useBoardRealtime } from '@/api/socket';
 import { canEdit } from '@/lib/permissions';
 import { AppHeader } from '@/components/AppHeader';
 import { ProjectBreadcrumb } from '@/components/project/ProjectBreadcrumb';
@@ -14,6 +15,7 @@ import { ColumnFormModal } from '@/components/board/ColumnFormModal';
 import { WebhooksSection } from '@/components/settings/WebhooksSection';
 import { GithubSection } from '@/components/settings/GithubSection';
 import { GitlabSection } from '@/components/settings/GitlabSection';
+import { AgentContextSection } from '@/components/settings/AgentContextSection';
 import { ShareSection } from '@/components/settings/ShareSection';
 import { CustomFieldsSection } from '@/components/settings/CustomFieldsSection';
 import { ComponentsSection } from '@/components/settings/ComponentsSection';
@@ -78,6 +80,10 @@ export function SettingsPage() {
   // Workspace members for the ComponentsSection default-assignee picker.
   const membersQuery = useWorkspaceMembers(project?.workspaceId);
   const workspaceUsers = (membersQuery.data ?? []).map((m) => m.user);
+
+  // Live-refresh the agent-context doc + its staleness signal (someone else's
+  // save, or any issue/audit activity that moves the "changes since" count).
+  useBoardRealtime(projectId);
 
   // Statuses needed by WorkflowSection (shared with ColumnsSection internally).
   const statusesQuery = useStatuses(projectId);
@@ -183,6 +189,8 @@ export function SettingsPage() {
         <GithubSection projectId={projectId} isAdmin={isAdmin} />
 
         <GitlabSection projectId={projectId} isAdmin={isAdmin} />
+
+        <AgentContextSection projectId={projectId} myRole={myRole} />
 
         {isAdmin && <ShareSection projectId={projectId} />}
 

@@ -144,6 +144,18 @@ export function useBoardRealtime(
           // BREAKDOWN/BURNDOWN numbers don't silently go stale while a
           // teammate edits issues elsewhere.
           invalidateDashboardDataFamily(qc);
+          // Issue activity feeds the agent-context staleness signal
+          // (`changesSinceUpdate`) — refresh it so the staleness pill updates
+          // live without a reload.
+          void qc.invalidateQueries({ queryKey: qk.projectAgentContext(projectId) });
+        }
+        if (event === SocketEvents.ProjectAgentContextUpdated) {
+          // The shared agent-handoff document (Settings → Agent context) was
+          // written by someone (agent or human) — refresh it live for anyone
+          // else with the settings page open, and recompute staleness (which
+          // also moves on plain issue/audit activity, handled by the
+          // ISSUE_EVENTS/broad invalidation below).
+          void qc.invalidateQueries({ queryKey: qk.projectAgentContext(projectId) });
         }
         if (event === SocketEvents.DashboardUpdated) {
           // A dashboard's metadata changed or a gadget was added/edited/
