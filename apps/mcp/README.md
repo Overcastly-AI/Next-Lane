@@ -2,10 +2,11 @@
 
 A [Model Context Protocol](https://modelcontextprotocol.io) server that lets
 external AI agents — **Claude Desktop**, **Claude Code**, and any other MCP host
-— **read and write** a Next Lane instance end-to-end: **89 tools** covering
+— **read and write** a Next Lane instance end-to-end: **91 tools** covering
 workflows / SDLC, issues (incl. links, labels, comments, checklists, worklogs),
 boards, statuses, sprints, components, versions, custom fields, saved NLQL
-filters, automation rules, dashboards, per-project role overrides, and a
+filters, automation rules, dashboards, per-project role overrides, per-project
+agent-context memory, and a
 one-call epic rollup.
 
 This is Next Lane's **agent-native wedge** (`docs/VISION.md`): an agent can list
@@ -185,6 +186,7 @@ minimal, so there is no `verbose` mode.
 | `get_dashboard_data` | Evaluate every gadget on a dashboard server-side; per-gadget `error` on a bad query/config instead of a 500 (`dashboardId`). |
 | `list_project_role_overrides` | List a project's effective members (workspace role, effective role, `isOverride` flag) (`projectId`). **compact** `{userId, name, effectiveRole, isOverride}`. |
 | `get_epic_overview` | One call for "what's in this epic and where does it stand": epic `{id, key, title, type, status}`, compact children `{id, key, title, type, status}`, a per-status `statusBreakdown`, and `progress: {done, total, fraction}` (`epicId`; works on any issue with children, not only EPIC-typed ones). |
+| `get_project_context` | The project's persistent agent handoff document + `staleness` (`changesSinceUpdate`, `lastProjectActivityAt`) + `contentBytes` (`projectId`). **Call this first when starting work on a project.** Never 404s — empty string before the first write. |
 
 ### Write (SDLC)
 
@@ -227,6 +229,8 @@ minimal, so there is no `verbose` mode.
 | `create_dashboard` / `update_dashboard` / `delete_dashboard` | Create a project dashboard; rename/reorder; delete (gadgets cascade). |
 | `create_dashboard_gadget` / `update_dashboard_gadget` / `delete_dashboard_gadget` | Add / edit / remove a gadget — an NLQL `query` + `visualization` (STAT/TABLE/BREAKDOWN/BURNDOWN) + `config`. Update merges `config` rather than replacing it. |
 | `set_project_role_override` / `remove_project_role_override` | Elevate/restrict (or revert) a workspace member's role scoped to one project. Requires effective project ADMIN; refuses to override a workspace admin. |
+| `update_project_context` | Full-content replace of the project's agent handoff document (`projectId`, `content` markdown, 64 KB cap). **Call before ending every work session** — and at milestones — so the next run starts with your context. Requires project MEMBER+. |
+| `update_project_context` | Full-content replace of the project's agent handoff document (`projectId`, `content` markdown, 64 KB cap). **Call before ending every work session** — and at milestones — so the next run starts with your context. Requires project MEMBER+. |
 
 `create_issue` / `update_issue` also accept `originalEstimateMinutes` (time-tracking estimate) and `customFields` (partial, keyed by field id).
 
@@ -247,6 +251,26 @@ minimal, so there is no `verbose` mode.
   wired as an MCP tool. Manage SSO from that settings page (or the
   `OIDC_ISSUER_URL`/`OIDC_CLIENT_ID`/`OIDC_CLIENT_SECRET` env vars, which take
   precedence when set) in the web app.
+
+## Ship your agent with memory
+
+Every Next Lane project keeps a single shared **agent-context document** —
+persistent memory that survives between agent runs and carries across agents
+(and humans: it's visible and editable in the project UI). Two tools manage
+it (`get_project_context` / `update_project_context`), the server's MCP
+`instructions` teach every connecting client the read-first / hand-off-last
+practice automatically, and the distributable
+[`project-context` skill](../../skills/project-context/SKILL.md) bakes the
+full discipline into agents that support Agent Skills:
+
+```bash
+# Claude Code
+cp -r skills/project-context ~/.claude/skills/
+```
+
+The read tool returns a `staleness` signal (`changesSinceUpdate` — project
+activity newer than the handoff) so an agent knows when to re-verify a stale
+handoff instead of trusting it blindly.
 
 ## Development
 

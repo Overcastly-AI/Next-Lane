@@ -17,14 +17,42 @@ import { ConfigError, loadConfig } from './config.js';
 import { NextLaneClient } from './client.js';
 import { registerTools } from './tools/index.js';
 
+/**
+ * Server-level "instructions" — sent to every connecting MCP client as part
+ * of the initialize handshake, so this guidance reaches an agent even if it
+ * never reads `apps/mcp/README.md` or the `next-lane-project-context` skill.
+ * This is the protocol-layer half of the founder directive ("we should
+ * prompt it to do so"); the skill (`skills/project-context/SKILL.md`) is the
+ * distributable, model-triggered half.
+ */
+const SERVER_INSTRUCTIONS =
+  'Next Lane is a self-hosted issue/project tracker. Every project has a ' +
+  "single shared agent-context document — the project's persistent memory " +
+  "across separate agent runs. Call get_project_context FIRST when you " +
+  'start work on a project: treat its content as the handoff from whoever ' +
+  '(agent or human) worked on it last, and check the `staleness` field — a ' +
+  'non-zero `changesSinceUpdate` means real activity has happened since it ' +
+  'was written, so verify against current state before trusting it ' +
+  'blindly. Keep it updated as you work: after significant milestones or ' +
+  'direction changes, and ALWAYS before ending your session, call ' +
+  'update_project_context with a concise handoff for the next run — ' +
+  'current goal/state, decisions made, in-flight work, next steps, and ' +
+  'gotchas. It is a full-content replace, not a log: replace stale content ' +
+  'rather than appending forever, and stay well under the 64 KB cap.';
+
 /** Build a fully-wired server (no transport connected). Exported for tests. */
 export function createServer(): McpServer {
   const config = loadConfig();
   const client = new NextLaneClient(config);
-  const server = new McpServer({
-    name: 'next-lane',
-    version: '0.1.0',
-  });
+  const server = new McpServer(
+    {
+      name: 'next-lane',
+      version: '0.1.0',
+    },
+    {
+      instructions: SERVER_INSTRUCTIONS,
+    },
+  );
   registerTools(server, client);
   return server;
 }

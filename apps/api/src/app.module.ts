@@ -52,6 +52,7 @@ import { WorkLogsModule } from './work-logs/work-logs.module';
 import { GithubModule } from './github/github.module';
 import { DashboardsModule } from './dashboards/dashboards.module';
 import { AdminSettingsModule } from './admin-settings/admin-settings.module';
+import { AgentContextModule } from './agent-context/agent-context.module';
 import { HealthController } from './health.controller';
 
 const isProd = process.env.NODE_ENV === 'production';
@@ -180,6 +181,7 @@ const isProd = process.env.NODE_ENV === 'production';
     GithubModule,
     DashboardsModule,
     AdminSettingsModule,
+    AgentContextModule,
   ],
   controllers: [HealthController],
   providers: [

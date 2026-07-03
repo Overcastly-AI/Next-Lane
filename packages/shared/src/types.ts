@@ -810,6 +810,13 @@ export const SocketEvents = {
    * dashboard/gadget CRUD mutation.
    */
   DashboardUpdated: 'dashboard.updated',
+  /**
+   * A project's agent-context handoff document was created/replaced.
+   * Payload is `{ projectId }` — clients refetch the agent-context query for
+   * that project so an open "Agent context" view refreshes live. Emitted
+   * from `AgentContextService.upsert`.
+   */
+  ProjectAgentContextUpdated: 'project-agent-context.updated',
 } as const;
 
 export type SocketEvent = (typeof SocketEvents)[keyof typeof SocketEvents];
@@ -1741,4 +1748,53 @@ export interface DashboardDataDto {
   gadgets: DashboardGadgetResult[];
   /** True when the project's issue set was capped before gadget evaluation. */
   issuesTruncated: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Agent context (per-project agent handoff memory)
+//
+// Founder directive (2026-07-03): "for each project a LLM via the MCP should
+// be able to dump their context for the next run or agent." One shared
+// markdown document per project — the handoff between separate agent runs
+// (and, equally, a way for a human to leave notes for the next agent).
+// ---------------------------------------------------------------------------
+
+/** Minimal actor identity for `ProjectAgentContextDto.updatedBy`. */
+export interface AgentContextUpdatedByDto {
+  id: string;
+  name: string;
+}
+
+/**
+ * Staleness signal for a project's agent-context document: how much has
+ * happened in the project since it was last written, so an agent (or human)
+ * can judge whether to trust it as-is or reconcile against recent activity
+ * first.
+ *
+ * `changesSinceUpdate` is an APPROXIMATE, honestly-scoped count — see
+ * `AgentContextService.computeStaleness` for exactly what it counts (issue
+ * activity across the project + project-scoped audit events), not a
+ * guarantee of every possible change (e.g. comment bodies alone aren't
+ * separately logged).
+ */
+export interface AgentContextStalenessDto {
+  /** Count of project activity/audit entries newer than `updatedAt`. */
+  changesSinceUpdate: number;
+  /** Timestamp of the most recent counted activity, or null if none. */
+  lastProjectActivityAt: string | null;
+}
+
+/** GET /projects/:id/agent-context response. */
+export interface ProjectAgentContextDto {
+  /** Markdown handoff document. Empty string when nothing has been written yet. */
+  content: string;
+  /** null when the document has never been written. */
+  updatedAt: string | null;
+  updatedBy: AgentContextUpdatedByDto | null;
+  staleness: AgentContextStalenessDto;
+}
+
+/** Body for `PUT /projects/:id/agent-context`. */
+export interface UpsertProjectAgentContextInput {
+  content: string;
 }

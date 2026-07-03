@@ -99,13 +99,18 @@ advantages** a cloud-first, per-seat, closed product can't match (full thesis in
 ## 🔌 MCP-native: your coding agent can run the tracker
 
 Next Lane ships **`@next-lane/mcp`** — a first-party [Model Context
-Protocol](https://modelcontextprotocol.io) server with **88 tools** (37 read, 51
+Protocol](https://modelcontextprotocol.io) server with **91 tools** (39 read, 52
 write) that let Claude Desktop, Claude Code, or any MCP client **read *and write*
 your workspace**: issues, sprints, comments, worklogs, checklists, labels,
 components, versions, dashboards, saved NLQL filters, automations, GitHub links,
 personal boards, issue templates, analytics, reports, bulk updates, and CSV export
 — plus the workflow/SDLC graph itself (statuses, transitions, gates, board
 assignment). No other open tracker exposes its own SDLC as an agent-editable surface.
+
+Agents get **persistent per-project memory** too: a shared agent-context
+document each run reads first and hands off to last (with a measured staleness
+signal), plus a distributable [`project-context` skill](./skills/project-context/SKILL.md)
+that bakes the read-first / hand-off-last discipline into any skills-capable agent.
 
 Full tool reference: [`apps/mcp/README.md`](./apps/mcp/README.md). Connect it to Claude Code in one command once you have a personal access token (log in → `Profile Settings → API Tokens`):
 
@@ -232,7 +237,7 @@ Other useful scripts: `pnpm build`, `pnpm lint`, `pnpm test`, `pnpm format`.
 | Frontend | React + Vite + TypeScript |
 | UI | Tailwind CSS + shadcn/ui · TanStack Query · dnd-kit |
 | Auth | JWT access token · SSO/OIDC · personal API tokens (PATs) |
-| Agents | MCP server (`apps/mcp`, stdio, 88 tools) over the same REST API |
+| Agents | MCP server (`apps/mcp`, stdio, 91 tools) over the same REST API |
 | Infra | Docker Compose · Helm / Kustomize for Kubernetes |
 
 ```mermaid
@@ -254,7 +259,7 @@ Next-Lane/
 ├── apps/
 │   ├── api/        # NestJS backend (REST + WebSocket)
 │   ├── web/        # React + Vite frontend
-│   └── mcp/        # MCP server (stdio, 88 tools) for AI agents
+│   └── mcp/        # MCP server (stdio, 91 tools) for AI agents
 ├── packages/
 │   └── shared/     # Shared TypeScript types / contracts
 ├── deploy/         # Helm chart + Kustomize base & overlays

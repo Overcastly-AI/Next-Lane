@@ -124,6 +124,9 @@ describe('tool registry', () => {
       'remove_project_role_override',
       // Agent Experience (AX) batch, Phase B — MCP ergonomics sweep (2026-07-03)
       'get_epic_overview',
+      // Per-project agent context memory (founder directive, 2026-07-03)
+      'get_project_context',
+      'update_project_context',
     ];
     for (const name of expected) expect(names).toContain(name);
     // No duplicate names.
@@ -1005,5 +1008,45 @@ describe('tool registry', () => {
     expect(body.progress).toEqual({ done: 0, total: 0, fraction: 0 });
     expect(body.children).toEqual([]);
     expect(body.statusBreakdown).toEqual([]);
+  });
+});
+
+describe('project agent context tools', () => {
+  it('get_project_context GETs the agent-context endpoint and reports contentBytes', async () => {
+    const { client, fetchImpl } = clientWith(200, {
+      content: '## Current goal\nShip it.',
+      updatedAt: '2026-07-03T00:00:00.000Z',
+      updatedBy: { id: 'u1', name: 'Prior Agent' },
+      staleness: { changesSinceUpdate: 3, lastProjectActivityAt: '2026-07-03T01:00:00.000Z' },
+    });
+    const res = await tool('get_project_context').handler({ projectId: 'p1' }, client);
+    expect(fetchImpl.mock.calls[0][0]).toContain('/projects/p1/agent-context');
+    const payload = JSON.parse(res.content[0].text);
+    expect(payload.staleness.changesSinceUpdate).toBe(3);
+    expect(payload.contentBytes).toBe(Buffer.byteLength('## Current goal\nShip it.', 'utf8'));
+  });
+
+  it('update_project_context PUTs the full replacement content', async () => {
+    const { client, fetchImpl } = clientWith(200, {
+      content: 'new handoff',
+      updatedAt: '2026-07-03T02:00:00.000Z',
+      updatedBy: { id: 'u1', name: 'Agent' },
+      staleness: { changesSinceUpdate: 0, lastProjectActivityAt: null },
+    });
+    await tool('update_project_context').handler(
+      { projectId: 'p1', content: 'new handoff' },
+      client,
+    );
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toContain('/projects/p1/agent-context');
+    expect(init?.method).toBe('PUT');
+    expect(JSON.parse(init?.body as string)).toEqual({ content: 'new handoff' });
+  });
+
+  it('both context tools carry the read-first / handoff-before-ending prompting language', () => {
+    expect(tool('get_project_context').description).toMatch(/FIRST/);
+    expect(tool('get_project_context').description).toMatch(/staleness/);
+    expect(tool('update_project_context').description).toMatch(/before ending|end of/i);
+    expect(tool('update_project_context').description).toMatch(/replace/i);
   });
 });

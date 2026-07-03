@@ -987,6 +987,19 @@ function buildMatrix(a: Tenant): Array<MatrixRow & { resolvedPath: string; resol
       path: (t) => `/issues/${t.issueId}/github-links`,
     },
 
+    // ── Agent context ────────────────────────────────────────────────────────────────────
+    {
+      label: 'GET agent context for project A',
+      method: 'GET',
+      path: (t) => `/projects/${t.projectId}/agent-context`,
+    },
+    {
+      label: 'PUT agent context for project A (cross-tenant mutation)',
+      method: 'PUT',
+      path: (t) => `/projects/${t.projectId}/agent-context`,
+      body: () => ({ content: 'Hijacked handoff — attacker was here.' }),
+    },
+
     // ── Dashboards ───────────────────────────────────────────────────────────
     {
       label: 'GET dashboards for project A',

@@ -281,6 +281,8 @@ both flipped Behind → Parity, and Search & query power flipped Parity → Bett
 Work is sequenced below to close what's left, in the order the two Pass-12
 audits' evidence implies, ahead of any new pillar or moonshot.
 
+**Founder directive (2026-07-03, shipped same day): per-project agent context memory over MCP** — every project carries a persistent agent handoff document (read-first/hand-off-last, prompted at the protocol layer via MCP server instructions + tool descriptions, distributable `skills/project-context` Agent Skill, measured staleness signal). The agent-native pillar now includes cross-session memory. Web-UI panel is a tracked P2 follow-up.
+
 *(Note to backlog-groomer: this is the intended Ready-queue order for the next
 build-loop pass; `docs/BACKLOG.md` itself is unchanged by this vision-steward
 pass — groom the board against this sequencing next.)*

@@ -225,6 +225,9 @@ model User {
 
   // Per-project role overrides (sparse — most users have none; see ProjectMembership)
   projectMemberships ProjectMembership[]
+
+  // Agent context handoff writes attributed to this user (nullable FK; see ProjectAgentContext)
+  agentContextUpdates ProjectAgentContext[]
 }
 
 /// A user-defined shortcut to an external URL (their own apps/tools), shown in
@@ -382,11 +385,15 @@ model Project {
   // GitHub integration (Phase 9 — Developer Graph, v1 two-way link)
   githubIntegration      GithubIntegration?
 
+
   // Configurable dashboards (NLQL-native gadget framework)
   dashboards             Dashboard[]
 
   // Per-project role overrides (sparse — absence means "inherit workspace role")
   projectMemberships     ProjectMembership[]
+
+  // Agent context (per-project agent handoff memory — one row, optional)
+  agentContext           ProjectAgentContext?
 
   @@unique([workspaceId, key])
   @@index([workspaceId])
@@ -744,6 +751,7 @@ model Issue {
 
   // GitHub integration — linked PRs / commits / branches (Phase 9)
   githubLinks           IssueGithubLink[]
+
 
   @@unique([projectId, number])
   @@index([projectId, statusId])
@@ -1550,6 +1558,7 @@ model IssueGithubLink {
   @@index([issueId])
 }
 
+
 // ---------------------------------------------------------------------------
 // Dashboards (configurable, NLQL-native gadget framework)
 // ---------------------------------------------------------------------------
@@ -1596,5 +1605,40 @@ model DashboardGadget {
   dashboard Dashboard @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
 
   @@index([dashboardId])
+}
+
+// ---------------------------------------------------------------------------
+// Agent context (per-project agent handoff memory — founder directive
+// 2026-07-03: "for each project a LLM via the MCP should be able to dump
+// their context for the next run or agent")
+// ---------------------------------------------------------------------------
+
+/// A single, shared, per-project markdown "handoff" document that AI agents
+/// (and humans) read at the start of a work session and write before ending
+/// one — the project's persistent working memory across separate agent runs.
+///
+/// Deliberately ONE row per project (not versioned/append-only): the whole
+/// point is a living document an agent replaces wholesale with a fresh
+/// handoff, not a growing log (that's what ActivityLog/AuditEvent already
+/// are). `content` is capped at 64 KiB at the DTO layer (see
+/// `agent-context/dto/upsert-agent-context.dto.ts`) so it can never grow
+/// unbounded.
+model ProjectAgentContext {
+  id          String   @id @default(cuid())
+  projectId   String   @unique
+  /// Markdown handoff document. Empty string until the first write (no row
+  /// exists at all before that — see `AgentContextService.get`).
+  content     String   @default("")
+  /// Nullable: the user (human OR the user whose PAT an agent authenticated
+  /// as) who made the most recent write; SetNull preserves the document if
+  /// that account is later deleted.
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  updatedBy User?   @relation(fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@index([projectId])
 }
 

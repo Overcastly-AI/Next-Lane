@@ -1169,6 +1169,32 @@ const readTools: ToolDef[] = [
       });
     },
   },
+  {
+    name: 'get_project_context',
+    group: 'read',
+    description:
+      'Call this FIRST when starting work on a Next Lane project — it is ' +
+      'the persistent handoff document previous agent runs (or humans) ' +
+      'left for you: current goal/state, decisions made, in-flight work, ' +
+      'next steps, gotchas. Returns `content` (markdown, empty string if ' +
+      'nothing has been written yet — this never 404s), `updatedAt`/' +
+      '`updatedBy`, and a `staleness` object: `changesSinceUpdate` counts ' +
+      'project activity (issue changes + project-scoped audit events) ' +
+      'newer than the document, and `lastProjectActivityAt` is the most ' +
+      'recent one. A non-zero `changesSinceUpdate` means real work has ' +
+      'happened since this was written — treat the handoff as a starting ' +
+      'point to verify against recent activity (e.g. list_issues, ' +
+      'get_epic_overview), not gospel. Pairs with update_project_context, ' +
+      'which you should call before ending your own session.',
+    inputSchema: { projectId: z.string().describe('Project id.') },
+    handler: async (args, client) => {
+      const data = await client.get<ApiItem>(
+        `/projects/${args.projectId}/agent-context`,
+      );
+      const content = typeof data.content === 'string' ? data.content : '';
+      return jsonResult({ ...data, contentBytes: Buffer.byteLength(content, 'utf8') });
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -2332,6 +2358,40 @@ const writeTools: ToolDef[] = [
       client
         .delete(`/projects/${args.projectId}/members/${args.userId}/role`)
         .then(jsonResult),
+  },
+  {
+    name: 'update_project_context',
+    group: 'write',
+    description:
+      'Before ending a work session on a Next Lane project — and after ' +
+      'significant milestones or direction changes — replace the ' +
+      'project\'s agent handoff document with a concise summary for the ' +
+      'next run (which may be you, in a future session, with no memory of ' +
+      'this one): current goal/state, decisions made, in-flight work, ' +
+      'next steps, and gotchas. This is a FULL-CONTENT REPLACE, not an ' +
+      'append or merge — call get_project_context first if you want to ' +
+      'preserve any part of the existing document. Keep it current: ' +
+      'replace stale content rather than growing it forever. Capped at ' +
+      '64 KB measured in UTF-8 bytes (the API returns a 400 with the exact ' +
+      'limit if you exceed it); requires project MEMBER+.',
+    inputSchema: {
+      projectId: z.string().describe('Project id.'),
+      content: z
+        .string()
+        .describe(
+          'Full markdown handoff document — replaces whatever is currently ' +
+            'stored. Suggested structure: Current goal / State & decisions / ' +
+            'In-flight work / Next steps / Gotchas.',
+        ),
+    },
+    handler: async (args, client) => {
+      const data = await client.put<ApiItem>(
+        `/projects/${args.projectId}/agent-context`,
+        { content: args.content },
+      );
+      const content = typeof data.content === 'string' ? data.content : '';
+      return jsonResult({ ...data, contentBytes: Buffer.byteLength(content, 'utf8') });
+    },
   },
 ];
 
