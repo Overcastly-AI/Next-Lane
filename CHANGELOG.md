@@ -14,6 +14,72 @@ This section summarizes the major capabilities delivered in the pre-1.0
 development phase. A versioned release will be tagged once the v1 criteria in
 [`docs/ROADMAP.md`](./docs/ROADMAP.md) are complete.
 
+### Added — 2026-07-03
+
+**Issue start date field (Agent Experience Phase A):**
+- **`Issue.startDate`** — new DateTime field alongside existing `dueDate` for
+  issues. Both fields support the same semantics (null clears; undefined no-op)
+  and trigger activity-log entries on change.
+- **API/DTOs** — `create_issue`, `update_issue` DTOs validate that
+  `startDate <= dueDate` (cross-field validation). `IssueDto.startDate` in
+  `packages/shared`.
+- **NLQL** — `start` / `startDate` fields registered in the query language
+  (allowlist, evaluator, autocomplete, docs reference) wherever `due` is
+  supported.
+- **Frontend** — `StartDateField` alongside `DueDateField` in the issue drawer.
+  Date picker uses the same styles and accessibility patterns. Playwright test
+  coverage (start-date.spec.ts, 146 lines).
+- **CSV export/import** — "Start Date" column added to CSV export; CSV importer
+  now maps `start_date` / `startDate` / `start` from Jira/GitHub/Linear exports.
+- **Roadmap/timeline** — epic window derivation now prioritizes the epic's own
+  `startDate → dueDate` range when both are set, falling back to the child-sprint
+  range if the epic has no own dates.
+- **Bug fix** — Playwright `getByLabel` strict-mode flake in due-date.spec.ts
+  (the "Clear date" button's aria-label case-insensitively substring-matched the
+  date input's label).
+
+**MCP ergonomics sweep (Agent Experience Phase B):**
+- **NLQL query evaluation** — `list_issues` gains an NLQL `query` parameter (passed
+  to the CSV export's server-side parser/evaluator) as the match oracle, then
+  hydrated into full issue objects via cursor-paginated GET. Invalid queries surface
+  the parser's own error messages, not generic failures.
+- **Token-efficiency envelope** — all 25 list_*/search_* tools now return a uniform
+  `{items, total?, limit, offset?, hasMore}` envelope. Each resource supports a
+  compact field set by default (minimal) and `verbose: true` for the full DTO.
+  Pagination defaults to 50 items/page (max 200). Field report verified: same
+  list_issues call is 11 KB (compact, NLQL-narrowed) vs. 84–150 KB (verbose).
+- **Workflow safeguard** — `create_issue` now accepts `expectedProjectKey` (optional);
+  if provided and the resolved project key doesn't match, the create is rejected
+  *before* any database mutation.
+- **Epic overview** — new `get_epic_overview` tool returns epic details, compact
+  children, per-status rollup, and a progress {done, total, fraction} in a single
+  call (works on any issue with children, not just EPIC-typed ones).
+- **startDate exposure** — `create_issue`, `update_issue`, and `list_issues` now
+  include `startDate` in request/response/compact envelopes.
+- **Unit tests** — 80 total MCP tests (18 new in this phase); all green.
+
+**Per-project agent context memory (agent handoff + skill):**
+- **Schema** — new `ProjectAgentContext` model: one persistent document per
+  project (64 KB content limit), `updatedById` attribution (nullable), cascades
+  on project delete.
+- **API endpoints** — `GET /projects/:id/agent-context` (VIEWER+ read, never
+  404s—empty string before first write) and `PUT /projects/:id/agent-context`
+  (MEMBER+ write via `getEffectiveProjectRole`). Both include `contentBytes`,
+  `updatedBy`, `updatedAt`, and `staleness = {changesSinceUpdate, lastProjectActivityAt}`
+  (measured from ActivityLog + project-scoped AuditEvent entries newer than the doc).
+  Scoped to `projects:read` / `projects:write` PAT scopes. Realtime
+  `project-agent-context.updated` Socket.io emit on write.
+- **MCP tools** — `get_project_context` / `update_project_context`. Server-level
+  MCP instructions reach every connecting client, prompting the read-first /
+  hand-off-last discipline at the protocol layer.
+- **Distributable skill** — new `skills/project-context/` Agent Skill bakes the
+  discipline into any skills-capable agent: read context on start, update at
+  milestones, always dump a structured handoff before finishing. Includes a
+  worked example. Install docs in `apps/mcp/README.md` ("Ship your agent with
+  memory") and main README.
+- **Unit tests** — 1611 total API tests (15 new agent-context), 7/7 tenant matrix
+  rows passing (with new agent-context isolation rows).
+
 ### Added — 2026-07-02
 
 **In-app SSO/OIDC admin configuration:**

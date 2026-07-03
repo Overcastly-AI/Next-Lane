@@ -33,7 +33,7 @@ Managed with **pnpm workspaces**.
 
 ## Backend (`apps/api`)
 
-- **NestJS** with the standard module/controller/service/dto pattern. Modules by domain: `auth`, `users`, `workspaces`, `projects`, `boards`, `sprints`, `issues`, `custom-fields`, `components`, `versions`, `labels`, `comments`, `issue-links`, `issue-templates`, `checklist`, `work-logs`, `workflows`, `statuses`, `personal-boards`, `saved-filters`, `sprints`, `standups`, `poker`, `automations`, `dashboards`, `notifications`, `webhooks`, `share-tokens`, `api-tokens`, `analytics`, `reports`, `roadmap`, `attachments`, `audit`, `search`, `realtime`, `mail`, `redis`, `github`, `admin-settings`, `project-memberships`, and `prisma`. Auth includes an optional `oidc` sub-module (SSO/OIDC with generic provider discovery).
+- **NestJS** with the standard module/controller/service/dto pattern. Modules by domain: `auth`, `users`, `workspaces`, `projects`, `boards`, `sprints`, `issues`, `custom-fields`, `components`, `versions`, `labels`, `comments`, `issue-links`, `issue-templates`, `checklist`, `work-logs`, `workflows`, `statuses`, `personal-boards`, `saved-filters`, `sprints`, `standups`, `poker`, `automations`, `dashboards`, `notifications`, `webhooks`, `share-tokens`, `api-tokens`, `analytics`, `reports`, `roadmap`, `attachments`, `audit`, `search`, `realtime`, `mail`, `redis`, `github`, `admin-settings`, `project-memberships`, `agent-context`, and `prisma`. Auth includes an optional `oidc` sub-module (SSO/OIDC with generic provider discovery).
 - **Prisma** as the ORM and migration tool. The schema is the single source of truth for the data model.
 - **PostgreSQL** for persistence. JSONB is used for custom fields and color rules.
 - **Auth**: JWT access tokens + refresh tokens, password hashing with argon2/bcrypt, route guards for RBAC; optional OIDC/SSO with JIT user provisioning. OIDC is configurable via environment variables (env-only) or in-app admin screen (`/admin/sso`, gated to `User.isInstanceAdmin` — the first user on a fresh install, or oldest user on an existing install). Instance-admin is distinct from workspace-level ADMIN and gates instance-wide settings (e.g., SSO configuration) that predate workspace membership.
@@ -62,9 +62,12 @@ Issues on a board (and in a sprint/backlog) are ordered by a `rank` **string** c
 
 ## MCP Server (`apps/mcp`)
 
-- **Model Context Protocol** server (stdio transport) with **88 tools** (37 read, 51 write).
+- **Model Context Protocol** server (stdio transport) with **91 tools** (39 read, 52 write).
 - Speaks MCP over stdio; makes authenticated HTTP calls to the Next Lane REST API using Personal Access Tokens (PATs).
-- Tools expose: projects, boards, workflows, statuses, issues, sprints, comments, worklogs, checklists, labels, components, versions, saved filters, automations, dashboards, GitHub links, personal boards, issue templates, time-tracking, analytics, reports, notifications, bulk updates, and CSV export.
+- Tools expose: projects, boards, workflows, statuses, issues (with NLQL `query` param for server-side evaluation), sprints, comments, worklogs, checklists, labels, components, versions, saved filters, automations, dashboards, GitHub links, personal boards, issue templates, time-tracking, analytics, reports, notifications, bulk updates, CSV export, and project agent context.
+- **Token-efficiency features:** all list_*/search_* tools return a uniform `{items, total?, limit, offset?, hasMore}` envelope; resources support `compact` (default, minimal field set) and `verbose:true` (full DTO); pagination defaults to 50 items/page with a maximum of 200. Live-verified: the same list call is ~11 KB (compact) vs. ~150 KB (verbose).
+- **Project agent context:** `get_project_context` / `update_project_context` tools expose a per-project persistent agent handoff document (up to 64 KB) with measured staleness signals. Server-level MCP instructions guide agents to read context first and hand off to the next agent/run with a structured summary.
+- **Workflow safeguards:** `create_issue` supports an optional `expectedProjectKey` parameter that fails *before* creating anything on a mismatch; `get_epic_overview` returns epic details, compact children, per-status rollup, and progress metrics in one call.
 - Allows AI agents (Claude Desktop, Claude Code, any MCP host) to **read and write** workspace state, including the workflow/SDLC graph itself.
 - See `apps/mcp/README.md` for the full tool reference and configuration.
 
@@ -79,9 +82,10 @@ Core entities and relationships:
 - `Project` —< `ProjectMembership` >— `User` (sparse per-project role overrides; allows restricting or elevating a member's workspace role on a per-project basis)
 - `Workspace` —< `Team` —< `TeamMember` >— `User` (sub-workspace groups for standups / poker / analytics)
 - `Project` —< `Issue`, `Status`, `Sprint`, `Board`, `Label`, `Component`, `Version`, `CustomFieldDefinition`, `SavedFilter`
-- `Issue`: `number` (per-project seq), `type` (TASK/BUG/STORY/EPIC/SUBTASK), `title`, `description`, `statusId`, `assigneeId`, `reporterId`, `priority`, `storyPoints`, `parentId` (self-FK, `onDelete: SetNull`), `sprintId`, `dueDate`, `rank` (fractional index), `customFields` (JSONB with GIN index), `componentId`, `searchVector` (generated tsvector, GIN indexed)
+- `Issue`: `number` (per-project seq), `type` (TASK/BUG/STORY/EPIC/SUBTASK), `title`, `description`, `statusId`, `assigneeId`, `reporterId`, `priority`, `storyPoints`, `parentId` (self-FK, `onDelete: SetNull`), `sprintId`, `startDate`, `dueDate`, `rank` (fractional index), `customFields` (JSONB with GIN index), `componentId`, `searchVector` (generated tsvector, GIN indexed)
 - `Issue` —< `Comment` (authorId nullable, `onDelete: SetNull`), `Attachment` (uploaderId nullable, `onDelete: SetNull`), `ActivityLog` (actorId nullable, `onDelete: SetNull`), `Watcher`, `Notification`, `IssueGithubLink` (two-way links to PRs/commits/branches, `onDelete: Cascade`)
 - `Issue` >—< `Label` (via `IssueLabel`), `Version` (via `IssueVersion`), `IssueLink` (directed links: BLOCKS, RELATES_TO, DUPLICATES, etc.)
+- `ProjectAgentContext` (one row per project): persistent agent handoff document (`content` Markdown string, up to 64 KB), `updatedById` (nullable FK → User, `onDelete: SetNull`), `createdAt` timestamp. Accessible via `/projects/:id/agent-context` (VIEWER+ read, MEMBER+ write via `getEffectiveProjectRole`). Exposed to agents via MCP `get_project_context` / `update_project_context` tools with measured staleness (changes since last update, last project activity timestamp).
 - `Status`: per-project, `category` (TODO / IN_PROGRESS / DONE), `createdAt` / `updatedAt`
 - `Sprint`: goal, start/end dates, `completedAt`, state (PLANNED/ACTIVE/COMPLETED), `updatedAt`
 - `Board`: KANBAN or SCRUM, `filterQuery` (NLQL), `colorRules` (JSON), optional `savedFilterId` FK → `SavedFilter`, optional `defaultGroupBy` (swimlane/grouping dimension: Assignee, Priority, Issue type, Epic, Component, Sprint, Labels, or custom SELECT field `cf:<fieldId>`). Swimlanes v2 allows per-board configuration of the grouping dimension; URL parameter `?group=` overrides the default.

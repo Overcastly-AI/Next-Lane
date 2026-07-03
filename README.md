@@ -12,8 +12,8 @@ one tracker your coding agent can *read and write*, not just talk about.
 [![Documentation](https://img.shields.io/badge/docs-overcastly--ai.github.io-0B7285.svg?logo=readthedocs&logoColor=white)](https://overcastly-ai.github.io/Next-Lane/)
 [![CI](https://github.com/Overcastly-AI/Next-Lane/actions/workflows/ci.yml/badge.svg)](https://github.com/Overcastly-AI/Next-Lane/actions/workflows/ci.yml)
 [![E2E](https://github.com/Overcastly-AI/Next-Lane/actions/workflows/e2e.yml/badge.svg)](https://github.com/Overcastly-AI/Next-Lane/actions/workflows/e2e.yml)
-[![MCP server](https://img.shields.io/badge/MCP-88%20tools-8A2BE2.svg)](./apps/mcp/README.md)
-[![Unit tests](https://img.shields.io/badge/unit%20tests-1521%2B-brightgreen.svg)](./docs/ROADMAP.md)
+[![MCP server](https://img.shields.io/badge/MCP-91%20tools-8A2BE2.svg)](./apps/mcp/README.md)
+[![Unit tests](https://img.shields.io/badge/unit%20tests-1611%2B-brightgreen.svg)](./docs/ROADMAP.md)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6.svg?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Docker](https://img.shields.io/badge/Docker-compose%20up-2496ED.svg?logo=docker&logoColor=white)](#-quickstart)
 [![Self-hosted](https://img.shields.io/badge/self--hosted-your%20data-success.svg)](#why-next-lane)
@@ -101,16 +101,9 @@ advantages** a cloud-first, per-seat, closed product can't match (full thesis in
 Next Lane ships **`@next-lane/mcp`** — a first-party [Model Context
 Protocol](https://modelcontextprotocol.io) server with **91 tools** (39 read, 52
 write) that let Claude Desktop, Claude Code, or any MCP client **read *and write*
-your workspace**: issues, sprints, comments, worklogs, checklists, labels,
-components, versions, dashboards, saved NLQL filters, automations, GitHub links,
-personal boards, issue templates, analytics, reports, bulk updates, and CSV export
-— plus the workflow/SDLC graph itself (statuses, transitions, gates, board
-assignment). No other open tracker exposes its own SDLC as an agent-editable surface.
+your workspace**: issues (with server-side NLQL `query` evaluation and pagination), sprints, comments, worklogs, checklists, labels, components, versions, dashboards, saved NLQL filters, automations, GitHub links, personal boards, issue templates, analytics, reports, bulk updates, and CSV export — plus the workflow/SDLC graph itself (statuses, transitions, gates, board assignment, and per-project agent context). No other open tracker exposes its own SDLC as an agent-editable surface.
 
-Agents get **persistent per-project memory** too: a shared agent-context
-document each run reads first and hands off to last (with a measured staleness
-signal), plus a distributable [`project-context` skill](./skills/project-context/SKILL.md)
-that bakes the read-first / hand-off-last discipline into any skills-capable agent.
+Agents get **persistent per-project memory** too: a shared agent-context document each run reads first and hands off to last (with a measured staleness signal = changes since last update + last project activity timestamp), plus a distributable [`project-context` skill](./skills/project-context/SKILL.md) that bakes the read-first / hand-off-last discipline into any skills-capable agent. Token-efficient throughout: compact result envelope (defaults 50 items/page), verbose=true opt-in for full DTOs.
 
 Full tool reference: [`apps/mcp/README.md`](./apps/mcp/README.md). Connect it to Claude Code in one command once you have a personal access token (log in → `Profile Settings → API Tokens`):
 
@@ -168,7 +161,7 @@ current build** (see [`docs/ROADMAP.md`](./docs/ROADMAP.md) for status and what'
 | **Collaboration** | Comments & activity history · realtime updates (Socket.io) · in-app notifications & @mentions · "My Work" + Team Pulse dashboards |
 | **Auth & SSO** | Email/password (JWT) · **SSO/OIDC** (env-configured, PKCE + CSRF-guarded, JIT provisioning — works with Okta/Auth0/Keycloak/Authentik/Google) · personal API tokens (PATs) |
 | **Workflows (SDLC)** | **Configurable workflows** — per-project enforcement **and reusable named workflows assigned per board** · transition graph with **visual node/edge editor** · gates (require assignee/description/field/link/no-open-blockers) · seed from templates (simple / kanban / scrum / bug-triage) |
-| **Agent-native (MCP)** | **MCP server** (`apps/mcp`) — 88 read/write tools over PAT auth. See [above](#-mcp-native-your-coding-agent-can-run-the-tracker) |
+| **Agent-native (MCP)** | **MCP server** (`apps/mcp`) — 91 read/write tools over PAT auth with per-project agent context. See [above](#-mcp-native-your-coding-agent-can-run-the-tracker) |
 | **Estimation & tracking** | Story points · **original estimate + work logs** (time spent vs estimate rollup) · **checklists** (sub-items + progress) · **WIP limits** per column |
 | **Automation** | **Glass Box engine** — trigger → condition → action rules · NLQL-based conditions · unlimited runs · full **run log** (audit trail per execution) |
 | **Rituals** | **Planning poker** (real-time estimation via Socket.io) · **async standups** (per-member responses + team digest) |
@@ -178,7 +171,7 @@ current build** (see [`docs/ROADMAP.md`](./docs/ROADMAP.md) for status and what'
 | **Navigation & UI** | **Persistent sidebar** (desktop fixed/collapsible, mobile drawer) with workspace switcher and per-project views (Board/Backlog/Roadmap/Reports) · **light / dark mode** with system preference awareness and toggle in sidebar/header |
 | **Workspace** | **Branding** — custom name, accent color, logo · workspace audit log |
 | **Admin & security** | Roles & permissions (Admin / Member / Viewer) · password reset over SMTP · HMAC-signed outbound webhooks (with SSRF guard) · tenant-isolation regression matrix |
-| **Ops & deploy** | One-command Docker Compose · **Helm chart + Kustomize** for Kubernetes · GHCR multi-arch image builds · structured JSON logs · health/readiness probes · CI (typecheck + build + **1471+ unit tests**) + full Playwright **e2e suite, desktop and mobile** |
+| **Ops & deploy** | One-command Docker Compose · **Helm chart + Kustomize** for Kubernetes · GHCR multi-arch image builds · structured JSON logs · health/readiness probes · CI (typecheck + build + **1611+ unit tests**) + full Playwright **e2e suite, desktop and mobile** |
 
 ## 🚀 Quickstart
 
@@ -237,7 +230,7 @@ Other useful scripts: `pnpm build`, `pnpm lint`, `pnpm test`, `pnpm format`.
 | Frontend | React + Vite + TypeScript |
 | UI | Tailwind CSS + shadcn/ui · TanStack Query · dnd-kit |
 | Auth | JWT access token · SSO/OIDC · personal API tokens (PATs) |
-| Agents | MCP server (`apps/mcp`, stdio, 91 tools) over the same REST API |
+| Agents | MCP server (`apps/mcp`, stdio, 91 tools with project context) over the same REST API |
 | Infra | Docker Compose · Helm / Kustomize for Kubernetes |
 
 ```mermaid
@@ -257,9 +250,9 @@ Deeper dives: [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) ·
 ```
 Next-Lane/
 ├── apps/
-│   ├── api/        # NestJS backend (REST + WebSocket)
+│   ├── api/        # NestJS backend (REST + WebSocket, 1611+ unit tests)
 │   ├── web/        # React + Vite frontend
-│   └── mcp/        # MCP server (stdio, 91 tools) for AI agents
+│   └── mcp/        # MCP server (stdio, 91 tools with project context) for AI agents
 ├── packages/
 │   └── shared/     # Shared TypeScript types / contracts
 ├── deploy/         # Helm chart + Kustomize base & overlays
