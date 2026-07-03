@@ -393,6 +393,23 @@ Pass 9/10/11 that are real but not yet the highest-leverage next step.
 
 ## Already Done (recent shipments — ticked for reference)
 
+- [x] (P1, S) **Activity logging for sprint/parent/component/label mutations
+  (2026-07-03)** — MCP-QA pass 2's top finding fixed same-day: these
+  mutations produced ZERO ActivityLog rows, so `list_project_activity` and
+  agent-context `staleness` were blind to them (a bulk sprint re-scope of 6 +
+  atomic re-parent of 14 left the feed empty and staleness unchanged while a
+  single comment bumped it). Fix at the write path so both consumers inherit:
+  `prepareUpdate` now logs `sprint`/`parent`/`component` field changes
+  (single-issue AND bulk paths share it); label attach/detach logs a `label`
+  activity in all three paths (LabelsService add/remove + bulk `addLabelIds`
+  classic AND atomic — atomic keeps rows inside the shared transaction) with
+  no-op-safe semantics (repeat attach / detach-of-unattached logs nothing).
+  Live-verified: PATCH parentId wrote a `field:'parent'` ActivityLog row.
+  9 new unit tests; affected suites 365/365; API total 1790. Web ActivityPanel
+  renders the new fields via its generic fallback (id-resolution for
+  sprint/label names stays a filed P2). [orchestrator, from mcp-consumer-qa
+  pass 2 be6f7d3]
+
 - [x] (P1, S) **Idempotency claim-first hardening (2026-07-03)** — code-review
   follow-up on AX Round 2 (all 4 findings fixed same-day): `withIdempotency`
   rewritten claim-first (pending row inserted before the mutation; unique

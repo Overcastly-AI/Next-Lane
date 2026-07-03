@@ -988,6 +988,47 @@ export class IssuesService {
       changedFields.push('dueDate');
     }
 
+    // Sprint / parent / component moves were previously never logged (MCP-QA
+    // pass 2, top finding): a bulk sprint re-scope or epic re-parenting left
+    // zero trace in the activity feed AND didn't bump agent-context
+    // staleness — the server asserted "nothing happened" after a flagship
+    // bulk operation. Both consumers count ActivityLog rows, so logging here
+    // fixes the feed and staleness together (single-issue and bulk paths
+    // share prepareUpdate).
+    if (dto.sprintId !== undefined && dto.sprintId !== existing.sprintId) {
+      activities.push({
+        issueId: id,
+        actorId: userId,
+        field: 'sprint',
+        from: existing.sprintId,
+        to: dto.sprintId,
+      });
+      changedFields.push('sprint');
+    }
+    if (dto.parentId !== undefined && dto.parentId !== existing.parentId) {
+      activities.push({
+        issueId: id,
+        actorId: userId,
+        field: 'parent',
+        from: existing.parentId,
+        to: dto.parentId,
+      });
+      changedFields.push('parent');
+    }
+    if (
+      dto.componentId !== undefined &&
+      dto.componentId !== existing.componentId
+    ) {
+      activities.push({
+        issueId: id,
+        actorId: userId,
+        field: 'component',
+        from: existing.componentId,
+        to: dto.componentId,
+      });
+      changedFields.push('component');
+    }
+
     return { existing, activities, changedFields, mergedCustomFields };
   }
 
@@ -1821,16 +1862,40 @@ export class IssuesService {
   }
 
   /**
-   * Attach a label to an issue. Uses an upsert so calling it twice is safe.
-   * Validates that both the issue and the label exist and belong to the same
-   * project. Does NOT re-check project membership — the caller (`bulkUpdate`)
-   * has already confirmed MEMBER access via `update()`.
+   * Attach a label to an issue, logging an ActivityLog row when (and only
+   * when) the label was newly attached — a repeat attach stays a no-op with
+   * no phantom activity (MCP-QA pass 2: label mutations previously left
+   * zero trace in the feed/staleness). Idempotent: the P2002 race between
+   * the existence check and the create is swallowed. Does NOT re-check
+   * project membership — the caller (`bulkUpdate`) has already confirmed
+   * MEMBER access via `update()`. Takes the caller's transaction client so
+   * `bulkUpdateAtomic` keeps the join row + activity inside its shared
+   * transaction.
    */
-  private async attachLabel(issueId: string, labelId: string): Promise<void> {
-    await this.prisma.issueLabel.upsert({
+  private async attachLabel(
+    client: Prisma.TransactionClient | PrismaService,
+    userId: string,
+    issueId: string,
+    labelId: string,
+  ): Promise<void> {
+    const already = await client.issueLabel.findUnique({
       where: { issueId_labelId: { issueId, labelId } },
-      update: {},
-      create: { issueId, labelId },
+      select: { issueId: true },
+    });
+    if (already) return;
+    try {
+      await client.issueLabel.create({ data: { issueId, labelId } });
+    } catch (e) {
+      if (
+        e instanceof Prisma.PrismaClientKnownRequestError &&
+        e.code === 'P2002'
+      ) {
+        return; // concurrent attach won — already labeled, nothing to log
+      }
+      throw e;
+    }
+    await client.activityLog.create({
+      data: { issueId, actorId: userId, field: 'label', from: null, to: labelId },
     });
   }
 
@@ -2003,7 +2068,7 @@ export class IssuesService {
         if (changes.addLabelIds && changes.addLabelIds.length > 0) {
           await this.assertLabelsInProject(dtoOut.projectId, changes.addLabelIds);
           for (const labelId of changes.addLabelIds) {
-            await this.attachLabel(id, labelId);
+            await this.attachLabel(this.prisma, userId, id, labelId);
           }
         }
 
@@ -2078,11 +2143,7 @@ export class IssuesService {
           );
           if (changes.addLabelIds && changes.addLabelIds.length > 0) {
             for (const labelId of changes.addLabelIds) {
-              await tx.issueLabel.upsert({
-                where: { issueId_labelId: { issueId: id, labelId } },
-                update: {},
-                create: { issueId: id, labelId },
-              });
+              await this.attachLabel(tx, userId, id, labelId);
             }
           }
           results.push({ issue, prep });

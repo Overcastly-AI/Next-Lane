@@ -96,8 +96,36 @@ function makePrisma(opts: {
     projectMembership: {
       findUnique: jest.fn().mockResolvedValue(null),
     },
+    issue: {
+      // Issues always live in PROJECT_ID; a foreign `labelProjectId` then
+      // exercises the label-not-in-this-project rejection in addToIssue.
+      findUnique: jest.fn().mockImplementation(({ where }: { where: { id: string } }) =>
+        Promise.resolve({ id: where.id, projectId: PROJECT_ID }),
+      ),
+    },
+    issueLabel: {
+      findUnique: jest.fn().mockResolvedValue(null),
+      upsert: jest.fn().mockResolvedValue({}),
+      deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
+      findMany: jest.fn().mockResolvedValue([]),
+    },
+    activityLog: {
+      create: jest.fn().mockResolvedValue({}),
+    },
   };
   return prisma as unknown as PrismaService;
+}
+
+/** Typed view of the mock internals for assertions. */
+function mocksOf(prisma: PrismaService) {
+  return prisma as unknown as {
+    issueLabel: {
+      findUnique: jest.Mock;
+      upsert: jest.Mock;
+      deleteMany: jest.Mock;
+    };
+    activityLog: { create: jest.Mock };
+  };
 }
 
 describe('LabelsService.update', () => {
@@ -229,5 +257,70 @@ describe('LabelsService.update — duplicate name (SETTINGS-4)', () => {
     await expect(
       service.update(USER_ID, LABEL_ID, { name: 'bug' }),
     ).rejects.toThrow('db down');
+  });
+});
+
+/**
+ * Label attach/detach must leave an ActivityLog trace (MCP-QA pass 2, top
+ * finding: label mutations were invisible to the project activity feed and
+ * agent-context staleness) — but ONLY for real state changes: a repeat
+ * attach or a detach of an unattached label logs nothing.
+ */
+describe('LabelsService.addToIssue / removeFromIssue — activity logging', () => {
+  const ISSUE_ID = 'issue-1';
+
+  it('logs a label activity on a NEW attach', async () => {
+    const prisma = makePrisma({ userRole: Role.MEMBER });
+    const service = new LabelsService(prisma);
+
+    await service.addToIssue(USER_ID, ISSUE_ID, LABEL_ID);
+
+    expect(mocksOf(prisma).activityLog.create).toHaveBeenCalledWith({
+      data: {
+        issueId: ISSUE_ID,
+        actorId: USER_ID,
+        field: 'label',
+        from: null,
+        to: LABEL_ID,
+      },
+    });
+  });
+
+  it('does NOT log when the label was already attached (idempotent no-op)', async () => {
+    const prisma = makePrisma({ userRole: Role.MEMBER });
+    mocksOf(prisma).issueLabel.findUnique.mockResolvedValue({ issueId: ISSUE_ID });
+    const service = new LabelsService(prisma);
+
+    await service.addToIssue(USER_ID, ISSUE_ID, LABEL_ID);
+
+    expect(mocksOf(prisma).issueLabel.upsert).not.toHaveBeenCalled();
+    expect(mocksOf(prisma).activityLog.create).not.toHaveBeenCalled();
+  });
+
+  it('logs a label activity on a real detach', async () => {
+    const prisma = makePrisma({ userRole: Role.MEMBER });
+    const service = new LabelsService(prisma);
+
+    await service.removeFromIssue(USER_ID, ISSUE_ID, LABEL_ID);
+
+    expect(mocksOf(prisma).activityLog.create).toHaveBeenCalledWith({
+      data: {
+        issueId: ISSUE_ID,
+        actorId: USER_ID,
+        field: 'label',
+        from: LABEL_ID,
+        to: null,
+      },
+    });
+  });
+
+  it('does NOT log when removing a label that was not attached', async () => {
+    const prisma = makePrisma({ userRole: Role.MEMBER });
+    mocksOf(prisma).issueLabel.deleteMany.mockResolvedValue({ count: 0 });
+    const service = new LabelsService(prisma);
+
+    await service.removeFromIssue(USER_ID, ISSUE_ID, LABEL_ID);
+
+    expect(mocksOf(prisma).activityLog.create).not.toHaveBeenCalled();
   });
 });

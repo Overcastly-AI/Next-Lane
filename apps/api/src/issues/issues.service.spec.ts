@@ -1482,7 +1482,14 @@ function makeBulkUpdatePrisma() {
     status: { findUnique: jest.fn() },
     sprint: { findUnique: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
     user: { findUnique: jest.fn().mockResolvedValue({ name: 'Bulk Actor' }) },
-    issueLabel: { upsert: jest.fn().mockResolvedValue({}) },
+    // attachLabel is claim-style: findUnique (already attached?) → create →
+    // activityLog.create. Default: never attached yet, create succeeds.
+    issueLabel: {
+      findUnique: jest.fn().mockResolvedValue(null),
+      create: jest.fn().mockResolvedValue({}),
+      upsert: jest.fn().mockResolvedValue({}),
+    },
+    activityLog: { create: jest.fn().mockResolvedValue({}) },
     // assertLabelsInProject (criterion 1): every requested labelId resolves
     // as belonging to BULK_PROJECT by default — tests that want to exercise
     // the cross-project rejection override this per-test.
@@ -1650,16 +1657,23 @@ describe('IssuesService.bulkUpdate — all succeed', () => {
       changes: { addLabelIds: ['label-a', 'label-b'] },
     });
 
-    // 2 ids × 2 labels = 4 upsert calls.
-    expect(mocks.prisma.issueLabel.upsert).toHaveBeenCalledTimes(4);
-    expect(mocks.prisma.issueLabel.upsert).toHaveBeenCalledWith(
+    // 2 ids × 2 labels = 4 attaches, each logging a label activity
+    // (MCP-QA pass 2: label mutations must reach the activity feed).
+    expect(mocks.prisma.issueLabel.create).toHaveBeenCalledTimes(4);
+    expect(mocks.prisma.issueLabel.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { issueId_labelId: { issueId: 'i1', labelId: 'label-a' } },
+        data: { issueId: 'i1', labelId: 'label-a' },
       }),
     );
-    expect(mocks.prisma.issueLabel.upsert).toHaveBeenCalledWith(
+    expect(mocks.prisma.issueLabel.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { issueId_labelId: { issueId: 'i2', labelId: 'label-b' } },
+        data: { issueId: 'i2', labelId: 'label-b' },
+      }),
+    );
+    expect(mocks.prisma.activityLog.create).toHaveBeenCalledTimes(4);
+    expect(mocks.prisma.activityLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ field: 'label', to: 'label-a', issueId: 'i1' }),
       }),
     );
   });
@@ -1748,10 +1762,11 @@ describe('IssuesService.bulkUpdate — partial success', () => {
   });
 
   it('a label-attach error does not prevent the field change from being counted', async () => {
-    // The update() call succeeds but issueLabel.upsert throws for one label.
+    // The update() call succeeds but the label attach (issueLabel.create)
+    // throws for one label.
     mocks.prisma.issue.findUnique.mockResolvedValue(makeBulkIssueRow('i1'));
     mocks.tx.issue.update.mockResolvedValue(makeBulkIssueRow('i1'));
-    mocks.prisma.issueLabel.upsert.mockRejectedValue(new Error('DB constraint'));
+    mocks.prisma.issueLabel.create.mockRejectedValue(new Error('DB constraint'));
 
     const result = await service.bulkUpdate(BULK_USER, {
       ids: ['i1'],
@@ -3118,5 +3133,175 @@ describe('IssuesService — timeSpentMinutes rollup via workLogs include', () =>
 
     const dto = toIssueDto(issueNoRelation);
     expect(dto.timeSpentMinutes).toBeUndefined();
+  });
+});
+
+/**
+ * Sprint / parent / component changes must produce ActivityLog rows (MCP-QA
+ * pass 2, top finding: these mutations were invisible to the project
+ * activity feed and agent-context staleness — a bulk sprint re-scope left
+ * the server asserting "nothing happened"). Harness mirrors the dueDate
+ * suite above.
+ */
+describe('IssuesService.update — sprint/parent/component activity logging', () => {
+  const ISSUE_ID = 'issue-act-1';
+  const ACT_PROJECT = 'proj-act';
+  const ACT_WORKSPACE = 'ws-act';
+  const ACT_USER = 'user-act';
+  const ACT_STATUS = 'status-act';
+  const ACT_SPRINT = 'sprint-act';
+  const ACT_PARENT = 'issue-parent-act';
+  const ACT_COMPONENT = 'comp-act';
+
+  function makeActPrisma() {
+    const txClient = {
+      $queryRaw: jest.fn().mockResolvedValue([{ cycle_detected: false }]),
+      issue: { findUnique: jest.fn(), update: jest.fn() },
+      activityLog: { createMany: jest.fn() },
+    };
+    const prisma = {
+      issue: {
+        // where-aware: the issue under edit vs. the parent referenced by
+        // assertSameProject's parentId lookup.
+        findUnique: jest.fn(),
+      },
+      project: {
+        findUnique: jest.fn().mockResolvedValue({ id: ACT_PROJECT, workspaceId: ACT_WORKSPACE }),
+      },
+      membership: { findUnique: jest.fn().mockResolvedValue({ role: Role.ADMIN }) },
+      projectMembership: { findUnique: jest.fn().mockResolvedValue(null) },
+      status: { findUnique: jest.fn() },
+      sprint: {
+        findUnique: jest.fn().mockResolvedValue({ id: ACT_SPRINT, projectId: ACT_PROJECT }),
+      },
+      component: {
+        findUnique: jest.fn().mockResolvedValue({ id: ACT_COMPONENT, projectId: ACT_PROJECT }),
+      },
+      user: { findUnique: jest.fn().mockResolvedValue({ name: 'Actor' }) },
+      $transaction: jest.fn((cb: (tx: typeof txClient) => unknown) => cb(txClient)),
+    };
+    return { prisma, tx: txClient };
+  }
+
+  function makeActExisting(overrides: Partial<{ sprintId: string | null; parentId: string | null; componentId: string | null }> = {}) {
+    return {
+      id: ISSUE_ID,
+      number: 7,
+      projectId: ACT_PROJECT,
+      type: 'TASK',
+      title: 'Activity issue',
+      description: null,
+      statusId: ACT_STATUS,
+      assigneeId: null,
+      reporterId: null,
+      priority: 'MEDIUM',
+      storyPoints: null,
+      parentId: overrides.parentId ?? null,
+      sprintId: overrides.sprintId ?? null,
+      componentId: overrides.componentId ?? null,
+      startDate: null,
+      dueDate: null,
+      rank: 'a0',
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+    };
+  }
+
+  function makeActUpdatedRow() {
+    return {
+      ...makeActExisting(),
+      status: { id: ACT_STATUS, name: 'To Do', category: 'TODO', order: 0, projectId: ACT_PROJECT },
+      assignee: null,
+      reporter: null,
+      labels: [],
+      project: { key: 'ACT' },
+      _count: { comments: 0 },
+    };
+  }
+
+  function makeService(mocks: ReturnType<typeof makeActPrisma>) {
+    return new IssuesService(
+      mocks.prisma as unknown as PrismaService,
+      { emitToProject: jest.fn() } as unknown as RealtimeService,
+      { notifyWatchersUpdated: jest.fn().mockResolvedValue(undefined) } as unknown as NotificationsService,
+      webhooksMock,
+      noOpCustomFields,
+      noOpEventEmitter,
+      noOpWorkflow,
+    );
+  }
+
+  function expectActivity(tx: { activityLog: { createMany: jest.Mock } }, entry: Record<string, unknown>) {
+    expect(tx.activityLog.createMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.arrayContaining([expect.objectContaining(entry)]),
+      }),
+    );
+  }
+
+  it('logs a sprint activity when the issue is pulled into a sprint', async () => {
+    const mocks = makeActPrisma();
+    mocks.prisma.issue.findUnique.mockResolvedValue(makeActExisting());
+    mocks.tx.issue.update.mockResolvedValue(makeActUpdatedRow());
+    const service = makeService(mocks);
+
+    await service.update(ACT_USER, ISSUE_ID, { sprintId: ACT_SPRINT });
+
+    expectActivity(mocks.tx, { field: 'sprint', from: null, to: ACT_SPRINT });
+  });
+
+  it('logs a sprint activity when the issue is returned to the backlog (sprint cleared)', async () => {
+    const mocks = makeActPrisma();
+    mocks.prisma.issue.findUnique.mockResolvedValue(makeActExisting({ sprintId: ACT_SPRINT }));
+    mocks.tx.issue.update.mockResolvedValue(makeActUpdatedRow());
+    const service = makeService(mocks);
+
+    await service.update(ACT_USER, ISSUE_ID, { sprintId: null });
+
+    expectActivity(mocks.tx, { field: 'sprint', from: ACT_SPRINT, to: null });
+  });
+
+  it('logs a parent activity when the issue is re-parented', async () => {
+    const mocks = makeActPrisma();
+    mocks.prisma.issue.findUnique.mockImplementation(
+      ({ where }: { where: { id: string } }) =>
+        Promise.resolve(
+          where.id === ISSUE_ID
+            ? makeActExisting()
+            : { projectId: ACT_PROJECT },
+        ),
+    );
+    mocks.tx.issue.update.mockResolvedValue(makeActUpdatedRow());
+    const service = makeService(mocks);
+
+    await service.update(ACT_USER, ISSUE_ID, { parentId: ACT_PARENT });
+
+    expectActivity(mocks.tx, { field: 'parent', from: null, to: ACT_PARENT });
+  });
+
+  it('logs a component activity when the component changes', async () => {
+    const mocks = makeActPrisma();
+    mocks.prisma.issue.findUnique.mockResolvedValue(makeActExisting());
+    mocks.tx.issue.update.mockResolvedValue(makeActUpdatedRow());
+    const service = makeService(mocks);
+
+    await service.update(ACT_USER, ISSUE_ID, { componentId: ACT_COMPONENT });
+
+    expectActivity(mocks.tx, { field: 'component', from: null, to: ACT_COMPONENT });
+  });
+
+  it('logs NO sprint/parent/component activity when those fields are absent from the patch', async () => {
+    const mocks = makeActPrisma();
+    mocks.prisma.issue.findUnique.mockResolvedValue(makeActExisting({ sprintId: ACT_SPRINT }));
+    mocks.tx.issue.update.mockResolvedValue(makeActUpdatedRow());
+    const service = makeService(mocks);
+
+    await service.update(ACT_USER, ISSUE_ID, { title: 'Renamed only' });
+
+    const call = mocks.tx.activityLog.createMany.mock.calls[0];
+    if (call) {
+      const logged = (call[0] as { data: { field: string }[] }).data;
+      expect(logged.every((a) => !['sprint', 'parent', 'component'].includes(a.field))).toBe(true);
+    }
   });
 });

@@ -126,11 +126,24 @@ export class LabelsService {
       throw new NotFoundException('Label not found');
     }
 
-    await this.prisma.issueLabel.upsert({
+    // Log activity only on a NEW attach (repeat attach stays a silent no-op)
+    // — label changes previously left zero trace in the activity feed and
+    // agent-context staleness (MCP-QA pass 2, top finding). Mirrors
+    // IssuesService.attachLabel's bulk-path behavior.
+    const already = await this.prisma.issueLabel.findUnique({
       where: { issueId_labelId: { issueId, labelId } },
-      update: {},
-      create: { issueId, labelId },
+      select: { issueId: true },
     });
+    if (!already) {
+      await this.prisma.issueLabel.upsert({
+        where: { issueId_labelId: { issueId, labelId } },
+        update: {},
+        create: { issueId, labelId },
+      });
+      await this.prisma.activityLog.create({
+        data: { issueId, actorId: userId, field: 'label', from: null, to: labelId },
+      });
+    }
     return this.issueLabels(issueId);
   }
 
@@ -146,7 +159,15 @@ export class LabelsService {
     if (!issue) throw new NotFoundException('Issue not found');
     await assertProjectRole(this.prisma, userId, issue.projectId, Role.MEMBER);
 
-    await this.prisma.issueLabel.deleteMany({ where: { issueId, labelId } });
+    const { count } = await this.prisma.issueLabel.deleteMany({
+      where: { issueId, labelId },
+    });
+    // Only a real detach is activity; removing an unattached label is a no-op.
+    if (count > 0) {
+      await this.prisma.activityLog.create({
+        data: { issueId, actorId: userId, field: 'label', from: labelId, to: null },
+      });
+    }
     return this.issueLabels(issueId);
   }
 
