@@ -1730,3 +1730,37 @@ model ProjectAgentContext {
   @@index([projectId])
 }
 
+// ---------------------------------------------------------------------------
+// Idempotency (Agent Experience Round 2, criterion 2 — founder-relayed field
+// report #2: an agent retried create_issue/add_comment after a network blip
+// and got duplicate tickets, twice.)
+// ---------------------------------------------------------------------------
+
+/// Records the response of a mutating call made with a client-supplied
+/// `idempotencyKey`, so a retried call with the SAME key (scoped to the same
+/// user + endpoint) replays the ORIGINAL response instead of re-running the
+/// mutation. No relation to `User` — rows are keyed by userId as a plain
+/// string and expire on a 24h window (checked in application code); cleanup
+/// is opportunistic (a `deleteMany` of expired rows fires after each new
+/// write) rather than a scheduled job, since a self-hosted single-instance
+/// deployment doesn't need one for a table this small and short-lived.
+model IdempotencyRecord {
+  id             String   @id @default(cuid())
+  /// Client-supplied idempotency key (opaque string, e.g. a UUID the caller
+  /// generates once and reuses across retries of the SAME logical request).
+  key            String
+  userId         String
+  /// Logical endpoint identifier, e.g. "POST /issues" or "POST comments" —
+  /// scopes the key so the same key string can't collide across unrelated
+  /// mutation types for the same user.
+  endpoint       String
+  /// The JSON response body that was returned the first time this key was
+  /// used for this user+endpoint — replayed verbatim on a retry within the
+  /// window.
+  responseBody   Json
+  createdAt      DateTime @default(now())
+
+  @@unique([key, userId, endpoint])
+  @@index([createdAt])
+}
+

@@ -26,6 +26,14 @@ function makePrisma() {
       count: jest.fn().mockResolvedValue(0),
       findFirst: jest.fn().mockResolvedValue(null),
     },
+    comment: {
+      count: jest.fn().mockResolvedValue(0),
+      findFirst: jest.fn().mockResolvedValue(null),
+    },
+    workLog: {
+      count: jest.fn().mockResolvedValue(0),
+      findFirst: jest.fn().mockResolvedValue(null),
+    },
     auditEvent: {
       count: jest.fn().mockResolvedValue(0),
       findFirst: jest.fn().mockResolvedValue(null),
@@ -121,6 +129,44 @@ describe('AgentContextService', () => {
           workspaceId: 'ws-1',
           createdAt: { gt: new Date('2026-07-01T00:00:00Z') },
           metadata: { path: ['projectId'], equals: PROJECT_ID },
+        },
+      });
+    });
+
+    it('counts Comment + WorkLog rows newer than updatedAt too (Agent Experience Round 2 fold-in)', async () => {
+      prisma.projectAgentContext.findUnique.mockResolvedValue({
+        content: 'stale handoff',
+        updatedAt: new Date('2026-07-01T00:00:00Z'),
+        updatedBy: null,
+      });
+      prisma.activityLog.count.mockResolvedValue(0);
+      prisma.auditEvent.count.mockResolvedValue(0);
+      prisma.comment.count.mockResolvedValue(4);
+      prisma.comment.findFirst.mockResolvedValue({
+        createdAt: new Date('2026-07-02T00:00:00Z'),
+      });
+      prisma.workLog.count.mockResolvedValue(1);
+      prisma.workLog.findFirst.mockResolvedValue({
+        createdAt: new Date('2026-07-04T00:00:00Z'),
+      });
+
+      const result = await service.get(USER_ID, PROJECT_ID);
+
+      // A project with zero field changes but an active comment thread + a
+      // logged work entry must NOT report staleness=0.
+      expect(result.staleness.changesSinceUpdate).toBe(5);
+      // The most recent counted activity across ALL four sources wins.
+      expect(result.staleness.lastProjectActivityAt).toBe('2026-07-04T00:00:00.000Z');
+      expect(prisma.comment.count).toHaveBeenCalledWith({
+        where: {
+          issue: { projectId: PROJECT_ID },
+          createdAt: { gt: new Date('2026-07-01T00:00:00Z') },
+        },
+      });
+      expect(prisma.workLog.count).toHaveBeenCalledWith({
+        where: {
+          issue: { projectId: PROJECT_ID },
+          createdAt: { gt: new Date('2026-07-01T00:00:00Z') },
         },
       });
     });

@@ -12,19 +12,40 @@ export class UsersService {
    * (the caller is always included). This endpoint powers the assignee picker,
    * which only needs co-members — returning all users platform-wide would leak
    * every tenant's names and emails to any authenticated user.
+   *
+   * Optional `q` (MCP-QA pass-1 finding 6 / Agent Experience Round 2
+   * fold-in): server-side, case-insensitive substring match against name OR
+   * email, applied on top of the same co-member scope — an agent resolving
+   * "who is Dana" no longer has to page through every workspace member.
    */
-  async findAll(callerId: string): Promise<UserDto[]> {
+  async findAll(callerId: string, q?: string): Promise<UserDto[]> {
     const memberships = await this.prisma.membership.findMany({
       where: { userId: callerId },
       select: { workspaceId: true },
     });
     const workspaceIds = memberships.map((m) => m.workspaceId);
 
+    const trimmedQ = q?.trim();
+
     const users = await this.prisma.user.findMany({
       where: {
-        OR: [
-          { id: callerId },
-          { memberships: { some: { workspaceId: { in: workspaceIds } } } },
+        AND: [
+          {
+            OR: [
+              { id: callerId },
+              { memberships: { some: { workspaceId: { in: workspaceIds } } } },
+            ],
+          },
+          ...(trimmedQ
+            ? [
+                {
+                  OR: [
+                    { name: { contains: trimmedQ, mode: 'insensitive' as const } },
+                    { email: { contains: trimmedQ, mode: 'insensitive' as const } },
+                  ],
+                },
+              ]
+            : []),
         ],
       },
       orderBy: { name: 'asc' },

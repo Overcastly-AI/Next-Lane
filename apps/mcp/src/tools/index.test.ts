@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { allTools } from './index.js';
 import { NextLaneClient } from '../client.js';
 import type { NextLaneConfig } from '../config.js';
@@ -129,6 +129,12 @@ describe('tool registry', () => {
       // Per-project agent context memory (founder directive, 2026-07-03)
       'get_project_context',
       'update_project_context',
+      // Agent Experience Round 2 (founder-relayed field report #2, 2026-07-03)
+      'create_workspace',
+      'create_project',
+      'update_comment',
+      'delete_comment',
+      'list_project_activity',
     ];
     for (const name of expected) expect(names).toContain(name);
     // No duplicate names.
@@ -538,6 +544,39 @@ describe('tool registry', () => {
     expect(JSON.parse((init as RequestInit).body as string)).toEqual({
       ids: ['i1', 'i2'],
       changes: { statusId: 's1', assigneeId: null },
+    });
+  });
+
+  it('bulk_update_issues passes parentId, atomic, and dryRun through to the body (criteria 3 & 4)', async () => {
+    const { client, fetchImpl } = clientWith(200, {
+      updated: 0,
+      failed: [],
+      atomic: true,
+      dryRun: true,
+      wouldUpdate: ['i1', 'i2', 'i3'],
+    });
+    const res = await tool('bulk_update_issues').handler(
+      { ids: ['i1', 'i2', 'i3'], parentId: 'epic-1', atomic: true, dryRun: true },
+      client,
+    );
+    const [, init] = fetchImpl.mock.calls[0];
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({
+      ids: ['i1', 'i2', 'i3'],
+      changes: { parentId: 'epic-1' },
+      atomic: true,
+      dryRun: true,
+    });
+    const body = JSON.parse(res.content[0].text);
+    expect(body.wouldUpdate).toEqual(['i1', 'i2', 'i3']);
+  });
+
+  it('bulk_update_issues supports null parentId (detach)', async () => {
+    const { client, fetchImpl } = clientWith(200, { updated: 1, failed: [] });
+    await tool('bulk_update_issues').handler({ ids: ['i1'], parentId: null }, client);
+    const [, init] = fetchImpl.mock.calls[0];
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({
+      ids: ['i1'],
+      changes: { parentId: null },
     });
   });
 
@@ -964,6 +1003,169 @@ describe('tool registry', () => {
     );
     expect(fetchImpl.mock.calls).toHaveLength(2);
     expect(JSON.parse(res.content[0].text)).toMatchObject({ key: 'NL-43' });
+  });
+
+  it('create_issue passes idempotencyKey through to POST /issues (criterion 2)', async () => {
+    const { client, fetchImpl } = sequencedClient([
+      { status: 200, body: { id: 'p1', key: 'NL', name: 'Next Lane' } },
+      { status: 201, body: { id: 'i1', key: 'NL-44' } },
+    ]);
+    await tool('create_issue').handler(
+      { projectId: 'p1', title: 'Retried issue', idempotencyKey: 'retry-key-1' },
+      client,
+    );
+    const [, init] = fetchImpl.mock.calls[1];
+    expect(JSON.parse((init as RequestInit).body as string)).toMatchObject({
+      idempotencyKey: 'retry-key-1',
+    });
+  });
+
+  describe('create_issue strict-mode expectedProjectKey (criterion 7)', () => {
+    const originalEnv = process.env.NEXT_LANE_MCP_STRICT_PROJECT_KEY;
+    afterEach(() => {
+      if (originalEnv === undefined) delete process.env.NEXT_LANE_MCP_STRICT_PROJECT_KEY;
+      else process.env.NEXT_LANE_MCP_STRICT_PROJECT_KEY = originalEnv;
+    });
+
+    it('rejects a create_issue call with no expectedProjectKey when strict mode is enabled', async () => {
+      process.env.NEXT_LANE_MCP_STRICT_PROJECT_KEY = 'true';
+      const { client, fetchImpl } = sequencedClient([
+        { status: 200, body: { id: 'p1', key: 'NL', name: 'Next Lane' } },
+      ]);
+      await expect(
+        tool('create_issue').handler({ projectId: 'p1', title: 'No key passed' }, client),
+      ).rejects.toThrow(/requires expectedProjectKey/);
+      // No POST /issues was made — the project GET alone doesn't count as a write.
+      expect(fetchImpl.mock.calls).toHaveLength(1);
+    });
+
+    it('allows a create_issue call with expectedProjectKey when strict mode is enabled', async () => {
+      process.env.NEXT_LANE_MCP_STRICT_PROJECT_KEY = '1';
+      const { client, fetchImpl } = sequencedClient([
+        { status: 200, body: { id: 'p1', key: 'NL', name: 'Next Lane' } },
+        { status: 201, body: { id: 'i1', key: 'NL-45' } },
+      ]);
+      await tool('create_issue').handler(
+        { projectId: 'p1', title: 'Has key', expectedProjectKey: 'NL' },
+        client,
+      );
+      expect(fetchImpl.mock.calls).toHaveLength(2);
+    });
+
+    it('does not require expectedProjectKey when strict mode is unset', async () => {
+      delete process.env.NEXT_LANE_MCP_STRICT_PROJECT_KEY;
+      const { client, fetchImpl } = sequencedClient([
+        { status: 200, body: { id: 'p1', key: 'NL', name: 'Next Lane' } },
+        { status: 201, body: { id: 'i1', key: 'NL-46' } },
+      ]);
+      await tool('create_issue').handler({ projectId: 'p1', title: 'No key, no strict' }, client);
+      expect(fetchImpl.mock.calls).toHaveLength(2);
+    });
+  });
+
+  it('add_comment passes idempotencyKey through to POST comments (criterion 2)', async () => {
+    const { client, fetchImpl } = clientWith(201, { id: 'c1', body: 'hi' });
+    await tool('add_comment').handler(
+      { issueId: 'i1', body: 'hi', idempotencyKey: 'retry-comment-1' },
+      client,
+    );
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toBe('http://localhost:4000/api/issues/i1/comments');
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({
+      body: 'hi',
+      idempotencyKey: 'retry-comment-1',
+    });
+  });
+
+  it('update_comment PATCHes /comments/:id with the new body (criterion 5)', async () => {
+    const { client, fetchImpl } = clientWith(200, { id: 'c1', body: 'Edited' });
+    await tool('update_comment').handler({ commentId: 'c1', body: 'Edited' }, client);
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toBe('http://localhost:4000/api/comments/c1');
+    expect((init as RequestInit).method).toBe('PATCH');
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({ body: 'Edited' });
+  });
+
+  it('delete_comment DELETEs /comments/:id (criterion 5)', async () => {
+    const { client, fetchImpl } = clientWith(200, { id: 'c1' });
+    await tool('delete_comment').handler({ commentId: 'c1' }, client);
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toBe('http://localhost:4000/api/comments/c1');
+    expect((init as RequestInit).method).toBe('DELETE');
+  });
+
+  it('list_project_activity GETs /projects/:id/activity with since/cursor/limit', async () => {
+    const { client, fetchImpl } = clientWith(200, {
+      items: [{ id: 'a1', kind: 'COMMENT', issueId: 'i1', issueKey: 'NL-1', summary: 'commented' }],
+      nextCursor: 'opaque-cursor',
+    });
+    const res = await tool('list_project_activity').handler(
+      { projectId: 'p1', since: '2026-01-01T00:00:00.000Z', limit: 10 },
+      client,
+    );
+    const [url] = fetchImpl.mock.calls[0];
+    expect(url).toBe(
+      'http://localhost:4000/api/projects/p1/activity?since=2026-01-01T00%3A00%3A00.000Z&limit=10',
+    );
+    const body = JSON.parse(res.content[0].text);
+    expect(body.items).toHaveLength(1);
+    expect(body.hasMore).toBe(true);
+    expect(body.nextCursor).toBe('opaque-cursor');
+  });
+
+  it('list_users passes q through as a query param', async () => {
+    const { client, fetchImpl } = clientWith(200, [
+      { id: 'u1', name: 'Dana', email: 'dana@example.com', avatarColor: '#000', createdAt: 'x' },
+    ]);
+    const res = await tool('list_users').handler({ q: 'dana' }, client);
+    const [url] = fetchImpl.mock.calls[0];
+    expect(url).toBe('http://localhost:4000/api/users?q=dana');
+    expect(JSON.parse(res.content[0].text).items).toEqual([
+      { id: 'u1', name: 'Dana', email: 'dana@example.com' },
+    ]);
+  });
+
+  it('create_workspace POSTs to /workspaces and echoes id/slug prominently', async () => {
+    const { client, fetchImpl } = clientWith(201, {
+      id: 'ws1',
+      slug: 'acme',
+      name: 'Acme',
+    });
+    const res = await tool('create_workspace').handler({ name: 'Acme' }, client);
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toBe('http://localhost:4000/api/workspaces');
+    expect((init as RequestInit).method).toBe('POST');
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({ name: 'Acme' });
+    const body = JSON.parse(res.content[0].text);
+    expect(body.id).toBe('ws1');
+    expect(body.slug).toBe('acme');
+    // id/slug/name appear FIRST in the serialized JSON (prominent echo).
+    expect(Object.keys(body).slice(0, 3)).toEqual(['id', 'slug', 'name']);
+  });
+
+  it('create_project POSTs to /projects and echoes id/key prominently', async () => {
+    const { client, fetchImpl } = clientWith(201, {
+      id: 'p1',
+      key: 'NL',
+      name: 'Next Lane',
+      workspaceId: 'ws1',
+    });
+    const res = await tool('create_project').handler(
+      { workspaceId: 'ws1', key: 'nl', name: 'Next Lane' },
+      client,
+    );
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toBe('http://localhost:4000/api/projects');
+    expect((init as RequestInit).method).toBe('POST');
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({
+      workspaceId: 'ws1',
+      key: 'nl',
+      name: 'Next Lane',
+    });
+    const body = JSON.parse(res.content[0].text);
+    expect(body.id).toBe('p1');
+    expect(body.key).toBe('NL');
+    expect(Object.keys(body).slice(0, 2)).toEqual(['id', 'key']);
   });
 
   it('get_epic_overview composes children + status rollup + progress from a single GET /issues/:id call', async () => {

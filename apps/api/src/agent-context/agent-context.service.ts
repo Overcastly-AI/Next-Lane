@@ -97,20 +97,28 @@ export class AgentContextService {
 
   /**
    * Approximate, cheap "how much has this project changed since `since`"
-   * count, combining two sources that already exist in the schema:
+   * count, combining four sources that already exist in the schema:
    *
    *  1. `ActivityLog` rows for any issue in this project (issue creation +
    *     every logged field change — status/assignee/priority/title/etc.;
    *     see `IssuesService`) newer than `since`.
-   *  2. `AuditEvent` rows scoped to this project (matched via the JSON
+   *  2. `Comment` rows on any issue in this project newer than `since`
+   *     (MCP-QA pass-1 finding 5 / Agent Experience Round 2 fold-in — comment
+   *     activity previously didn't count toward staleness at all, so a
+   *     project with an active discussion thread and zero field changes
+   *     looked perfectly fresh).
+   *  3. `WorkLog` rows on any issue in this project newer than `since` (same
+   *     fold-in — time logged is real project activity too).
+   *  4. `AuditEvent` rows scoped to this project (matched via the JSON
    *     `metadata.projectId` field every project-scoped audit write already
    *     sets — webhook/GitHub/GitLab/role-override config changes) newer
    *     than `since`.
    *
-   * This is deliberately NOT exhaustive — comment bodies, for example,
-   * aren't separately logged to ActivityLog — so it undercounts rather than
-   * overcounts. That's the honest tradeoff for a cheap, single-purpose
-   * "should I double-check this handoff?" signal, not an audit log.
+   * This is still deliberately NOT exhaustive (e.g. board/sprint config
+   * changes with no audit trail of their own aren't counted) — it undercounts
+   * rather than overcounts. That's the honest tradeoff for a cheap,
+   * single-purpose "should I double-check this handoff?" signal, not an
+   * audit log.
    */
   async computeStaleness(
     projectId: string,
@@ -121,11 +129,36 @@ export class AgentContextService {
       select: { workspaceId: true },
     });
 
-    const [activityCount, latestActivity, auditCount, latestAudit] = await Promise.all([
+    const [
+      activityCount,
+      latestActivity,
+      commentCount,
+      latestComment,
+      workLogCount,
+      latestWorkLog,
+      auditCount,
+      latestAudit,
+    ] = await Promise.all([
       this.prisma.activityLog.count({
         where: { issue: { projectId }, createdAt: { gt: since } },
       }),
       this.prisma.activityLog.findFirst({
+        where: { issue: { projectId } },
+        orderBy: { createdAt: 'desc' },
+        select: { createdAt: true },
+      }),
+      this.prisma.comment.count({
+        where: { issue: { projectId }, createdAt: { gt: since } },
+      }),
+      this.prisma.comment.findFirst({
+        where: { issue: { projectId } },
+        orderBy: { createdAt: 'desc' },
+        select: { createdAt: true },
+      }),
+      this.prisma.workLog.count({
+        where: { issue: { projectId }, createdAt: { gt: since } },
+      }),
+      this.prisma.workLog.findFirst({
         where: { issue: { projectId } },
         orderBy: { createdAt: 'desc' },
         select: { createdAt: true },
@@ -151,12 +184,17 @@ export class AgentContextService {
         : Promise.resolve(null),
     ]);
 
-    const lastProjectActivityAt = [latestActivity?.createdAt, latestAudit?.createdAt]
+    const lastProjectActivityAt = [
+      latestActivity?.createdAt,
+      latestComment?.createdAt,
+      latestWorkLog?.createdAt,
+      latestAudit?.createdAt,
+    ]
       .filter((d): d is Date => !!d)
       .sort((a, b) => b.getTime() - a.getTime())[0] ?? null;
 
     return {
-      changesSinceUpdate: activityCount + auditCount,
+      changesSinceUpdate: activityCount + commentCount + workLogCount + auditCount,
       lastProjectActivityAt,
     };
   }

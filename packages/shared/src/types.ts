@@ -1845,9 +1845,8 @@ export interface AgentContextUpdatedByDto {
  *
  * `changesSinceUpdate` is an APPROXIMATE, honestly-scoped count — see
  * `AgentContextService.computeStaleness` for exactly what it counts (issue
- * activity across the project + project-scoped audit events), not a
- * guarantee of every possible change (e.g. comment bodies alone aren't
- * separately logged).
+ * field-change activity, comments, work logs, and project-scoped audit
+ * events), not a guarantee of every possible change.
  */
 export interface AgentContextStalenessDto {
   /** Count of project activity/audit entries newer than `updatedAt`. */
@@ -1869,4 +1868,44 @@ export interface ProjectAgentContextDto {
 /** Body for `PUT /projects/:id/agent-context`. */
 export interface UpsertProjectAgentContextInput {
   content: string;
+}
+
+// ---------------------------------------------------------------------------
+// Project activity feed (Agent Experience Round 2, criterion 6) — a
+// project-wide "what changed" feed for agents that must not poll blind. Unifies
+// three existing per-issue sources (ActivityLog field changes, Comment
+// creation, WorkLog creation) into one chronologically-merged, cursor-paginated
+// stream, so "did anything change since I last looked / did someone update
+// NL-42" is one cheap call instead of N per-issue polls.
+// ---------------------------------------------------------------------------
+
+/** Discriminates which underlying table a `ProjectActivityItemDto` came from. */
+export type ProjectActivityKind = 'ISSUE_FIELD' | 'COMMENT' | 'WORK_LOG';
+
+/** One entry in a project's unified activity feed. */
+export interface ProjectActivityItemDto {
+  id: string;
+  kind: ProjectActivityKind;
+  issueId: string;
+  /** Issue key, e.g. "NL-42" — resolved server-side so callers never need a join. */
+  issueKey: string;
+  actor: { id: string; name: string } | null;
+  /**
+   * Human-readable one-line summary, e.g. `status: To Do → In Progress`,
+   * "commented", or "logged 45m". Cheap for an agent to skim without
+   * interpreting `field`/`from`/`to` itself.
+   */
+  summary: string;
+  /** Present for kind=ISSUE_FIELD only. */
+  field?: string | null;
+  from?: string | null;
+  to?: string | null;
+  createdAt: string;
+}
+
+/** GET /projects/:id/activity response. */
+export interface PaginatedProjectActivityDto {
+  items: ProjectActivityItemDto[];
+  /** Opaque cursor for the next page, or null when there is no more. */
+  nextCursor: string | null;
 }

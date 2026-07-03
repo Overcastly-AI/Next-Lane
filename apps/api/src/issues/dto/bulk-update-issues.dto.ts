@@ -2,6 +2,7 @@ import {
   ArrayMaxSize,
   ArrayMinSize,
   IsArray,
+  IsBoolean,
   IsEnum,
   IsOptional,
   IsString,
@@ -47,6 +48,17 @@ export class BulkIssueChangesDto {
   @IsEnum(IssueType)
   type?: IssueType;
 
+  /**
+   * New parent issue id, or null to detach every matching issue from its
+   * current parent. Cross-project parentId is rejected per-item (the same
+   * "parentId does not belong to this project" guard as `update_issue`) —
+   * this is what lets one call parent 30 tickets under an epic.
+   */
+  @IsOptional()
+  @ValidateIf((_o, v) => v !== null)
+  @IsString()
+  parentId?: string | null;
+
   /** Label IDs to attach to every matching issue (idempotent upsert). */
   @IsOptional()
   @IsArray()
@@ -68,6 +80,27 @@ export class BulkUpdateIssuesDto {
   @ValidateNested()
   @Type(() => BulkIssueChangesDto)
   changes!: BulkIssueChangesDto;
+
+  /**
+   * When true, every issue in `ids` is validated first; if ALL pass, the
+   * writes are applied inside a single database transaction (all-or-nothing
+   * — a failure partway through rolls back everything already written in
+   * this batch). When false/omitted (default), each issue is applied
+   * independently and partial success is normal (see `failed`).
+   */
+  @IsOptional()
+  @IsBoolean()
+  atomic?: boolean;
+
+  /**
+   * When true, every issue is validated exactly as a real update would be,
+   * but NOTHING is written — the response reports per-item verdicts
+   * (`wouldUpdate` / `failed`) so a caller can preview a bulk edit before
+   * committing to it. Works with or without `atomic`.
+   */
+  @IsOptional()
+  @IsBoolean()
+  dryRun?: boolean;
 }
 
 /**
@@ -81,4 +114,13 @@ export class BulkUpdateIssuesDto {
 export interface BulkUpdateResultDto {
   updated: number;
   failed: Array<{ id: string; reason: string }>;
+  /** Echoed back when the request set `atomic: true`. */
+  atomic?: boolean;
+  /**
+   * True when this call had `dryRun: true` — no writes were made regardless
+   * of `atomic`. `wouldUpdate` is populated instead of applying anything.
+   */
+  dryRun?: boolean;
+  /** dryRun only: ids that passed every validation and WOULD have been updated. */
+  wouldUpdate?: string[];
 }

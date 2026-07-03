@@ -21,6 +21,7 @@ export class UpdateIssueDto extends PartialType(
     'dueDate',
     'componentId',
     'originalEstimateMinutes',
+    'idempotencyKey',
   ] as const),
 ) {
   @IsOptional()

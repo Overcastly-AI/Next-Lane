@@ -1032,6 +1032,13 @@ function buildMatrix(a: Tenant): Array<MatrixRow & { resolvedPath: string; resol
       body: () => ({ content: 'Hijacked handoff — attacker was here.' }),
     },
 
+    // ── Project activity feed (Agent Experience Round 2, criterion 6) ─────────
+    {
+      label: 'GET activity feed for project A',
+      method: 'GET',
+      path: (t) => `/projects/${t.projectId}/activity`,
+    },
+
     // ── Dashboards ───────────────────────────────────────────────────────────
     {
       label: 'GET dashboards for project A',

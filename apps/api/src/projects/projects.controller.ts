@@ -14,7 +14,9 @@ import type { Request } from 'express';
 import { ProjectsService } from './projects.service';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
+import { ListProjectActivityQueryDto } from './dto/list-project-activity.dto';
 import { CurrentUser, AuthUser } from '../auth/current-user.decorator';
+import { RequireScope } from '../auth/require-scope.decorator';
 
 function extractIp(req: Request): string | null {
   const forwarded = req.headers['x-forwarded-for'];
@@ -48,6 +50,23 @@ export class ProjectsController {
   @Get(':id')
   findOne(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.projects.findOne(user.id, id);
+  }
+
+  /**
+   * GET /projects/:id/activity (VIEWER+, `projects:read` PAT scope)
+   *
+   * Unified project activity feed — issue field changes, comments, and work
+   * logs across every issue in the project, chronologically merged and
+   * cursor-paginated. Agent Experience Round 2, criterion 6.
+   */
+  @Get(':id/activity')
+  @RequireScope('projects:read')
+  activity(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Query() query: ListProjectActivityQueryDto,
+  ) {
+    return this.projects.getActivity(user.id, id, query);
   }
 
   @Patch(':id')

@@ -20,12 +20,15 @@ import {
   assertWorkspaceMember,
 } from '../common/membership.util';
 import { loadNlqlEvalContext } from '../common/nlql-eval-context.util';
+import { withIdempotency } from '../common/idempotency.util';
 import { toIssueDto } from './issue.mapper';
+import type { IssueWithRelations } from './issue.mapper';
 import { toUserDto } from '../auth/auth.service';
 import { CreateIssueDto } from './dto/create-issue.dto';
 import { UpdateIssueDto } from './dto/update-issue.dto';
 import { MoveIssueDto, ListIssuesQueryDto } from './dto/move-issue.dto';
 import type {
+  BulkIssueChangesDto,
   BulkUpdateIssuesDto,
   BulkUpdateResultDto,
 } from './dto/bulk-update-issues.dto';
@@ -90,6 +93,25 @@ export interface MutationOpts {
    * - `string`: pre-resolved workflow id — enforce it directly.
    */
   resolvedWorkflowId?: string | null;
+}
+
+/**
+ * Return shape of {@link IssuesService.prepareUpdate} — the guard/validation
+ * phase of an issue update, computed before any write. Shared by the
+ * single-issue `update()` path and the atomic/dry-run bulk paths
+ * (`bulkUpdateAtomic`, `bulkUpdateDryRun`).
+ */
+interface PreparedIssueUpdate {
+  existing: {
+    id: string;
+    projectId: string;
+    statusId: string;
+    assigneeId: string | null;
+    sprintId: string | null;
+  };
+  activities: Prisma.ActivityLogCreateManyInput[];
+  changedFields: string[];
+  mergedCustomFields?: Prisma.InputJsonValue;
 }
 
 /** Default number of issues returned by {@link IssuesService.findAll} per page. */
@@ -185,7 +207,25 @@ export class IssuesService {
     }
   }
 
+  /**
+   * Create an issue. When `dto.idempotencyKey` is set, retrying this call
+   * with the SAME key (scoped to this user) within the idempotency window
+   * replays the original created issue instead of filing a duplicate — see
+   * {@link withIdempotency} (Agent Experience Round 2, criterion 2).
+   */
   async create(userId: string, dto: CreateIssueDto, opts?: MutationOpts): Promise<IssueDto> {
+    return withIdempotency(
+      this.prisma,
+      { userId, endpoint: 'POST /issues', key: dto.idempotencyKey },
+      () => this.createInner(userId, dto, opts),
+    );
+  }
+
+  private async createInner(
+    userId: string,
+    dto: CreateIssueDto,
+    opts?: MutationOpts,
+  ): Promise<IssueDto> {
     const project = await assertProjectRole(
       this.prisma,
       userId,
@@ -194,8 +234,20 @@ export class IssuesService {
     );
     await this.assertAssigneeInWorkspace(project.workspaceId, dto.assigneeId);
 
-    // Validate componentId belongs to the same project (when provided).
-    await this.assertSameProject(dto.projectId, { componentId: dto.componentId });
+    // Reject any cross-project reference BEFORE creating anything. Agent
+    // Experience Round 2 (P1, confirmed live 2026-07-03): POST /issues
+    // accepted a statusId from a DIFFERENT project — the issue landed in
+    // this project carrying the other project's status, rendering in no
+    // board column (an invisible ticket). sprintId/parentId had the same gap
+    // on create (update()/move() already guarded all of these). componentId
+    // was already checked here; now every foreign-id field on create shares
+    // one guard with precise, per-field 400 messages.
+    await this.assertSameProject(dto.projectId, {
+      statusId: dto.statusId,
+      sprintId: dto.sprintId,
+      parentId: dto.parentId,
+      componentId: dto.componentId,
+    });
 
     this.assertStartBeforeDue(dto.startDate, dto.dueDate);
 
@@ -754,6 +806,31 @@ export class IssuesService {
     dto: UpdateIssueDto,
     opts?: MutationOpts,
   ): Promise<IssueDto> {
+    const prep = await this.prepareUpdate(userId, id, dto, opts);
+    const issue = await this.prisma.$transaction((tx) =>
+      this.writeIssueUpdate(tx, id, dto, prep.activities, prep.mergedCustomFields),
+    );
+    return this.finishUpdate(userId, issue, prep.existing, dto, prep.changedFields, opts);
+  }
+
+  /**
+   * Guard-check + business-rule phase of an issue update: authorization,
+   * cross-project reference validation, workflow-transition enforcement, and
+   * the ActivityLog/customFields diff — everything `update()` used to do
+   * BEFORE opening its `$transaction`. Performs only reads, no writes.
+   *
+   * Extracted (Agent Experience Round 2, criterion 3) so `bulkUpdateAtomic`
+   * can validate every issue in a batch FIRST, and only open a single shared
+   * transaction once every issue has passed — the "all-or-nothing" half of
+   * atomic bulk updates. `update()` itself calls this too, so the
+   * single-issue path is unchanged in behavior (same checks, same order).
+   */
+  private async prepareUpdate(
+    userId: string,
+    id: string,
+    dto: UpdateIssueDto,
+    opts?: MutationOpts,
+  ): Promise<PreparedIssueUpdate> {
     const existing = await this.prisma.issue.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('Issue not found');
     const project = await assertProjectRole(
@@ -899,62 +976,94 @@ export class IssuesService {
       changedFields.push('dueDate');
     }
 
-    // Run cycle-check + write atomically so a concurrent parent reassignment
-    // cannot slip through between the check and the UPDATE (TOCTOU fix).
-    const issue = await this.prisma.$transaction(async (tx) => {
-      if (dto.parentId != null) {
-        await this.assertNoParentCycleCTE(tx, id, dto.parentId);
-      }
+    return { existing, activities, changedFields, mergedCustomFields };
+  }
 
-      const updated = await tx.issue.update({
-        where: { id },
-        data: {
-          title: dto.title,
-          description: dto.description,
-          type: dto.type,
-          statusId: dto.statusId,
-          assigneeId: dto.assigneeId,
-          priority: dto.priority,
-          storyPoints: dto.storyPoints,
-          parentId: dto.parentId,
-          sprintId: dto.sprintId,
-          // startDate: undefined = no-op; null = clear; string = set new date
-          startDate:
-            dto.startDate === undefined
-              ? undefined
-              : dto.startDate === null
-                ? null
-                : new Date(dto.startDate),
-          // dueDate: undefined = no-op; null = clear; string = set new date
-          dueDate:
-            dto.dueDate === undefined
-              ? undefined
-              : dto.dueDate === null
-                ? null
-                : new Date(dto.dueDate),
-          // componentId: undefined = no-op; null = clear; string = set new component
-          ...(dto.componentId !== undefined
-            ? { componentId: dto.componentId }
-            : {}),
-          // originalEstimateMinutes: undefined = no-op; null = clear; number = set
-          ...(dto.originalEstimateMinutes !== undefined
-            ? { originalEstimateMinutes: dto.originalEstimateMinutes }
-            : {}),
-          // customFields: undefined = no-op; merged object = replace stored JSON
-          ...(mergedCustomFields !== undefined
-            ? { customFields: mergedCustomFields }
-            : {}),
-        },
-        include: listInclude,
-      });
+  /**
+   * Write phase of an issue update: the parent-cycle check (TOCTOU-safe,
+   * runs on the same transaction as the write) + the `Issue.update` + its
+   * ActivityLog rows. Takes the caller's transaction client so:
+   *  - `update()` opens a dedicated single-issue `$transaction` (unchanged
+   *    behavior from before this was split out).
+   *  - `bulkUpdateAtomic` shares ONE transaction across every issue in the
+   *    batch, so a failure on issue N rolls back issues 1..N-1 too.
+   */
+  private async writeIssueUpdate(
+    tx: Prisma.TransactionClient,
+    id: string,
+    dto: UpdateIssueDto,
+    activities: Prisma.ActivityLogCreateManyInput[],
+    mergedCustomFields: Prisma.InputJsonValue | undefined,
+  ): Promise<IssueWithRelations> {
+    if (dto.parentId != null) {
+      await this.assertNoParentCycleCTE(tx, id, dto.parentId);
+    }
 
-      if (activities.length > 0) {
-        await tx.activityLog.createMany({ data: activities });
-      }
-
-      return updated;
+    const updated = await tx.issue.update({
+      where: { id },
+      data: {
+        title: dto.title,
+        description: dto.description,
+        type: dto.type,
+        statusId: dto.statusId,
+        assigneeId: dto.assigneeId,
+        priority: dto.priority,
+        storyPoints: dto.storyPoints,
+        parentId: dto.parentId,
+        sprintId: dto.sprintId,
+        // startDate: undefined = no-op; null = clear; string = set new date
+        startDate:
+          dto.startDate === undefined
+            ? undefined
+            : dto.startDate === null
+              ? null
+              : new Date(dto.startDate),
+        // dueDate: undefined = no-op; null = clear; string = set new date
+        dueDate:
+          dto.dueDate === undefined
+            ? undefined
+            : dto.dueDate === null
+              ? null
+              : new Date(dto.dueDate),
+        // componentId: undefined = no-op; null = clear; string = set new component
+        ...(dto.componentId !== undefined
+          ? { componentId: dto.componentId }
+          : {}),
+        // originalEstimateMinutes: undefined = no-op; null = clear; number = set
+        ...(dto.originalEstimateMinutes !== undefined
+          ? { originalEstimateMinutes: dto.originalEstimateMinutes }
+          : {}),
+        // customFields: undefined = no-op; merged object = replace stored JSON
+        ...(mergedCustomFields !== undefined
+          ? { customFields: mergedCustomFields }
+          : {}),
+      },
+      include: listInclude,
     });
 
+    if (activities.length > 0) {
+      await tx.activityLog.createMany({ data: activities });
+    }
+
+    return updated;
+  }
+
+  /**
+   * Side-effect phase of an issue update: realtime + webhook dispatch,
+   * assignment/watcher notifications, and the automation event — everything
+   * that must only happen AFTER the write has actually committed. Split out
+   * so `bulkUpdateAtomic` can run this once per issue after its single
+   * shared transaction commits, instead of interleaving side effects with
+   * writes that might still roll back.
+   */
+  private async finishUpdate(
+    userId: string,
+    issue: IssueWithRelations,
+    existing: PreparedIssueUpdate['existing'],
+    dto: UpdateIssueDto,
+    changedFields: string[],
+    opts?: MutationOpts,
+  ): Promise<IssueDto> {
     const dtoOut = toIssueDto(issue);
     this.realtime.emitToProject(
       issue.projectId,
@@ -1710,6 +1819,39 @@ export class IssuesService {
   }
 
   /**
+   * Reject any labelId in `labelIds` that does not exist or belongs to a
+   * different project than `projectId`. `LabelsService.addToIssue` (the
+   * single-issue `POST /issues/:id/labels` path) already validated this;
+   * `bulkUpdate`'s `addLabelIds` did not (Agent Experience Round 2,
+   * criterion 1 — a label from a different project could be silently
+   * attached to any issue via a bulk edit, since `attachLabel` above only
+   * upserts the join row with no project-scope check at all).
+   */
+  private async assertLabelsInProject(
+    projectId: string,
+    labelIds: string[],
+  ): Promise<void> {
+    if (labelIds.length === 0) return;
+    const labels = await this.prisma.label.findMany({
+      where: { id: { in: labelIds } },
+      select: { id: true, projectId: true },
+    });
+    const foundIds = new Set(labels.map((l) => l.id));
+    const missing = labelIds.filter((lid) => !foundIds.has(lid));
+    if (missing.length > 0) {
+      throw new BadRequestException(`Label not found: ${missing.join(', ')}`);
+    }
+    const wrongProject = labels.filter((l) => l.projectId !== projectId);
+    if (wrongProject.length > 0) {
+      throw new BadRequestException(
+        `addLabelIds must belong to the same project as the issue(s) being updated: ${wrongProject
+          .map((l) => l.id)
+          .join(', ')}`,
+      );
+    }
+  }
+
+  /**
    * Apply a set of field changes to multiple issues in one API call.
    *
    * Each issue is processed independently:
@@ -1729,7 +1871,7 @@ export class IssuesService {
     userId: string,
     dto: BulkUpdateIssuesDto,
   ): Promise<BulkUpdateResultDto> {
-    const { ids, changes } = dto;
+    const { ids, changes, atomic, dryRun } = dto;
 
     // Guard: ids cap (second layer — DTO already enforces @ArrayMaxSize(100)).
     if (ids.length > 100) {
@@ -1743,6 +1885,7 @@ export class IssuesService {
       changes.priority !== undefined ||
       changes.sprintId !== undefined ||
       changes.type !== undefined ||
+      changes.parentId !== undefined ||
       (changes.addLabelIds !== undefined && changes.addLabelIds.length > 0);
 
     if (!hasChange) {
@@ -1759,6 +1902,10 @@ export class IssuesService {
     if (changes.priority !== undefined) updateDto.priority = changes.priority;
     if (changes.sprintId !== undefined) updateDto.sprintId = changes.sprintId;
     if (changes.type !== undefined) updateDto.type = changes.type;
+    // parentId (criterion 3): the same cross-project guard as update_issue
+    // applies inside prepareUpdate's assertSameProject call — a bulk re-parent
+    // to an issue in a different project is rejected per-item, same message.
+    if (changes.parentId !== undefined) updateDto.parentId = changes.parentId;
 
     // ── Workflow context preload (performance) ────────────────────────────────
     // When a status change is requested, all issues in the batch share the same
@@ -1793,6 +1940,28 @@ export class IssuesService {
       }
     }
 
+    // dryRun (criterion 4): validate every id independently and report
+    // per-item verdicts — never write anything, whether or not `atomic` was
+    // also requested (atomicity only governs the write phase, which dryRun
+    // always skips entirely).
+    if (dryRun) {
+      return this.bulkUpdateDryRun(userId, ids, updateDto, changes, {
+        bulkWorkflowEnforced,
+        resolvedWorkflowIds,
+        atomic: Boolean(atomic),
+      });
+    }
+
+    // atomic (criterion 3): validate every id FIRST (zero writes so far),
+    // then — only if every id passed — write all of them inside one shared
+    // transaction so a mid-batch failure rolls back the whole batch.
+    if (atomic) {
+      return this.bulkUpdateAtomic(userId, ids, updateDto, changes, {
+        bulkWorkflowEnforced,
+        resolvedWorkflowIds,
+      });
+    }
+
     let updated = 0;
     const failed: Array<{ id: string; reason: string }> = [];
 
@@ -1806,13 +1975,17 @@ export class IssuesService {
         // Pass the pre-loaded workflowEnforced + resolvedWorkflowId hints so
         // enforceStatusChange() can skip its own per-issue board/sprint
         // lookups (saves up to 2 queries per issue in the batch).
-        await this.update(userId, id, updateDto, {
+        const dtoOut = await this.update(userId, id, updateDto, {
           workflowEnforced: bulkWorkflowEnforced,
           resolvedWorkflowId: resolvedWorkflowIds?.get(id),
         });
 
-        // Apply label additions after the core update succeeds.
+        // Apply label additions after the core update succeeds. Validated
+        // against THIS issue's project first (criterion 1 — see
+        // assertLabelsInProject); a mismatch fails just this id, same as any
+        // other per-issue error in this loop.
         if (changes.addLabelIds && changes.addLabelIds.length > 0) {
+          await this.assertLabelsInProject(dtoOut.projectId, changes.addLabelIds);
           for (const labelId of changes.addLabelIds) {
             await this.attachLabel(id, labelId);
           }
@@ -1828,5 +2001,130 @@ export class IssuesService {
     }
 
     return { updated, failed };
+  }
+
+  /**
+   * atomic:true path for `bulkUpdate` (Agent Experience Round 2, criterion
+   * 3): validate every issue in the batch FIRST via `prepareUpdate` (pure
+   * reads — no writes yet), then — only if every issue passes validation —
+   * apply all of the writes inside a SINGLE `$transaction`, so a failure
+   * partway through rolls back every issue already written in this batch
+   * (all-or-nothing). Side effects (realtime/webhooks/notifications/
+   * automation events) fire once per issue AFTER the shared transaction
+   * commits, mirroring the non-atomic path's per-issue side effects.
+   */
+  private async bulkUpdateAtomic(
+    userId: string,
+    ids: string[],
+    updateDto: UpdateIssueDto,
+    changes: BulkIssueChangesDto,
+    hints: {
+      bulkWorkflowEnforced?: boolean;
+      resolvedWorkflowIds?: Map<string, string | null>;
+    },
+  ): Promise<BulkUpdateResultDto> {
+    const prepared: Array<{ id: string; prep: PreparedIssueUpdate }> = [];
+    const failed: Array<{ id: string; reason: string }> = [];
+
+    for (const id of ids) {
+      try {
+        const prep = await this.prepareUpdate(userId, id, updateDto, {
+          workflowEnforced: hints.bulkWorkflowEnforced,
+          resolvedWorkflowId: hints.resolvedWorkflowIds?.get(id),
+        });
+        if (changes.addLabelIds && changes.addLabelIds.length > 0) {
+          await this.assertLabelsInProject(prep.existing.projectId, changes.addLabelIds);
+        }
+        prepared.push({ id, prep });
+      } catch (err: unknown) {
+        failed.push({ id, reason: err instanceof Error ? err.message : 'Unknown error' });
+      }
+    }
+
+    // All-or-nothing: ANY validation failure aborts the WHOLE batch with
+    // zero writes — this is what makes atomic:true actually atomic, not just
+    // "wrapped in a transaction that might still partially commit".
+    if (failed.length > 0) {
+      return { updated: 0, failed, atomic: true };
+    }
+
+    const results: Array<{ issue: IssueWithRelations; prep: PreparedIssueUpdate }> = [];
+
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        for (const { id, prep } of prepared) {
+          const issue = await this.writeIssueUpdate(
+            tx,
+            id,
+            updateDto,
+            prep.activities,
+            prep.mergedCustomFields,
+          );
+          if (changes.addLabelIds && changes.addLabelIds.length > 0) {
+            for (const labelId of changes.addLabelIds) {
+              await tx.issueLabel.upsert({
+                where: { issueId_labelId: { issueId: id, labelId } },
+                update: {},
+                create: { issueId: id, labelId },
+              });
+            }
+          }
+          results.push({ issue, prep });
+        }
+      });
+    } catch (err: unknown) {
+      // The shared transaction rolled back — nothing in this batch was
+      // written. Report every id as failed with the same rollback reason.
+      const reason = `Transaction rolled back: ${err instanceof Error ? err.message : 'Unknown error'}`;
+      return { updated: 0, failed: ids.map((id) => ({ id, reason })), atomic: true };
+    }
+
+    for (const { issue, prep } of results) {
+      await this.finishUpdate(userId, issue, prep.existing, updateDto, prep.changedFields, {
+        workflowEnforced: hints.bulkWorkflowEnforced,
+      });
+    }
+
+    return { updated: results.length, failed: [], atomic: true };
+  }
+
+  /**
+   * dryRun:true path for `bulkUpdate` (Agent Experience Round 2, criterion
+   * 4): run every validation exactly as a real update would — for every id
+   * independently, regardless of `atomic` — and report per-item verdicts
+   * without writing anything. `atomic` only changes how a REAL write would
+   * be applied; a dry run never writes either way, so it always validates
+   * every id independently to give the caller the full picture.
+   */
+  private async bulkUpdateDryRun(
+    userId: string,
+    ids: string[],
+    updateDto: UpdateIssueDto,
+    changes: BulkIssueChangesDto,
+    hints: {
+      bulkWorkflowEnforced?: boolean;
+      resolvedWorkflowIds?: Map<string, string | null>;
+      atomic: boolean;
+    },
+  ): Promise<BulkUpdateResultDto> {
+    const failed: Array<{ id: string; reason: string }> = [];
+    const wouldUpdate: string[] = [];
+
+    for (const id of ids) {
+      try {
+        const prep = await this.prepareUpdate(userId, id, updateDto, {
+          workflowEnforced: hints.bulkWorkflowEnforced,
+          resolvedWorkflowId: hints.resolvedWorkflowIds?.get(id),
+        });
+        if (changes.addLabelIds && changes.addLabelIds.length > 0) {
+          await this.assertLabelsInProject(prep.existing.projectId, changes.addLabelIds);
+        }
+        wouldUpdate.push(id);
+      } catch (err: unknown) {
+        failed.push({ id, reason: err instanceof Error ? err.message : 'Unknown error' });
+      }
+    }
+
+    return { updated: 0, failed, dryRun: true, atomic: hints.atomic, wouldUpdate };
   }
 }

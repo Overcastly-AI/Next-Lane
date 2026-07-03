@@ -10,6 +10,15 @@
  *                      root (NOT including /api).
  *   NEXT_LANE_TOKEN    A Next Lane Personal Access Token (starts with "nlp_").
  *                      REQUIRED — the server fails fast if it is missing.
+ *   NEXT_LANE_MCP_STRICT_PROJECT_KEY
+ *                      Optional ("1"/"true" to enable). When set, create_issue
+ *                      requires `expectedProjectKey` on every call — omitting
+ *                      it is a hard error (no issue created) instead of a
+ *                      soft recommendation. Read directly from process.env by
+ *                      the create_issue tool handler (apps/mcp/src/tools/
+ *                      index.ts), not part of the NextLaneConfig object below,
+ *                      since it only affects tool-level validation, not the
+ *                      API client.
  */
 
 export interface NextLaneConfig {

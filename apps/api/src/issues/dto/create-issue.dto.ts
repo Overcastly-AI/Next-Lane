@@ -92,4 +92,15 @@ export class CreateIssueDto {
   @IsInt()
   @Min(0)
   originalEstimateMinutes?: number;
+
+  /**
+   * Optional client-supplied idempotency key. Retrying a create with the SAME
+   * key (scoped to the caller + this endpoint) within ~24h replays the
+   * original created issue instead of creating a duplicate — pass one when
+   * retrying after a network error/timeout so a resend can never double-file.
+   */
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  idempotencyKey?: string;
 }

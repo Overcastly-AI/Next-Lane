@@ -1482,6 +1482,16 @@ function makeBulkUpdatePrisma() {
     sprint: { findUnique: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
     user: { findUnique: jest.fn().mockResolvedValue({ name: 'Bulk Actor' }) },
     issueLabel: { upsert: jest.fn().mockResolvedValue({}) },
+    // assertLabelsInProject (criterion 1): every requested labelId resolves
+    // as belonging to BULK_PROJECT by default — tests that want to exercise
+    // the cross-project rejection override this per-test.
+    label: {
+      findMany: jest
+        .fn()
+        .mockImplementation(({ where }: { where: { id: { in: string[] } } }) =>
+          Promise.resolve(where.id.in.map((id) => ({ id, projectId: BULK_PROJECT }))),
+        ),
+    },
     // WF-1: update() (called per-issue by bulkUpdate()) resolves an enforced
     // board workflow via resolveEnforcedWorkflowId() before falling back to
     // the legacy path. No boards configured in this suite -> always null.
@@ -2056,6 +2066,208 @@ describe('IssuesService.bulkUpdate — input guards', () => {
   });
 });
 
+/**
+ * Agent Experience Round 2, criteria 3 & 4: bulk parentId, atomic:true
+ * (all-or-nothing transaction), and dryRun:true (zero-write preview).
+ */
+describe('IssuesService.bulkUpdate — parentId, atomic, dryRun (criteria 3 & 4)', () => {
+  let mocks: ReturnType<typeof makeBulkUpdatePrisma>;
+  let service: IssuesService;
+
+  beforeEach(() => {
+    mocks = makeBulkUpdatePrisma();
+    mocks.prisma.project.findUnique.mockResolvedValue({
+      id: BULK_PROJECT,
+      workspaceId: BULK_WORKSPACE,
+    });
+    mocks.prisma.membership.findUnique.mockResolvedValue({ role: Role.MEMBER });
+    mocks.prisma.status.findUnique.mockResolvedValue({ projectId: BULK_PROJECT });
+    // parentId cross-project guard (assertSameProject inside prepareUpdate).
+    (mocks.prisma as unknown as { issue: { findUnique: jest.Mock } }).issue.findUnique =
+      jest.fn().mockImplementation(({ where }: { where: { id: string } }) =>
+        Promise.resolve(makeBulkIssueRow(where.id)),
+      );
+
+    service = new IssuesService(
+      mocks.prisma as unknown as PrismaService,
+      { emitToProject: jest.fn() } as unknown as RealtimeService,
+      { notifyWatchersUpdated: jest.fn().mockResolvedValue(undefined) } as unknown as NotificationsService,
+      webhooksMock,
+      noOpCustomFields,
+      noOpEventEmitter,
+      noOpWorkflow,
+    );
+  });
+
+  it('parents multiple issues in one non-atomic call (parentId passed through to the write)', async () => {
+    mocks.tx.issue.update.mockImplementation(
+      ({ where }: { where: { id: string } }) => Promise.resolve(makeBulkIssueRow(where.id)),
+    );
+
+    const result = await service.bulkUpdate(BULK_USER, {
+      ids: ['i1', 'i2', 'i3'],
+      changes: { parentId: 'epic-1' },
+    });
+
+    expect(result.updated).toBe(3);
+    expect(result.failed).toHaveLength(0);
+    expect(mocks.tx.issue.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ parentId: 'epic-1' }) }),
+    );
+  });
+
+  it('rejects a parentId that belongs to a different project, per-item, in the classic (non-atomic) path', async () => {
+    (mocks.prisma as unknown as { issue: { findUnique: jest.Mock } }).issue.findUnique =
+      jest.fn().mockImplementation(({ where }: { where: { id: string } }) => {
+        if (where.id === 'epic-foreign') {
+          return Promise.resolve({ projectId: 'proj-other' });
+        }
+        return Promise.resolve(makeBulkIssueRow(where.id));
+      });
+
+    const result = await service.bulkUpdate(BULK_USER, {
+      ids: ['i1'],
+      changes: { parentId: 'epic-foreign' },
+    });
+
+    expect(result.updated).toBe(0);
+    expect(result.failed[0].reason).toContain('parentId does not belong to this project');
+  });
+
+  it('atomic:true writes every issue inside a SINGLE transaction (not one per issue)', async () => {
+    mocks.tx.issue.update.mockImplementation(
+      ({ where }: { where: { id: string } }) => Promise.resolve(makeBulkIssueRow(where.id)),
+    );
+
+    const result = await service.bulkUpdate(BULK_USER, {
+      ids: ['i1', 'i2', 'i3'],
+      changes: { parentId: 'epic-1' },
+      atomic: true,
+    });
+
+    expect(result.updated).toBe(3);
+    expect(result.failed).toHaveLength(0);
+    expect(result.atomic).toBe(true);
+    // One shared $transaction call for the whole batch, not N.
+    expect(mocks.prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(mocks.tx.issue.update).toHaveBeenCalledTimes(3);
+  });
+
+  it('atomic:true is all-or-nothing: a validation failure on one id aborts the WHOLE batch with zero writes', async () => {
+    (mocks.prisma as unknown as { issue: { findUnique: jest.Mock } }).issue.findUnique =
+      jest.fn().mockImplementation(({ where }: { where: { id: string } }) => {
+        if (where.id === 'i-bad') return Promise.resolve(null); // NotFoundException
+        return Promise.resolve(makeBulkIssueRow(where.id));
+      });
+
+    const result = await service.bulkUpdate(BULK_USER, {
+      ids: ['i-good-1', 'i-bad', 'i-good-2'],
+      changes: { priority: Priority.HIGH },
+      atomic: true,
+    });
+
+    expect(result.updated).toBe(0);
+    expect(result.atomic).toBe(true);
+    expect(result.failed.map((f) => f.id)).toContain('i-bad');
+    // Zero writes: the transaction never opened because validation failed first.
+    expect(mocks.prisma.$transaction).not.toHaveBeenCalled();
+    expect(mocks.tx.issue.update).not.toHaveBeenCalled();
+  });
+
+  it('atomic:true rolls back every issue in the batch when the shared transaction itself fails', async () => {
+    mocks.tx.issue.update.mockImplementation(
+      ({ where }: { where: { id: string } }) => {
+        if (where.id === 'i2') return Promise.reject(new Error('constraint violation'));
+        return Promise.resolve(makeBulkIssueRow(where.id));
+      },
+    );
+
+    const result = await service.bulkUpdate(BULK_USER, {
+      ids: ['i1', 'i2', 'i3'],
+      changes: { priority: Priority.HIGH },
+      atomic: true,
+    });
+
+    expect(result.updated).toBe(0);
+    expect(result.atomic).toBe(true);
+    // Every id in the batch is reported failed — the whole transaction rolled back.
+    expect(result.failed).toHaveLength(3);
+    expect(result.failed.every((f) => f.reason.includes('Transaction rolled back'))).toBe(true);
+  });
+
+  it('atomic:true rejects a bulk parentId that crosses projects before opening the transaction', async () => {
+    (mocks.prisma as unknown as { issue: { findUnique: jest.Mock } }).issue.findUnique =
+      jest.fn().mockImplementation(({ where }: { where: { id: string } }) => {
+        if (where.id === 'epic-foreign') return Promise.resolve({ projectId: 'proj-other' });
+        return Promise.resolve(makeBulkIssueRow(where.id));
+      });
+
+    const result = await service.bulkUpdate(BULK_USER, {
+      ids: ['i1', 'i2'],
+      changes: { parentId: 'epic-foreign' },
+      atomic: true,
+    });
+
+    expect(result.updated).toBe(0);
+    expect(result.failed.every((f) => f.reason.includes('parentId does not belong to this project'))).toBe(true);
+    expect(mocks.prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('dryRun:true validates every id and writes nothing (non-atomic)', async () => {
+    const result = await service.bulkUpdate(BULK_USER, {
+      ids: ['i1', 'i2'],
+      changes: { priority: Priority.HIGH },
+      dryRun: true,
+    });
+
+    expect(result.dryRun).toBe(true);
+    expect(result.updated).toBe(0);
+    expect(result.wouldUpdate).toEqual(['i1', 'i2']);
+    expect(result.failed).toHaveLength(0);
+    expect(mocks.prisma.$transaction).not.toHaveBeenCalled();
+    expect(mocks.tx.issue.update).not.toHaveBeenCalled();
+  });
+
+  it('dryRun:true + atomic:true still writes nothing and reports per-item verdicts', async () => {
+    (mocks.prisma as unknown as { issue: { findUnique: jest.Mock } }).issue.findUnique =
+      jest.fn().mockImplementation(({ where }: { where: { id: string } }) => {
+        if (where.id === 'i-bad') return Promise.resolve(null);
+        return Promise.resolve(makeBulkIssueRow(where.id));
+      });
+
+    const result = await service.bulkUpdate(BULK_USER, {
+      ids: ['i-good', 'i-bad'],
+      changes: { priority: Priority.HIGH },
+      dryRun: true,
+      atomic: true,
+    });
+
+    expect(result.dryRun).toBe(true);
+    expect(result.atomic).toBe(true);
+    expect(result.updated).toBe(0);
+    expect(result.wouldUpdate).toEqual(['i-good']);
+    expect(result.failed.map((f) => f.id)).toEqual(['i-bad']);
+    expect(mocks.prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('atomic:true validates addLabelIds against each issue’s project before writing', async () => {
+    mocks.prisma.label.findMany.mockImplementation(
+      ({ where }: { where: { id: { in: string[] } } }) =>
+        Promise.resolve(where.id.in.map((id) => ({ id, projectId: 'proj-other-labels' }))),
+    );
+
+    const result = await service.bulkUpdate(BULK_USER, {
+      ids: ['i1'],
+      changes: { priority: Priority.HIGH, addLabelIds: ['label-foreign'] },
+      atomic: true,
+    });
+
+    expect(result.updated).toBe(0);
+    expect(result.failed[0].reason).toContain('addLabelIds must belong to the same project');
+    expect(mocks.prisma.$transaction).not.toHaveBeenCalled();
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Component integration: componentId cross-project validation and
 // default-assignee auto-assignment on issue create.
@@ -2286,6 +2498,215 @@ describe('IssuesService.create — componentId validation', () => {
     // assigneeId should be undefined (not set) since component has no default.
     const callData = tx.issue.create.mock.calls[0][0].data;
     expect(callData.assigneeId).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Agent Experience Round 2, criterion 1 — cross-project write validation on
+// CREATE. `parentId` was already scoped on create() (assertNoParentCycleCTE
+// only runs on update(), but assertSameProject's parentId branch is
+// independent). statusId/sprintId were NOT scoped before this fix — the
+// confirmed-live P1 bug (POST /issues accepted a foreign statusId, 201, the
+// issue rendered on no board). componentId was already covered by the
+// existing suite above.
+// ---------------------------------------------------------------------------
+
+/**
+ * Extends `makeCompCreatePrisma`'s double with `status`/`sprint`/`issue`
+ * top-level mocks so create()'s assertSameProject(statusId/sprintId/
+ * parentId) branches can be exercised. `belongsTo` controls which project
+ * each ref resolves to; omit a key to leave it unmocked (undefined ref not
+ * passed in the DTO under test).
+ */
+function makeCrossProjectCreatePrisma(belongsTo: {
+  statusId?: string;
+  sprintId?: string;
+  parentId?: string;
+}) {
+  const { prisma, tx } = makeCompCreatePrisma();
+  const prismaWithRefs = prisma as typeof prisma & {
+    status: { findUnique: jest.Mock };
+    sprint: { findUnique: jest.Mock };
+    issue: { findUnique: jest.Mock };
+  };
+  prismaWithRefs.status = {
+    findUnique: jest.fn().mockResolvedValue(
+      belongsTo.statusId ? { projectId: belongsTo.statusId } : null,
+    ),
+  };
+  prismaWithRefs.sprint = {
+    findUnique: jest.fn().mockResolvedValue(
+      belongsTo.sprintId ? { projectId: belongsTo.sprintId } : null,
+    ),
+  };
+  prismaWithRefs.issue = {
+    findUnique: jest.fn().mockResolvedValue(
+      belongsTo.parentId ? { projectId: belongsTo.parentId } : null,
+    ),
+  };
+  return { prisma: prismaWithRefs, tx };
+}
+
+describe('IssuesService.create — cross-project write validation (criterion 1)', () => {
+  it('rejects a statusId that belongs to a different project (BadRequestException, precise message)', async () => {
+    const { prisma } = makeCrossProjectCreatePrisma({ statusId: COMP_OTHER_PROJECT });
+    const service = new IssuesService(
+      prisma as unknown as PrismaService,
+      { emitToProject: jest.fn() } as unknown as RealtimeService,
+      {} as NotificationsService,
+      webhooksMock,
+      noOpCustomFields,
+      noOpEventEmitter,
+      noOpWorkflow,
+    );
+
+    await expect(
+      service.create(COMP_USER, {
+        projectId: COMP_PROJECT,
+        title: 'Issue',
+        statusId: 'status-foreign',
+      }),
+    ).rejects.toThrow('statusId does not belong to this project');
+  });
+
+  it('rejects a sprintId that belongs to a different project (BadRequestException, precise message)', async () => {
+    const { prisma } = makeCrossProjectCreatePrisma({ sprintId: COMP_OTHER_PROJECT });
+    const service = new IssuesService(
+      prisma as unknown as PrismaService,
+      { emitToProject: jest.fn() } as unknown as RealtimeService,
+      {} as NotificationsService,
+      webhooksMock,
+      noOpCustomFields,
+      noOpEventEmitter,
+      noOpWorkflow,
+    );
+
+    await expect(
+      service.create(COMP_USER, {
+        projectId: COMP_PROJECT,
+        title: 'Issue',
+        sprintId: 'sprint-foreign',
+      }),
+    ).rejects.toThrow('sprintId does not belong to this project');
+  });
+
+  it('rejects a parentId that belongs to a different project (BadRequestException, precise message)', async () => {
+    const { prisma } = makeCrossProjectCreatePrisma({ parentId: COMP_OTHER_PROJECT });
+    const service = new IssuesService(
+      prisma as unknown as PrismaService,
+      { emitToProject: jest.fn() } as unknown as RealtimeService,
+      {} as NotificationsService,
+      webhooksMock,
+      noOpCustomFields,
+      noOpEventEmitter,
+      noOpWorkflow,
+    );
+
+    await expect(
+      service.create(COMP_USER, {
+        projectId: COMP_PROJECT,
+        title: 'Issue',
+        parentId: 'issue-foreign',
+      }),
+    ).rejects.toThrow('parentId does not belong to this project');
+  });
+
+  it('accepts statusId/sprintId/parentId that all belong to the same project', async () => {
+    const { prisma, tx } = makeCrossProjectCreatePrisma({
+      statusId: COMP_PROJECT,
+      sprintId: COMP_PROJECT,
+      parentId: COMP_PROJECT,
+    });
+    const service = new IssuesService(
+      prisma as unknown as PrismaService,
+      { emitToProject: jest.fn() } as unknown as RealtimeService,
+      {} as NotificationsService,
+      webhooksMock,
+      noOpCustomFields,
+      noOpEventEmitter,
+      noOpWorkflow,
+    );
+
+    await expect(
+      service.create(COMP_USER, {
+        projectId: COMP_PROJECT,
+        title: 'Issue',
+        statusId: 'status-same',
+        sprintId: 'sprint-same',
+        parentId: 'issue-same',
+      }),
+    ).resolves.toBeDefined();
+    expect(tx.issue.create).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Agent Experience Round 2, criterion 2 — idempotency key wiring at the
+// create() call site (the isolated withIdempotency() logic is covered in
+// common/idempotency.util.spec.ts; this verifies IssuesService actually
+// plumbs dto.idempotencyKey through and short-circuits the SECOND call).
+// ---------------------------------------------------------------------------
+
+describe('IssuesService.create — idempotencyKey (criterion 2)', () => {
+  it('replays the SAME created issue id on a retried create with the same idempotencyKey', async () => {
+    const { prisma, tx } = makeCompCreatePrisma();
+    const idemStore = new Map<string, { responseBody: unknown; createdAt: Date }>();
+    const prismaWithIdem = prisma as typeof prisma & {
+      idempotencyRecord: { findUnique: jest.Mock; upsert: jest.Mock; deleteMany: jest.Mock };
+    };
+    prismaWithIdem.idempotencyRecord = {
+      findUnique: jest.fn(() => Promise.resolve(idemStore.get('retry-1') ?? null)),
+      upsert: jest.fn(({ create }: { create: { responseBody: unknown } }) => {
+        const row = { responseBody: create.responseBody, createdAt: new Date() };
+        idemStore.set('retry-1', row);
+        return Promise.resolve(row);
+      }),
+      deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+    };
+
+    const service = new IssuesService(
+      prismaWithIdem as unknown as PrismaService,
+      { emitToProject: jest.fn() } as unknown as RealtimeService,
+      { notifyAssigned: jest.fn() } as unknown as NotificationsService,
+      webhooksMock,
+      noOpCustomFields,
+      noOpEventEmitter,
+      noOpWorkflow,
+    );
+
+    const first = await service.create(COMP_USER, {
+      projectId: COMP_PROJECT,
+      title: 'Retried issue',
+      idempotencyKey: 'retry-1',
+    });
+    const second = await service.create(COMP_USER, {
+      projectId: COMP_PROJECT,
+      title: 'Retried issue',
+      idempotencyKey: 'retry-1',
+    });
+
+    expect(second.id).toBe(first.id);
+    // Only ONE actual issue was created — the retry never re-entered the
+    // create transaction.
+    expect(tx.issue.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('creates a new issue every time when no idempotencyKey is passed', async () => {
+    const { prisma, tx } = makeCompCreatePrisma();
+    const service = new IssuesService(
+      prisma as unknown as PrismaService,
+      { emitToProject: jest.fn() } as unknown as RealtimeService,
+      { notifyAssigned: jest.fn() } as unknown as NotificationsService,
+      webhooksMock,
+      noOpCustomFields,
+      noOpEventEmitter,
+      noOpWorkflow,
+    );
+
+    await service.create(COMP_USER, { projectId: COMP_PROJECT, title: 'A' });
+    await service.create(COMP_USER, { projectId: COMP_PROJECT, title: 'B' });
+
+    expect(tx.issue.create).toHaveBeenCalledTimes(2);
   });
 });
 

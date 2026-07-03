@@ -38,7 +38,14 @@ const SERVER_INSTRUCTIONS =
   'update_project_context with a concise handoff for the next run — ' +
   'current goal/state, decisions made, in-flight work, next steps, and ' +
   'gotchas. It is a full-content replace, not a log: replace stale content ' +
-  'rather than appending forever, and stay well under the 64 KB cap.';
+  'rather than appending forever, and stay well under the 64 KB cap. ' +
+  'ALWAYS pass `expectedProjectKey` on every create_issue call — a field ' +
+  'report confirmed an agent without this habit filed into the wrong ' +
+  'project with no way to detect it after the fact; it is a MUST, not an ' +
+  'optional nicety, and this server may enforce it as a hard error via ' +
+  'NEXT_LANE_MCP_STRICT_PROJECT_KEY. Pass `idempotencyKey` on create_issue/ ' +
+  'add_comment whenever you are RETRYING after a network error/timeout, so ' +
+  'the retry replays the original result instead of creating a duplicate.';
 
 /** Build a fully-wired server (no transport connected). Exported for tests. */
 export function createServer(): McpServer {

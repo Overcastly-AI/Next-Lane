@@ -724,12 +724,18 @@ const readTools: ToolDef[] = [
     description:
       'List users the caller can see (workspace members). Use to find an ' +
       'assigneeId / default-assignee id for create_issue, update_issue, etc. ' +
-      'Compact `{id, name, email}` per user by default — pass `verbose: true` ' +
-      'for the full object (avatarColor, emailNotifications, createdAt).',
-    inputSchema: { ...compactPageParams },
+      'Optional `q` filters server-side by a case-insensitive name/email ' +
+      'substring match (e.g. `q: "dana"`) so resolving "who is Dana" does not ' +
+      'require paging through every member. Compact `{id, name, email}` per ' +
+      'user by default — pass `verbose: true` for the full object ' +
+      '(avatarColor, emailNotifications, createdAt).',
+    inputSchema: {
+      q: z.string().optional().describe('Case-insensitive name/email substring filter.'),
+      ...compactPageParams,
+    },
     handler: (args, client) =>
       client
-        .get<ApiItem[]>('/users')
+        .get<ApiItem[]>('/users', { q: args.q as string | undefined })
         .then((data) => pageResult(paginateCompact(data, args, compactUser))),
   },
   {
@@ -1212,6 +1218,49 @@ const readTools: ToolDef[] = [
       return jsonResult({ ...data, contentBytes: Buffer.byteLength(content, 'utf8') });
     },
   },
+  {
+    name: 'list_project_activity',
+    group: 'read',
+    description:
+      'Unified "what changed" feed for a project: issue field changes ' +
+      '(status/assignee/priority/etc.), comments, and work logs across every ' +
+      'issue, chronologically merged into one cursor-paginated stream. This is ' +
+      'the cheap alternative to polling list_issues/get_issue blind — answer ' +
+      '"what changed since I last looked" or "did someone update NL-42" in one ' +
+      'call. Pass `since` (ISO-8601 timestamp) to start from a known point in ' +
+      'time, or `cursor` (from a prior call\'s `nextCursor`) to continue where ' +
+      'you left off; omitting both starts from the beginning of the project\'s ' +
+      'history. Results are OLDEST-of-the-page-first (ascending), so paging ' +
+      'forward with `nextCursor` walks events in the order they happened. Each ' +
+      'item has a `kind` (ISSUE_FIELD | COMMENT | WORK_LOG), the issue it ' +
+      'belongs to (`issueId`/`issueKey`), who did it, and a one-line `summary` ' +
+      'cheap to skim without interpreting field/from/to yourself.',
+    inputSchema: {
+      projectId: z.string().describe('Project id.'),
+      since: z
+        .string()
+        .optional()
+        .describe('ISO-8601 timestamp — only return activity strictly newer than this.'),
+      cursor: z.string().optional().describe('Pagination cursor from a prior call\'s nextCursor.'),
+      limit: limitParam,
+    },
+    handler: async (args, client) => {
+      const data = await client.get<{ items: ApiItem[]; nextCursor: string | null }>(
+        `/projects/${args.projectId}/activity`,
+        {
+          since: args.since as string | undefined,
+          cursor: args.cursor as string | undefined,
+          limit: args.limit as number | undefined,
+        },
+      );
+      return jsonResult({
+        items: data.items,
+        limit: (args.limit as number | undefined) ?? DEFAULT_LIST_LIMIT,
+        hasMore: data.nextCursor !== null,
+        nextCursor: data.nextCursor,
+      });
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -1219,6 +1268,75 @@ const readTools: ToolDef[] = [
 // ---------------------------------------------------------------------------
 
 const writeTools: ToolDef[] = [
+  {
+    name: 'create_workspace',
+    group: 'write',
+    description:
+      'Create a new workspace — the top-level tenant that holds projects and ' +
+      'members. The caller becomes its first ADMIN. Use list_workspaces first ' +
+      'to check whether a suitable workspace already exists; a fresh workspace ' +
+      'is usually only needed for a genuinely new organization/team, not a new ' +
+      'project (use create_project for that — it belongs INSIDE an existing ' +
+      'workspace). The response echoes `id` and `slug` prominently since ' +
+      'downstream calls (create_project, list_projects) need the workspace id.',
+    inputSchema: {
+      name: z.string().min(2).max(80).describe('Workspace display name.'),
+      slug: z
+        .string()
+        .max(80)
+        .optional()
+        .describe('URL slug; auto-generated from name when omitted. Must be globally unique.'),
+    },
+    handler: async (args, client) => {
+      const workspace = await client.post<ApiItem>('/workspaces', {
+        name: args.name,
+        slug: args.slug,
+      });
+      return jsonResult({
+        id: workspace.id,
+        slug: workspace.slug,
+        name: workspace.name,
+        ...workspace,
+      });
+    },
+  },
+  {
+    name: 'create_project',
+    group: 'write',
+    description:
+      'Create a new project inside a workspace — get workspaceId from ' +
+      'list_workspaces (or create_workspace). Seeds the standard three ' +
+      'statuses (To Do / In Progress / Done) and a default Kanban board so the ' +
+      'board view works immediately. `key` (e.g. "NL") becomes the issue-key ' +
+      'prefix (NL-1, NL-2, ...) and must be unique within the workspace — this ' +
+      'is the value every create_issue call\'s `expectedProjectKey` should ' +
+      'match going forward. Requires workspace MEMBER+. The response echoes ' +
+      '`id` and `key` prominently since downstream calls need both.',
+    inputSchema: {
+      workspaceId: z.string().describe('Workspace to create the project in.'),
+      key: z
+        .string()
+        .min(1)
+        .max(10)
+        .describe('Short issue-key prefix, e.g. "NL" (uppercased server-side). Unique per workspace.'),
+      name: z.string().min(1).max(80).describe('Project display name.'),
+      description: z.string().max(2000).optional(),
+    },
+    handler: async (args, client) => {
+      const project = await client.post<ApiItem>('/projects', {
+        workspaceId: args.workspaceId,
+        key: args.key,
+        name: args.name,
+        description: args.description,
+      });
+      return jsonResult({
+        id: project.id,
+        key: project.key,
+        name: project.name,
+        ...project,
+      });
+    },
+  },
   {
     name: 'create_workflow',
     group: 'write',
@@ -1391,11 +1509,19 @@ const writeTools: ToolDef[] = [
       'the rest are optional. CONFIRM THE TARGET PROJECT before calling — ' +
       'pasting/dictating a projectId from a stale context is the single ' +
       'easiest way to file an issue into the wrong project, and there is no ' +
-      'undo. The response always echoes the resolved `project: {id, key, ' +
-      'name}` so you can verify after the fact; pass `expectedProjectKey` ' +
-      '(the project key you believe you are targeting, e.g. "NL") to fail ' +
-      'BEFORE creating anything if it does not match — prefer that over ' +
-      'checking the echo after a mistake is already made.',
+      'undo. YOU MUST PASS `expectedProjectKey` (the project key you believe ' +
+      'projectId resolves to, e.g. "NL") on every call — a field report ' +
+      'confirmed an agent without this habit filed into the wrong project ' +
+      'with no way to detect it after the fact. A mismatch fails BEFORE ' +
+      'anything is created, with a clear error; the response also always ' +
+      'echoes the resolved `project: {id, key, name}` as a second, after-the-' +
+      'fact check. If the environment variable NEXT_LANE_MCP_STRICT_PROJECT_KEY ' +
+      'is set on this MCP server, omitting expectedProjectKey is itself a hard ' +
+      'error (no issue created) rather than a soft recommendation. Pass ' +
+      '`idempotencyKey` (any string you generate once, e.g. a UUID) when ' +
+      'RETRYING a call after a network error/timeout/ambiguous response — a ' +
+      'retry with the SAME key replays the original created issue instead of ' +
+      'filing a duplicate; omit it for a normal, non-retried call.',
     inputSchema: {
       projectId: z.string().describe('Project to create the issue in.'),
       title: z.string().min(1).max(300).describe('Issue title.'),
@@ -1403,10 +1529,11 @@ const writeTools: ToolDef[] = [
         .string()
         .optional()
         .describe(
-          'Safety check: the project key (e.g. "NL") you believe projectId ' +
-            'resolves to. Case-insensitive. If it does not match the ' +
-            'projectId\'s actual key, the call fails with a clear error and no ' +
-            'issue is created.',
+          'MUST pass this on every call: the project key (e.g. "NL") you ' +
+            'believe projectId resolves to. Case-insensitive. If it does not ' +
+            'match the projectId\'s actual key, the call fails with a clear ' +
+            'error and no issue is created. Required outright when this MCP ' +
+            'server has NEXT_LANE_MCP_STRICT_PROJECT_KEY set.',
         ),
       type: issueTypeEnum.optional().describe('Issue type (default TASK).'),
       description: z.string().max(50000).optional(),
@@ -1432,10 +1559,27 @@ const writeTools: ToolDef[] = [
         .record(z.unknown())
         .optional()
         .describe('Custom field values keyed by field id (from list_custom_fields).'),
+      idempotencyKey: z
+        .string()
+        .max(200)
+        .optional()
+        .describe(
+          'Pass when RETRYING after a network error/timeout so the retry ' +
+            'replays the original created issue instead of filing a duplicate. ' +
+            'Omit for a normal call.',
+        ),
     },
     handler: async (args, client) => {
       const project = await client.get<ApiItem>(`/projects/${args.projectId}`);
       const expectedKey = (args.expectedProjectKey as string | undefined)?.trim();
+      const strictMode = /^(1|true)$/i.test((process.env.NEXT_LANE_MCP_STRICT_PROJECT_KEY ?? '').trim());
+      if (!expectedKey && strictMode) {
+        throw new Error(
+          'Refusing to create issue: this MCP server requires expectedProjectKey ' +
+            '(NEXT_LANE_MCP_STRICT_PROJECT_KEY is set) — pass the project key you ' +
+            'believe projectId resolves to (e.g. "NL"). No issue was created.',
+        );
+      }
       if (expectedKey && String(project.key).toUpperCase() !== expectedKey.toUpperCase()) {
         throw new Error(
           `Refusing to create issue: expectedProjectKey "${expectedKey}" does not ` +
@@ -1456,6 +1600,7 @@ const writeTools: ToolDef[] = [
         sprintId: args.sprintId,
         storyPoints: args.storyPoints,
         startDate: args.startDate,
+        idempotencyKey: args.idempotencyKey,
         dueDate: args.dueDate,
         componentId: args.componentId,
         originalEstimateMinutes: args.originalEstimateMinutes,
@@ -1695,15 +1840,55 @@ const writeTools: ToolDef[] = [
     name: 'add_comment',
     group: 'write',
     description:
-      'Add a comment to an issue (markdown supported). Requires MEMBER+.',
+      'Add a comment to an issue (markdown supported). Requires MEMBER+. Pass ' +
+      '`idempotencyKey` (any string you generate once, e.g. a UUID) when ' +
+      'RETRYING a call after a network error/timeout so the retry replays the ' +
+      'original comment instead of posting a duplicate; omit it for a normal ' +
+      'call. Mid-session corrections don\'t need to accumulate as new ' +
+      'comments — see update_comment/delete_comment.',
     inputSchema: {
       issueId: z.string().describe('Issue to comment on.'),
       body: z.string().min(1).max(10000).describe('Comment body (markdown).'),
+      idempotencyKey: z
+        .string()
+        .max(200)
+        .optional()
+        .describe('Pass when retrying after a network error/timeout; omit for a normal call.'),
     },
     handler: (args, client) =>
       client
-        .post(`/issues/${args.issueId}/comments`, { body: args.body })
+        .post(`/issues/${args.issueId}/comments`, {
+          body: args.body,
+          idempotencyKey: args.idempotencyKey,
+        })
         .then(jsonResult),
+  },
+  {
+    name: 'update_comment',
+    group: 'write',
+    description:
+      'Edit a comment\'s body. Author-or-project-ADMIN gated (same rule as ' +
+      'the API\'s work-log edit/delete): the original author or a project ' +
+      'admin can edit; anyone else gets a 403. Use this for mid-session ' +
+      'corrections instead of piling on new comments.',
+    inputSchema: {
+      commentId: z.string().describe('Comment id (from list_comments).'),
+      body: z.string().min(1).max(10000).describe('New comment body (markdown).'),
+    },
+    handler: (args, client) =>
+      client.patch(`/comments/${args.commentId}`, { body: args.body }).then(jsonResult),
+  },
+  {
+    name: 'delete_comment',
+    group: 'write',
+    description:
+      'Delete a comment permanently. Author-or-project-ADMIN gated (same rule ' +
+      'as the API\'s work-log edit/delete). Irreversible.',
+    inputSchema: {
+      commentId: z.string().describe('Comment id (from list_comments).'),
+    },
+    handler: (args, client) =>
+      client.delete(`/comments/${args.commentId}`).then(jsonResult),
   },
   {
     name: 'delete_issue',
@@ -2203,10 +2388,20 @@ const writeTools: ToolDef[] = [
     group: 'write',
     description:
       'Apply the same change to up to 100 issues at once: status, assignee, ' +
-      'priority, sprint, type, and/or attach a label. Returns ' +
-      '{ updated, failed } where failed lists any ids that could not be ' +
-      'changed and why (not found, insufficient permissions, etc). At least ' +
-      'one change field must be set.',
+      'priority, sprint, type, parentId (re-parent — e.g. attach 30 tickets to ' +
+      'an epic in one call), and/or attach a label. Foreign-project references ' +
+      '(a parentId/statusId/sprintId from a different project) are rejected ' +
+      'per-item with the same precise message as update_issue. Set ' +
+      '`atomic: true` to make the whole batch all-or-nothing: every issue is ' +
+      'validated first, and the writes only happen if EVERY issue passes — one ' +
+      'bad id rolls back nothing being written at all, instead of the default ' +
+      'independent-per-issue partial-success behavior. Set `dryRun: true` to ' +
+      'preview per-item verdicts (which ids would update vs. why one would ' +
+      'fail) with zero writes, with or without atomic. Returns a compact ' +
+      '{ updated, failed, atomic?, dryRun?, wouldUpdate? } — `failed` lists any ' +
+      'ids that could not be changed and why (not found, insufficient ' +
+      'permissions, cross-project reference, etc). At least one change field ' +
+      'must be set.',
     inputSchema: {
       ids: z.array(z.string()).min(1).max(100).describe('Issue ids to update (1-100).'),
       statusId: z.string().optional(),
@@ -2214,10 +2409,26 @@ const writeTools: ToolDef[] = [
       priority: priorityEnum.optional(),
       sprintId: z.string().nullable().optional().describe('null removes the issue from its sprint.'),
       type: issueTypeEnum.optional(),
+      parentId: z
+        .string()
+        .nullable()
+        .optional()
+        .describe(
+          'New parent issue id for every matching issue (e.g. an epic id), or ' +
+            'null to detach. Rejected per-item if it belongs to a different project.',
+        ),
       addLabelIds: z
         .array(z.string())
         .optional()
         .describe('Label ids to attach to every matching issue (idempotent).'),
+      atomic: z
+        .boolean()
+        .optional()
+        .describe('All-or-nothing: writes only happen if every issue in the batch passes validation.'),
+      dryRun: z
+        .boolean()
+        .optional()
+        .describe('Preview per-item verdicts with zero writes. Works with or without atomic.'),
     },
     handler: (args, client) =>
       client
@@ -2229,8 +2440,11 @@ const writeTools: ToolDef[] = [
             priority: args.priority,
             sprintId: args.sprintId,
             type: args.type,
+            parentId: args.parentId,
             addLabelIds: args.addLabelIds,
           },
+          atomic: args.atomic,
+          dryRun: args.dryRun,
         })
         .then(jsonResult),
   },

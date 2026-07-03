@@ -63,3 +63,35 @@ Ship the Q3 billing revamp epic (NL-142) by July 20.
 - Record *decisions and why*, not activity logs — the tracker already has those.
 - If you did something surprising (worked around a bug, mis-filed and
   corrected issues), say so in Gotchas.
+
+## MUST: confirm the target project on every `create_issue` call
+
+A field report confirmed an agent without this habit filed an issue into the
+wrong project, with no way to detect the mistake after the fact — there is no
+undo. Pass `expectedProjectKey` (the project key you believe `projectId`
+resolves to, e.g. `"NL"`) on **every** `create_issue` call, not just when
+something feels ambiguous. A mismatch fails BEFORE anything is created, with a
+clear error naming both keys. The response also always echoes the resolved
+`project: {id, key, name}` as a second, after-the-fact check — but treat that
+as a backstop, not a substitute for passing `expectedProjectKey` up front.
+Some Next Lane MCP servers enforce this as a hard requirement
+(`NEXT_LANE_MCP_STRICT_PROJECT_KEY`); assume it may be enforced and pass the
+key regardless.
+
+## Retrying after a network error/timeout
+
+If a `create_issue` or `add_comment` call fails ambiguously (timeout, network
+error, no clear success/failure response), generate an `idempotencyKey` (any
+string, e.g. a UUID) the FIRST time you make the call and reuse the SAME key
+if you retry it. A retry with the same key replays the original result
+instead of creating a duplicate issue or comment. Omit it for a normal,
+non-retried call.
+
+## Checking what changed since you last looked
+
+Before assuming your mental model of a project's state is current — especially
+after resuming a session or before making a bulk change — call
+`list_project_activity` with `since` set to a known timestamp (or your prior
+`nextCursor`) instead of polling `list_issues`/`get_issue` one at a time. It
+returns a chronological, compact feed of issue field changes, comments, and
+work logs across the whole project in one call.

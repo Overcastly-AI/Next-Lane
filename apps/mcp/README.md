@@ -2,11 +2,12 @@
 
 A [Model Context Protocol](https://modelcontextprotocol.io) server that lets
 external AI agents — **Claude Desktop**, **Claude Code**, and any other MCP host
-— **read and write** a Next Lane instance end-to-end: **92 tools** covering
-workflows / SDLC, issues (incl. links, labels, comments, checklists, worklogs),
-boards, statuses, sprints, components, versions, custom fields, saved NLQL
-filters, automation rules, dashboards, per-project role overrides, per-project
-agent-context memory, GitHub/GitLab SCM links, and a
+— **read and write** a Next Lane instance end-to-end: **97 tools** covering
+workspaces/projects, workflows / SDLC, issues (incl. links, labels, comments
+with author-or-admin edit/delete, checklists, worklogs), boards, statuses,
+sprints, components, versions, custom fields, saved NLQL filters, automation
+rules, dashboards, per-project role overrides, per-project agent-context
+memory, a unified project activity feed, GitHub/GitLab SCM links, and a
 one-call epic rollup.
 
 This is Next Lane's **agent-native wedge** (`docs/VISION.md`): an agent can list
@@ -53,6 +54,7 @@ Lane's auth guard accepts PATs (tokens prefixed `nlp_`) on the standard
 | ------------------- | -------- | ----------------------- | --------------------------------------------------------------------------- |
 | `NEXT_LANE_TOKEN`   | **Yes**  | —                       | A Next Lane Personal Access Token (`nlp_...`). The server fails fast if unset. |
 | `NEXT_LANE_API_URL` | No       | `http://localhost:4000` | Next Lane API host root. Do **not** include `/api` — it is added automatically. |
+| `NEXT_LANE_MCP_STRICT_PROJECT_KEY` | No | unset | `1`/`true` to make `expectedProjectKey` a hard requirement on `create_issue` — omitting it fails the call instead of just being a strong recommendation. |
 
 ## Getting a Personal Access Token
 
@@ -158,7 +160,7 @@ minimal, so there is no `verbose` mode.
 | `get_issue`         | Get one issue by id (`issueId`).                                        |
 | `list_issue_links`  | List an issue's typed links/dependencies (`issueId`); includes link ids. **paged**. |
 | `list_labels`       | List a project's labels with ids + colors (`projectId`). **paged**.    |
-| `list_users`        | List users (workspace members) — for assignee ids. **compact** `{id, name, email}`. |
+| `list_users`        | List users (workspace members) — for assignee ids. Optional `q` filters server-side by case-insensitive name/email substring. **compact** `{id, name, email}`. |
 | `search_issues`     | Full-text issue search (`q`, optional `projectId`). **paged** (pages the `issues` array; `projects` returned in full). |
 | `list_sprints`      | List a project's sprints (`projectId`). **compact** `{id, name, state}`. |
 | `list_components`   | List a project's components (`projectId`). **compact** `{id, name, defaultAssignee}`. |
@@ -187,12 +189,15 @@ minimal, so there is no `verbose` mode.
 | `get_dashboard_data` | Evaluate every gadget on a dashboard server-side; per-gadget `error` on a bad query/config instead of a 500 (`dashboardId`). |
 | `list_project_role_overrides` | List a project's effective members (workspace role, effective role, `isOverride` flag) (`projectId`). **compact** `{userId, name, effectiveRole, isOverride}`. |
 | `get_epic_overview` | One call for "what's in this epic and where does it stand": epic `{id, key, title, type, status}`, compact children `{id, key, title, type, status}`, a per-status `statusBreakdown`, and `progress: {done, total, fraction}` (`epicId`; works on any issue with children, not only EPIC-typed ones). |
-| `get_project_context` | The project's persistent agent handoff document + `staleness` (`changesSinceUpdate`, `lastProjectActivityAt`) + `contentBytes` (`projectId`). **Call this first when starting work on a project.** Never 404s — empty string before the first write. |
+| `get_project_context` | The project's persistent agent handoff document + `staleness` (`changesSinceUpdate`, `lastProjectActivityAt` — now also counts comments + work logs, not just field changes) + `contentBytes` (`projectId`). **Call this first when starting work on a project.** Never 404s — empty string before the first write. |
+| `list_project_activity` | Unified "what changed" feed for a project: issue field changes, comments, and work logs, chronologically merged. `since` (ISO timestamp) or `cursor` (from a prior `nextCursor`) to page forward; omit both to start from the beginning. Cheaper than polling `list_issues`/`get_issue` blind. **compact**, ascending order. |
 
 ### Write (SDLC)
 
 | Tool                            | Description                                                         |
 | ------------------------------- | ----------------------------------------------------------------- |
+| `create_workspace`              | Create a new workspace (caller becomes first ADMIN). Response echoes `id`/`slug` first. Usually only needed for a genuinely new org — `create_project` is what most work needs. |
+| `create_project`                | Create a project inside a workspace (`workspaceId`, `key`, `name`). Seeds the standard 3 statuses + a default Kanban board. `key` becomes the issue-key prefix and every `create_issue` call's `expectedProjectKey`. Response echoes `id`/`key` first. |
 | `create_workflow`               | Create an empty named workflow (`projectId`, `name`, …).           |
 | `create_workflow_from_template` | Create a workflow from `simple`/`kanban`/`scrum`/`bug-triage`.     |
 | `update_workflow`               | Update a workflow's name/description/enforced flag.                |
@@ -201,7 +206,7 @@ minimal, so there is no `verbose` mode.
 | `update_workflow_transition`    | Update a transition's from/to/type/name/gates.                    |
 | `delete_workflow_transition`    | Delete a transition.                                               |
 | `assign_board_workflow`         | Attach a workflow to a board (`workflowId` null detaches).        |
-| `create_issue`                  | Create an issue (`projectId`, `title`, …, `startDate`). Response always echoes the resolved `project: {id, key, name}`; pass `expectedProjectKey` to fail *before* creating anything if `projectId` doesn't resolve to the project you expect (no undo otherwise). |
+| `create_issue`                  | Create an issue (`projectId`, `title`, …, `startDate`). **MUST pass `expectedProjectKey`** on every call (the project key you believe `projectId` resolves to) — it fails *before* creating anything on a mismatch, and there is no undo otherwise; response also always echoes the resolved `project: {id, key, name}` as a backstop. Pass `idempotencyKey` when retrying after a network error/timeout so the retry replays the original issue instead of duplicating it. |
 | `update_issue`                  | Partial-update an issue: `parentId` (re-parent / null to detach), title, type, description, priority, assignee, sprint, component, story points, start date, due date. |
 | `set_issue_parent`              | Shortcut to set/clear an issue's parent (`issueId`, `parentId` or null). |
 | `move_issue`                    | Move an issue to a status (`boardId` applies enforced workflow).  |
@@ -210,7 +215,8 @@ minimal, so there is no `verbose` mode.
 | `create_label`                  | Create a project label (`projectId`, `name`, optional hex `color`). |
 | `add_issue_label`               | Attach a label to an issue (`issueId`, `labelId`).                |
 | `remove_issue_label`            | Remove a label from an issue (`issueId`, `labelId`).             |
-| `add_comment`                   | Comment on an issue (`issueId`, `body` markdown).                |
+| `add_comment`                   | Comment on an issue (`issueId`, `body` markdown). Pass `idempotencyKey` when retrying after a network error/timeout so the retry replays the original comment instead of duplicating it. |
+| `update_comment` / `delete_comment` | Edit/delete a comment (`commentId`). Author-or-project-ADMIN gated. |
 | `delete_issue`                  | Delete an issue (`issueId`). Irreversible.                       |
 | `create_sprint` / `update_sprint` | Create a sprint; update name/dates/goal/state (start/complete). |
 | `create_component`              | Create a project component.                                     |
@@ -225,7 +231,7 @@ minimal, so there is no `verbose` mode.
 | `create_quick_link` / `update_quick_link` / `delete_quick_link` | CRUD the caller's personal sidebar shortcut links. |
 | `create_personal_card` / `update_personal_card` | Add / edit / move a card on the caller's personal board (move = `columnId` + `beforeId`/`afterId`). |
 | `create_issue_from_template`    | Create an issue from an issue template, with per-field overrides. |
-| `bulk_update_issues`            | Apply the same status/assignee/priority/sprint/type/label change to up to 100 issues at once. |
+| `bulk_update_issues`            | Apply the same status/assignee/priority/sprint/type/parentId/label change to up to 100 issues at once — one call parents 30 tickets under an epic. `atomic: true` makes the whole batch all-or-nothing (validates every issue first, writes only if all pass); `dryRun: true` previews per-item verdicts with zero writes (with or without atomic). Cross-project references (foreign `parentId`/`statusId`/`sprintId`) are rejected per-item with the same precise message as `update_issue`. |
 | `mark_notification_read` / `mark_all_notifications_read` | Mark one or all of the caller's notifications read. |
 | `create_dashboard` / `update_dashboard` / `delete_dashboard` | Create a project dashboard; rename/reorder; delete (gadgets cascade). |
 | `create_dashboard_gadget` / `update_dashboard_gadget` / `delete_dashboard_gadget` | Add / edit / remove a gadget — an NLQL `query` + `visualization` (STAT/TABLE/BREAKDOWN/BURNDOWN) + `config`. Update merges `config` rather than replacing it. |
