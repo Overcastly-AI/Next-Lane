@@ -2,11 +2,11 @@
 
 A [Model Context Protocol](https://modelcontextprotocol.io) server that lets
 external AI agents — **Claude Desktop**, **Claude Code**, and any other MCP host
-— **read and write** a Next Lane instance end-to-end: **91 tools** covering
+— **read and write** a Next Lane instance end-to-end: **92 tools** covering
 workflows / SDLC, issues (incl. links, labels, comments, checklists, worklogs),
 boards, statuses, sprints, components, versions, custom fields, saved NLQL
 filters, automation rules, dashboards, per-project role overrides, per-project
-agent-context memory, and a
+agent-context memory, GitHub/GitLab SCM links, and a
 one-call epic rollup.
 
 This is Next Lane's **agent-native wedge** (`docs/VISION.md`): an agent can list
@@ -170,6 +170,7 @@ minimal, so there is no `verbose` mode.
 | `list_saved_filters`| List a project's saved NLQL filters (`projectId`). **compact** `{id, name, query, shared, projectId}`. |
 | `list_automations`  | List a project's automation rules (`projectId`). **compact** `{id, name, trigger, enabled}`. |
 | `list_issue_github_links` | List an issue's linked GitHub PRs/commits (`issueId`). Requires `github:read` scope when the token is scoped. **paged**. |
+| `list_issue_gitlab_links` | List an issue's linked GitLab merge requests/commits/branches (`issueId`). Requires `gitlab:read` scope when the token is scoped. **paged**. |
 | `list_quick_links`  | List the caller's personal sidebar shortcut links. **compact** `{id, label, url, group}`. |
 | `get_personal_board`| Get the caller's personal (non-project) board: columns + cards.       |
 | `list_issue_templates` | List a project's issue templates (`projectId`). **compact** `{id, name, issueType}`. |
@@ -230,25 +231,25 @@ minimal, so there is no `verbose` mode.
 | `create_dashboard_gadget` / `update_dashboard_gadget` / `delete_dashboard_gadget` | Add / edit / remove a gadget — an NLQL `query` + `visualization` (STAT/TABLE/BREAKDOWN/BURNDOWN) + `config`. Update merges `config` rather than replacing it. |
 | `set_project_role_override` / `remove_project_role_override` | Elevate/restrict (or revert) a workspace member's role scoped to one project. Requires effective project ADMIN; refuses to override a workspace admin. |
 | `update_project_context` | Full-content replace of the project's agent handoff document (`projectId`, `content` markdown, 64 KB cap). **Call before ending every work session** — and at milestones — so the next run starts with your context. Requires project MEMBER+. |
-| `update_project_context` | Full-content replace of the project's agent handoff document (`projectId`, `content` markdown, 64 KB cap). **Call before ending every work session** — and at milestones — so the next run starts with your context. Requires project MEMBER+. |
 
 `create_issue` / `update_issue` also accept `originalEstimateMinutes` (time-tracking estimate) and `customFields` (partial, keyed by field id).
 
 ### Not exposed over MCP (by design)
 
-- **Configuring the GitHub integration** (`upsert`/`remove` — sets/rotates the
-  webhook secret, and `GET` returns the plaintext secret to project admins) is
-  admin-only and secret-bearing; it is deliberately **not** wired as an MCP
-  tool. Only the read-only `list_issue_github_links` (no secret in the
-  response) is exposed. Manage the integration from project Settings in the
-  web app.
+- **Configuring the GitHub or GitLab integration** (`upsert`/`remove` — sets/
+  rotates the webhook secret, and `GET` returns the plaintext secret to
+  project admins) is admin-only and secret-bearing for both providers; it is
+  deliberately **not** wired as an MCP tool for either. Only the read-only
+  `list_issue_github_links` / `list_issue_gitlab_links` (no secret in the
+  response) are exposed. Manage either integration from project Settings in
+  the web app.
 - **Workspace/project deletion** and other irreversible, non-confirmable
   destructive actions are intentionally out of scope for the same reason.
 - **Instance SSO/OIDC configuration** (`GET`/`PATCH /admin/oidc-config` — the
   in-app admin settings screen, `apps/web/src/pages/AdminSsoSettingsPage.tsx`)
   is instance-admin-only and secret-bearing (an OIDC client secret), the same
-  shape of risk as the GitHub integration above; it is deliberately **not**
-  wired as an MCP tool. Manage SSO from that settings page (or the
+  shape of risk as the GitHub/GitLab integrations above; it is deliberately
+  **not** wired as an MCP tool. Manage SSO from that settings page (or the
   `OIDC_ISSUER_URL`/`OIDC_CLIENT_ID`/`OIDC_CLIENT_SECRET` env vars, which take
   precedence when set) in the web app.
 

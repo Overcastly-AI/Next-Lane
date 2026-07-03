@@ -400,6 +400,12 @@ async function setupTenant(
     token: 'ghp_faketoken1234567890abcdef',
   });
 
+  // ── GitLab integration (project-scoped config; ADMIN-gated) ────────────────
+  await req(server, 'PUT', `/projects/${projectId}/gitlab`, token, {
+    projectPath: `acme/widgets-${suffix.toLowerCase()}`,
+    token: 'glpat-faketoken1234567890abcdef',
+  });
+
   // ── Dashboard + gadget ───────────────────────────────────────────────────
   const dashboardResp = await req(
     server,
@@ -985,6 +991,32 @@ function buildMatrix(a: Tenant): Array<MatrixRow & { resolvedPath: string; resol
       label: 'GET GitHub links for issue A',
       method: 'GET',
       path: (t) => `/issues/${t.issueId}/github-links`,
+    },
+
+    // ── GitLab integration ────────────────────────────────────────────────────
+    {
+      label: 'GET GitLab integration for project A',
+      method: 'GET',
+      path: (t) => `/projects/${t.projectId}/gitlab`,
+    },
+    {
+      label: 'PUT GitLab integration for project A',
+      method: 'PUT',
+      path: (t) => `/projects/${t.projectId}/gitlab`,
+      body: () => ({
+        projectPath: 'attacker/hijacked-project',
+        token: 'glpat-hijacktoken1234567890abcdef',
+      }),
+    },
+    {
+      label: 'DELETE GitLab integration for project A',
+      method: 'DELETE',
+      path: (t) => `/projects/${t.projectId}/gitlab`,
+    },
+    {
+      label: 'GET GitLab links for issue A',
+      method: 'GET',
+      path: (t) => `/issues/${t.issueId}/gitlab-links`,
     },
 
     // ── Agent context ────────────────────────────────────────────────────────────────────

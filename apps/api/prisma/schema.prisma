@@ -385,6 +385,8 @@ model Project {
   // GitHub integration (Phase 9 — Developer Graph, v1 two-way link)
   githubIntegration      GithubIntegration?
 
+  // GitLab integration (Phase 9 — Developer Graph, v1 two-way link; same shape as GitHub)
+  gitlabIntegration      GitlabIntegration?
 
   // Configurable dashboards (NLQL-native gadget framework)
   dashboards             Dashboard[]
@@ -752,6 +754,8 @@ model Issue {
   // GitHub integration — linked PRs / commits / branches (Phase 9)
   githubLinks           IssueGithubLink[]
 
+  // GitLab integration — linked MRs / commits / branches (Phase 9)
+  gitlabLinks           IssueGitlabLink[]
 
   @@unique([projectId, number])
   @@index([projectId, statusId])
@@ -1558,6 +1562,90 @@ model IssueGithubLink {
   @@index([issueId])
 }
 
+// ---------------------------------------------------------------------------
+// GitLab integration (Phase 9 — Developer Graph, v1 two-way link)
+//
+// Deliberately a PARALLEL table pair (GitlabIntegration/IssueGitlabLink)
+// mirroring GithubIntegration/IssueGithubLink shape-for-shape, rather than
+// generalizing the GitHub tables behind a provider column — additive and
+// zero-risk to the already-shipped GitHub rows/migrations. A future
+// "unify behind a provider-tagged ScmIntegration/IssueScmLink pair" migration
+// remains an option once a third provider (Gitea) makes the duplication cost
+// outweigh the migration risk; not attempted in this pass.
+// ---------------------------------------------------------------------------
+
+/// The kind of GitLab object an IssueGitlabLink points to. "MR" (merge
+/// request) is GitLab's name for what GitHub calls a "pull request".
+enum GitlabLinkKind {
+  MR
+  COMMIT
+  BRANCH
+}
+
+/// Per-project GitLab repository link configuration. ADMIN-managed. One row
+/// per project (unique projectId) — v1 scope is a single GitLab project per
+/// Next Lane project, mirroring GithubIntegration.
+///
+/// `gitlabBaseUrl` — the GitLab instance origin (default `https://gitlab.com`).
+///   Self-hosted GitLab (and, eventually, Gitea) support is core to Next
+///   Lane's self-hosted audience, so this is a first-class field rather than
+///   a hardcoded SaaS host the way GitHub's integration is.
+/// `projectPath` — the GitLab "namespace/project" path (may include nested
+///   subgroups, e.g. "group/subgroup/project"), used both to build API calls
+///   and for display. Validated at the DTO layer.
+/// `tokenEncrypted` — a GitLab Personal Access Token, AES-256-GCM encrypted
+///   at rest via the same shared `common/crypto/secret-crypto.util.ts`
+///   primitive GithubIntegration uses (see `gitlab-crypto.util.ts`). Never
+///   returned by any API response.
+/// `webhookSecret` — the literal "Secret Token" value pasted into GitLab's
+///   webhook settings. Unlike GitHub (which HMAC-signs the body), GitLab
+///   sends this value back verbatim in the `X-Gitlab-Token` header on every
+///   delivery; the inbound webhook receiver verifies it with a timing-safe
+///   equality compare. Generated once at creation; not rotated by a plain PUT.
+model GitlabIntegration {
+  id             String   @id @default(cuid())
+  projectId      String   @unique
+  gitlabBaseUrl  String   @default("https://gitlab.com")
+  projectPath    String
+  tokenEncrypted String
+  webhookSecret  String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}
+
+/// A link between a tracked Issue and a GitLab object (merge request, commit,
+/// or branch), created/updated by the inbound webhook handler when a commit
+/// message or MR title/description/branch name references the issue's key
+/// (e.g. "NL-123"). Mirrors IssueGithubLink exactly.
+///
+/// `externalId` — MR `iid` (project-scoped merge request number, as a
+///   string), commit SHA, or branch name depending on `kind`. Combined with
+///   `kind` this is the natural GitLab-side identity, so re-delivered webhook
+///   events upsert idempotently instead of creating duplicate rows.
+/// `state` — MR: "open" | "closed" | "merged" | "locked" (GitLab's "opened"
+///   is normalized to "open" for consistency with the GitHub link's
+///   vocabulary). COMMIT/BRANCH: null.
+model IssueGitlabLink {
+  id          String         @id @default(cuid())
+  issueId     String
+  kind        GitlabLinkKind
+  externalId  String
+  title       String?
+  url         String
+  state       String?
+  authorLogin String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  issue Issue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+
+  @@unique([issueId, kind, externalId])
+  @@index([issueId])
+}
 
 // ---------------------------------------------------------------------------
 // Dashboards (configurable, NLQL-native gadget framework)

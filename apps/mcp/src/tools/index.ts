@@ -890,6 +890,23 @@ const readTools: ToolDef[] = [
         .then((data) => pageResult(paginateOnly(data, args))),
   },
   {
+    name: 'list_issue_gitlab_links',
+    group: 'read',
+    description:
+      'List an issue’s linked GitLab merge requests / commits / branches ' +
+      '(populated by the push/MR webhook integration, if configured). Requires ' +
+      'the `gitlab:read` PAT scope when the token is scoped. Does not include ' +
+      'the project’s webhook secret — configuring the integration itself is ' +
+      'not exposed over MCP (admin-only, secret-bearing), mirroring the GitHub ' +
+      'integration. Already a minimal shape; `limit`/`offset` cap an issue ' +
+      'with many linked MRs/commits.',
+    inputSchema: { issueId: z.string().describe('Issue id.'), ...pageParams },
+    handler: (args, client) =>
+      client
+        .get<ApiItem[]>(`/issues/${args.issueId}/gitlab-links`)
+        .then((data) => pageResult(paginateOnly(data, args))),
+  },
+  {
     name: 'list_quick_links',
     group: 'read',
     description:

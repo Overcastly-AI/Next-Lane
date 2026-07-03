@@ -986,6 +986,74 @@ export interface IssueGithubLinkDto {
   updatedAt: string;
 }
 
+// ── GitLab integration (Phase 9 — Developer Graph, v1 two-way link) ─────────
+//
+// Parallel to the GitHub types above (same shape, GitLab semantics) rather
+// than a shared provider-tagged type — see `GitlabIntegration`'s schema
+// comment in `apps/api/prisma/schema.prisma` for the rationale.
+
+/**
+ * The kind of GitLab object an `IssueGitlabLinkDto` points to. "MR" (merge
+ * request) is GitLab's name for what GitHub calls a "pull request".
+ */
+export const GITLAB_LINK_KINDS = ['MR', 'COMMIT', 'BRANCH'] as const;
+export type GitlabLinkKind = (typeof GITLAB_LINK_KINDS)[number];
+
+/**
+ * A project's GitLab repository link configuration.
+ *
+ * `webhookSecret` is included ONLY when the caller is an ADMIN (needed to
+ * paste into GitLab's webhook "Secret Token" field); MEMBER/VIEWER callers
+ * receive `webhookSecret: null` and `hasToken` only, never the secret or the
+ * token. The raw PAT itself is NEVER returned by any endpoint after it is
+ * saved.
+ */
+export interface GitlabIntegrationDto {
+  id: string;
+  projectId: string;
+  /** The GitLab instance origin, e.g. "https://gitlab.com" or a self-hosted URL. */
+  gitlabBaseUrl: string;
+  /** "namespace/project" path, may include nested subgroups. */
+  projectPath: string;
+  /** Non-null only for ADMIN callers. */
+  webhookSecret: string | null;
+  /** Convenience field: the full inbound webhook URL to register with GitLab. */
+  webhookUrl: string;
+  /** Always true once configured — a token is required to save the integration. */
+  hasToken: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Body for `PUT /projects/:projectId/gitlab`. */
+export interface UpsertGitlabIntegrationInput {
+  projectPath: string;
+  /** Optional — server defaults to "https://gitlab.com" when omitted. */
+  gitlabBaseUrl?: string;
+  /** The raw GitLab PAT. Write-only — never echoed back. */
+  token: string;
+}
+
+/**
+ * A link between a tracked issue and a GitLab MR, commit, or branch, created
+ * by the inbound webhook handler when a commit message or MR title/
+ * description/branch name references the issue's key (e.g. "NL-123").
+ */
+export interface IssueGitlabLinkDto {
+  id: string;
+  issueId: string;
+  kind: GitlabLinkKind;
+  /** MR `iid` (string), commit SHA, or branch name — depends on `kind`. */
+  externalId: string;
+  title: string | null;
+  url: string;
+  /** MR: "open" | "closed" | "merged" | "locked". COMMIT/BRANCH: null. */
+  state: string | null;
+  authorLogin: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ── Workspace Audit Log ──────────────────────────────────────────────────────
 
 /**
@@ -1091,6 +1159,8 @@ export interface SavedFilterDto {
  * - `comments:write` — POST/PATCH/DELETE on comments.
  * - `github:read`    — GET the GitHub integration config + issue GitHub links.
  * - `github:write`   — PUT/DELETE the GitHub integration config.
+ * - `gitlab:read`    — GET the GitLab integration config + issue GitLab links.
+ * - `gitlab:write`   — PUT/DELETE the GitLab integration config.
  *
  * An empty `scopes` array on a token means "unrestricted" (same as a browser
  * JWT session — all routes are accessible). Only non-empty scopes arrays are
@@ -1107,6 +1177,8 @@ export const PAT_SCOPES = [
   'comments:write',
   'github:read',
   'github:write',
+  'gitlab:read',
+  'gitlab:write',
 ] as const;
 
 export type PATScope = (typeof PAT_SCOPES)[number];

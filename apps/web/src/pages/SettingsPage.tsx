@@ -13,6 +13,7 @@ import { ProjectNav } from '@/components/project/ProjectNav';
 import { ColumnFormModal } from '@/components/board/ColumnFormModal';
 import { WebhooksSection } from '@/components/settings/WebhooksSection';
 import { GithubSection } from '@/components/settings/GithubSection';
+import { GitlabSection } from '@/components/settings/GitlabSection';
 import { ShareSection } from '@/components/settings/ShareSection';
 import { CustomFieldsSection } from '@/components/settings/CustomFieldsSection';
 import { ComponentsSection } from '@/components/settings/ComponentsSection';
@@ -180,6 +181,8 @@ export function SettingsPage() {
         <WebhooksSection projectId={projectId} isAdmin={isAdmin} />
 
         <GithubSection projectId={projectId} isAdmin={isAdmin} />
+
+        <GitlabSection projectId={projectId} isAdmin={isAdmin} />
 
         {isAdmin && <ShareSection projectId={projectId} />}
 

@@ -50,6 +50,7 @@ import { ChecklistModule } from './checklist/checklist.module';
 import { IssueTemplatesModule } from './issue-templates/issue-templates.module';
 import { WorkLogsModule } from './work-logs/work-logs.module';
 import { GithubModule } from './github/github.module';
+import { GitlabModule } from './gitlab/gitlab.module';
 import { DashboardsModule } from './dashboards/dashboards.module';
 import { AdminSettingsModule } from './admin-settings/admin-settings.module';
 import { AgentContextModule } from './agent-context/agent-context.module';
@@ -179,6 +180,7 @@ const isProd = process.env.NODE_ENV === 'production';
     IssueTemplatesModule,
     WorkLogsModule,
     GithubModule,
+    GitlabModule,
     DashboardsModule,
     AdminSettingsModule,
     AgentContextModule,

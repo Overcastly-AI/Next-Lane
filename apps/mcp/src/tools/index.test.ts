@@ -89,6 +89,8 @@ describe('tool registry', () => {
       // MCP coverage parity sweep (2026-07-02)
       'list_issue_github_links',
       'list_quick_links',
+      // GitLab integration v1 (2026-07-03)
+      'list_issue_gitlab_links',
       'get_personal_board',
       'list_issue_templates',
       'get_project_analytics',
@@ -358,6 +360,15 @@ describe('tool registry', () => {
       'http://localhost:4000/api/issues/i1/github-links',
     );
     expect(res.content[0].text).toContain('gl1');
+  });
+
+  it('list_issue_gitlab_links GETs /issues/:id/gitlab-links', async () => {
+    const { client, fetchImpl } = clientWith(200, [{ id: 'gll1', kind: 'MR' }]);
+    const res = await tool('list_issue_gitlab_links').handler({ issueId: 'i1' }, client);
+    expect(fetchImpl.mock.calls[0][0]).toBe(
+      'http://localhost:4000/api/issues/i1/gitlab-links',
+    );
+    expect(res.content[0].text).toContain('gll1');
   });
 
   it('list_quick_links GETs /me/quick-links', async () => {
