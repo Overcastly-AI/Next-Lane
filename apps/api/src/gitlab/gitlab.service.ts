@@ -251,12 +251,15 @@ export class GitlabService {
     const resolvedStatusId =
       dto.statusId !== undefined ? dto.statusId : existing.autoTransitionStatusId;
 
-    if (dto.enabled) {
-      if (!resolvedStatusId) {
-        throw new BadRequestException(
-          'A target status is required to enable auto-transition-on-merge',
-        );
-      }
+    if (dto.enabled && !resolvedStatusId) {
+      throw new BadRequestException(
+        'A target status is required to enable auto-transition-on-merge',
+      );
+    }
+    // Validate the status whenever one is being persisted — not only when
+    // enabling — so a disabled config can never hold a foreign project's
+    // statusId (defense-in-depth; review follow-up on 71ae9a0).
+    if (resolvedStatusId) {
       const status = await this.prisma.status.findUnique({
         where: { id: resolvedStatusId },
         select: { projectId: true },

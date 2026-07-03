@@ -15,7 +15,7 @@ const OTHER_PROJECT_ID = 'project-2';
 
 function makePrisma() {
   return {
-    membership: { findUnique: jest.fn(), findFirst: jest.fn() },
+    membership: { findUnique: jest.fn(), findFirst: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
     // getEffectiveProjectRole consults the override table; null = inherit.
     projectMembership: { findUnique: jest.fn().mockResolvedValue(null) },
     project: { findUnique: jest.fn() },
@@ -679,10 +679,26 @@ describe('GithubService', () => {
         ({ data }: { data: Record<string, unknown> }) => Promise.resolve({ ...existing, ...data }),
       );
 
+      prisma.status.findUnique.mockResolvedValue({ projectId: PROJECT_ID });
+
       const result = await service.updateAutomation('admin-1', PROJECT_ID, { enabled: false });
       expect(result.autoTransitionOnMerge).toBe(false);
       expect(result.autoTransitionStatusId).toBe('status-done');
-      expect(prisma.status.findUnique).not.toHaveBeenCalled();
+      // The kept statusId is still validated on disable (defense-in-depth:
+      // a disabled config must never hold a foreign project's status).
+      expect(prisma.status.findUnique).toHaveBeenCalled();
+    });
+
+    it('rejects a foreign statusId even when only disabling (defense-in-depth)', async () => {
+      jest.spyOn(membership, 'assertProjectRole').mockResolvedValue({ workspaceId: 'ws-1' } as never);
+      prisma.githubIntegration.findUnique.mockResolvedValue(
+        integrationRow({ autoTransitionOnMerge: true, autoTransitionStatusId: 'status-done' }),
+      );
+      prisma.status.findUnique.mockResolvedValue({ projectId: 'other-project' });
+
+      await expect(
+        service.updateAutomation('admin-1', PROJECT_ID, { enabled: false, statusId: 'foreign-status' }),
+      ).rejects.toThrow('statusId does not belong to this project');
     });
   });
 
@@ -815,7 +831,7 @@ describe('GithubService', () => {
       prisma.githubIntegration.findUnique.mockResolvedValue(
         integrationRow({ autoTransitionOnMerge: true, autoTransitionStatusId: 'status-done' }),
       );
-      prisma.membership.findUnique.mockResolvedValue({ userId: 'user-assignee' });
+      prisma.membership.findUnique.mockResolvedValue({ userId: 'user-assignee', role: Role.MEMBER });
       (mockIssuesService.move as jest.Mock).mockResolvedValue({});
 
       await service.handlePullRequestEvent(PROJECT_ID, mergedPayload);
@@ -906,8 +922,8 @@ describe('GithubService', () => {
         integrationRow({ autoTransitionOnMerge: true, autoTransitionStatusId: 'status-done' }),
       );
       prisma.membership.findUnique
-        .mockResolvedValueOnce({ userId: 'user-a' })
-        .mockResolvedValueOnce({ userId: 'user-b' });
+        .mockResolvedValueOnce({ userId: 'user-a', role: Role.MEMBER })
+        .mockResolvedValueOnce({ userId: 'user-b', role: Role.MEMBER });
       (mockIssuesService.move as jest.Mock)
         .mockRejectedValueOnce(new ForbiddenException('restricted'))
         .mockResolvedValueOnce({});

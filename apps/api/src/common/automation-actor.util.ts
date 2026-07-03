@@ -1,5 +1,6 @@
 import { Role } from '@next-lane/shared';
 import type { PrismaService } from '../prisma/prisma.service';
+import { getEffectiveProjectRole } from './membership.util';
 
 /**
  * Resolve a "who did this" actor for a mutation triggered by an external
@@ -14,19 +15,21 @@ import type { PrismaService } from '../prisma/prisma.service';
  *   3. the project's lead
  *   4. the workspace's longest-tenured ADMIN
  *
- * Every candidate is checked against actual WORKSPACE membership before
- * being returned — a stale `assigneeId`/`reporterId` pointing at a removed
- * user is skipped, not returned. This is intentionally a coarser check than
- * `assertProjectRole`'s full effective-role resolution (which also accounts
- * for per-project role overrides) — the caller (`IssuesService.move`, via
- * the automated-mutation path) still runs that full check and throws if the
- * chosen actor is genuinely ineligible; callers here MUST catch that and
- * skip the issue rather than let one bad candidate break a whole webhook
- * delivery (see `github.service.ts#applyAutoTransition` /
+ * Every candidate is checked for an effective project role of MEMBER or
+ * better (`getEffectiveProjectRole`, which accounts for per-project role
+ * overrides) — an ineligible candidate is SKIPPED and the chain continues,
+ * so a VIEWER-restricted assignee never silently kills the auto-transition
+ * for an issue whose reporter/lead/admin could have carried it (code-review
+ * follow-up on 71ae9a0: the original workspace-membership-only check
+ * stopped at the first member, and `move()`'s role check then failed the
+ * whole issue instead of falling back). The caller (`IssuesService.move`)
+ * still runs its own full check as the backstop; callers MUST catch and
+ * skip per-issue rather than let one bad actor break a webhook delivery
+ * (see `github.service.ts#applyAutoTransition` /
  * `gitlab.service.ts#applyAutoTransition`).
  *
- * Returns `null` when no candidate is an active workspace member at all
- * (e.g. every person ever associated with the issue has since left).
+ * Returns `null` when no candidate — including every workspace ADMIN — is
+ * eligible (e.g. everyone associated with the issue has left the project).
  */
 export async function resolveAutomationActor(
   prisma: PrismaService,
@@ -37,20 +40,33 @@ export async function resolveAutomationActor(
     (v): v is string => !!v,
   );
 
+  const isEligible = async (userId: string): Promise<boolean> => {
+    const effective = await getEffectiveProjectRole(
+      prisma,
+      userId,
+      project.workspaceId,
+      project.id,
+    );
+    return (
+      effective?.role === Role.MEMBER || effective?.role === Role.ADMIN
+    );
+  };
+
   for (const userId of candidates) {
-    const membership = await prisma.membership.findUnique({
-      where: { userId_workspaceId: { userId, workspaceId: project.workspaceId } },
-      select: { userId: true },
-    });
-    if (membership) return membership.userId;
+    if (await isEligible(userId)) return userId;
   }
 
-  // Fallback: the workspace's longest-tenured ADMIN — always exists for any
-  // workspace with at least one project (the workspace creator).
-  const admin = await prisma.membership.findFirst({
+  // Fallback: the workspace's longest-tenured eligible ADMIN — normally the
+  // workspace creator. Workspace ADMINs are immune to per-project override
+  // restrictions, so the eligibility check is a formality that also covers
+  // any future change to that rule.
+  const admins = await prisma.membership.findMany({
     where: { workspaceId: project.workspaceId, role: Role.ADMIN },
     orderBy: { createdAt: 'asc' },
     select: { userId: true },
   });
-  return admin?.userId ?? null;
+  for (const admin of admins) {
+    if (await isEligible(admin.userId)) return admin.userId;
+  }
+  return null;
 }
