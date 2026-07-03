@@ -52,3 +52,11 @@ NEVER touch: app code, tests, `docs/ROADMAP.md`, `docs/BACKLOG.md`,
 Return: surfaces updated (with one line per change), claims corrected,
 anything flagged for a full rewrite by a bigger agent, and the commit sha (or
 "left unstaged because <reason>").
+
+## Escalation rule (flags must not rot)
+
+If you flag the SAME rewrite-needed gap on two consecutive passes, say so
+explicitly in your report ("SECOND FLAG — escalate") — the orchestrator must
+then treat it as a P1 Ready item for the owning agent (docs-site guide pages
+are owned by `oss-curator`), not re-queue the flag. A user-facing doc gap
+that survives two sync passes is a defect, per CLAUDE.md.

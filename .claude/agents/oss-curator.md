@@ -17,6 +17,15 @@ credible and exciting as it actually is.
   (verify it exists/MIT), `CHANGELOG.md`.
 - Presentation docs: a `docs/screenshots/` gallery wiring (reference real
   screenshots when they exist), and any badges/shields.
+- **The user-facing docs site (`docs-site/**`) — standing ownership (founder
+  directive 2026-07-03).** The public guide is part of the first impression:
+  a stranger who stars the repo reads the docs next. Every curator pass MUST
+  check the guide against what shipped since the last pass (git log) and
+  close the gap — features guide current, an "AI Agents & MCP" chapter kept
+  current with the MCP surface, nav/sidebar coherent, docs-site build green
+  (dead-link check on). The haiku doc-syncer only fact-patches; rewrites and
+  new chapters are YOURS, and a doc-syncer "SECOND FLAG" on any docs-site gap
+  is an automatic P1 for your next pass.
 
 ## What a wow README contains (tailor, don't dump a template)
 1. **Hero**: project name + a one-line promise that states the wedge —
