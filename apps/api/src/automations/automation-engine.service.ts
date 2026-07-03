@@ -29,13 +29,13 @@ import {
   Priority,
   parse,
   evaluate,
+  getReferencedFieldKinds,
 } from '@next-lane/shared';
 import type {
   AutomationActionDto,
   AutomationRunActionDto,
   IssueDto,
   EvalContext,
-  NlqlUser,
   NlqlCustomFieldDef,
 } from '@next-lane/shared';
 import {
@@ -43,6 +43,7 @@ import {
   AutomationEvent,
 } from './automation-events';
 import { toIssueDto } from '../issues/issue.mapper';
+import { loadNlqlEvalContext } from '../common/nlql-eval-context.util';
 
 /** Full Prisma include for building the IssueDto passed to the NLQL evaluator. */
 const issueInclude = {
@@ -137,8 +138,20 @@ export class AutomationEngineService {
 
     const issueDto = toIssueDto(issueRecord);
 
-    // Build EvalContext (custom field defs + project users for me() resolution).
-    const evalCtx = await this.buildEvalContext(projectId);
+    // Build EvalContext (custom field defs + project users/sprints for
+    // me()/name resolution). Only queries workspace members / project
+    // sprints when at least one triggered rule's condition actually
+    // references a `user`- or `sprint`-kind field — an event-driven path
+    // must stay cheap. See MCP-QA pass 1, finding 1.
+    const referencedKinds = new Set<string>();
+    for (const rule of rules) {
+      if (!rule.condition) continue;
+      for (const kind of getReferencedFieldKinds(rule.condition)) referencedKinds.add(kind);
+    }
+    const evalCtx = await this.buildEvalContext(projectId, {
+      includeUsers: referencedKinds.has('user'),
+      includeSprints: referencedKinds.has('sprint'),
+    });
 
     // Collect run-row data objects across all rules, then batch-insert at the
     // end. Actions execute per-rule in order (behavior unchanged); only the
@@ -333,7 +346,10 @@ export class AutomationEngineService {
     ) as unknown as AutomationActionDto[];
   }
 
-  private async buildEvalContext(projectId: string): Promise<EvalContext> {
+  private async buildEvalContext(
+    projectId: string,
+    options: { includeUsers: boolean; includeSprints: boolean },
+  ): Promise<EvalContext> {
     // Load custom field definitions for the project.
     const fieldRows = await this.prisma.customFieldDefinition.findMany({
       where: { projectId },
@@ -346,25 +362,11 @@ export class AutomationEngineService {
       type: r.type as NlqlCustomFieldDef['type'],
     }));
 
-    // Load all users who are members of this project's workspace.
-    const project = await this.prisma.project.findUnique({
-      where: { id: projectId },
-      select: { workspaceId: true },
-    });
+    // Workspace members (assignee/reporter name-or-email resolution) and
+    // project sprints (sprint name resolution) — loaded conditionally by the
+    // caller based on what the triggered rules' conditions reference.
+    const { users, sprints } = await loadNlqlEvalContext(this.prisma, projectId, options);
 
-    let users: NlqlUser[] = [];
-    if (project) {
-      const memberships = await this.prisma.membership.findMany({
-        where: { workspaceId: project.workspaceId },
-        include: { user: { select: { id: true, email: true, name: true } } },
-      });
-      users = memberships.map((m) => ({
-        id: m.user.id,
-        email: m.user.email,
-        name: m.user.name,
-      }));
-    }
-
-    return { customFieldDefs, users };
+    return { customFieldDefs, users, sprints };
   }
 }

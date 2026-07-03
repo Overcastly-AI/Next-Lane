@@ -38,6 +38,12 @@ export interface NlqlUser {
   email: string;
 }
 
+/** A project sprint, for resolving the `sprint` field by name (not just id). */
+export interface NlqlSprint {
+  id: string;
+  name: string;
+}
+
 export interface NlqlCustomFieldDef {
   id: string;
   key: string;
@@ -49,6 +55,8 @@ export interface EvalContext {
   currentUserId?: string;
   now?: Date;
   users?: NlqlUser[];
+  /** Project sprints, used to resolve `sprint = "<name>"` (in addition to id). */
+  sprints?: NlqlSprint[];
   customFieldDefs?: NlqlCustomFieldDef[];
 }
 
@@ -267,6 +275,25 @@ function resolveUserOperand(raw: unknown, ctx: EvalContext): string | null {
   return str;
 }
 
+/**
+ * Resolve a comparison value for the `sprint` field into a sprint id. Accepts
+ * a raw id or a name matched via ctx.sprints (case-insensitive, exact match —
+ * mirrors {@link resolveUserOperand}). Falls back to treating the raw value as
+ * a literal id when it matches no known sprint, so an id not present in
+ * ctx.sprints (e.g. a stale/cross-project id) still compares correctly.
+ */
+function resolveSprintOperand(raw: unknown, ctx: EvalContext): string | null {
+  if (raw === null || raw === undefined) return null;
+  const str = String(raw);
+  const sprints = ctx.sprints ?? [];
+  const byId = sprints.find((s) => s.id === str);
+  if (byId) return byId.id;
+  const lower = str.toLowerCase();
+  const byName = sprints.find((s) => s.name.toLowerCase() === lower);
+  if (byName) return byName.id;
+  return str;
+}
+
 // ── Comparison engine ─────────────────────────────────────────────────────────
 
 const PRIORITY_RANK = PRIORITY_ORDER;
@@ -313,6 +340,8 @@ function evalComparison(
       return evalArrayComparison(fieldValue, node.op, operand);
     case 'user':
       return evalUserComparison(fieldValue, node.op, operand, ctx);
+    case 'sprint':
+      return evalSprintComparison(fieldValue, node.op, operand, ctx);
     case 'date':
       return evalDateComparison(fieldValue, node.op, operand);
     case 'number':
@@ -381,6 +410,28 @@ function evalUserComparison(
 ): boolean {
   const fieldId = fieldValue === null || fieldValue === undefined ? null : String(fieldValue);
   const operandId = resolveUserOperand(operand, ctx);
+  switch (op) {
+    case '=':
+      return fieldId !== null && fieldId === operandId;
+    case '!=':
+      return fieldId !== operandId;
+    case '~':
+      return fieldId !== null && operandId !== null && fieldId.includes(operandId);
+    case '!~':
+      return !(fieldId !== null && operandId !== null && fieldId.includes(operandId));
+    default:
+      return false;
+  }
+}
+
+function evalSprintComparison(
+  fieldValue: unknown,
+  op: ComparisonOp,
+  operand: unknown,
+  ctx: EvalContext,
+): boolean {
+  const fieldId = fieldValue === null || fieldValue === undefined ? null : String(fieldValue);
+  const operandId = resolveSprintOperand(operand, ctx);
   switch (op) {
     case '=':
       return fieldId !== null && fieldId === operandId;

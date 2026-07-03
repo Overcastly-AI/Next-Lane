@@ -19,6 +19,7 @@ import {
   assertProjectRole,
   assertWorkspaceMember,
 } from '../common/membership.util';
+import { loadNlqlEvalContext } from '../common/nlql-eval-context.util';
 import { toIssueDto } from './issue.mapper';
 import { toUserDto } from '../auth/auth.service';
 import { CreateIssueDto } from './dto/create-issue.dto';
@@ -42,6 +43,7 @@ import {
   SprintState,
   filterIssues,
   validateQuery,
+  getReferencedFieldKinds,
 } from '@next-lane/shared';
 import type {
   IssueDto,
@@ -1516,10 +1518,15 @@ export class IssuesService {
       throw new ForbiddenException('Not a member of this project');
     }
 
+    // Custom-field definitions are needed both to validate the optional NLQL
+    // query and to evaluate it (a query referencing a custom field must
+    // resolve it the same way at both steps), plus to build the CSV's "CF: "
+    // columns below — load once and reuse.
+    const customFieldDefs = await this.loadCustomFieldDefs(projectId);
+
     // Validate the NLQL query if provided.
     const trimmedQ = q?.trim() || undefined;
     if (trimmedQ) {
-      const customFieldDefs = await this.loadCustomFieldDefs(projectId);
       const result = validateQuery(trimmedQ, { customFieldDefs });
       if (!result.ok) {
         throw new BadRequestException(
@@ -1570,15 +1577,29 @@ export class IssuesService {
     let issueDtos: IssueDto[] = rows.map(toIssueDto);
 
     // Apply NLQL filter if a query was provided (already validated above).
+    // Batch-load the side-context the query actually needs (workspace
+    // members for assignee/reporter name-or-email resolution, project
+    // sprints for sprint name resolution) exactly once — never per issue —
+    // and only for the field kinds this query references. See MCP-QA pass 1,
+    // finding 1: without this, `assignee = "Alex Rivera"` / `sprint =
+    // "July-B"` silently matched zero issues.
     if (trimmedQ) {
+      const referencedKinds = getReferencedFieldKinds(trimmedQ);
+      const { users, sprints } = await loadNlqlEvalContext(this.prisma, projectId, {
+        includeUsers: referencedKinds.has('user'),
+        includeSprints: referencedKinds.has('sprint'),
+      });
       issueDtos = filterIssues(issueDtos, trimmedQ, {
         currentUserId: userId,
+        users,
+        sprints,
+        customFieldDefs,
       });
     }
 
-    // Custom-field definitions become one export column each ("CF: <name>"),
-    // in definition order, so no stored data is invisible in the download.
-    const customFieldDefs = await this.loadCustomFieldDefs(projectId);
+    // customFieldDefs (loaded above) becomes one export column each
+    // ("CF: <name>"), in definition order, so no stored data is invisible in
+    // the download.
 
     // Build the CSV. Column names shared with the importer (Title, Type,
     // Status, Priority, Assignee, Story Points, Start Date, Due Date, Labels,

@@ -205,11 +205,17 @@ function makePrisma(opts: {
   projectKey?: string;
   issues?: ReturnType<typeof makeIssueRow>[];
   customFieldDefs?: unknown[];
+  /** Workspace members, for assignee/reporter name/email NLQL resolution. */
+  members?: Array<{ id: string; email: string; name: string }>;
+  /** Project sprints, for `sprint = "<name>"` NLQL resolution. */
+  sprints?: Array<{ id: string; name: string }>;
 } = {}) {
   const isMember = opts.isMember ?? true;
   const projectKey = opts.projectKey ?? 'NL';
   const issues = opts.issues ?? [makeIssueRow()];
   const customFieldDefs = opts.customFieldDefs ?? [];
+  const members = opts.members ?? [];
+  const sprints = opts.sprints ?? [];
 
   return {
     project: {
@@ -224,12 +230,18 @@ function makePrisma(opts: {
       findUnique: jest.fn().mockResolvedValue(
         isMember ? { id: 'mem-1', role: 'MEMBER', userId: 'user-1', workspaceId: 'ws-1' } : null,
       ),
+      findMany: jest.fn().mockResolvedValue(
+        members.map((m) => ({ user: { id: m.id, email: m.email, name: m.name } })),
+      ),
     },
     issue: {
       findMany: jest.fn().mockResolvedValue(issues),
     },
     customFieldDefinition: {
       findMany: jest.fn().mockResolvedValue(customFieldDefs),
+    },
+    sprint: {
+      findMany: jest.fn().mockResolvedValue(sprints),
     },
   } as unknown as PrismaService;
 }
@@ -514,6 +526,170 @@ describe('IssuesService.exportCsv — NLQL filter', () => {
     await expect(
       service.exportCsv('user-1', 'proj-1', 'priority ==== !!!invalid'),
     ).rejects.toBeInstanceOf(BadRequestException);
+  });
+});
+
+// ── NLQL person/sprint name resolution (MCP-QA pass 1, finding 1) ─────────────
+//
+// This is the exact path MCP's `list_issues` tool drives when `query` is set
+// (`GET /projects/:id/issues.csv?q=...`) — see docs/MCP-QA.md pass 1. Before
+// the fix, `assignee = "Alex Rivera"` and `sprint = "July-B"` silently
+// returned zero rows because the server-side evaluation context never
+// carried workspace members / project sprints.
+
+describe('IssuesService.exportCsv — NLQL person/sprint name resolution', () => {
+  const alex = { id: 'u-alex', email: 'alex@nextlane.dev', name: 'Alex Rivera' };
+  const jordan = { id: 'u-jordan', email: 'jordan@nextlane.dev', name: 'Jordan Lee' };
+
+  function alexAssignedIssues(count: number) {
+    return Array.from({ length: count }, (_, i) =>
+      makeIssueRow({
+        id: `alex-${i}`,
+        number: i + 1,
+        title: `Alex issue ${i}`,
+        assignee: { id: alex.id, email: alex.email, name: alex.name, avatarColor: '#fff', createdAt: new Date() },
+      }),
+    );
+  }
+
+  it('resolves assignee by exact display name (the QA repro: 0 -> 5)', async () => {
+    const issues = [
+      ...alexAssignedIssues(5),
+      makeIssueRow({
+        id: 'jordan-1',
+        number: 6,
+        title: 'Jordan issue',
+        assignee: { id: jordan.id, email: jordan.email, name: jordan.name, avatarColor: '#000', createdAt: new Date() },
+      }),
+    ];
+    const prisma = makePrisma({ issues, members: [alex, jordan] });
+    const service = makeService(prisma);
+
+    const { csv } = await service.exportCsv('user-1', 'proj-1', 'assignee = "Alex Rivera"');
+    const lines = csv.split('\r\n').filter(Boolean);
+    expect(lines).toHaveLength(6); // header + 5 Alex issues, NOT 1 (header only)
+    expect(lines.slice(1).every((l) => l.includes('Alex issue'))).toBe(true);
+  });
+
+  it('resolves assignee by email', async () => {
+    const issues = alexAssignedIssues(5);
+    const prisma = makePrisma({ issues, members: [alex, jordan] });
+    const service = makeService(prisma);
+
+    const { csv } = await service.exportCsv('user-1', 'proj-1', 'assignee = "alex@nextlane.dev"');
+    const lines = csv.split('\r\n').filter(Boolean);
+    expect(lines).toHaveLength(6);
+  });
+
+  it('resolves assignee by id (unchanged prior behavior)', async () => {
+    const issues = alexAssignedIssues(5);
+    const prisma = makePrisma({ issues, members: [alex, jordan] });
+    const service = makeService(prisma);
+
+    const { csv } = await service.exportCsv('user-1', 'proj-1', `assignee = "${alex.id}"`);
+    const lines = csv.split('\r\n').filter(Boolean);
+    expect(lines).toHaveLength(6);
+  });
+
+  it('does not load workspace members when the query never references a user field', async () => {
+    const prisma = makePrisma({ issues: [makeIssueRow()] });
+    const service = makeService(prisma);
+
+    await service.exportCsv('user-1', 'proj-1', 'priority = MEDIUM');
+    expect(prisma.membership.findMany).not.toHaveBeenCalled();
+  });
+
+  it('resolves sprint by exact name (the QA repro: 0 -> 4)', async () => {
+    const julyB = { id: 'sp-july-b', name: 'July-B' };
+    const other = { id: 'sp-other', name: 'Sprint 1 - Checkout Foundations' };
+    const issues = [
+      ...Array.from({ length: 4 }, (_, i) =>
+        makeIssueRow({ id: `jb-${i}`, number: i + 1, title: `July-B issue ${i}`, sprint: { name: julyB.name } }),
+      ),
+      makeIssueRow({ id: 'other-1', number: 5, title: 'Other sprint issue', sprint: { name: other.name } }),
+    ];
+    // makeIssueRow always assigns sprintId 'sprint-1' when `sprint` is set —
+    // override per-row via a direct patch so each row's sprintId matches the
+    // right fixture sprint id.
+    issues[0].sprintId = julyB.id;
+    issues[1].sprintId = julyB.id;
+    issues[2].sprintId = julyB.id;
+    issues[3].sprintId = julyB.id;
+    issues[4].sprintId = other.id;
+
+    const prisma = makePrisma({ issues, sprints: [julyB, other] });
+    const service = makeService(prisma);
+
+    const { csv } = await service.exportCsv('user-1', 'proj-1', 'sprint = "July-B"');
+    const lines = csv.split('\r\n').filter(Boolean);
+    expect(lines).toHaveLength(5); // header + 4 July-B issues
+    expect(lines.slice(1).every((l) => l.includes('July-B issue'))).toBe(true);
+  });
+
+  it('resolves sprint by id (unchanged prior behavior)', async () => {
+    const julyB = { id: 'sp-july-b', name: 'July-B' };
+    const issue = makeIssueRow({ sprint: { name: julyB.name } });
+    issue.sprintId = julyB.id;
+    const prisma = makePrisma({ issues: [issue], sprints: [julyB] });
+    const service = makeService(prisma);
+
+    const { csv } = await service.exportCsv('user-1', 'proj-1', `sprint = "${julyB.id}"`);
+    const lines = csv.split('\r\n').filter(Boolean);
+    expect(lines).toHaveLength(2);
+  });
+
+  it('does not load sprints when the query never references the sprint field', async () => {
+    const prisma = makePrisma({ issues: [makeIssueRow()] });
+    const service = makeService(prisma);
+
+    await service.exportCsv('user-1', 'proj-1', 'priority = MEDIUM');
+    expect(prisma.sprint.findMany).not.toHaveBeenCalled();
+  });
+
+  it('an unresolved assignee name silently matches nothing (no error) — locks current semantics', async () => {
+    const issues = alexAssignedIssues(2);
+    const prisma = makePrisma({ issues, members: [alex] });
+    const service = makeService(prisma);
+
+    const { csv } = await service.exportCsv('user-1', 'proj-1', 'assignee = "Nobody By This Name"');
+    const lines = csv.split('\r\n').filter(Boolean);
+    expect(lines).toHaveLength(1); // header only — no throw, no match
+  });
+
+  it('a compound query combining assignee-by-name and sprint-by-name resolves both', async () => {
+    const julyB = { id: 'sp-july-b', name: 'July-B' };
+    const match = makeIssueRow({
+      id: 'match',
+      number: 1,
+      title: 'Match',
+      assignee: { id: alex.id, email: alex.email, name: alex.name, avatarColor: '#fff', createdAt: new Date() },
+      sprint: { name: julyB.name },
+    });
+    match.sprintId = julyB.id;
+    const noMatchWrongSprint = makeIssueRow({
+      id: 'no-match',
+      number: 2,
+      title: 'No match',
+      assignee: { id: alex.id, email: alex.email, name: alex.name, avatarColor: '#fff', createdAt: new Date() },
+      sprint: { name: 'Other' },
+    });
+    noMatchWrongSprint.sprintId = 'sp-other';
+
+    const prisma = makePrisma({
+      issues: [match, noMatchWrongSprint],
+      members: [alex],
+      sprints: [julyB, { id: 'sp-other', name: 'Other' }],
+    });
+    const service = makeService(prisma);
+
+    const { csv } = await service.exportCsv(
+      'user-1',
+      'proj-1',
+      'assignee = "Alex Rivera" AND sprint = "July-B"',
+    );
+    const lines = csv.split('\r\n').filter(Boolean);
+    expect(lines).toHaveLength(2); // header + 1 match
+    expect(lines[1]).toContain('Match');
   });
 });
 

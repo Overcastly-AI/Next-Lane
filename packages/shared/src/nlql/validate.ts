@@ -20,7 +20,7 @@ import type {
 } from './ast';
 import { parse } from './parser';
 import { NlqlParseError } from './tokenizer';
-import { resolveStandardField } from './fields';
+import { resolveStandardField, type FieldKind } from './fields';
 
 /** Maximum accepted query length, in characters. */
 export const NLQL_MAX_LENGTH = 2000;
@@ -120,4 +120,33 @@ export function validateQuery(
   }
 
   return { ok: true };
+}
+
+/**
+ * Return the set of standard-field `FieldKind`s a query references (e.g.
+ * `'user'` for `assignee`/`reporter`, `'sprint'` for `sprint`). Lets a caller
+ * that evaluates the query decide which side-context to batch-load — e.g. the
+ * automation engine only needs to query workspace members when a rule
+ * condition actually compares against a `user`-kind field, and only needs to
+ * query sprints when it references `sprint`.
+ *
+ * Quoted field tokens (always custom-field references, which have no fixed
+ * `FieldKind` here) are ignored. Returns an empty set on a parse error —
+ * callers that need the query to be valid should call {@link validateQuery}
+ * first.
+ */
+export function getReferencedFieldKinds(query: string): Set<FieldKind> {
+  const kinds = new Set<FieldKind>();
+  let ast: Query;
+  try {
+    ast = parse(query);
+  } catch {
+    return kinds;
+  }
+  for (const field of collectQueryFields(ast)) {
+    if (field.quoted) continue;
+    const meta = resolveStandardField(field.name);
+    if (meta) kinds.add(meta.kind);
+  }
+  return kinds;
 }

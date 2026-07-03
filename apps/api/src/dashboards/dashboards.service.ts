@@ -15,13 +15,17 @@ import {
   SocketEvents,
   filterIssues,
   validateQuery,
+  getReferencedFieldKinds,
   type DashboardDataDto,
   type DashboardDto,
   type DashboardGadgetResult,
   type DashboardSummaryDto,
   type IssueDto,
+  type NlqlSprint,
+  type NlqlUser,
   type ValidateCustomFieldDef,
 } from '@next-lane/shared';
+import { loadNlqlEvalContext } from '../common/nlql-eval-context.util';
 import {
   evaluateBreakdown,
   evaluateStat,
@@ -342,10 +346,32 @@ export class DashboardsService {
     if (issuesTruncated) issueRows.splice(DASHBOARD_ISSUES_CAP);
     const issues: IssueDto[] = issueRows.map(toIssueDto);
 
+    // Batch-load the NLQL side-context (workspace members + project sprints)
+    // ONCE for the whole dashboard, not once per gadget and never per issue —
+    // union the field kinds referenced across every gadget's stored query so
+    // a dashboard with no user/sprint-referencing gadgets skips both queries
+    // entirely. See MCP-QA pass 1, finding 1.
+    const referencedKinds = new Set<string>();
+    for (const row of gadgetRows) {
+      for (const kind of getReferencedFieldKinds(row.query)) referencedKinds.add(kind);
+    }
+    const { users, sprints } = await loadNlqlEvalContext(this.prisma, dashboard.projectId, {
+      includeUsers: referencedKinds.has('user'),
+      includeSprints: referencedKinds.has('sprint'),
+    });
+
     const gadgets: DashboardGadgetResult[] = [];
     for (const row of gadgetRows) {
       gadgets.push(
-        await this.evaluateGadget(row, dashboard.projectId, userId, issues, customFieldDefs),
+        await this.evaluateGadget(
+          row,
+          dashboard.projectId,
+          userId,
+          issues,
+          customFieldDefs,
+          users,
+          sprints,
+        ),
       );
     }
 
@@ -358,6 +384,8 @@ export class DashboardsService {
     userId: string,
     issues: IssueDto[],
     customFieldDefs: ValidateCustomFieldDef[],
+    users: NlqlUser[],
+    sprints: NlqlSprint[],
   ): Promise<DashboardGadgetResult> {
     const base = {
       gadgetId: row.id,
@@ -376,6 +404,8 @@ export class DashboardsService {
       filtered = filterIssues(issues, row.query, {
         currentUserId: userId,
         customFieldDefs,
+        users,
+        sprints,
       });
     } catch (err) {
       return {

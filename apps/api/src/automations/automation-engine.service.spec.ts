@@ -124,6 +124,9 @@ function makePrisma(rules: object[] = []) {
     membership: {
       findMany: jest.fn().mockResolvedValue([]),
     },
+    sprint: {
+      findMany: jest.fn().mockResolvedValue([]),
+    },
   };
 }
 
@@ -422,6 +425,102 @@ describe('AutomationEngineService', () => {
       expect(prisma.issue.findUnique).not.toHaveBeenCalled();
       expect(prisma.automationRun.createMany).not.toHaveBeenCalled();
       expect(issues.update).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── NLQL person/sprint name resolution (MCP-QA pass 1, finding 1) ─────────
+  //
+  // Automations run per-event, so context loading is conditional on what the
+  // triggered rules' conditions actually reference (getReferencedFieldKinds).
+
+  describe('condition — assignee/sprint name resolution', () => {
+    it('resolves assignee by display name in a rule condition', async () => {
+      const rule = makeRule({ condition: 'assignee = "Alex Rivera"' });
+      const prisma = makePrisma([rule]);
+      prisma.issue.findUnique.mockResolvedValue({ ...ISSUE_ROW, assigneeId: 'u-alex' });
+      prisma.membership.findMany.mockResolvedValue([
+        { user: { id: 'u-alex', email: 'alex@nextlane.dev', name: 'Alex Rivera' } },
+      ]);
+      const { engine, issues } = makeEngine(prisma);
+
+      await engine.onIssueCreated(makeEvent());
+
+      // Condition matched -> the rule's default SET_PRIORITY action ran.
+      expect(issues.update).toHaveBeenCalledWith(
+        RULE_CREATOR_ID,
+        ISSUE_ID,
+        { priority: Priority.HIGH },
+        { automated: true },
+      );
+      const row = firstRunRow(prisma);
+      expect(row.matched).toBe(true);
+      expect(row.status).toBe(AutomationRunStatus.SUCCESS);
+    });
+
+    it('resolves sprint by name in a rule condition', async () => {
+      const rule = makeRule({ condition: 'sprint = "July-B"' });
+      const prisma = makePrisma([rule]);
+      prisma.issue.findUnique.mockResolvedValue({ ...ISSUE_ROW, sprintId: 'sp-july-b' });
+      prisma.sprint.findMany.mockResolvedValue([{ id: 'sp-july-b', name: 'July-B' }]);
+      const { engine, issues } = makeEngine(prisma);
+
+      await engine.onIssueCreated(makeEvent());
+
+      expect(issues.update).toHaveBeenCalledWith(
+        RULE_CREATOR_ID,
+        ISSUE_ID,
+        { priority: Priority.HIGH },
+        { automated: true },
+      );
+    });
+
+    it('a name that resolves to no known user is SKIPPED, not FAILED (mirrors evaluator semantics)', async () => {
+      const rule = makeRule({ condition: 'assignee = "Nobody By This Name"' });
+      const prisma = makePrisma([rule]);
+      prisma.issue.findUnique.mockResolvedValue({ ...ISSUE_ROW, assigneeId: 'u-alex' });
+      prisma.membership.findMany.mockResolvedValue([
+        { user: { id: 'u-alex', email: 'alex@nextlane.dev', name: 'Alex Rivera' } },
+      ]);
+      const { engine, issues } = makeEngine(prisma);
+
+      await engine.onIssueCreated(makeEvent());
+
+      expect(issues.update).not.toHaveBeenCalled();
+      const row = firstRunRow(prisma);
+      expect(row.matched).toBe(false);
+      expect(row.status).toBe(AutomationRunStatus.SKIPPED);
+    });
+
+    it('does not query workspace members or sprints when no triggered rule condition references those fields', async () => {
+      const rule = makeRule({ condition: 'priority = High' });
+      const prisma = makePrisma([rule]);
+      const { engine } = makeEngine(prisma);
+
+      await engine.onIssueCreated(makeEvent());
+
+      expect(prisma.membership.findMany).not.toHaveBeenCalled();
+      expect(prisma.sprint.findMany).not.toHaveBeenCalled();
+    });
+
+    it('queries workspace members once even with multiple user-referencing rules on the same event', async () => {
+      const rules = [
+        makeRule({ id: 'rule-1', order: 0, condition: 'assignee = "Alex Rivera"' }),
+        makeRule({ id: 'rule-2', order: 1, condition: 'reporter = "Alex Rivera"' }),
+      ];
+      const prisma = makePrisma(rules);
+      prisma.issue.findUnique.mockResolvedValue({
+        ...ISSUE_ROW,
+        assigneeId: 'u-alex',
+        reporterId: 'u-alex',
+      });
+      prisma.membership.findMany.mockResolvedValue([
+        { user: { id: 'u-alex', email: 'alex@nextlane.dev', name: 'Alex Rivera' } },
+      ]);
+      const { engine } = makeEngine(prisma);
+
+      await engine.onIssueCreated(makeEvent());
+
+      expect(prisma.membership.findMany).toHaveBeenCalledTimes(1);
     });
   });
 

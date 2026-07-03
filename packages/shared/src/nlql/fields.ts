@@ -36,7 +36,8 @@ export type FieldKind =
   | 'number'
   | 'date'
   | 'array' // membership semantics for `=`/IN, substring for `~`
-  | 'id'; // opaque id string, exact match only
+  | 'id' // opaque id string, exact match only
+  | 'sprint'; // resolves a sprint id OR an exact (case-insensitive) sprint name
 
 export interface StandardFieldMeta {
   field: StandardField;
@@ -64,7 +65,7 @@ const ALIASES: Record<string, StandardFieldMeta> = {
   label: { field: 'labels', kind: 'array' },
   labels: { field: 'labels', kind: 'array' },
 
-  sprint: { field: 'sprint', kind: 'id' },
+  sprint: { field: 'sprint', kind: 'sprint' },
 
   startdate: { field: 'startDate', kind: 'date' },
   start: { field: 'startDate', kind: 'date' },

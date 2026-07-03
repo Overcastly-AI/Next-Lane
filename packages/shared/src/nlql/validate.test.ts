@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CustomFieldType } from '../enums';
 import { filterIssues } from './evaluator';
-import { NLQL_MAX_LENGTH, validateQuery } from './validate';
+import { NLQL_MAX_LENGTH, getReferencedFieldKinds, validateQuery } from './validate';
 import type { IssueDto } from '../types';
 import { IssueType, Priority, StatusCategory } from '../enums';
 
@@ -63,6 +63,45 @@ describe('validateQuery', () => {
     expect(validateQuery('startDate < "2026-07-01"')).toEqual({ ok: true });
     expect(validateQuery('start > "2026-01-01"')).toEqual({ ok: true });
     expect(validateQuery('ORDER BY startDate DESC')).toEqual({ ok: true });
+  });
+});
+
+describe('getReferencedFieldKinds', () => {
+  it('reports "user" for assignee/reporter references', () => {
+    expect(getReferencedFieldKinds('assignee = me()')).toEqual(new Set(['user']));
+    expect(getReferencedFieldKinds('reporter = "Alex Rivera"')).toEqual(new Set(['user']));
+    expect(getReferencedFieldKinds('assignee = me() AND reporter = me()')).toEqual(
+      new Set(['user']),
+    );
+  });
+
+  it('reports "sprint" for sprint references', () => {
+    expect(getReferencedFieldKinds('sprint = "July-B"')).toEqual(new Set(['sprint']));
+  });
+
+  it('reports every distinct kind across a compound query', () => {
+    const kinds = getReferencedFieldKinds(
+      'assignee = me() AND sprint = "July-B" AND priority > LOW',
+    );
+    expect(kinds).toEqual(new Set(['user', 'sprint', 'enum']));
+  });
+
+  it('does not report kinds for quoted (custom-field) tokens', () => {
+    expect(getReferencedFieldKinds('"Severity" = high')).toEqual(new Set());
+  });
+
+  it('includes ORDER BY field kinds', () => {
+    expect(getReferencedFieldKinds('status = Done ORDER BY sprint')).toEqual(
+      new Set(['enum', 'sprint']),
+    );
+  });
+
+  it('returns an empty set on a parse error rather than throwing', () => {
+    expect(getReferencedFieldKinds('status =')).toEqual(new Set());
+  });
+
+  it('returns an empty set for an empty query', () => {
+    expect(getReferencedFieldKinds('')).toEqual(new Set());
   });
 });
 

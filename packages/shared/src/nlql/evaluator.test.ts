@@ -8,11 +8,14 @@ import {
   NlqlEvalError,
   type EvalContext,
   type NlqlCustomFieldDef,
+  type NlqlSprint,
   type NlqlUser,
 } from './evaluator';
 
 const USER_ALICE: NlqlUser = { id: 'u-alice', name: 'Alice', email: 'alice@x.io' };
 const USER_BOB: NlqlUser = { id: 'u-bob', name: 'Bob', email: 'bob@x.io' };
+const SPRINT_ONE: NlqlSprint = { id: 'sp-1', name: 'Sprint 1 - Checkout Foundations' };
+const SPRINT_JULY_B: NlqlSprint = { id: 'sp-2', name: 'July-B' };
 
 function makeIssue(overrides: Partial<IssueDto> = {}): IssueDto {
   const base: IssueDto = {
@@ -159,6 +162,29 @@ describe('evaluator — functions & users', () => {
     expect(evalQuery('assignee = "u-bob"', issue, ctx)).toBe(true);
   });
 
+  it('assignee name/email match is case-insensitive', () => {
+    const issue = makeIssue({ assigneeId: 'u-bob' });
+    expect(evalQuery('assignee = "BOB"', issue, ctx)).toBe(true);
+    expect(evalQuery('assignee = "BOB@X.IO"', issue, ctx)).toBe(true);
+  });
+
+  it('reporter resolves by name/email exactly like assignee', () => {
+    const issue = makeIssue({ reporterId: 'u-alice' });
+    expect(evalQuery('reporter = "Alice"', issue, ctx)).toBe(true);
+    expect(evalQuery('reporter = "alice@x.io"', issue, ctx)).toBe(true);
+  });
+
+  it('a name that resolves to no known user silently matches nothing (no error)', () => {
+    const issue = makeIssue({ assigneeId: 'u-bob' });
+    // Locks in current semantics (see MCP-QA pass 1, finding 1): an unresolved
+    // user reference is NOT an eval error — it falls back to a literal string
+    // that will never equal a real user id, so the comparison is false. This
+    // is a known "confidently wrong, no error" gap tracked separately; this
+    // test exists to make any future behavior change here deliberate.
+    expect(evalQuery('assignee = "Nobody By This Name"', issue, ctx)).toBe(false);
+    expect(() => evalQuery('assignee = "Nobody By This Name"', issue, ctx)).not.toThrow();
+  });
+
   it('now()/today() compare against dates', () => {
     const past = makeIssue({ dueDate: '2026-06-01T00:00:00.000Z' });
     const future = makeIssue({ dueDate: '2026-12-01T00:00:00.000Z' });
@@ -186,6 +212,63 @@ describe('evaluator — functions & users', () => {
     // date field (dueDate included), not something new here.
     const desc = filterIssues([c, b, a], 'ORDER BY startDate DESC');
     expect(desc.filter((i) => i.id !== 'c').map((i) => i.id)).toEqual(['b', 'a']);
+  });
+});
+
+describe('evaluator — sprints (MCP-QA pass 1, finding 1)', () => {
+  const ctx: EvalContext = {
+    sprints: [SPRINT_ONE, SPRINT_JULY_B],
+  };
+
+  it('sprint matches by exact id', () => {
+    const issue = makeIssue({ sprintId: SPRINT_JULY_B.id });
+    expect(evalQuery('sprint = "sp-2"', issue, ctx)).toBe(true);
+    expect(evalQuery('sprint = "sp-1"', issue, ctx)).toBe(false);
+  });
+
+  it('sprint matches by exact name', () => {
+    const issue = makeIssue({ sprintId: SPRINT_JULY_B.id });
+    expect(evalQuery('sprint = "July-B"', issue, ctx)).toBe(true);
+    expect(evalQuery('sprint = "Sprint 1 - Checkout Foundations"', issue, ctx)).toBe(false);
+  });
+
+  it('sprint name match is case-insensitive', () => {
+    const issue = makeIssue({ sprintId: SPRINT_JULY_B.id });
+    expect(evalQuery('sprint = "july-b"', issue, ctx)).toBe(true);
+    expect(evalQuery('sprint = "JULY-B"', issue, ctx)).toBe(true);
+  });
+
+  it('!= negates the resolved match', () => {
+    const issue = makeIssue({ sprintId: SPRINT_JULY_B.id });
+    expect(evalQuery('sprint != "July-B"', issue, ctx)).toBe(false);
+    expect(evalQuery('sprint != "Sprint 1 - Checkout Foundations"', issue, ctx)).toBe(true);
+  });
+
+  it('IN resolves each candidate by name', () => {
+    const issue = makeIssue({ sprintId: SPRINT_ONE.id });
+    expect(
+      evalQuery('sprint IN ("July-B", "Sprint 1 - Checkout Foundations")', issue, ctx),
+    ).toBe(true);
+    expect(evalQuery('sprint IN ("July-B")', issue, ctx)).toBe(false);
+  });
+
+  it('IS EMPTY / IS NOT EMPTY unaffected by name resolution', () => {
+    const noSprint = makeIssue({ sprintId: null });
+    const inSprint = makeIssue({ sprintId: SPRINT_ONE.id });
+    expect(evalQuery('sprint IS EMPTY', noSprint, ctx)).toBe(true);
+    expect(evalQuery('sprint IS NOT EMPTY', inSprint, ctx)).toBe(true);
+  });
+
+  it('a name that resolves to no known sprint silently matches nothing (no error) — mirrors user semantics', () => {
+    const issue = makeIssue({ sprintId: SPRINT_ONE.id });
+    expect(evalQuery('sprint = "Nonexistent Sprint"', issue, ctx)).toBe(false);
+    expect(() => evalQuery('sprint = "Nonexistent Sprint"', issue, ctx)).not.toThrow();
+  });
+
+  it('without ctx.sprints, name comparisons fall back to literal (still no throw)', () => {
+    const issue = makeIssue({ sprintId: SPRINT_JULY_B.id });
+    expect(evalQuery('sprint = "July-B"', issue, {})).toBe(false);
+    expect(evalQuery('sprint = "sp-2"', issue, {})).toBe(true); // raw id still matches
   });
 });
 

@@ -62,7 +62,7 @@ const FIELD_SUGGESTIONS: Array<{ label: string; detail: string }> = [
   { label: 'type', detail: 'Issue type (TASK / BUG / STORY …)' },
   { label: 'priority', detail: 'Issue priority (HIGHEST / HIGH / MEDIUM / LOW / LOWEST)' },
   { label: 'labels', detail: 'Labels attached to the issue' },
-  { label: 'sprint', detail: 'Sprint id' },
+  { label: 'sprint', detail: 'Sprint (id or name)' },
   { label: 'startDate', detail: 'Start date' },
   { label: 'dueDate', detail: 'Due date' },
   { label: 'createdAt', detail: 'Creation date' },
@@ -150,6 +150,15 @@ const OPS_ID: OpSuggestion[] = [
   { label: 'IS NOT EMPTY', insertText: 'IS NOT EMPTY', detail: 'is set' },
 ];
 
+const OPS_SPRINT: OpSuggestion[] = [
+  { label: '=', insertText: '= ', detail: 'equals (id or name)' },
+  { label: '!=', insertText: '!= ', detail: 'not equals' },
+  { label: 'IN', insertText: 'IN (', detail: 'one of' },
+  { label: 'NOT IN', insertText: 'NOT IN (', detail: 'none of' },
+  { label: 'IS EMPTY', insertText: 'IS EMPTY', detail: 'not in a sprint' },
+  { label: 'IS NOT EMPTY', insertText: 'IS NOT EMPTY', detail: 'in a sprint' },
+];
+
 function opsForKind(kind: string): OpSuggestion[] {
   switch (kind) {
     case 'enum': return OPS_ENUM;
@@ -159,6 +168,7 @@ function opsForKind(kind: string): OpSuggestion[] {
     case 'date': return OPS_DATE;
     case 'array': return OPS_ARRAY;
     case 'id': return OPS_ID;
+    case 'sprint': return OPS_SPRINT;
     default: return OPS_ENUM;
   }
 }

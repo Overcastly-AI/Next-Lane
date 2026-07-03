@@ -51,11 +51,12 @@ export { evaluate, filterIssues } from './evaluator';
 export type {
   EvalContext,
   NlqlUser,
+  NlqlSprint,
   NlqlCustomFieldDef,
 } from './evaluator';
 
 // Validation
-export { validateQuery, NLQL_MAX_LENGTH } from './validate';
+export { validateQuery, getReferencedFieldKinds, NLQL_MAX_LENGTH } from './validate';
 export type {
   ValidationResult,
   ValidateOptions,

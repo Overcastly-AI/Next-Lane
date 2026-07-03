@@ -36,6 +36,9 @@ function makePrisma() {
     },
     customFieldDefinition: { findMany: jest.fn().mockResolvedValue([]) },
     issue: { findMany: jest.fn().mockResolvedValue([]) },
+    project: { findUnique: jest.fn().mockResolvedValue({ workspaceId: 'ws-1' }) },
+    membership: { findMany: jest.fn().mockResolvedValue([]) },
+    sprint: { findMany: jest.fn().mockResolvedValue([]) },
   } as unknown as PrismaService & {
     dashboard: {
       findMany: jest.Mock;
@@ -55,6 +58,9 @@ function makePrisma() {
     };
     customFieldDefinition: { findMany: jest.Mock };
     issue: { findMany: jest.Mock };
+    project: { findUnique: jest.Mock };
+    membership: { findMany: jest.Mock };
+    sprint: { findMany: jest.Mock };
   };
 }
 
@@ -107,7 +113,10 @@ function makeGadgetRow(overrides: Partial<{
   };
 }
 
-function makeIssueRow(i: number, overrides: Partial<{ statusName: string; sprintId: string | null }> = {}) {
+function makeIssueRow(
+  i: number,
+  overrides: Partial<{ statusName: string; sprintId: string | null; assigneeId: string | null }> = {},
+) {
   return {
     id: `issue-${i}`,
     key: `${PROJECT_KEY}-${i}`,
@@ -117,7 +126,7 @@ function makeIssueRow(i: number, overrides: Partial<{ statusName: string; sprint
     title: `Issue ${i}`,
     description: null,
     statusId: 'status-1',
-    assigneeId: null,
+    assigneeId: overrides.assigneeId ?? null,
     reporterId: null,
     priority: Priority.MEDIUM,
     storyPoints: null,
@@ -515,6 +524,81 @@ describe('DashboardsService', () => {
 
       expect(result.issuesTruncated).toBe(true);
       expect(result.gadgets[0].data).toEqual({ kind: 'STAT', count: DASHBOARD_ISSUES_CAP });
+    });
+
+    // ── NLQL person/sprint name resolution (MCP-QA pass 1, finding 1) ──────
+    //
+    // `get_dashboard_data` filters the project's issues through each
+    // gadget's stored NLQL query server-side — the same evaluator used by
+    // exportCsv. Before the fix, a gadget's `assignee = "<name>"` or
+    // `sprint = "<name>"` silently matched zero issues.
+
+    it('resolves assignee by display name in a gadget query', async () => {
+      prisma.dashboardGadget.findMany.mockResolvedValue([
+        makeGadgetRow({ query: 'assignee = "Alex Rivera"' }),
+      ]);
+      prisma.issue.findMany.mockResolvedValue([
+        makeIssueRow(1, { assigneeId: 'u-alex' }),
+        makeIssueRow(2, { assigneeId: 'u-jordan' }),
+      ]);
+      prisma.membership.findMany.mockResolvedValue([
+        { user: { id: 'u-alex', email: 'alex@nextlane.dev', name: 'Alex Rivera' } },
+        { user: { id: 'u-jordan', email: 'jordan@nextlane.dev', name: 'Jordan Lee' } },
+      ]);
+
+      const result = await service.getDashboardData('user-1', DASHBOARD_ID);
+
+      expect(result.gadgets[0].data).toEqual({ kind: 'STAT', count: 1 });
+      expect(result.gadgets[0].error).toBeUndefined();
+    });
+
+    it('resolves sprint by name in a gadget query', async () => {
+      prisma.dashboardGadget.findMany.mockResolvedValue([
+        makeGadgetRow({ query: 'sprint = "July-B"' }),
+      ]);
+      prisma.issue.findMany.mockResolvedValue([
+        makeIssueRow(1, { sprintId: 'sp-july-b' }),
+        makeIssueRow(2, { sprintId: 'sp-july-b' }),
+        makeIssueRow(3, { sprintId: 'sp-other' }),
+      ]);
+      prisma.sprint.findMany.mockResolvedValue([
+        { id: 'sp-july-b', name: 'July-B' },
+        { id: 'sp-other', name: 'Other Sprint' },
+      ]);
+
+      const result = await service.getDashboardData('user-1', DASHBOARD_ID);
+
+      expect(result.gadgets[0].data).toEqual({ kind: 'STAT', count: 2 });
+    });
+
+    it('loads workspace members / sprints at most once for the whole dashboard, across multiple gadgets', async () => {
+      prisma.dashboardGadget.findMany.mockResolvedValue([
+        makeGadgetRow({ id: 'g-1', query: 'assignee = "Alex Rivera"' }),
+        makeGadgetRow({ id: 'g-2', query: 'sprint = "July-B"' }),
+        makeGadgetRow({ id: 'g-3', query: 'assignee = "Alex Rivera" AND sprint = "July-B"' }),
+      ]);
+      prisma.issue.findMany.mockResolvedValue([makeIssueRow(1, { assigneeId: 'u-alex', sprintId: 'sp-july-b' })]);
+      prisma.membership.findMany.mockResolvedValue([
+        { user: { id: 'u-alex', email: 'alex@nextlane.dev', name: 'Alex Rivera' } },
+      ]);
+      prisma.sprint.findMany.mockResolvedValue([{ id: 'sp-july-b', name: 'July-B' }]);
+
+      await service.getDashboardData('user-1', DASHBOARD_ID);
+
+      expect(prisma.membership.findMany).toHaveBeenCalledTimes(1);
+      expect(prisma.sprint.findMany).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not query workspace members or sprints when no gadget references those fields', async () => {
+      prisma.dashboardGadget.findMany.mockResolvedValue([
+        makeGadgetRow({ query: 'status = "In Progress"' }),
+      ]);
+      prisma.issue.findMany.mockResolvedValue([makeIssueRow(1)]);
+
+      await service.getDashboardData('user-1', DASHBOARD_ID);
+
+      expect(prisma.membership.findMany).not.toHaveBeenCalled();
+      expect(prisma.sprint.findMany).not.toHaveBeenCalled();
     });
 
     it('evaluates gadgets in grid-position order', async () => {
