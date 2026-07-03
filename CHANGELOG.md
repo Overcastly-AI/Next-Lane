@@ -80,6 +80,73 @@ development phase. A versioned release will be tagged once the v1 criteria in
 - **Unit tests** — 1611 total API tests (15 new agent-context), 7/7 tenant matrix
   rows passing (with new agent-context isolation rows).
 
+**Web UI for agent-context handoff document:**
+- **Project Settings panel** — new "Agent context" section in project settings
+  (alongside Members/GitLab) displays the shared agent-context markdown document.
+  Edit-in-place (Edit → textarea → Save/Cancel); 64 KB size cap enforced.
+  Toast on successful save, inline error on overflow. Staleness indicator
+  (amber pill) shows count of changes since last update. MEMBER+ write,
+  VIEWER+ read (via `getEffectiveProjectRole`).
+- **Unit tests** — agent-context.service expanded with 46 new tests.
+
+**GitLab integration v1 — two-way linking:**
+- **Webhook receiver** — new `apps/api/src/gitlab/` module processes inbound
+  GitLab events (push, merge_request). Commit messages, MR titles, and branch
+  names referencing an issue key (e.g. `NL-123`) trigger upsert of
+  `IssueGitlabLink` rows (parallel to GitHub integration).
+- **Integration configuration** — new `GET/PUT /projects/:id/gitlab-integration`
+  endpoints (project ADMIN gated); per-project GitLab URL (self-hosted support)
+  + repo fullname + webhook secret + AES-256-GCM encrypted PAT. Cascade delete
+  when project deleted.
+- **Schema** — new `GitlabIntegration` and `IssueGitlabLink` models (mirrors
+  GitHub pattern).
+- **Tests** — 15+ unit tests covering webhook HMAC verification, issue key
+  extraction, link upsert logic.
+
+**NLQL name-resolution fix (MCP-QA finding):**
+- Fixed person/sprint name resolution in NLQL queries to properly resolve
+  names containing spaces (e.g. "John Smith", "Sprint One") and handle edge
+  cases in the autocomplete evaluator.
+
+**Epic swimlanes fix:**
+- **Board query** — `issueInclude` now includes `parent` (IssueRef-shaped),
+  so the web's epic-lane grouping (keyed on `issue.parent?.type === EPIC`)
+  correctly groups cards by epic instead of putting all cards in "No epic".
+  Regression test added to board.service.spec.ts.
+
+**Agent Experience Round 2 — data integrity, idempotency, activity, comment gating:**
+- **Cross-project write validation** — `create_issue` now shares `update()`
+  and `move()`'s `assertSameProject` guard for statusId/sprintId/parentId.
+  Confirmed live P1: a foreign statusId would 201 and render on no column.
+  Fixed secondary gap: `bulkUpdate`'s `addLabelIds` lacked project scope check
+  (new `assertLabelsInProject` guard).
+- **Idempotency keys** — new `IdempotencyRecord` table (~24h window TTL,
+  opportunistic cleanup); optional `idempotencyKey` on `create_issue` /
+  `add_comment` — a retry replays the original response, zero duplicate.
+- **Bulk parenting & transactions** — `parentId` now bulk-updatable (cross-project
+  guarded); `atomic: true` validates whole batch before writing inside a shared
+  transaction (all-or-nothing). `update()` refactored into `prepareUpdate` /
+  `writeIssueUpdate` / `finishUpdate` phases to support this.
+- **Dry-run mode** — `dryRun: true` (with or without `atomic`) returns per-item
+  verdicts; zero writes.
+- **Comment edit/delete gating** — REST gating upgraded from author-only to
+  author-or-effective-project-ADMIN (mirrors work logs). New MCP
+  `update_comment` / `delete_comment` tools.
+- **Project activity feed** — new `GET /projects/:id/activity` (VIEWER+)
+  cursor-paginated k-way merge of ActivityLog + Comment + WorkLog entries
+  ordered chronologically. + MCP `list_project_activity` tool.
+- **expectedProjectKey hardening** — upgraded to MUST-pass language everywhere
+  (tool description, server instructions, project-context skill) + optional
+  `NEXT_LANE_MCP_STRICT_PROJECT_KEY` env var for hard enforcement.
+- **Folded-in features** — agent-context staleness now counts comments +
+  worklogs; `list_users` gained server-side `q` filter; new `create_project` /
+  `create_workspace` MCP tools.
+- **Test coverage** — 44 new API unit tests (1683→1727), 13 new MCP tests
+  (84→97), 1 new tenant-isolation row (103/103 BLOCKED). All live-verified
+  against running API (cross-project statusId 400s, idempotent replay same id,
+  atomic bulk parented 30 tickets in one call, dryRun wrote nothing).
+- **MCP surface** — 97 total tools (41 read, 56 write).
+
 ### Added — 2026-07-02
 
 **In-app SSO/OIDC admin configuration:**

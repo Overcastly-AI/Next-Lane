@@ -7,7 +7,7 @@
 Next Lane is an **open source project tracker**: boards, sprints, backlog, custom
 workflows, and reporting, running entirely on **your** hardware with **your** data,
 under an MIT license. It's also built for a world where AI coding agents write half
-your code — a first-party **MCP server** with 92 tools lets Claude (or any MCP
+your code — a first-party **MCP server** with 97 tools lets Claude (or any MCP
 client) **read and write your tracker directly**, not just chat about it.
 
 **⭐ If Next Lane is useful to you (or your agent), starring the repo helps other
@@ -17,8 +17,8 @@ teams find it — that's the only ask.**
 [![Documentation](https://img.shields.io/badge/docs-overcastly--ai.github.io-0B7285.svg?logo=readthedocs&logoColor=white)](https://overcastly-ai.github.io/Next-Lane/)
 [![CI](https://github.com/Overcastly-AI/Next-Lane/actions/workflows/ci.yml/badge.svg)](https://github.com/Overcastly-AI/Next-Lane/actions/workflows/ci.yml)
 [![E2E](https://github.com/Overcastly-AI/Next-Lane/actions/workflows/e2e.yml/badge.svg)](https://github.com/Overcastly-AI/Next-Lane/actions/workflows/e2e.yml)
-[![MCP server](https://img.shields.io/badge/MCP-92%20tools-8A2BE2.svg)](./apps/mcp/README.md)
-[![Unit tests](https://img.shields.io/badge/unit%20tests-1665%2B-brightgreen.svg)](./docs/ROADMAP.md)
+[![MCP server](https://img.shields.io/badge/MCP-97%20tools-8A2BE2.svg)](./apps/mcp/README.md)
+[![Unit tests](https://img.shields.io/badge/unit%20tests-1727-brightgreen.svg)](./docs/ROADMAP.md)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6.svg?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Docker](https://img.shields.io/badge/Docker-compose%20up-2496ED.svg?logo=docker&logoColor=white)](#-quickstart)
 [![Self-hosted](https://img.shields.io/badge/self--hosted-your%20data-success.svg)](#why-next-lane)
@@ -162,7 +162,7 @@ for where we're still catching up):
 | **Hosting & data** | Self-hosted via Docker Compose or Kubernetes — your Postgres, your box, no egress | Vendor's cloud only — your data lives on their servers |
 | **License** | MIT — read the source, fork it, extend it | Closed source |
 | **Query language** | **NLQL** — one query language for search, saved filters, automations, *and* dashboards | Separate, non-interchangeable mechanisms for search vs. automation vs. dashboards |
-| **AI / agent access** | **MCP-native**: 92-tool server (read *and* write), server-side NLQL filtering, and **persistent per-project agent memory** that survives across sessions | Bolt-on AI add-ons, usually cloud-only, rate- or seat-limited — no first-party protocol for an agent to read *and* write |
+| **AI / agent access** | **MCP-native**: 97-tool server (read *and* write), server-side NLQL filtering, and **persistent per-project agent memory** that survives across sessions | Bolt-on AI add-ons, usually cloud-only, rate- or seat-limited — no first-party protocol for an agent to read *and* write |
 | **Source-control links** | Two-way GitHub **and** GitLab issue ↔ PR/commit/branch linking, HMAC-verified webhooks | Varies by vendor and pricing tier |
 | **Setup** | `docker compose up -d --build` on hardware you already own | Nothing to run — but nothing you can run yourself, either |
 
@@ -179,7 +179,7 @@ This is the part no incumbent — closed or open — has: an issue tracker built
 a world where AI agents are first-class users, not an API afterthought.
 
 Next Lane ships **`@next-lane/mcp`** — a first-party [Model Context
-Protocol](https://modelcontextprotocol.io) server with **92 tools** (40 read, 52
+Protocol](https://modelcontextprotocol.io) server with **97 tools** (41 read, 56
 write) that let Claude Desktop, Claude Code, or any MCP client **read *and write*
 your workspace**: issues (with server-side **NLQL** `query` evaluation and
 pagination), sprints, comments, worklogs, checklists, labels, components,
@@ -269,7 +269,7 @@ Kubernetes, SSO/OIDC with in-app admin configuration, per-project role overrides
 GitHub and GitLab two-way integration with HMAC-verified webhooks, workspace
 branding, and a 102-endpoint tenant-isolation regression matrix.
 
-**For AI-agent users** — the 92-tool `@next-lane/mcp` server, server-side NLQL
+**For AI-agent users** — the 97-tool `@next-lane/mcp` server, server-side NLQL
 filtering, one-call epic rollups, persistent per-project agent memory, an
 installable Agent Skill, and personal API tokens scoped for agent auth.
 
@@ -286,7 +286,7 @@ The full capability matrix:
 | **Collaboration** | Comments & activity history · realtime updates (Socket.io) · in-app notifications & @mentions · "My Work" + Team Pulse dashboards |
 | **Auth & SSO** | Email/password (JWT) · **SSO/OIDC** with an **in-app admin configuration screen** (`/admin/sso`, secrets encrypted at rest, no redeploy to change) — works with Okta/Auth0/Keycloak/Authentik/Google · personal API tokens (PATs) |
 | **Workflows (SDLC)** | **Configurable workflows** — per-project enforcement **and reusable named workflows assigned per board** · transition graph with **visual node/edge editor** · gates (require assignee/description/field/link/no-open-blockers) · seed from templates (simple / kanban / scrum / bug-triage) |
-| **Agent-native (MCP)** | **MCP server** (`apps/mcp`) — 92 read/write tools (40/52) over PAT auth, server-side NLQL evaluation, `get_epic_overview`, and **persistent per-project agent memory**. See [above](#-agent-native-your-coding-agent-can-run-the-tracker) |
+| **Agent-native (MCP)** | **MCP server** (`apps/mcp`) — 97 read/write tools (41/56) over PAT auth, server-side NLQL evaluation, `get_epic_overview`, and **persistent per-project agent memory**. See [above](#-agent-native-your-coding-agent-can-run-the-tracker) |
 | **Estimation & tracking** | Story points · **original estimate + work logs** (time spent vs estimate rollup) · **checklists** (sub-items + progress) · **WIP limits** per column |
 | **Automation** | **Glass Box engine** — trigger → condition → action rules · NLQL-based conditions · unlimited runs · full **run log** (audit trail per execution) |
 | **Rituals** | **Planning poker** (real-time estimation via Socket.io) · **async standups** (per-member responses + team digest) |
@@ -297,7 +297,7 @@ The full capability matrix:
 | **Workspace** | **Branding** — custom name, accent color, logo · workspace audit log |
 | **Admin & security** | Roles & permissions (Admin / Member / Viewer) · **per-project role overrides** (elevate or restrict a member on one project) · password reset over SMTP · HMAC-signed outbound webhooks (with SSRF guard) · 102-endpoint tenant-isolation regression matrix |
 | **Integrations** | **GitHub** and **GitLab** two-way issue ↔ PR/MR/commit/branch linking, HMAC/token-verified webhooks, self-hosted GitLab base URL support |
-| **Ops & deploy** | One-command Docker Compose · **Helm chart + Kustomize** for Kubernetes · GHCR multi-arch image builds · structured JSON logs · health/readiness probes · CI (typecheck + build + **1665+ unit tests**) + full Playwright **e2e suite, desktop and mobile** |
+| **Ops & deploy** | One-command Docker Compose · **Helm chart + Kustomize** for Kubernetes · GHCR multi-arch image builds · structured JSON logs · health/readiness probes · CI (typecheck + build + **1727 unit tests**) + full Playwright **e2e suite, desktop and mobile** |
 
 ## 🚀 Quickstart
 
@@ -356,7 +356,7 @@ Other useful scripts: `pnpm build`, `pnpm lint`, `pnpm test`, `pnpm format`.
 | Frontend | React + Vite + TypeScript |
 | UI | Tailwind CSS + shadcn/ui · TanStack Query · dnd-kit |
 | Auth | JWT access token · SSO/OIDC · personal API tokens (PATs) |
-| Agents | MCP server (`apps/mcp`, stdio, 92 tools with persistent agent memory) over the same REST API |
+| Agents | MCP server (`apps/mcp`, stdio, 97 tools with persistent agent memory) over the same REST API |
 | Infra | Docker Compose · Helm / Kustomize for Kubernetes |
 
 ```mermaid
@@ -376,9 +376,9 @@ Deeper dives: [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) ·
 ```
 Next-Lane/
 ├── apps/
-│   ├── api/        # NestJS backend (REST + WebSocket, 1665+ unit tests)
+│   ├── api/        # NestJS backend (REST + WebSocket, 1727 unit tests)
 │   ├── web/        # React + Vite frontend
-│   └── mcp/        # MCP server (stdio, 92 tools with persistent agent memory) for AI agents
+│   └── mcp/        # MCP server (stdio, 97 tools with persistent agent memory) for AI agents
 ├── packages/
 │   └── shared/     # Shared TypeScript types / contracts
 ├── skills/
