@@ -103,6 +103,7 @@ docker compose down -v
 ## What's next
 
 - [Self-Hosting](./self-hosting) — production deployments, HTTPS, backups, upgrades
-- [Configuration](./configuration) — SMTP, rate limiting, CORS, custom ports
-- [Features](./features) — full guide to boards, NLQL, automation, and more
+- [Configuration](./configuration) — SMTP, SSO, rate limiting, CORS, custom ports
+- [Features](./features) — full guide to boards, NLQL, workflows, automation, and more
+- [AI Agents & MCP](./agents-mcp) — connect Claude Code or Claude Desktop to your tracker
 - [Contributing](./contributing) — run the dev stack with hot reload

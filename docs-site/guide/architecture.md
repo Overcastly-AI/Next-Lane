@@ -44,7 +44,9 @@ Next Lane is a TypeScript monorepo with three deployable concerns:
 |------|---------|
 | `apps/api` | NestJS backend — REST API, WebSocket gateway, Prisma data access |
 | `apps/web` | React + Vite single-page application |
-| `packages/shared` | Shared TypeScript types, enums, and API contracts |
+| `apps/mcp` | MCP server (`@next-lane/mcp`) — 92 tools for AI agents over stdio ([guide](./agents-mcp)) |
+| `packages/shared` | Shared TypeScript types, enums, NLQL parser/evaluator, API contracts |
+| `skills/project-context` | Distributable Agent Skill for the per-project agent-context workflow |
 | `deploy/helm/next-lane` | Helm chart for Kubernetes |
 | `deploy/kustomize` | Kustomize base + dev/prod overlays |
 | `docs/` | Architecture, vision, roadmap, research |
@@ -59,9 +61,12 @@ Managed with **pnpm workspaces** (pnpm 9.x, Node 22).
 - **NestJS** with the standard module/controller/service/DTO pattern. Each
   domain is a module: `auth`, `users`, `workspaces`, `projects`, `issues`,
   `boards`, `sprints`, `statuses`, `comments`, `labels`, `custom-fields`,
-  `saved-filters`, `automations`, `analytics`, `reports`, `poker`,
-  `standups`, `personal-boards`, `webhooks`, `audit`, `search`,
-  `notifications`, `attachments`, `realtime`, and more.
+  `saved-filters`, `automations`, `workflows`, `dashboards`, `analytics`,
+  `reports`, `roadmap`, `poker`, `standups`, `personal-boards`, `webhooks`,
+  `audit`, `search`, `notifications`, `attachments`, `checklist`,
+  `work-logs`, `components`, `versions`, `issue-templates`, `issue-links`,
+  `github`, `gitlab`, `share-tokens`, `project-memberships`,
+  `agent-context`, `admin-settings`, `realtime`, and more.
 - **Prisma** as the ORM and migration tool. The schema is the single source
   of truth. All DB changes go through `prisma migrate`.
 - **PostgreSQL** for persistence. Full-text search via generated `tsvector`

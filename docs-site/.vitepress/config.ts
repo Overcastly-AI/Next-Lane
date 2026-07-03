@@ -55,6 +55,7 @@ export default defineConfig({
     nav: [
       { text: 'Guide', link: '/guide/quick-start', activeMatch: '/guide/' },
       { text: 'Features', link: '/guide/features' },
+      { text: 'AI Agents & MCP', link: '/guide/agents-mcp' },
       { text: 'Self-Hosting', link: '/guide/self-hosting' },
       { text: 'Architecture', link: '/guide/architecture' },
       {
@@ -81,6 +82,7 @@ export default defineConfig({
         collapsed: false,
         items: [
           { text: 'Features', link: '/guide/features' },
+          { text: 'AI Agents & MCP', link: '/guide/agents-mcp' },
           { text: 'FAQ', link: '/guide/faq' },
           { text: 'Troubleshooting', link: '/guide/troubleshooting' },
         ],

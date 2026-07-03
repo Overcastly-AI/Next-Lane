@@ -193,6 +193,42 @@ and is never returned by any API response after it is saved.
 
 ---
 
+## GitLab integration
+
+Per-project two-way link to a GitLab project — the GitLab counterpart of the
+GitHub integration above. Merge requests, commits, and branches whose
+title/message/name references an issue key (e.g. `NL-123`) show up on that
+issue's "Development" section. Configured per-project from
+**Project Settings → GitLab** (ADMIN only); works with **gitlab.com or any
+self-managed GitLab instance** (set the instance base URL in the form —
+defaults to `https://gitlab.com`).
+
+**Setup (self-hosted):**
+
+1. In Next Lane, open **Project Settings → GitLab** as an ADMIN and enter the
+   GitLab project path, the instance base URL (if self-managed), and a GitLab
+   Personal Access Token. Save.
+2. Copy the generated **Webhook URL** and **Secret Token** shown in the
+   "Webhook setup" panel.
+3. In GitLab: **Project → Settings → Webhooks**. Paste the URL, put the secret
+   in the **Secret token** field, and enable the **Push events** and
+   **Merge request events** triggers.
+4. Push a commit or open an MR whose message/title/branch contains the issue
+   key — the link appears on the issue within seconds.
+
+**Security:** every inbound delivery's `X-Gitlab-Token` header is compared in
+constant time against the per-project secret before any payload is processed;
+mismatched deliveries are rejected and never touch the database. The PAT is
+encrypted at rest (AES-256-GCM) and never returned by any API response after
+it is saved.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `GITLAB_TOKEN_ENCRYPTION_KEY` | derived from `JWT_SECRET` | Key used to encrypt stored GitLab PATs at rest. Optional — set explicitly if you want GitLab token encryption to survive a `JWT_SECRET` rotation. |
+| `GITLAB_WEBHOOK_BASE_URL` | derived from the incoming request | Explicit origin used to build the webhook URL shown in Settings. Recommended in production behind a reverse proxy. |
+
+---
+
 ## File attachments
 
 | Variable | Default | Description |

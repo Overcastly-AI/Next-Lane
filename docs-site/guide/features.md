@@ -1,35 +1,44 @@
 # Features
 
-This page describes the headline features of Next Lane that are live in the
-current build. For the full status of shipped and planned work see
-[`docs/ROADMAP.md`](https://github.com/Overcastly-AI/Next-Lane/blob/main/docs/ROADMAP.md).
+This page is the user manual for everything live in the current build — what
+each feature is, where to find it, and any configuration it needs. For phase
+status see
+[`docs/ROADMAP.md`](https://github.com/Overcastly-AI/Next-Lane/blob/main/docs/ROADMAP.md);
+for the AI-agent surface see [AI Agents & MCP](./agents-mcp).
 
 ---
 
 ## Boards
 
-Next Lane supports multiple boards per project. Each board is independently
-configured.
+Multiple boards per project, each independently configured.
 
-**Board types:**
-
-- **Kanban** — continuous flow; cards move between columns as work progresses.
-- **Scrum** — sprint-based; cards are planned into a sprint and the board shows
-  the active sprint.
-
-**Key capabilities:**
-
-- Drag and drop cards between columns with fractional-index ordering (no full
-  column renumber on every move).
-- Custom statuses and columns per project — add, rename, and reorder them in
-  Project Settings.
-- Board switcher (multiple boards per project; switch with the top-left picker).
-- **Live presence** — avatars show who else is currently viewing the board,
-  updated in real time via Socket.io.
-- **Conditional card colors** — define color rules (driven by NLQL conditions)
-  that highlight cards matching criteria. Example: highlight all blocking issues
-  in red.
-- Pin a board to a **saved filter** so it always shows a filtered view.
+- **Board types:** **Kanban** (continuous flow) and **Scrum** (scopes to the
+  active sprint). Switch boards with the top-left board picker.
+- **Drag and drop** with fractional-index ordering — moving a card updates one
+  row, never renumbers the column.
+- **WIP limits** — set an optional per-column limit when creating or editing a
+  column; the column header shows a warning chip when the card count exceeds
+  it.
+- **Swimlanes (group by)** — group the board into lanes by **Assignee,
+  Priority, Issue type, Epic, Component, Sprint, Labels, or any custom SELECT
+  field** via the toolbar's *Group by* menu. Labels grouping shows an issue in
+  every one of its label lanes; SELECT-field grouping renders one lane per
+  option plus a "None" lane. Each board can save a **default grouping**, and
+  the `?group=` URL parameter overrides it — so grouped views are shareable
+  links.
+- **Per-board default filter** — pin an NLQL filter to a board (Board settings
+  → Default filter); it auto-applies every time the board opens. The active
+  filter shows as a chip in the toolbar.
+- **Conditional card colors** — rule-based highlighting driven by NLQL
+  conditions (Board settings → Colors). Example: paint every card matching
+  `priority = HIGHEST AND status != Done` red.
+- **Query bar** — filter the board live with an NLQL expression (with
+  autocomplete and inline validation); filter state persists in the URL.
+- **Live presence** — avatars show who else is viewing the board right now
+  (Socket.io, real time).
+- **Card chips** — selected custom-field values can be pinned as chips
+  directly on cards, and cards with unresolved blocking links show a
+  **Blocked** badge.
 
 ![Board view](/screenshots/board-desktop.png)
 
@@ -37,224 +46,324 @@ configured.
 
 ## Issues
 
-Issues are the core unit of work. Every issue belongs to a project and has:
+Issues are the core unit of work. Every issue has:
 
-- **Type:** Task, Bug, Story, Epic, Sub-task
-- **Title, description** (Markdown rendered)
-- **Status** (maps to a project column), **priority**, **assignee**, **reporter**
-- **Labels**, **story points**, **start date**, **due date**, **component**, **version/release**
-- **Custom fields** — project-defined typed fields (Text, Number, Select, …);
-  values are stored per-issue in JSONB
-- **Comments** and an **activity log** (every field change is recorded)
-- **File attachments**
-- **Issue links** — directed relationships: BLOCKS, RELATES_TO, DUPLICATES,
-  IS_BLOCKED_BY, and more
-- **Watchers** — watch an issue to receive in-app notifications when it changes
-- **Parent/child** — epics contain stories; stories contain sub-tasks
+- **Type:** Task, Bug, Story, Epic, Sub-task — with **parent/child hierarchy**
+  (epics contain stories, stories contain sub-tasks).
+- **Title and description** — Markdown rendered, including **Mermaid
+  diagrams** in descriptions and comments (click to zoom in a lightbox).
+- **Status, priority, assignee, reporter, labels, story points, start date,
+  due date, component, fix versions.**
+- **Checklists** — lightweight to-do items inside an issue with a progress
+  bar.
+- **Time tracking** — set an original estimate and log work (minutes, note,
+  date); the drawer shows logged-vs-estimate progress.
+- **Custom fields** — project-defined typed fields: Text, Number, Select,
+  Multi-select, Date, Checkbox, URL (Project Settings → Custom fields).
+- **Comments** with **@mentions** (autocomplete; mentioned users are
+  notified), plus a full **activity log** of every field change.
+- **File attachments** — drag-and-drop upload (10 MB default cap,
+  configurable via `MAX_FILE_BYTES`).
+- **Issue links** — directed relationships: BLOCKS, BLOCKED_BY, RELATES_TO,
+  DUPLICATES, DUPLICATED_BY, CLONES.
+- **Watchers** — watch any issue to get notified on changes.
 
 The issue detail drawer opens in-panel without leaving the board.
 
 ![Issue detail drawer](/screenshots/drawer-desktop.png)
 
+### Issue templates
+
+Define reusable templates per project (Project Settings → Templates) with a
+default issue type, field values, and description boilerplate, then create
+issues from a template in one step.
+
+### Components
+
+Project-scoped groupings (e.g. "API", "UI", "Docs") with an optional
+**default assignee** (Project Settings → Components). Filterable in NLQL via
+`component`.
+
+### Versions / Releases
+
+Track releases per project with UNRELEASED / RELEASED / ARCHIVED states
+(Project Settings → Versions). Issues carry a many-to-many **fix versions**
+relationship.
+
 ---
 
 ## NLQL query language
 
-NLQL (Next Lane Query Language) is a structured filter language for issues.
-It powers saved filters, board filtering, and the automation engine's conditions.
+NLQL (Next Lane Query Language) is the structured filter language used by the
+board query bar, saved filters, dashboards, automation conditions, the CSV
+export, and the MCP server.
 
 **Example queries:**
 
 ```
 assignee = me()
-priority in (High, Highest) AND status != Done
-label = "backend" AND sprint = active()
-due < 7d AND assignee = me()
-type = Bug AND created > 14d
+priority IN (HIGH, HIGHEST) AND status != Done
+labels IN (frontend, urgent) AND sprint = "Sprint 12"
+due < today() AND assignee IS NOT EMPTY
+type = BUG AND created > "2026-06-01" ORDER BY priority DESC
+title ~ "checkout" OR text ~ "payment"
 ```
 
-**Operators:** `=`, `!=`, `in`, `not in`, `<`, `>`, `<=`, `>=`
+- **Operators:** `=`, `!=`, `<`, `>`, `<=`, `>=`, `~` (contains), `!~`,
+  `IN (...)`, `NOT IN (...)`, `IS EMPTY`, `IS NOT EMPTY`
+- **Logic:** `AND`, `OR`, `NOT`, parentheses
+- **Sorting:** optional trailing `ORDER BY <field> [ASC|DESC]`
+- **Functions:** `me()` (current user), `now()`, `today()`, `startOfDay()`,
+  `startOfWeek()`
+- **Fields** (with aliases): `status`, `statusCategory` (`category`),
+  `assignee`, `reporter`, `type`, `priority`, `label`/`labels`, `sprint` (by
+  name or id), `start`/`startDate`, `due`/`dueDate`, `created`, `updated`,
+  `title`/`summary`, `text` (title + description), `points`/`storyPoints`,
+  `key`, `parent`, `component`, and any custom field by its quoted name
+  (e.g. `"Severity" = high`).
 
-**Special functions:** `me()` (current user), `active()` (active sprint),
-`today()`, relative durations (`7d`, `30d`)
-
-**Fields:** `assignee`, `reporter`, `status`, `priority`, `type`, `label`,
-`sprint`, `component`, `version`, `start`, `due`, `created`, `updated`,
-`storyPoints`, `parent`, and custom field keys.
+**Autocomplete** suggests fields, operators, values, and functions as you
+type — in the board query bar, saved-filter editor, and automation condition
+editor alike. Invalid queries report the exact parse position.
 
 ### Saved filters
 
-Save any NLQL query with a name and optionally share it across a project. Saved
-filters appear in the filter picker and can be pinned to boards.
+Save any NLQL query with a name (star icon next to the query bar). Filters are
+personal by default and can be **shared to the project**; shared filters
+appear in everyone's filter picker and can be pinned to boards as the default
+filter.
+
+---
+
+## Workflows
+
+Define how issues are allowed to move through statuses — per project, and even
+per board (Project Settings → Workflows).
+
+- **Named workflows** — a project can have several workflows; assign a
+  different one to each board. An *enforced* workflow rejects moves that don't
+  follow a defined transition.
+- **Visual graph builder** — design the workflow on a drag-and-drop graph:
+  statuses as nodes, transitions as edges.
+- **Templates** — seed a workflow from `simple`, `kanban`, `scrum`, or
+  `bug-triage` instead of starting blank.
+- **Transition gates** — require conditions before a move is allowed:
+  assignee set, description present, a specific (custom) field filled, a link
+  of a given type, or **no open blockers**.
+- Enforcement is consistent everywhere: board drag-and-drop, the drawer's
+  status dropdown, triage, bulk edit, and the MCP `move_issue` tool all pass
+  through the same check.
 
 ---
 
 ## Automation engine (Glass Box)
 
-The automation engine lets you define **trigger → condition → action** rules
-that run automatically when events occur.
+**Trigger → condition → action** rules per project (`/projects/:id/automations`).
 
-**Triggers:**
+- **Triggers:** issue created, issue updated, issue changes status, comment
+  added.
+- **Condition** (optional): any NLQL expression, e.g.
+  `priority IN (HIGH, HIGHEST) AND labels = "customer-reported"`.
+- **Actions:** assign to, set priority, move to status, add label, add
+  comment, set custom field.
+- **Glass Box run log:** every execution is recorded — the trigger event,
+  whether the condition passed (SUCCESS / SKIPPED / FAILED), and what each
+  action did. Nothing runs silently.
 
-- Issue created
-- Issue status changed
-- Issue assigned
-- Issue priority changed
-- Comment added
-
-**Conditions** (optional, NLQL-based):
-
-```
-priority in (High, Highest) AND label = "customer-reported"
-```
-
-**Actions:**
-
-- Change status
-- Change assignee
-- Change priority
-- Add or remove a label
-- Post a comment
-
-**Glass Box run log:** every rule execution is recorded — the trigger event,
-which conditions were evaluated (and whether they passed), and what actions were
-taken. The log is viewable in the Automations tab. Nothing runs silently.
-
-Automation runs are unlimited because they execute on your own hardware.
+Automation runs are unlimited — they execute on your own hardware.
 
 ---
 
-## Planning poker
+## Dashboards
 
-Real-time estimation sessions for Scrum teams.
+Configurable per-project dashboards (`/projects/:id/dashboards`) where **every
+gadget is an NLQL query plus a visualization**:
 
-1. A facilitator starts a poker session from the Sprint or Backlog view.
-2. Participants join and vote privately on story-point estimates.
-3. The facilitator reveals all votes simultaneously.
-4. The team discusses and the facilitator records the agreed estimate back to
-   the issue.
+- **STAT** — a single number (e.g. `status != Done AND priority = HIGHEST`).
+- **TABLE** — matching issues with selectable columns and row limits.
+- **BREAKDOWN** — counts grouped by a field.
+- **BURNDOWN** — sprint burndown.
 
-Votes sync in real time via Socket.io — no page refresh needed.
-
----
-
-## Async standups
-
-Lightweight asynchronous standups that work across time zones.
-
-- Each team member answers: what did you do? what are you doing next? any
-  blockers? — submitted via the Standups tab in any project.
-- A date picker lets you navigate to any past date to review previous entries.
-- Blockers can be linked to real issues (resolved to issue key + title).
-- The "Prefill from my activity" button pre-populates the form from yesterday's
-  ActivityLog and today's in-progress assignments.
-- The team digest shows all members' entries for the selected date with blocker
-  emphasis.
+Gadgets live on a grid, can be reordered by drag-and-drop, refresh in real
+time when project issues change, and report per-gadget errors on a bad query
+instead of failing the whole dashboard.
 
 ---
 
-## Personal boards
+## Backlog, triage, and bulk edit
 
-Every user has a private personal board — a Kanban for todos, personal tasks,
-and scratch work that is separate from project boards. Cards are visible only to
-you. You can promote a personal card to a real project issue (Task) with one
-click via the "Promote to issue" action.
+- **Backlog view** (`/projects/:id/backlog`) — plan sprints, rank issues, and
+  filter with NLQL.
+- **Triage view** (`/projects/:id/triage`) — keyboard-first inbox processing:
+  `j`/`k` to move, `s` status, `p` priority, `a` assign, `l` label.
+- **Bulk edit** — multi-select issues with checkboxes in Backlog or Triage,
+  then update status, assignee, priority, sprint, type, or labels for all of
+  them from the sticky action bar.
+
+![Backlog view](/screenshots/backlog-desktop.png)
+
+---
+
+## Sprints and agile rituals
+
+- **Sprints** — create, start, and complete sprints with goals and date
+  ranges; one active sprint per project, enforced transactionally.
+- **Planning poker** (`/projects/:id/poker`) — real-time estimation sessions:
+  participants vote privately from a Fibonacci deck
+  (0–89, `?`, ☕), the facilitator reveals all votes at once, and the agreed
+  estimate is written back to the issue. Votes sync live via Socket.io.
+- **Async standups** (`/projects/:id/standups`) — yesterday / today / blockers
+  per member, per day. Blockers link to real issues; "Prefill from my
+  activity" seeds the form from your recent activity log and in-progress
+  assignments; the team digest shows everyone's entry for any date.
 
 ---
 
 ## Reports and analytics
 
-**Per-project reports:**
-
-- **Burndown chart** — remaining story points vs. time for the active sprint.
-- **Velocity chart** — story points completed per sprint over time.
-- **Cumulative flow diagram (CFD)** — issue counts per status category over time.
-- **Timeline / roadmap view** — Gantt-style view of issues with due dates.
-
-**Personal analytics:**
-
-- Issues completed over time, story points delivered, cycle time.
-- Accessible at `/me/analytics`.
-
-**Team analytics:**
-
-- Aggregate throughput and velocity for a team.
-- Team pulse — recent activity across all team members.
+- **Per-project reports** (`/projects/:id/reports`): **burndown**,
+  **velocity**, and **cumulative flow diagram** (14/30/90-day windows).
+- **Roadmap / timeline** (`/projects/:id/roadmap`) — Gantt-style epic
+  timeline; an epic's own start/due dates take priority, falling back to its
+  children's sprint dates.
+- **Project analytics** (`/projects/:id/analytics`) — flow, cycle-time
+  distribution, and per-assignee workload.
+- **Personal analytics** (`/me/analytics`) — your own throughput, cycle time,
+  and breakdowns.
 
 ---
 
-## Search
+## Search and navigation
 
-- **Full-text search** powered by Postgres `tsvector` columns with GIN indexes.
-  Searches issue titles, descriptions, and comments.
-- **Cross-project search** — search across all projects in a workspace.
-- **Command palette** (Cmd/Ctrl + K) for fast navigation to any issue, project,
-  or board.
-- Multi-field filtering (assignee, status, priority, labels, sprint, custom
-  fields) on board and backlog views.
-
----
-
-## Bulk edit
-
-Select multiple issues in the Backlog or Triage view with checkboxes, then use
-the sticky action bar to bulk-update:
-
-- Assignee
-- Status
-- Priority
-- Labels
-- Sprint
+- **Full-text search** across issue titles, descriptions, and comments
+  (Postgres `tsvector` + GIN indexes), cross-project.
+- **Command palette** — Cmd/Ctrl + K to jump to any issue, project, or board.
+- **Persistent sidebar** — workspace switcher, projects with per-project
+  views (Board / Backlog / Roadmap / Reports), and your personal section
+  (My Work / My Board / Insights / Notifications). Collapsible to an icon
+  rail; a drawer on mobile.
+- **My Work** (`/my-work`) — everything assigned to you across projects.
+- **Quick links** — personal shortcut links with colors and collapsible
+  groups.
 
 ---
 
-## CSV export
+## Import and export
 
-Download all issues in a project as a CSV file from the board or backlog view.
-The export includes all standard fields and custom field values.
-
----
-
-## Workspace branding
-
-Admins can customize the workspace appearance:
-
-- **Name** — displayed in the header and browser tab.
-- **Accent color** — applied as a CSS variable token across the entire UI at
-  runtime (no rebuild required).
-- **Logo** — uploaded and served directly by the API; displayed in the app header.
-
-Branding is per-workspace and applies to all members.
+- **CSV export** — download a project's issues (optionally narrowed by an
+  NLQL query) from the board or backlog. Columns cover every standard field —
+  key, title, type, status, priority, assignee, reporter, story points,
+  sprint, labels, start/due dates, description, component, fix versions,
+  parent, original estimate, created/updated — plus one column per custom
+  field.
+- **CSV import** — import issues from the board or backlog (*Import CSV*)
+  with a **dry-run preview** before anything is written.
+- **Tracker importers** — the importer understands **Jira**, **GitHub
+  issues**, and **Linear** CSV exports directly (pick the source in the import
+  dialog), mapping their column conventions onto Next Lane fields.
 
 ---
 
-## Notifications and mentions
+## Notifications
 
-- In-app notifications for: issue assignments, @mentions in comments, watcher
-  events (status change, new comment).
-- @mention any workspace member in a comment — they receive a notification.
-- Notification badge in the app header; click to see the full list.
-
----
-
-## Webhooks
-
-Outbound webhooks deliver issue events to external systems (CI, chat, custom
-integrations).
-
-- HMAC-signed payloads (verify with the shared secret).
-- SSRF guard enabled by default — webhooks cannot reach private/loopback IP
-  ranges unless `WEBHOOK_ALLOW_PRIVATE=true` is explicitly set.
-- Durable delivery via BullMQ (retries with backoff) when Redis is configured.
+- **In-app notifications** for assignments, @mentions, and watched-issue
+  events (status changes, new comments), with an unread badge in the header
+  and a full **notifications center** at `/notifications`.
+- **Email delivery** — when [SMTP is configured](./configuration#smtp--email),
+  notifications are also emailed. Each user controls this with the "Email me
+  about my issues" toggle in Profile Settings.
 
 ---
 
-## Auth and roles
+## Personal boards
 
-- Email/password authentication with JWT access tokens.
-- **Personal API tokens (PATs)** — generate long-lived tokens for scripting
-  and agent access. Manage them in Profile Settings.
+Every user has a private Kanban at `/my-board` — columns, card colors, due
+dates, and notes, visible only to you. **Promote to issue** converts a
+personal card into a real project issue in one click; the card keeps a badge
+linking to the new issue key.
+
+---
+
+## Share links (public read-only boards)
+
+Project admins can mint a **share link** (Project Settings → Share) that gives
+anyone with the URL a read-only view of the project board at
+`/share/<token>` — no login required. Tokens are revocable at any time.
+
+---
+
+## Dark mode and workspace branding
+
+- **Dark / light / system theme** — toggle in the sidebar or user menu;
+  preference is remembered per browser and applied before first paint (no
+  flash).
+- **Workspace branding** (`/workspaces/:id/branding`, admin) — custom
+  workspace name, accent color (applied at runtime as CSS tokens, dark-mode
+  aware), and logo upload.
+
+---
+
+## Workspace administration
+
 - **Roles per workspace:** Admin, Member, Viewer.
-- Password reset via SMTP email (link logged to the API console in dev mode
-  when SMTP is not configured).
-- **Workspace audit log** — admin-viewable log of member actions.
+- **Per-project role overrides** (Project Settings → Members) — elevate a
+  workspace member to project ADMIN or restrict them to project VIEWER for
+  one project only. Workspace admins always retain access, and the last-admin
+  invariant prevents lockouts.
+- **Member management** (`/workspaces/:id/members`) — invite, remove, and
+  change roles.
+- **Audit log** (`/workspaces/:id/audit-log`, admin) — a record of member
+  actions across the workspace.
+- **Multiple workspaces** per instance, each with its own projects, members,
+  and settings.
+
+---
+
+## Authentication and API access
+
+- **Email/password** login with JWT sessions; password reset via SMTP email
+  (in dev, the reset link is printed to the API log instead).
+- **SSO / OIDC** — a "Continue with …" button backed by any
+  standards-compliant OIDC provider (Okta, Auth0, Keycloak, Authentik, Google
+  Workspace, …) with PKCE, CSRF protection, and just-in-time user
+  provisioning. Configure via
+  [environment variables](./configuration#sso--oidc-login-phase-1--single-generic-provider)
+  or in-app at **`/admin/sso`** (instance-admin only; env vars take
+  precedence).
+- **Personal API tokens (PATs)** — long-lived `nlp_...` tokens for scripts and
+  agents (Profile Settings → API Tokens), optionally restricted to scopes
+  (`issues:read`, `projects:write`, `gitlab:read`, …). Used by the
+  [MCP server](./agents-mcp) and the REST API alike.
+- **REST API** — the full NestJS API is documented via Swagger at
+  `http://localhost:4000/api`.
+
+---
+
+## Integrations
+
+### GitHub
+
+Per-project two-way link (Project Settings → GitHub, admin): PRs, commits, and
+branches that mention an issue key (e.g. `NL-123`) appear in the issue's
+**Development** section via an HMAC-verified webhook. Setup steps and optional
+env vars in [Configuration](./configuration#github-integration-phase-9--developer-graph-v1).
+
+### GitLab
+
+The same two-way link for GitLab (Project Settings → GitLab, admin) —
+gitlab.com **or self-managed** (set the instance base URL). Merge requests,
+commits, and branches referencing an issue key show on the issue; inbound
+webhooks are verified via GitLab's Secret Token header. See
+[Configuration](./configuration#gitlab-integration).
+
+### Webhooks
+
+Outbound webhooks deliver issue events to any system: HMAC-signed payloads,
+SSRF guard on by default (`WEBHOOK_ALLOW_PRIVATE` opt-out), durable BullMQ
+delivery with retries when Redis is configured.
+
+### AI agents (MCP)
+
+The flagship integration — 92 tools over the Model Context Protocol, with
+per-project agent memory. See the dedicated
+[AI Agents & MCP](./agents-mcp) chapter.

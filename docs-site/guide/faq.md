@@ -138,7 +138,20 @@ billing or quota.
 
 Yes. The NestJS REST API is documented at `http://localhost:4000/api` (Swagger
 UI). You can also generate long-lived **Personal API Tokens** (PATs) in Profile
-Settings for programmatic access.
+Settings for programmatic access, optionally restricted to scopes.
+
+**Can AI agents use Next Lane?**
+
+Yes — this is a flagship capability. The official MCP server
+(`@next-lane/mcp`, 92 tools) lets Claude Code, Claude Desktop, and any MCP
+host read and write issues, boards, workflows, dashboards, and more, with
+persistent per-project agent memory. See [AI Agents & MCP](./agents-mcp).
+
+**Can I import issues from Jira, GitHub, or Linear?**
+
+Yes. Use *Import CSV* on the board or backlog view — the importer understands
+Jira, GitHub issues, and Linear CSV exports directly (plus a generic CSV
+format) and shows a dry-run preview before writing anything.
 
 **Does Next Lane support Markdown in issue descriptions?**
 

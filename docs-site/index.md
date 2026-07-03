@@ -44,8 +44,9 @@ features:
   - icon: "🤖"
     title: AI-native and agent-native
     details: >
-      Built for the agent era. MCP-native (roadmap) so AI coding agents can read
-      and write issues directly from the IDE. Dogfooded by a team of AI agents
+      Built for the agent era. MCP-native today — 92 tools let AI coding agents
+      read and write issues, workflows, and dashboards directly from the IDE,
+      with persistent per-project agent memory. Dogfooded by a team of AI agents
       that build this very product.
 ---
 
@@ -71,22 +72,28 @@ Log in: `demo@nextlane.dev` / `nextlane`
 
 | Feature | Status |
 |---------|--------|
-| Kanban & Scrum boards with drag-and-drop | Live |
-| NLQL structured query language | Live |
+| Kanban & Scrum boards — drag-and-drop, swimlanes, WIP limits, conditional card colors | Live |
+| NLQL structured query language — query bar, saved & shared filters, autocomplete | Live |
+| Configurable workflows — visual graph builder, transition gates, per-board assignment | Live |
 | Automation engine with Glass Box run log | Live |
-| Real-time collaboration (Socket.io) | Live |
-| Planning poker | Live |
-| Async standups | Live |
-| Reports: burndown, velocity, CFD, timeline | Live |
+| Dashboards — NLQL-powered STAT / TABLE / BREAKDOWN / BURNDOWN gadgets | Live |
+| Checklists, time tracking, components, versions/releases, issue templates | Live |
+| Real-time collaboration (Socket.io) + live presence | Live |
+| Planning poker & async standups | Live |
+| Reports: burndown, velocity, CFD, roadmap timeline + personal/team analytics | Live |
 | Full-text search + command palette | Live |
-| Webhooks (HMAC-signed, BullMQ-queued) | Live |
-| Personal boards | Live |
-| Bulk edit, CSV export | Live |
-| Workspace branding (color, logo) | Live |
-| MCP agent integration | Roadmap |
+| Bulk edit, CSV import/export, Jira / GitHub / Linear importers | Live |
+| Notifications center + email delivery | Live |
+| GitHub & GitLab integrations (two-way issue ↔ PR/MR links) | Live |
+| Webhooks (HMAC-signed, BullMQ-queued) + public REST API with PATs | Live |
+| SSO/OIDC login (env or in-app admin config) | Live |
+| Per-project role overrides, workspace audit log, share links | Live |
+| Personal boards, dark mode, workspace branding | Live |
+| **MCP agent integration — 92 tools + per-project agent memory** | **Live** |
 | Private AI inference | Roadmap |
 
-See the full [Features](./guide/features) guide for details.
+See the full [Features](./guide/features) guide and the
+[AI Agents & MCP](./guide/agents-mcp) chapter for details.
 
 ---
 
