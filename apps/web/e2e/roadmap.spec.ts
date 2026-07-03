@@ -128,4 +128,58 @@ test.describe('Roadmap', () => {
       { timeout: 15_000 },
     );
   });
+
+  test('epic bar uses the epic\'s own startDate/dueDate range in preference to child sprint dates', async ({
+    page,
+    request,
+  }) => {
+    const { token, project } = await setupIsolatedProject(page, request, {
+      label: 'roadmap-owndates',
+      projectName: 'Roadmap Own Dates QA',
+    });
+
+    const sprintId = await createSprint(request, token, project.id);
+
+    // The epic's OWN dates are far outside the sprint's window — if the
+    // roadmap correctly prioritizes them, the derived range must match the
+    // epic's dates, not the sprint's (2026-02-02 → 2026-02-16).
+    const epic = await createIssue(request, token, {
+      projectId: project.id,
+      type: 'EPIC',
+      title: 'Self-planned epic',
+      startDate: '2026-09-01T00:00:00.000Z',
+      dueDate: '2026-09-30T00:00:00.000Z',
+    });
+    await createIssue(request, token, {
+      projectId: project.id,
+      title: 'Child in sprint',
+      parentId: epic.id,
+      sprintId,
+    });
+
+    // Verify the API-level derivation directly (the authoritative source the
+    // timeline component renders from — see RoadmapTimeline.tsx).
+    const roadmapRes = await request.get(
+      `${API_URL}/api/projects/${project.id}/roadmap`,
+      { headers: auth(token) },
+    );
+    expect(roadmapRes.ok(), `get roadmap failed: ${roadmapRes.status()}`).toBeTruthy();
+    const roadmap = (await roadmapRes.json()) as {
+      epics: { id: string; start: string | null; end: string | null; fromOwnDates: boolean }[];
+    };
+    const epicEntry = roadmap.epics.find((e) => e.id === epic.id);
+    expect(epicEntry?.fromOwnDates).toBe(true);
+    expect(epicEntry?.start).toBe('2026-09-01T00:00:00.000Z');
+    expect(epicEntry?.end).toBe('2026-09-30T00:00:00.000Z');
+
+    // And confirm the bar actually renders on the timeline for this epic.
+    await page.goto(`/projects/${project.id}/board`);
+    await page.getByRole('button', { name: /^more/i }).click();
+    await page.getByRole('menuitem', { name: 'Roadmap' }).click();
+    await expect(page).toHaveURL(/\/roadmap$/, { timeout: 15_000 });
+
+    const epicBar = page.getByTestId('roadmap-epic-bar').first();
+    await expect(epicBar).toBeVisible({ timeout: 15_000 });
+    await expect(epicBar).toContainText('Self-planned epic');
+  });
 });

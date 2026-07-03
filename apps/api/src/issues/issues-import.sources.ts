@@ -67,7 +67,7 @@ export function normaliseGenericRow(row: Record<string, string>): NormalisedRow 
 //   Summary, Issue key, Issue id, Parent id, Issue Type, Status, Priority,
 //   Resolution, Assignee, Reporter, Creator, Created, Updated, Last Viewed,
 //   Resolved, Story Points, Story point estimate, Description, Labels,
-//   Sprint, Due Date, Custom fields…
+//   Sprint, Start Date, Due Date, Custom fields…
 //
 // Duplicate column note:
 //   Jira can export the "Labels" column multiple times (once per label in older
@@ -88,6 +88,7 @@ export const JIRA_HEADER_ALIASES: Record<string, string> = {
   labels: 'labels',
   'story points': 'story points',
   'story point estimate': 'story points',
+  'start date': 'start date',
   'due date': 'due date',
   // Explicitly map columns that must be dropped / ignored:
   'issue key': 'key',

@@ -62,6 +62,7 @@ function makeIssueDto(overrides: { id?: string; title?: string } = {}) {
     storyPoints: null,
     parentId: null,
     sprintId: null,
+    startDate: null,
     dueDate: null,
     rank: 'a0',
     originalEstimateMinutes: null,
@@ -785,6 +786,124 @@ describe('IssuesImportService.importCsv — due date', () => {
     expect(createFn).toHaveBeenCalledWith(
       USER_ID,
       expect.objectContaining({ dueDate: '2026-09-30T00:00:00.000Z' }),
+    );
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 12b. Start date validation
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Mirrors the production export column order: Key,Title,Type,Status,Priority,
+// Assignee,Reporter,Story Points,Sprint,Labels,Start Date,Due Date,Created,Updated
+const HEADER_WITH_START_DATE =
+  'Key,Title,Type,Status,Priority,Assignee,Reporter,Story Points,Sprint,Labels,Start Date,Due Date,Created,Updated\r\n';
+
+function makeRowWithStartDate(overrides: {
+  title?: string;
+  startDate?: string;
+  dueDate?: string;
+} = {}): string {
+  return (
+    [
+      '',                              // Key (ignored)
+      overrides.title ?? 'Test issue',
+      'TASK',
+      'To Do',
+      'MEDIUM',
+      '',                              // Assignee
+      '',                              // Reporter
+      '',                              // Story Points
+      '',                              // Sprint
+      '',                              // Labels
+      overrides.startDate ?? '',
+      overrides.dueDate ?? '',
+      '',                              // Created
+      '',                              // Updated
+    ].join(',') + '\r\n'
+  );
+}
+
+describe('IssuesImportService.importCsv — start date', () => {
+  it('records a row error for an invalid start date string', async () => {
+    const { prisma } = buildMocks();
+    const createFn = jest.fn();
+    const service = makeService(prisma, createFn);
+
+    const result = await service.importCsv(
+      USER_ID,
+      PROJECT_ID,
+      HEADER_WITH_START_DATE + makeRowWithStartDate({ startDate: 'not-a-date' }),
+    );
+
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0].message).toMatch(/start date/i);
+    expect(createFn).not.toHaveBeenCalled();
+  });
+
+  it('accepts a valid ISO 8601 start date and passes it through beside due date', async () => {
+    const { prisma } = buildMocks();
+    const createFn = jest.fn().mockResolvedValue(makeIssueDto());
+    const service = makeService(prisma, createFn);
+
+    const result = await service.importCsv(
+      USER_ID,
+      PROJECT_ID,
+      HEADER_WITH_START_DATE +
+        makeRowWithStartDate({
+          startDate: '2026-09-01T00:00:00.000Z',
+          dueDate: '2026-09-30T00:00:00.000Z',
+        }),
+    );
+
+    expect(result.errors).toHaveLength(0);
+    expect(createFn).toHaveBeenCalledWith(
+      USER_ID,
+      expect.objectContaining({
+        startDate: '2026-09-01T00:00:00.000Z',
+        dueDate: '2026-09-30T00:00:00.000Z',
+      }),
+    );
+  });
+
+  it('surfaces the service-layer startDate > dueDate rejection as a row error', async () => {
+    const { prisma } = buildMocks();
+    const createFn = jest
+      .fn()
+      .mockRejectedValue(new BadRequestException('startDate must be on or before dueDate'));
+    const service = makeService(prisma, createFn);
+
+    const result = await service.importCsv(
+      USER_ID,
+      PROJECT_ID,
+      HEADER_WITH_START_DATE +
+        makeRowWithStartDate({
+          startDate: '2026-10-01T00:00:00.000Z',
+          dueDate: '2026-09-01T00:00:00.000Z',
+        }),
+    );
+
+    expect(result.created).toBe(0);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0].message).toMatch(/startDate must be on or before dueDate/);
+  });
+
+  it('omits startDate when the column is absent (backward-compatible with pre-existing exports)', async () => {
+    const { prisma } = buildMocks();
+    const createFn = jest.fn().mockResolvedValue(makeIssueDto());
+    const service = makeService(prisma, createFn);
+
+    // Legacy header (no Start Date column) — still valid.
+    const result = await service.importCsv(
+      USER_ID,
+      PROJECT_ID,
+      HEADER + makeRow({ dueDate: '2026-09-30T00:00:00.000Z' }),
+    );
+
+    expect(result.errors).toHaveLength(0);
+    expect(createFn).toHaveBeenCalledWith(
+      USER_ID,
+      expect.objectContaining({ startDate: undefined, dueDate: '2026-09-30T00:00:00.000Z' }),
     );
   });
 });

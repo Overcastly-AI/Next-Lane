@@ -26,7 +26,9 @@ test.describe('Due date', () => {
 
     // Set a future due date via the date input.
     const futureDate = '2099-12-31';
-    const dueDateInput = page.getByLabel('Due date');
+    // exact: true avoids Playwright's case-insensitive substring match
+    // colliding with the "Clear due date" button once the value is set.
+    const dueDateInput = page.getByLabel('Due date', { exact: true });
     await expect(dueDateInput).toBeVisible();
     await dueDateInput.fill(futureDate);
     // Trigger the onChange (change event fires on fill for date inputs).

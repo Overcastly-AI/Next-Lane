@@ -57,6 +57,11 @@ export class CreateIssueDto {
   @Max(999)
   storyPoints?: number;
 
+  /** Optional start date. When both startDate and dueDate are provided, startDate must be <= dueDate. */
+  @IsOptional()
+  @IsDateString()
+  startDate?: string;
+
   @IsOptional()
   @IsDateString()
   dueDate?: string;

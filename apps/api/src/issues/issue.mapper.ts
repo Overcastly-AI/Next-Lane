@@ -31,6 +31,7 @@ export interface IssueWithRelations {
   storyPoints: number | null;
   parentId: string | null;
   sprintId: string | null;
+  startDate: Date | null;
   dueDate: Date | null;
   rank: string;
   componentId: string | null;
@@ -151,6 +152,7 @@ export function toIssueDto(issue: IssueWithRelations): IssueDto {
     storyPoints: issue.storyPoints,
     parentId: issue.parentId,
     sprintId: issue.sprintId,
+    startDate: issue.startDate ? issue.startDate.toISOString() : null,
     dueDate: issue.dueDate ? issue.dueDate.toISOString() : null,
     rank: issue.rank,
     componentId: issue.componentId,

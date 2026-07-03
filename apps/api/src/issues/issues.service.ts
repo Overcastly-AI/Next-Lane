@@ -166,6 +166,23 @@ export class IssuesService {
     await assertWorkspaceMember(this.prisma, assigneeId, workspaceId);
   }
 
+  /**
+   * When both a start date and a due date are present (after applying the
+   * incoming DTO on top of any existing values), reject the combination if
+   * startDate is after dueDate. Either side being absent (undefined/null)
+   * skips the check — this only guards against an inverted range, not
+   * against having just one of the two set.
+   */
+  private assertStartBeforeDue(
+    startDateIso: string | null | undefined,
+    dueDateIso: string | null | undefined,
+  ): void {
+    if (!startDateIso || !dueDateIso) return;
+    if (new Date(startDateIso).getTime() > new Date(dueDateIso).getTime()) {
+      throw new BadRequestException('startDate must be on or before dueDate');
+    }
+  }
+
   async create(userId: string, dto: CreateIssueDto, opts?: MutationOpts): Promise<IssueDto> {
     const project = await assertProjectRole(
       this.prisma,
@@ -177,6 +194,8 @@ export class IssuesService {
 
     // Validate componentId belongs to the same project (when provided).
     await this.assertSameProject(dto.projectId, { componentId: dto.componentId });
+
+    this.assertStartBeforeDue(dto.startDate, dto.dueDate);
 
     // Resolve default assignee from the component when no explicit assignee given.
     let effectiveAssigneeId = dto.assigneeId;
@@ -245,6 +264,7 @@ export class IssuesService {
           parentId: dto.parentId,
           sprintId: dto.sprintId,
           storyPoints: dto.storyPoints,
+          startDate: dto.startDate ? new Date(dto.startDate) : undefined,
           dueDate: dto.dueDate ? new Date(dto.dueDate) : undefined,
           rank,
           componentId: dto.componentId ?? null,
@@ -749,6 +769,18 @@ export class IssuesService {
     });
     await this.assertAssigneeInWorkspace(project.workspaceId, dto.assigneeId);
 
+    {
+      const effectiveStartDate =
+        dto.startDate === undefined
+          ? (existing.startDate?.toISOString() ?? null)
+          : dto.startDate;
+      const effectiveDueDate =
+        dto.dueDate === undefined
+          ? (existing.dueDate?.toISOString() ?? null)
+          : dto.dueDate;
+      this.assertStartBeforeDue(effectiveStartDate, effectiveDueDate);
+    }
+
     // Resolve the effective issue type (may change in the same PATCH).
     const effectiveType = (dto.type ?? existing.type) as IssueType;
 
@@ -832,6 +864,22 @@ export class IssuesService {
     if (dto.title !== undefined && dto.title !== existing.title) {
       changedFields.push('title');
     }
+    const existingStartDateStr = existing.startDate?.toISOString() ?? null;
+    const incomingStartDateStr =
+      dto.startDate === undefined ? undefined : dto.startDate;
+    if (
+      incomingStartDateStr !== undefined &&
+      incomingStartDateStr !== existingStartDateStr
+    ) {
+      activities.push({
+        issueId: id,
+        actorId: userId,
+        field: 'startDate',
+        from: existingStartDateStr,
+        to: incomingStartDateStr,
+      });
+      changedFields.push('startDate');
+    }
     const existingDueDateStr = existing.dueDate?.toISOString() ?? null;
     const incomingDueDateStr =
       dto.dueDate === undefined ? undefined : dto.dueDate;
@@ -868,6 +916,13 @@ export class IssuesService {
           storyPoints: dto.storyPoints,
           parentId: dto.parentId,
           sprintId: dto.sprintId,
+          // startDate: undefined = no-op; null = clear; string = set new date
+          startDate:
+            dto.startDate === undefined
+              ? undefined
+              : dto.startDate === null
+                ? null
+                : new Date(dto.startDate),
           // dueDate: undefined = no-op; null = clear; string = set new date
           dueDate:
             dto.dueDate === undefined
@@ -1425,9 +1480,9 @@ export class IssuesService {
    * Authorization: project member (VIEWER+).
    *
    * Columns: Key, Title, Type, Status, Priority, Assignee, Reporter,
-   *   Story Points, Sprint, Labels, Due Date, Description, Component,
-   *   Fix Versions, Parent, Original Estimate (minutes), one "CF: <name>"
-   *   column per custom-field definition, Created, Updated.
+   *   Story Points, Sprint, Labels, Start Date, Due Date, Description,
+   *   Component, Fix Versions, Parent, Original Estimate (minutes), one
+   *   "CF: <name>" column per custom-field definition, Created, Updated.
    *
    * Optional `q` NLQL filter: validated via `validateQuery`, then evaluated
    * with `filterIssues` (same evaluator as the board uses). Invalid query →
@@ -1526,8 +1581,9 @@ export class IssuesService {
     const customFieldDefs = await this.loadCustomFieldDefs(projectId);
 
     // Build the CSV. Column names shared with the importer (Title, Type,
-    // Status, Priority, Assignee, Story Points, Due Date, Labels, Description)
-    // keep the export round-trippable; the extra columns are ignored on import.
+    // Status, Priority, Assignee, Story Points, Start Date, Due Date, Labels,
+    // Description) keep the export round-trippable; the extra columns are
+    // ignored on import.
     const HEADER = [
       'Key',
       'Title',
@@ -1539,6 +1595,7 @@ export class IssuesService {
       'Story Points',
       'Sprint',
       'Labels',
+      'Start Date',
       'Due Date',
       'Description',
       'Component',
@@ -1598,6 +1655,7 @@ export class IssuesService {
           issue.storyPoints ?? '',
           sprintNameById.get(issue.id) ?? '',
           labelNames.join('; '),
+          issue.startDate ?? '',
           issue.dueDate ?? '',
           issue.description ?? '',
           componentById.get(issue.id) ?? '',

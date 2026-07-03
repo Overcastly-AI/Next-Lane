@@ -42,7 +42,7 @@ Issues are the core unit of work. Every issue belongs to a project and has:
 - **Type:** Task, Bug, Story, Epic, Sub-task
 - **Title, description** (Markdown rendered)
 - **Status** (maps to a project column), **priority**, **assignee**, **reporter**
-- **Labels**, **story points**, **due date**, **component**, **version/release**
+- **Labels**, **story points**, **start date**, **due date**, **component**, **version/release**
 - **Custom fields** — project-defined typed fields (Text, Number, Select, …);
   values are stored per-issue in JSONB
 - **Comments** and an **activity log** (every field change is recorded)
@@ -79,8 +79,8 @@ type = Bug AND created > 14d
 `today()`, relative durations (`7d`, `30d`)
 
 **Fields:** `assignee`, `reporter`, `status`, `priority`, `type`, `label`,
-`sprint`, `component`, `version`, `due`, `created`, `updated`, `storyPoints`,
-`parent`, and custom field keys.
+`sprint`, `component`, `version`, `start`, `due`, `created`, `updated`,
+`storyPoints`, `parent`, and custom field keys.
 
 ### Saved filters
 

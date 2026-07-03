@@ -31,6 +31,7 @@ function makeIssue(overrides: Partial<IssueDto> = {}): IssueDto {
     storyPoints: null,
     parentId: null,
     sprintId: null,
+    startDate: null,
     dueDate: null,
     rank: 'a0',
     labels: [],
@@ -109,6 +110,13 @@ describe('evaluator — field types', () => {
     expect(evalQuery('due < "2026-01-01"', issue)).toBe(false);
   });
 
+  it('startDate comparisons with ISO strings (mirrors dueDate)', () => {
+    const issue = makeIssue({ startDate: '2026-06-01T00:00:00.000Z' });
+    expect(evalQuery('startDate < "2026-07-01"', issue)).toBe(true);
+    expect(evalQuery('start > "2026-01-01"', issue)).toBe(true);
+    expect(evalQuery('start < "2026-01-01"', issue)).toBe(false);
+  });
+
   it('label / array membership via = and IN', () => {
     const issue = makeIssue({
       labels: [
@@ -157,6 +165,27 @@ describe('evaluator — functions & users', () => {
     expect(evalQuery('due < now()', past, ctx)).toBe(true);
     expect(evalQuery('due < now()', future, ctx)).toBe(false);
     expect(evalQuery('due < today()', past, ctx)).toBe(true);
+  });
+
+  it('now()/today() compare against startDate (mirrors dueDate)', () => {
+    const past = makeIssue({ startDate: '2026-06-01T00:00:00.000Z' });
+    const future = makeIssue({ startDate: '2026-12-01T00:00:00.000Z' });
+    expect(evalQuery('startDate < now()', past, ctx)).toBe(true);
+    expect(evalQuery('startDate < now()', future, ctx)).toBe(false);
+    expect(evalQuery('startDate < today()', past, ctx)).toBe(true);
+  });
+
+  it('ORDER BY startDate sorts ascending/descending (nulls last on ASC, same as dueDate)', () => {
+    const a = makeIssue({ id: 'a', startDate: '2026-01-01T00:00:00.000Z' });
+    const b = makeIssue({ id: 'b', startDate: '2026-06-01T00:00:00.000Z' });
+    const c = makeIssue({ id: 'c', startDate: null });
+    const asc = filterIssues([c, b, a], 'ORDER BY startDate ASC');
+    expect(asc.map((i) => i.id)).toEqual(['a', 'b', 'c']);
+    // DESC still reverses the dated pair's relative order (b before a); the
+    // null's placement is a pre-existing sortComparator quirk shared by every
+    // date field (dueDate included), not something new here.
+    const desc = filterIssues([c, b, a], 'ORDER BY startDate DESC');
+    expect(desc.filter((i) => i.id !== 'c').map((i) => i.id)).toEqual(['b', 'a']);
   });
 });
 

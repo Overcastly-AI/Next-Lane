@@ -63,6 +63,7 @@ const FIELD_SUGGESTIONS: Array<{ label: string; detail: string }> = [
   { label: 'priority', detail: 'Issue priority (HIGHEST / HIGH / MEDIUM / LOW / LOWEST)' },
   { label: 'labels', detail: 'Labels attached to the issue' },
   { label: 'sprint', detail: 'Sprint id' },
+  { label: 'startDate', detail: 'Start date' },
   { label: 'dueDate', detail: 'Due date' },
   { label: 'createdAt', detail: 'Creation date' },
   { label: 'updatedAt', detail: 'Last updated date' },

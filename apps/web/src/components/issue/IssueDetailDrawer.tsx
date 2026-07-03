@@ -534,6 +534,12 @@ function DrawerBody({
               editable={editable}
             />
 
+            <StartDateField
+              startDate={issue.startDate ?? null}
+              editable={editable}
+              onPatch={onPatch}
+            />
+
             <DueDateField
               dueDate={issue.dueDate ?? null}
               statusCategory={issue.status?.category}
@@ -829,6 +835,68 @@ function VersionsField({
           </span>
         )}
       </div>
+    </Field>
+  );
+}
+
+/**
+ * Start date picker sidebar field. Mirrors DueDateField's UX exactly (same
+ * input control + clear affordance), minus the overdue-highlight semantics
+ * which only make sense for a due date.
+ */
+function StartDateField({
+  startDate,
+  editable,
+  onPatch,
+}: {
+  startDate: string | null;
+  editable: boolean;
+  onPatch: (field: keyof IssueDto, value: unknown) => void;
+}) {
+  const toInputValue = (iso: string | null) => {
+    if (!iso) return '';
+    return iso.slice(0, 10);
+  };
+
+  return (
+    <Field label="Start date" htmlFor="d-start-date">
+      {editable ? (
+        <div className="flex items-center gap-1.5">
+          <input
+            id="d-start-date"
+            type="date"
+            aria-label="Start date"
+            value={toInputValue(startDate)}
+            onChange={(e) => {
+              const val = e.target.value;
+              onPatch('startDate', val ? val : null);
+            }}
+            className="rounded border border-ink-200 bg-surface px-2 py-1 text-sm text-ink-700 transition-colors duration-[120ms] focus:outline-none focus:ring-2 focus:ring-signal-400"
+          />
+          {startDate && (
+            <button
+              type="button"
+              aria-label="Clear start date"
+              onClick={() => onPatch('startDate', null)}
+              className="rounded p-0.5 text-ink-400 hover:bg-ink-100 hover:text-ink-700 transition-colors duration-[120ms]"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" d="M6 6l12 12M6 18L18 6" />
+              </svg>
+            </button>
+          )}
+        </div>
+      ) : startDate ? (
+        <span className="text-sm text-ink-700">
+          {new Date(startDate).toLocaleDateString(undefined, {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+          })}
+        </span>
+      ) : (
+        <span className="text-sm text-ink-400">None</span>
+      )}
     </Field>
   );
 }

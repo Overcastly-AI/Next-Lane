@@ -686,6 +686,7 @@ model Issue {
   parentId     String? // self-relation for epic -> story -> subtask
   // Intended hierarchy: EPIC > STORY / TASK > SUBTASK. Enforced in service layer.
   sprintId     String?
+  startDate    DateTime? // optional start date; null = no start date. When both are set, startDate <= dueDate (enforced in service layer).
   dueDate      DateTime? // optional due date; null = no due date
   rank         String // fractional index for board/backlog ordering
   // Custom field values as a flat JSONB object keyed by CustomFieldDefinition.id.
@@ -760,6 +761,8 @@ model Issue {
   @@index([projectId, assigneeId, statusId])
   @@index([projectId, sprintId, rank])
   @@index([projectId, dueDate])
+  // Covers roadmap/Gantt range queries and NLQL startDate comparisons/sorting
+  @@index([projectId, startDate])
   @@index([componentId])
   @@index([projectId, componentId])
 }

@@ -155,6 +155,7 @@ function makeIssueRow(overrides: {
   status?: { id: string; name: string; category: string; order: number; projectId: string } | null;
   sprint?: { name: string } | null;
   labels?: Array<{ label: { id: string; name: string; color: string; projectId: string } }>;
+  startDate?: Date | null;
   dueDate?: Date | null;
   description?: string | null;
   parent?: { id: string; number: number; type: string; title: string; statusId: string } | null;
@@ -178,6 +179,7 @@ function makeIssueRow(overrides: {
     storyPoints: overrides.storyPoints ?? null,
     parentId: null,
     sprintId: overrides.sprint ? 'sprint-1' : null,
+    startDate: overrides.startDate ?? null,
     dueDate: overrides.dueDate ?? null,
     rank: 'a0',
     customFields: overrides.customFields ?? null,
@@ -256,7 +258,7 @@ describe('IssuesService.exportCsv — header row', () => {
     const lines = csv.split('\r\n').filter(Boolean);
 
     expect(lines[0]).toBe(
-      'Key,Title,Type,Status,Priority,Assignee,Reporter,Story Points,Sprint,Labels,Due Date,Description,Component,Fix Versions,Parent,Original Estimate (minutes),Created,Updated',
+      'Key,Title,Type,Status,Priority,Assignee,Reporter,Story Points,Sprint,Labels,Start Date,Due Date,Description,Component,Fix Versions,Parent,Original Estimate (minutes),Created,Updated',
     );
   });
 
@@ -348,6 +350,32 @@ describe('IssuesService.exportCsv — data rows', () => {
     const { csv } = await service.exportCsv('user-1', 'proj-1');
     const lines = csv.split('\r\n').filter(Boolean);
     expect(lines[1]).toContain('2026-09-30T00:00:00.000Z');
+  });
+
+  it('renders a start date as ISO 8601, beside the due date', async () => {
+    const startDate = new Date('2026-09-01T00:00:00.000Z');
+    const dueDate = new Date('2026-09-30T00:00:00.000Z');
+    const issue = makeIssueRow({ startDate, dueDate });
+    const prisma = makePrisma({ issues: [issue] });
+    const service = makeService(prisma);
+
+    const { csv } = await service.exportCsv('user-1', 'proj-1');
+    const lines = csv.split('\r\n').filter(Boolean);
+    // Start Date column (index 10) precedes Due Date column (index 11).
+    const cols = lines[1].split(',');
+    expect(cols[10]).toBe('2026-09-01T00:00:00.000Z');
+    expect(cols[11]).toBe('2026-09-30T00:00:00.000Z');
+  });
+
+  it('leaves start date empty when null', async () => {
+    const issue = makeIssueRow({ startDate: null });
+    const prisma = makePrisma({ issues: [issue] });
+    const service = makeService(prisma);
+
+    const { csv } = await service.exportCsv('user-1', 'proj-1');
+    const lines = csv.split('\r\n').filter(Boolean);
+    const cols = lines[1].split(',');
+    expect(cols[10]).toBe(''); // Start Date column
   });
 
   it('leaves story points empty when null', async () => {
@@ -554,7 +582,8 @@ describe('IssuesService.exportCsv — completeness columns (2026-07-02)', () => 
     const svc = makeService(makePrisma({ issues: [makeIssueRow()] }));
     const { csv } = await svc.exportCsv('user-1', 'proj-1');
     const lines = csv.split('\r\n').filter(Boolean);
-    // 18 columns in the base header (no custom fields defined).
-    expect(lines[0].split(',')).toHaveLength(18);
+    // 19 columns in the base header (no custom fields defined) — Start Date
+    // added beside Due Date.
+    expect(lines[0].split(',')).toHaveLength(19);
   });
 });

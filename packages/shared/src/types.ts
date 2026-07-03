@@ -160,6 +160,8 @@ export interface IssueDto {
   parent?: IssueRefDto | null;
   children?: IssueRefDto[];
   sprintId: string | null;
+  /** ISO 8601 date string (YYYY-MM-DD or full datetime), or null when no start date is set. */
+  startDate: string | null;
   /** ISO 8601 date string (YYYY-MM-DD or full datetime), or null when no due date is set. */
   dueDate: string | null;
   rank: string;
@@ -623,6 +625,12 @@ export interface RoadmapEpicDto {
   end: string | null;
   /** True when the window came from child sprint dates (vs. createdAt fallback). */
   fromSprints: boolean;
+  /**
+   * True when the window came from the epic issue's own `startDate`/`dueDate`
+   * (highest priority — takes precedence over both `fromSprints` and the
+   * createdAt fallback, which are mutually exclusive with this flag).
+   */
+  fromOwnDates: boolean;
 }
 
 /**

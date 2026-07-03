@@ -37,11 +37,17 @@ export class RoadmapService {
    * Stakeholder roadmap for a project: every epic with a derived time window and
    * completion progress, plus every dated sprint, on a shared timeline.
    *
-   * An epic's window is derived from the sprints its child issues belong to —
-   * earliest sprint start to latest sprint end. When no child has a dated
-   * sprint, it falls back to the epic's own createdAt (a zero-width marker the
-   * client can render). Epics with neither get a null window and are surfaced in
-   * a "No dates" lane. Progress is the fraction of child issues currently in a
+   * An epic's window is derived, in priority order:
+   *   1. The epic issue's own `startDate` → `dueDate` (or `startDate` alone
+   *      when no due date is set), when `startDate` is present — this lets an
+   *      agent or user plan an epic directly instead of it being purely a
+   *      derived rollup of its children's sprints.
+   *   2. The sprints its child issues belong to — earliest sprint start to
+   *      latest sprint end.
+   *   3. The epic's own `createdAt` (a zero-width marker the client can
+   *      render) when neither of the above applies.
+   * Epics with no date context at all get a null window and are surfaced in a
+   * "No dates" lane. Progress is the fraction of child issues currently in a
    * DONE-category status.
    *
    * No schema change is needed; everything is derived from existing data. Read
@@ -79,26 +85,39 @@ export class RoadmapService {
     const epics: RoadmapEpicDto[] = epicRows.map((epic) => {
       const childCount = epic.children.length;
       let doneCount = 0;
+      for (const child of epic.children) {
+        if (doneStatusIds.has(child.statusId)) doneCount += 1;
+      }
+
       let start: Date | null = null;
       let end: Date | null = null;
       let fromSprints = false;
+      let fromOwnDates = false;
 
-      for (const child of epic.children) {
-        if (doneStatusIds.has(child.statusId)) doneCount += 1;
-        const s = child.sprint?.startDate ?? null;
-        const e = child.sprint?.endDate ?? null;
-        if (s || e) {
-          fromSprints = true;
-          start = minDate(start, s ?? e);
-          end = maxDate(end, e ?? s);
+      if (epic.startDate) {
+        // Highest priority: the epic issue's own start/due date range. A due
+        // date isn't required — a start-only epic still gets a (zero-width)
+        // marker rather than falling through to the sprint/createdAt logic.
+        fromOwnDates = true;
+        start = epic.startDate;
+        end = epic.dueDate ?? epic.startDate;
+      } else {
+        for (const child of epic.children) {
+          const s = child.sprint?.startDate ?? null;
+          const e = child.sprint?.endDate ?? null;
+          if (s || e) {
+            fromSprints = true;
+            start = minDate(start, s ?? e);
+            end = maxDate(end, e ?? s);
+          }
         }
-      }
 
-      // Fall back to the epic's own createdAt when no child sprint dates exist,
-      // so a freshly created epic still appears on the timeline.
-      if (!fromSprints) {
-        start = epic.createdAt;
-        end = epic.createdAt;
+        // Fall back to the epic's own createdAt when no child sprint dates
+        // exist, so a freshly created epic still appears on the timeline.
+        if (!fromSprints) {
+          start = epic.createdAt;
+          end = epic.createdAt;
+        }
       }
 
       return {
@@ -112,6 +131,7 @@ export class RoadmapService {
         start: start ? start.toISOString() : null,
         end: end ? end.toISOString() : null,
         fromSprints,
+        fromOwnDates,
       };
     });
 

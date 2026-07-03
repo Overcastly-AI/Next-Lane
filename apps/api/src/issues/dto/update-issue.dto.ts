@@ -17,6 +17,7 @@ export class UpdateIssueDto extends PartialType(
     'assigneeId',
     'sprintId',
     'storyPoints',
+    'startDate',
     'dueDate',
     'componentId',
     'originalEstimateMinutes',
@@ -43,6 +44,12 @@ export class UpdateIssueDto extends PartialType(
   @Min(0)
   @Max(999)
   storyPoints?: number | null;
+
+  /** ISO 8601 date string or null to clear the start date. */
+  @IsOptional()
+  @ValidateIf((_o, v) => v !== null)
+  @IsDateString()
+  startDate?: string | null;
 
   /** ISO 8601 date string or null to clear the due date. */
   @IsOptional()

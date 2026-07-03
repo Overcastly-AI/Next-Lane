@@ -128,6 +128,14 @@ describe('operators after field', () => {
     expect(ls).toContain('<');
   });
 
+  it('after "startDate " — date kind — suggests > >= < <= (mirrors dueDate)', () => {
+    const query = 'startDate ';
+    const r = suggestNlql(query, query.length, CTX);
+    const ls = labels(r);
+    expect(ls).toContain('>');
+    expect(ls).toContain('<');
+  });
+
   it('after "assignee " — user kind — suggests = != IN IS EMPTY', () => {
     const query = 'assignee ';
     const r = suggestNlql(query, query.length, CTX);
@@ -195,6 +203,17 @@ describe('values after operator', () => {
 
   it('after "dueDate = " — suggests now() today() startOfWeek() startOfDay()', () => {
     const query = 'dueDate = ';
+    const r = suggestNlql(query, query.length, CTX);
+    const ls = labels(r);
+    expect(ls).toContain('now()');
+    expect(ls).toContain('today()');
+    expect(ls).toContain('startOfWeek()');
+    expect(ls).toContain('startOfDay()');
+    expect(r.suggestions.every((s) => s.kind === 'function')).toBe(true);
+  });
+
+  it('after "startDate = " — suggests now() today() startOfWeek() startOfDay() (mirrors dueDate)', () => {
+    const query = 'startDate = ';
     const r = suggestNlql(query, query.length, CTX);
     const ls = labels(r);
     expect(ls).toContain('now()');
@@ -292,6 +311,7 @@ describe('ORDER BY', () => {
     const r = suggestNlql(query, query.length, CTX);
     const ls = labels(r);
     expect(ls).toContain('priority');
+    expect(ls).toContain('startDate');
     expect(ls).toContain('dueDate');
     expect(ls).toContain('createdAt');
     expect(r.suggestions[0].kind).toBe('field');
@@ -309,6 +329,7 @@ describe('ORDER BY', () => {
   it('after "priority = HIGH ORDER BY " — suggests fields', () => {
     const query = 'priority = HIGH ORDER BY ';
     const r = suggestNlql(query, query.length, CTX);
+    expect(labels(r)).toContain('startDate');
     expect(labels(r)).toContain('dueDate');
     expect(labels(r)).toContain('createdAt');
   });

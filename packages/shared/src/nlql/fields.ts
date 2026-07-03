@@ -17,6 +17,7 @@ export type StandardField =
   | 'priority'
   | 'labels'
   | 'sprint'
+  | 'startDate'
   | 'dueDate'
   | 'createdAt'
   | 'updatedAt'
@@ -64,6 +65,9 @@ const ALIASES: Record<string, StandardFieldMeta> = {
   labels: { field: 'labels', kind: 'array' },
 
   sprint: { field: 'sprint', kind: 'id' },
+
+  startdate: { field: 'startDate', kind: 'date' },
+  start: { field: 'startDate', kind: 'date' },
 
   duedate: { field: 'dueDate', kind: 'date' },
   due: { field: 'dueDate', kind: 'date' },

@@ -24,6 +24,7 @@ export const WATCHED_FIELDS = [
   'assignee',
   'priority',
   'title',
+  'startDate',
   'dueDate',
 ] as const;
 

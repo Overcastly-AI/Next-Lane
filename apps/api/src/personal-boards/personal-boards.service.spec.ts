@@ -438,6 +438,7 @@ describe('PersonalBoardsService', () => {
       storyPoints: null,
       parentId: null,
       sprintId: null,
+      startDate: null,
       dueDate: null,
       rank: 'a0',
       componentId: null,

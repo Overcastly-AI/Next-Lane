@@ -123,6 +123,11 @@ describe('normaliseJiraRow — header aliases', () => {
     expect(row['due date']).toBe('2026-12-31');
   });
 
+  it('maps "Start Date" → start date', () => {
+    const { row } = normaliseJiraRow({ 'Start Date': '2026-12-01' });
+    expect(row['start date']).toBe('2026-12-01');
+  });
+
   it('drops Resolution (maps to empty string)', () => {
     const { row } = normaliseJiraRow({ Resolution: 'Fixed' });
     expect(row['resolution']).toBeUndefined();

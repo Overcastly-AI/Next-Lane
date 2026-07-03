@@ -16,6 +16,7 @@
  *   Story Points — integer 0–999; optional
  *   Sprint      — ignored (not imported to avoid cross-sprint side-effects)
  *   Labels      — comma-or-semicolon-separated label names; create-or-match
+ *   Start Date  — ISO 8601 date / datetime; optional
  *   Due Date    — ISO 8601 date / datetime; optional
  *   Created     — ignored on import
  *   Updated     — ignored on import
@@ -63,6 +64,7 @@ const KNOWN_COLUMNS = new Set([
   'story points',
   'sprint',
   'labels',
+  'start date',
   'due date',
   'created',
   'updated',
@@ -374,6 +376,21 @@ export class IssuesImportService {
         storyPoints = n;
       }
 
+      // Start Date
+      const rawStart = getCell(row, 'start date');
+      let startDate: string | undefined;
+      if (rawStart) {
+        const d = new Date(rawStart);
+        if (isNaN(d.getTime())) {
+          errors.push({
+            row: rowNum,
+            message: `Invalid start date: "${rawStart}". Must be an ISO 8601 date.`,
+          });
+          continue;
+        }
+        startDate = rawStart;
+      }
+
       // Due Date
       const rawDue = getCell(row, 'due date');
       let dueDate: string | undefined;
@@ -429,6 +446,7 @@ export class IssuesImportService {
           statusId: statusId ?? defaultStatusId ?? undefined,
           assigneeId,
           storyPoints,
+          startDate,
           dueDate,
         };
 

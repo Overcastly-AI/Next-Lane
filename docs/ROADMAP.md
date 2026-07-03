@@ -442,6 +442,30 @@ pass — groom the board against this sequencing next.)*
    toggle, off by default, plus a board-card "linked PR" badge mirroring the
    existing blocked-issue badge) — the incumbent's day-one SCM feature set is
    still ahead here.
+
+   **Agent Experience (AX) batch, Phase A — ✅ shipped 2026-07-03** (Phase B —
+   the MCP surface — tracked separately in `docs/BACKLOG.md`, deferred until
+   the GitLab work above lands to avoid touching `apps/mcp` concurrently).
+   Founder-relayed field report from a real MCP-agent user: "No startDate on
+   issues — only dueDate... had to jam start dates into description first
+   lines." Added `Issue.startDate DateTime?` end-to-end: additive migration
+   (`20260703030000_add_issue_start_date`); create/update DTOs +
+   `IssueDto.startDate` in `packages/shared`; cross-field validation
+   (startDate must be <= dueDate when both set, enforced in
+   `IssuesService`, mirrors dueDate's null-clears/undefined-no-op semantics
+   and activity-log entry); NLQL `startDate`/`start` field registered
+   everywhere `dueDate` is (field allowlist, evaluator, autocomplete
+   suggestions, `docs-site/guide/features.md` reference); CSV export gains a
+   "Start Date" column beside "Due Date" (20 columns now); CSV/Jira importer
+   maps a "Start Date" column when present (GitHub/Linear exports don't have
+   one — not attempted); issue drawer gets a Start date picker beside Due
+   date (same UX/clear affordance); the Roadmap timeline's epic-window
+   derivation now prioritizes the epic issue's own `startDate`→`dueDate`
+   range over the existing child-sprint-dates/createdAt fallback chain when
+   `startDate` is present (`RoadmapEpicDto.fromOwnDates`). This is a
+   data-model gap, not just an MCP gap — closing it here means Phase B's
+   `list_issues`/`create_issue`/`get_epic_overview` MCP work (next) exposes a
+   real field instead of the description-hack workaround.
 5. **Configurable dashboards — Phase 2 (parity, closing toward better).**
    Phase 1 verified strong this pass (all 4 gadget types, custom-field
    grouping, precise NLQL validation, excellent empty/error states —
@@ -494,10 +518,12 @@ light/dark mode all shipped 2026-07-02** and were independently re-verified
 by both Pass-12 audits (persistent sidebar closes the founder's "buried
 features" complaint; dark mode is thorough and token-driven across 6
 surfaces — modulo the CSP artifact gap in item 2 above). **CSV export
-column-completeness shipped** — re-verified this pass at 19 columns
-including Description, Component, Fix Versions, Parent, time estimates, and
-all custom fields (AUDIT-PRODUCT.md Pass 12); the README/first-impression
-surface overhaul remains owned by `oss-curator`, tracked there.
+column-completeness shipped** — verified at 19 columns including
+Description, Component, Fix Versions, Parent, time estimates, and all custom
+fields (AUDIT-PRODUCT.md Pass 12); a 20th column, Start Date, was added
+2026-07-03 alongside Due Date (AX batch Phase A, see item 4 above); the
+README/first-impression surface overhaul remains owned by `oss-curator`,
+tracked there.
 
 **Pass-12 engineering fix batch — two more mechanical/perf findings closed
 2026-07-02 (in addition to the CSP and dashboards-realtime items above):**

@@ -130,6 +130,8 @@ function getFieldValue(
       return (issue.labels ?? []).map((l) => l.name);
     case 'sprint':
       return issue.sprintId;
+    case 'startDate':
+      return issue.startDate;
     case 'dueDate':
       return issue.dueDate;
     case 'createdAt':

@@ -104,6 +104,62 @@ describe('RoadmapService', () => {
     );
   });
 
+  it("uses the epic's own startDate/dueDate range when startDate is present, taking priority over child sprint dates", async () => {
+    prisma.status.findMany.mockResolvedValue([{ id: 'done-1' }]);
+    prisma.issue.findMany.mockResolvedValue([
+      {
+        id: 'epic-own-dates',
+        number: 7,
+        title: 'Self-planned epic',
+        createdAt: new Date('2026-01-01T00:00:00.000Z'),
+        startDate: new Date('2026-04-01T00:00:00.000Z'),
+        dueDate: new Date('2026-04-30T00:00:00.000Z'),
+        status: { category: StatusCategory.IN_PROGRESS },
+        children: [
+          {
+            statusId: 'done-1',
+            sprint: {
+              // Would derive a very different window if own-dates weren't prioritized.
+              startDate: new Date('2026-02-01T00:00:00.000Z'),
+              endDate: new Date('2026-02-14T00:00:00.000Z'),
+            },
+          },
+        ],
+      },
+    ]);
+    prisma.sprint.findMany.mockResolvedValue([]);
+
+    const result = await service.getRoadmap('user-1', PROJECT_ID);
+    const epic = result.epics[0];
+    expect(epic.fromOwnDates).toBe(true);
+    expect(epic.fromSprints).toBe(false);
+    expect(epic.start).toBe('2026-04-01T00:00:00.000Z');
+    expect(epic.end).toBe('2026-04-30T00:00:00.000Z');
+  });
+
+  it('uses a zero-width own-dates marker when the epic has startDate but no dueDate', async () => {
+    prisma.status.findMany.mockResolvedValue([]);
+    prisma.issue.findMany.mockResolvedValue([
+      {
+        id: 'epic-start-only',
+        number: 8,
+        title: 'Start-only epic',
+        createdAt: new Date('2026-01-01T00:00:00.000Z'),
+        startDate: new Date('2026-05-01T00:00:00.000Z'),
+        dueDate: null,
+        status: { category: StatusCategory.TODO },
+        children: [],
+      },
+    ]);
+    prisma.sprint.findMany.mockResolvedValue([]);
+
+    const result = await service.getRoadmap('user-1', PROJECT_ID);
+    const epic = result.epics[0];
+    expect(epic.fromOwnDates).toBe(true);
+    expect(epic.start).toBe('2026-05-01T00:00:00.000Z');
+    expect(epic.end).toBe('2026-05-01T00:00:00.000Z');
+  });
+
   it('falls back to createdAt window when no child has a dated sprint', async () => {
     prisma.status.findMany.mockResolvedValue([]);
     prisma.issue.findMany.mockResolvedValue([

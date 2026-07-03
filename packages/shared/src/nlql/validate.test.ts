@@ -58,6 +58,12 @@ describe('validateQuery', () => {
     expect(validateQuery('ORDER BY bogus').ok).toBe(false);
     expect(validateQuery('ORDER BY priority DESC').ok).toBe(true);
   });
+
+  it('accepts startDate as a standard field (bare and via the "start" alias)', () => {
+    expect(validateQuery('startDate < "2026-07-01"')).toEqual({ ok: true });
+    expect(validateQuery('start > "2026-01-01"')).toEqual({ ok: true });
+    expect(validateQuery('ORDER BY startDate DESC')).toEqual({ ok: true });
+  });
 });
 
 // ── Security ──────────────────────────────────────────────────────────────────
@@ -80,6 +86,7 @@ describe('security', () => {
       storyPoints: null,
       parentId: null,
       sprintId: null,
+      startDate: null,
       dueDate: null,
       rank: 'a0',
       labels: [],

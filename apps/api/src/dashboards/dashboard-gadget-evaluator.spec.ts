@@ -47,6 +47,7 @@ function makeIssue(overrides: Partial<IssueDto> & { id: string }): IssueDto {
     storyPoints: null,
     parentId: null,
     sprintId: null,
+    startDate: null,
     dueDate: null,
     rank: 'a1',
     componentId: null,

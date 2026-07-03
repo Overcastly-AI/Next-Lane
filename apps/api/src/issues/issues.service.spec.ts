@@ -1046,6 +1046,195 @@ describe('IssuesService.update dueDate', () => {
 });
 
 /**
+ * Unit tests for start date set/clear on IssuesService.update. Mirrors the
+ * dueDate suite above field-for-field.
+ */
+describe('IssuesService.update startDate', () => {
+  const ISSUE_ID = 'issue-start-1';
+  const START_PROJECT = 'proj-start';
+  const START_WORKSPACE = 'ws-start';
+  const START_USER = 'user-start';
+  const START_STATUS = 'status-start';
+  const START_DATE = new Date('2026-06-01T00:00:00.000Z');
+
+  function makeUpdatePrisma() {
+    const txClient = {
+      $queryRaw: jest.fn().mockResolvedValue([{ cycle_detected: false }]),
+      issue: { findUnique: jest.fn(), update: jest.fn() },
+      activityLog: { createMany: jest.fn() },
+    };
+    const prisma = {
+      issue: { findUnique: jest.fn() },
+      project: { findUnique: jest.fn() },
+      membership: { findUnique: jest.fn() },
+      projectMembership: { findUnique: jest.fn().mockResolvedValue(null) },
+      status: { findUnique: jest.fn() },
+      sprint: { findUnique: jest.fn() },
+      user: { findUnique: jest.fn().mockResolvedValue({ name: 'Actor' }) },
+      $transaction: jest.fn((cb: (tx: typeof txClient) => unknown) => cb(txClient)),
+      _tx: txClient,
+    };
+    return { prisma, tx: txClient };
+  }
+
+  function makeExistingIssue(startDate: Date | null = null, dueDate: Date | null = null) {
+    return {
+      id: ISSUE_ID,
+      number: 1,
+      projectId: START_PROJECT,
+      type: 'TASK',
+      title: 'Test issue',
+      description: null,
+      statusId: START_STATUS,
+      assigneeId: null,
+      reporterId: null,
+      priority: 'MEDIUM',
+      storyPoints: null,
+      parentId: null,
+      sprintId: null,
+      startDate,
+      dueDate,
+      rank: 'a0',
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+    };
+  }
+
+  function makeUpdatedIssueRow(startDate: Date | null, dueDate: Date | null = null) {
+    return {
+      ...makeExistingIssue(startDate, dueDate),
+      status: { id: START_STATUS, name: 'To Do', category: 'TODO', order: 0, projectId: START_PROJECT },
+      assignee: null,
+      reporter: null,
+      labels: [],
+      project: { key: 'SP' },
+      _count: { comments: 0 },
+    };
+  }
+
+  let mocks: ReturnType<typeof makeUpdatePrisma>;
+  let service: IssuesService;
+
+  beforeEach(() => {
+    mocks = makeUpdatePrisma();
+    mocks.prisma.project.findUnique.mockResolvedValue({
+      id: START_PROJECT,
+      workspaceId: START_WORKSPACE,
+    });
+    mocks.prisma.membership.findUnique.mockResolvedValue({ role: Role.ADMIN });
+    service = new IssuesService(
+      mocks.prisma as unknown as PrismaService,
+      { emitToProject: jest.fn() } as unknown as RealtimeService,
+      { notifyWatchersUpdated: jest.fn().mockResolvedValue(undefined) } as unknown as NotificationsService,
+      webhooksMock,
+      noOpCustomFields,
+      noOpEventEmitter,
+      noOpWorkflow,
+    );
+  });
+
+  it('sets startDate on an issue and returns it in the DTO', async () => {
+    mocks.prisma.issue.findUnique.mockResolvedValue(makeExistingIssue(null));
+    mocks.tx.issue.update.mockResolvedValue(makeUpdatedIssueRow(START_DATE));
+
+    const result = await service.update(START_USER, ISSUE_ID, {
+      startDate: '2026-06-01T00:00:00.000Z',
+    });
+
+    expect(mocks.tx.issue.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          startDate: START_DATE,
+        }),
+      }),
+    );
+    expect(result.startDate).toBe('2026-06-01T00:00:00.000Z');
+  });
+
+  it('clears startDate when null is passed and logs an activity', async () => {
+    mocks.prisma.issue.findUnique.mockResolvedValue(makeExistingIssue(START_DATE));
+    mocks.tx.issue.update.mockResolvedValue(makeUpdatedIssueRow(null));
+
+    const result = await service.update(START_USER, ISSUE_ID, { startDate: null });
+
+    expect(mocks.tx.issue.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ startDate: null }),
+      }),
+    );
+    expect(result.startDate).toBeNull();
+    // Activity log entry created for the change.
+    expect(mocks.tx.activityLog.createMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.arrayContaining([
+          expect.objectContaining({ field: 'startDate', to: null }),
+        ]),
+      }),
+    );
+  });
+
+  it('does not touch startDate when the field is absent from the patch (undefined)', async () => {
+    mocks.prisma.issue.findUnique.mockResolvedValue(makeExistingIssue(START_DATE));
+    mocks.tx.issue.update.mockResolvedValue(makeUpdatedIssueRow(START_DATE));
+
+    await service.update(START_USER, ISSUE_ID, { title: 'New title' });
+
+    const updateCall = mocks.tx.issue.update.mock.calls[0][0];
+    // startDate must be undefined (Prisma no-op), not null.
+    expect(updateCall.data.startDate).toBeUndefined();
+    // No activity log for startDate.
+    const createManyCall = mocks.tx.activityLog.createMany.mock.calls[0];
+    if (createManyCall) {
+      const logged = (createManyCall[0] as { data: { field: string }[] }).data;
+      expect(logged.every((a) => a.field !== 'startDate')).toBe(true);
+    }
+  });
+
+  it('rejects a patch where the incoming startDate is after the existing dueDate', async () => {
+    mocks.prisma.issue.findUnique.mockResolvedValue(
+      makeExistingIssue(null, new Date('2026-05-01T00:00:00.000Z')),
+    );
+
+    await expect(
+      service.update(START_USER, ISSUE_ID, { startDate: '2026-06-01T00:00:00.000Z' }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(mocks.tx.issue.update).not.toHaveBeenCalled();
+  });
+
+  it('rejects a patch where the incoming dueDate is before the existing startDate', async () => {
+    mocks.prisma.issue.findUnique.mockResolvedValue(
+      makeExistingIssue(new Date('2026-06-01T00:00:00.000Z'), null),
+    );
+
+    await expect(
+      service.update(START_USER, ISSUE_ID, { dueDate: '2026-05-01T00:00:00.000Z' }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(mocks.tx.issue.update).not.toHaveBeenCalled();
+  });
+
+  it('accepts a patch setting startDate equal to dueDate (boundary, inclusive)', async () => {
+    const same = new Date('2026-06-01T00:00:00.000Z');
+    mocks.prisma.issue.findUnique.mockResolvedValue(makeExistingIssue(null, same));
+    mocks.tx.issue.update.mockResolvedValue(makeUpdatedIssueRow(same, same));
+
+    await expect(
+      service.update(START_USER, ISSUE_ID, { startDate: same.toISOString() }),
+    ).resolves.toBeDefined();
+  });
+
+  it('allows clearing dueDate even when startDate is set (no inverted range possible)', async () => {
+    mocks.prisma.issue.findUnique.mockResolvedValue(
+      makeExistingIssue(START_DATE, new Date('2026-07-01T00:00:00.000Z')),
+    );
+    mocks.tx.issue.update.mockResolvedValue(makeUpdatedIssueRow(START_DATE, null));
+
+    await expect(
+      service.update(START_USER, ISSUE_ID, { dueDate: null }),
+    ).resolves.toBeDefined();
+  });
+});
+
+/**
  * Unit tests for IssuesService.update watcher fan-out.
  * Verifies that WATCHED_UPDATED notifications are emitted to watchers (minus
  * actor) on meaningful field changes, and are NOT emitted on no-op patches.
@@ -1896,6 +2085,7 @@ function makeCompIssueRow(overrides: Partial<{
     storyPoints: null,
     parentId: null,
     sprintId: null,
+    startDate: null,
     dueDate: null,
     rank: 'a0',
     componentId: overrides.componentId ?? null,
@@ -2226,6 +2416,88 @@ describe('IssuesService.create — originalEstimateMinutes', () => {
   });
 });
 
+describe('IssuesService.create — startDate/dueDate validation', () => {
+  it('persists both startDate and dueDate when startDate <= dueDate', async () => {
+    const { prisma, tx } = makeEstimatePrisma({
+      createReturn: makeEstimateIssueRow({}),
+    });
+    const service = new IssuesService(
+      prisma as unknown as PrismaService,
+      { emitToProject: jest.fn() } as unknown as RealtimeService,
+      {} as NotificationsService,
+      webhooksMock,
+      noOpCustomFields,
+      noOpEventEmitter,
+      noOpWorkflow,
+    );
+
+    await service.create(COMP_USER, {
+      projectId: COMP_PROJECT,
+      title: 'Planned issue',
+      startDate: '2026-06-01T00:00:00.000Z',
+      dueDate: '2026-06-30T00:00:00.000Z',
+    });
+
+    expect(tx.issue.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          startDate: new Date('2026-06-01T00:00:00.000Z'),
+          dueDate: new Date('2026-06-30T00:00:00.000Z'),
+        }),
+      }),
+    );
+  });
+
+  it('rejects a startDate after dueDate with BadRequestException, before writing anything', async () => {
+    const { prisma, tx } = makeEstimatePrisma();
+    const service = new IssuesService(
+      prisma as unknown as PrismaService,
+      { emitToProject: jest.fn() } as unknown as RealtimeService,
+      {} as NotificationsService,
+      webhooksMock,
+      noOpCustomFields,
+      noOpEventEmitter,
+      noOpWorkflow,
+    );
+
+    await expect(
+      service.create(COMP_USER, {
+        projectId: COMP_PROJECT,
+        title: 'Inverted range',
+        startDate: '2026-07-01T00:00:00.000Z',
+        dueDate: '2026-06-01T00:00:00.000Z',
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(tx.issue.create).not.toHaveBeenCalled();
+  });
+
+  it('allows startDate with no dueDate (and vice versa)', async () => {
+    const { prisma, tx } = makeEstimatePrisma();
+    const service = new IssuesService(
+      prisma as unknown as PrismaService,
+      { emitToProject: jest.fn() } as unknown as RealtimeService,
+      {} as NotificationsService,
+      webhooksMock,
+      noOpCustomFields,
+      noOpEventEmitter,
+      noOpWorkflow,
+    );
+
+    await expect(
+      service.create(COMP_USER, {
+        projectId: COMP_PROJECT,
+        title: 'Start only',
+        startDate: '2026-06-01T00:00:00.000Z',
+      }),
+    ).resolves.toBeDefined();
+    expect(tx.issue.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ startDate: new Date('2026-06-01T00:00:00.000Z') }),
+      }),
+    );
+  });
+});
+
 const noOpNotifications = {
   notifyAssigned: jest.fn().mockResolvedValue(undefined),
   notifyWatchersUpdated: jest.fn().mockResolvedValue(undefined),
@@ -2325,6 +2597,7 @@ describe('IssuesService — timeSpentMinutes rollup via workLogs include', () =>
       storyPoints: null,
       parentId: null,
       sprintId: null,
+      startDate: null,
       dueDate: null,
       rank: 'a0',
       componentId: null,
@@ -2357,6 +2630,7 @@ describe('IssuesService — timeSpentMinutes rollup via workLogs include', () =>
       storyPoints: null,
       parentId: null,
       sprintId: null,
+      startDate: null,
       dueDate: null,
       rank: 'a1',
       componentId: null,
@@ -2389,6 +2663,7 @@ describe('IssuesService — timeSpentMinutes rollup via workLogs include', () =>
       storyPoints: null,
       parentId: null,
       sprintId: null,
+      startDate: null,
       dueDate: null,
       rank: 'a2',
       componentId: null,
