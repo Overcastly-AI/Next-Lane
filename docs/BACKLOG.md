@@ -357,6 +357,16 @@ Pass 9/10/11 that are real but not yet the highest-leverage next step.
 
 ## Already Done (recent shipments — ticked for reference)
 
+- [x] (P1, S) **Epic swimlanes fix (2026-07-03)** — the board endpoints never
+  loaded `issue.parent` (`issueInclude` in `board.service.ts` omitted it), so
+  the web's `computeLanes` epic branch put every card in "No epic" — epic
+  grouping was structurally broken since Swimlanes v2 shipped. Found by the
+  screenshot-reshoot agent staging real epics. Fix: `parent` (IssueRef select
+  incl. `project.key`) added to `issueInclude`; regression unit test asserts
+  the include + mapped `parent` on the DTO (board suites 53/53). Follow-up for
+  qa-tester: e2e covers type/component/sprint/label lanes but not epic — add an
+  epic-lane spec. [orchestrator]
+
 - [x] (P2, M) VitePress documentation site (2026-06-28) — `docs-site/` registered as `@next-lane/docs` pnpm workspace package (`"type": "module"`); `vitepress ^1.6.3` devDependency; `base: '/Next-Lane/'`; Dispatch cobalt `#2563EB` design tokens (`--vp-c-brand-1/2/3` + soft + dark-mode overrides) in `docs-site/.vitepress/theme/custom.css`; extended default theme with premium gradient hero, card hover effects, H2 cobalt left-bar, inline-code cobalt tint, clean table headers; nav (Guide / Features / Self-Hosting / Architecture / GitHub), sidebar grouped in 5 sections (Getting Started / Using Next Lane / Operating / Contributing / Reference); local search; `editLink` pointing at repo; `lastUpdated: true`; footer (MIT); `ignoreDeadLinks: [/^http:\/\/localhost/]`; screenshots in `docs-site/public/screenshots/`; SVG logo + favicon (cobalt kanban icon); 9 content pages ported from `wiki/` with fixed internal links; GitHub Pages deploy workflow (`.github/workflows/docs.yml`) with pnpm@v4 + node22 cache + upload-pages-artifact@v3 + deploy-pages@v4; `docs-site/.vitepress/dist` artifact; `wiki/` deleted; `docs:build` confirmed green in 4s. [oss-curator]
 
 - [x] (P2, M) Workspace branding backend (2026-06-28) — `PATCH /workspaces/:id` (name + `brandColor` #RRGGBB or null, Admin-only, 400 on bad hex); `POST /workspaces/:id/logo` (multipart `file` field, png/jpeg/webp only, svg explicitly rejected, 2 MB cap, replaces previous logo file, Admin-only); `DELETE /workspaces/:id/logo` (Admin-only, best-effort unlink); `GET /workspaces/:id/logo` (PUBLIC — @Public() decorator bypasses JwtAuthGuard so plain `<img src>` can load it; streams file with `Cache-Control: public, max-age=3600`; 404 when no logo); `UpdateWorkspaceDto` with `@Matches(/^#[0-9a-fA-F]{6}$/)` + null-allowed `brandColor` + trimmed `name`; `toWorkspaceDto` centralized mapper (brandColor passthrough, logoUrl derived from logoStorageKey); `WorkspaceRow` type expanded with branding fields; `LOGO_ALLOWED_MIME_TYPES` exported constant; 30 unit tests (745 total); build clean. [roadmap Phase 5]

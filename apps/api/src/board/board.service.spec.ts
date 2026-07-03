@@ -176,6 +176,40 @@ describe('BoardService', () => {
       );
     });
 
+    it('loads issue.parent and maps it so the Epic swimlane can group by epic', async () => {
+      const epic = {
+        id: 'epic-1',
+        number: 99,
+        type: IssueType.EPIC,
+        title: 'Billing revamp',
+        statusId: 'status-1',
+        project: { key: PROJECT_KEY },
+      };
+      prisma.board.findFirst.mockResolvedValue(makeBoardRow());
+      prisma.status.findMany.mockResolvedValue([]);
+      prisma.issue.findMany.mockResolvedValue([
+        { ...makeIssueRow(0), parentId: 'epic-1', parent: epic },
+      ]);
+
+      const result = await service.getBoard('user-1', PROJECT_ID);
+
+      expect(prisma.issue.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          include: expect.objectContaining({
+            parent: expect.objectContaining({ select: expect.anything() }),
+          }),
+        }),
+      );
+      expect(result.issues[0].parent).toEqual(
+        expect.objectContaining({
+          id: 'epic-1',
+          key: `${PROJECT_KEY}-99`,
+          type: IssueType.EPIC,
+          title: 'Billing revamp',
+        }),
+      );
+    });
+
     it('sets issuesTruncated: true and slices to CAP when result exceeds cap', async () => {
       const rows = Array.from({ length: BOARD_ISSUES_CAP + 1 }, (_, i) =>
         makeIssueRow(i),

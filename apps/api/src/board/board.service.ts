@@ -36,6 +36,18 @@ const issueInclude = {
   // and the card's component chip.
   component: { select: { id: true, name: true } },
   project: { select: { key: true } },
+  // Needed for the "Epic" swimlane dimension — lanes are keyed on
+  // issue.parent when the parent is an EPIC.
+  parent: {
+    select: {
+      id: true,
+      number: true,
+      type: true,
+      title: true,
+      statusId: true,
+      project: { select: { key: true } },
+    },
+  },
   // `linksTo` = links where this issue is the target; filtered to BLOCKS gives
   // the count of issues blocking it (BLOCKS is stored canonically blocker→blocked).
   // A blocker whose status is DONE no longer blocks — only unresolved ones count,
