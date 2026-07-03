@@ -542,6 +542,10 @@ model Status {
   transitionsFrom WorkflowTransition[] @relation("transitionFromStatus")
   /// Workflow transitions that lead INTO this status.
   transitionsInto WorkflowTransition[] @relation("transitionToStatus")
+  /// GitHub/GitLab integrations that auto-transition a merged PR's/MR's
+  /// linked issue(s) to this status. See `GithubIntegration.autoTransitionStatusId`.
+  githubAutoTransitions GithubIntegration[] @relation("githubAutoTransitionStatus")
+  gitlabAutoTransitions GitlabIntegration[] @relation("gitlabAutoTransitionStatus")
 
   @@index([projectId])
 }
@@ -1526,12 +1530,27 @@ model GithubIntegration {
   repoFullName   String
   tokenEncrypted String
   webhookSecret  String
+  /// When true, a `merged` pull_request webhook event auto-moves every
+  /// linked issue to `autoTransitionStatusId` via the existing
+  /// workflow-transition enforcement path's automation-bypass flag (same
+  /// mechanism the automation engine's TRANSITION action uses). Off by
+  /// default — this is an opt-in per-project automation, not a default
+  /// behavior change.
+  autoTransitionOnMerge  Boolean @default(false)
+  /// The target status applied on merge when `autoTransitionOnMerge` is on.
+  /// Null while unconfigured; enabling the toggle requires a status to be
+  /// selected (enforced at the service layer, not the DB).
+  autoTransitionStatusId String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  /// SetNull (not a hard block) so deleting the target status doesn't corrupt
+  /// the integration row — the toggle just stops firing until re-configured.
+  autoTransitionStatus Status? @relation("githubAutoTransitionStatus", fields: [autoTransitionStatusId], references: [id], onDelete: SetNull)
 
   @@index([projectId])
+  @@index([autoTransitionStatusId])
 }
 
 /// A link between a tracked Issue and a GitHub object (pull request, commit,
@@ -1609,12 +1628,19 @@ model GitlabIntegration {
   projectPath    String
   tokenEncrypted String
   webhookSecret  String
+  /// Mirrors `GithubIntegration.autoTransitionOnMerge` exactly — a `merged`
+  /// Merge Request Hook event auto-moves every linked issue to
+  /// `autoTransitionStatusId`. Off by default.
+  autoTransitionOnMerge  Boolean @default(false)
+  autoTransitionStatusId String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  autoTransitionStatus Status? @relation("gitlabAutoTransitionStatus", fields: [autoTransitionStatusId], references: [id], onDelete: SetNull)
 
   @@index([projectId])
+  @@index([autoTransitionStatusId])
 }
 
 /// A link between a tracked Issue and a GitLab object (merge request, commit,

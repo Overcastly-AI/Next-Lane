@@ -7,6 +7,7 @@ import {
   HttpCode,
   Logger,
   Param,
+  Patch,
   Put,
   Post,
   Req,
@@ -16,6 +17,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { GitlabService } from './gitlab.service';
 import { UpsertGitlabIntegrationDto } from './dto/upsert-gitlab-integration.dto';
+import { UpdateGitlabAutomationDto } from './dto/update-gitlab-automation.dto';
 import { CurrentUser, AuthUser } from '../auth/current-user.decorator';
 import { RequireScope } from '../auth/require-scope.decorator';
 import { Public } from '../auth/public.decorator';
@@ -67,6 +69,23 @@ export class GitlabController {
     return this.gitlab.remove(user.id, projectId, extractIp(req));
   }
 
+  /**
+   * Update the auto-transition-on-merge automation config. Mirrors
+   * `github.controller.ts#updateAutomation` — token-free, separate from the
+   * full `PUT .../gitlab` save.
+   */
+  @ApiBearerAuth()
+  @Patch('projects/:projectId/gitlab/automation')
+  @RequireScope('gitlab:write')
+  updateAutomation(
+    @CurrentUser() user: AuthUser,
+    @Param('projectId') projectId: string,
+    @Body() dto: UpdateGitlabAutomationDto,
+    @Req() req: Request,
+  ) {
+    return this.gitlab.updateAutomation(user.id, projectId, dto, req, extractIp(req));
+  }
+
   @ApiBearerAuth()
   @Get('issues/:issueId/gitlab-links')
   @RequireScope('gitlab:read')
@@ -75,6 +94,20 @@ export class GitlabController {
     @Param('issueId') issueId: string,
   ) {
     return this.gitlab.listIssueLinks(user.id, issueId);
+  }
+
+  /**
+   * Live MR/pipeline status for the issue's linked GitLab MRs — polled on
+   * issue drawer open. Mirrors `github.controller.ts#getLiveStatus`.
+   */
+  @ApiBearerAuth()
+  @Get('issues/:issueId/gitlab-links/live')
+  @RequireScope('gitlab:read')
+  getLiveStatus(
+    @CurrentUser() user: AuthUser,
+    @Param('issueId') issueId: string,
+  ) {
+    return this.gitlab.getLiveStatus(user.id, issueId);
   }
 
   /**

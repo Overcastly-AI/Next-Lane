@@ -1,23 +1,33 @@
 import { randomBytes } from 'node:crypto';
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Role, SocketEvents } from '@next-lane/shared';
-import type { GitlabIntegrationDto, IssueGitlabLinkDto } from '@next-lane/shared';
+import type {
+  GitlabIntegrationDto,
+  GitlabLiveLinkStatusDto,
+  IssueGitlabLinkDto,
+} from '@next-lane/shared';
 import type { Request } from 'express';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { AuditService } from '../audit/audit.service';
+import { IssuesService } from '../issues/issues.service';
 import {
   assertProjectMember,
   assertProjectRole,
   getEffectiveProjectRole,
 } from '../common/membership.util';
+import { resolveAutomationActor } from '../common/automation-actor.util';
 import { extractIssueNumbers } from '../common/issue-key.util';
-import { encryptGitlabToken } from './gitlab-crypto.util';
+import { encryptGitlabToken, decryptGitlabToken } from './gitlab-crypto.util';
 import { verifyGitlabToken } from './gitlab-token-verify.util';
+import { GitlabClient } from './gitlab-client.service';
 import type { UpsertGitlabIntegrationDto } from './dto/upsert-gitlab-integration.dto';
+import type { UpdateGitlabAutomationDto } from './dto/update-gitlab-automation.dto';
 
 /** Truncate long MR/commit titles for display (first line, capped length). */
 const MAX_TITLE_LENGTH = 300;
+/** Cap on how many linked MRs a single drawer-open live-status poll fetches. */
+const MAX_LIVE_STATUS_LOOKUPS = 5;
 
 const DEFAULT_GITLAB_BASE_URL = 'https://gitlab.com';
 
@@ -27,6 +37,8 @@ type GitlabIntegrationRow = {
   gitlabBaseUrl: string;
   projectPath: string;
   webhookSecret: string;
+  autoTransitionOnMerge: boolean;
+  autoTransitionStatusId: string | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -62,6 +74,8 @@ function toIntegrationDto(
     webhookSecret: opts.isAdmin ? row.webhookSecret : null,
     webhookUrl: `${base}/api/gitlab/webhook/${row.projectId}`,
     hasToken: true,
+    autoTransitionOnMerge: row.autoTransitionOnMerge,
+    autoTransitionStatusId: row.autoTransitionStatusId,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -111,6 +125,8 @@ export class GitlabService {
     private readonly prisma: PrismaService,
     private readonly realtime: RealtimeService,
     private readonly audit: AuditService,
+    private readonly issuesService: IssuesService,
+    private readonly gitlabClient: GitlabClient,
   ) {}
 
   // ---- Admin config CRUD ---------------------------------------------------
@@ -213,6 +229,64 @@ export class GitlabService {
     return { ok: true };
   }
 
+  /**
+   * Update the auto-transition-on-merge automation config. Mirrors
+   * `github.service.ts#updateAutomation` exactly — ADMIN-only, token-free,
+   * requires the integration to already be configured, requires a
+   * project-scoped target status when enabling.
+   */
+  async updateAutomation(
+    userId: string,
+    projectId: string,
+    dto: UpdateGitlabAutomationDto,
+    req?: Request,
+    ip?: string | null,
+  ): Promise<GitlabIntegrationDto> {
+    const project = await assertProjectRole(this.prisma, userId, projectId, Role.ADMIN);
+    const existing = await this.prisma.gitlabIntegration.findUnique({ where: { projectId } });
+    if (!existing) {
+      throw new NotFoundException('GitLab integration not configured for this project');
+    }
+
+    const resolvedStatusId =
+      dto.statusId !== undefined ? dto.statusId : existing.autoTransitionStatusId;
+
+    if (dto.enabled) {
+      if (!resolvedStatusId) {
+        throw new BadRequestException(
+          'A target status is required to enable auto-transition-on-merge',
+        );
+      }
+      const status = await this.prisma.status.findUnique({
+        where: { id: resolvedStatusId },
+        select: { projectId: true },
+      });
+      if (!status || status.projectId !== projectId) {
+        throw new BadRequestException('statusId does not belong to this project');
+      }
+    }
+
+    const row = await this.prisma.gitlabIntegration.update({
+      where: { projectId },
+      data: {
+        autoTransitionOnMerge: dto.enabled,
+        autoTransitionStatusId: resolvedStatusId,
+      },
+    });
+
+    this.audit.record({
+      workspaceId: project.workspaceId,
+      actorId: userId,
+      action: 'gitlab.automation_update',
+      targetType: 'GitlabIntegration',
+      targetId: row.id,
+      metadata: { projectId, autoTransitionOnMerge: dto.enabled, autoTransitionStatusId: resolvedStatusId },
+      ip,
+    });
+
+    return toIntegrationDto(row, { isAdmin: true, req });
+  }
+
   // ---- Read: issue's linked MRs/commits/branches ---------------------------
 
   /** Linked GitLab MRs/commits/branches for a single issue. Any project member. */
@@ -229,6 +303,95 @@ export class GitlabService {
       orderBy: { updatedAt: 'desc' },
     });
     return rows.map(toLinkDto);
+  }
+
+  /**
+   * Live MR/pipeline status for an issue's linked GitLab MRs — the first
+   * REAL outbound call this module makes (see `GitlabClient`'s header
+   * comment). Mirrors `github.service.ts#getLiveStatus` exactly; returns
+   * `[]` when GitLab isn't configured or there are no MR links, and never
+   * throws on a live-call failure (each entry carries `error` instead).
+   */
+  async getLiveStatus(userId: string, issueId: string): Promise<GitlabLiveLinkStatusDto[]> {
+    const issue = await this.prisma.issue.findUnique({
+      where: { id: issueId },
+      select: { projectId: true },
+    });
+    if (!issue) throw new NotFoundException('Issue not found');
+    await assertProjectMember(this.prisma, userId, issue.projectId);
+
+    const integration = await this.prisma.gitlabIntegration.findUnique({
+      where: { projectId: issue.projectId },
+    });
+    if (!integration) return [];
+
+    const mrLinks = await this.prisma.issueGitlabLink.findMany({
+      where: { issueId, kind: 'MR' },
+      orderBy: { updatedAt: 'desc' },
+      take: MAX_LIVE_STATUS_LOOKUPS,
+    });
+    if (mrLinks.length === 0) return [];
+
+    let token: string;
+    try {
+      token = decryptGitlabToken(integration.tokenEncrypted);
+    } catch (err) {
+      this.logger.warn(`Failed to decrypt GitLab token for project ${issue.projectId}: ${String(err)}`);
+      const fetchedAt = new Date().toISOString();
+      return mrLinks.map((link) => ({
+        linkId: link.id,
+        externalId: link.externalId,
+        state: null,
+        merged: null,
+        checksState: null,
+        fetchedAt,
+        error: 'Stored GitLab token could not be decrypted',
+      }));
+    }
+
+    return Promise.all(
+      mrLinks.map(async (link): Promise<GitlabLiveLinkStatusDto> => {
+        const fetchedAt = new Date().toISOString();
+        const iid = Number(link.externalId);
+        if (!Number.isFinite(iid)) {
+          return {
+            linkId: link.id,
+            externalId: link.externalId,
+            state: null,
+            merged: null,
+            checksState: null,
+            fetchedAt,
+            error: 'Not a numeric MR iid',
+          };
+        }
+        const live = await this.gitlabClient.getMergeRequestStatus(
+          integration.gitlabBaseUrl,
+          integration.projectPath,
+          token,
+          iid,
+        );
+        if (!live) {
+          return {
+            linkId: link.id,
+            externalId: link.externalId,
+            state: null,
+            merged: null,
+            checksState: null,
+            fetchedAt,
+            error: 'GitLab API unreachable',
+          };
+        }
+        return {
+          linkId: link.id,
+          externalId: link.externalId,
+          state: live.state,
+          merged: live.merged,
+          checksState: live.checksState,
+          fetchedAt,
+          error: null,
+        };
+      }),
+    );
   }
 
   // ---- Inbound webhook ------------------------------------------------------
@@ -332,7 +495,7 @@ export class GitlabService {
   ): Promise<{ linksUpserted: number }> {
     const project = await this.prisma.project.findUnique({
       where: { id: projectId },
-      select: { id: true, key: true },
+      select: { id: true, key: true, workspaceId: true, leadId: true },
     });
     if (!project) return { linksUpserted: 0 };
 
@@ -370,7 +533,64 @@ export class GitlabService {
       authorLogin: body.user?.username ?? body.user?.name ?? null,
     }));
 
-    return this.upsertLinks(project.id, inputs);
+    const result = await this.upsertLinks(project.id, inputs);
+
+    if (state === 'merged' && issueNumbers.size > 0) {
+      // Post-commit side effect: never let an auto-transition failure turn
+      // an otherwise-successful webhook delivery into an error response.
+      await this.applyAutoTransition(project, [...issueNumbers]).catch((err) => {
+        this.logger.error(`Auto-transition-on-merge failed for project ${project.id}: ${String(err)}`);
+      });
+    }
+
+    return result;
+  }
+
+  /**
+   * When the project's GitLab integration has `autoTransitionOnMerge` on,
+   * move every issue referenced by a just-merged MR to
+   * `autoTransitionStatusId`. Mirrors `github.service.ts#applyAutoTransition`
+   * exactly — see that method's header comment for the full rationale.
+   */
+  private async applyAutoTransition(
+    project: { id: string; workspaceId: string; leadId: string | null },
+    issueNumbers: number[],
+  ): Promise<void> {
+    const integration = await this.prisma.gitlabIntegration.findUnique({
+      where: { projectId: project.id },
+      select: { autoTransitionOnMerge: true, autoTransitionStatusId: true },
+    });
+    if (!integration?.autoTransitionOnMerge || !integration.autoTransitionStatusId) return;
+    const targetStatusId = integration.autoTransitionStatusId;
+
+    for (const issueNumber of issueNumbers) {
+      try {
+        const issue = await this.prisma.issue.findFirst({
+          where: { projectId: project.id, number: issueNumber },
+          select: { id: true, statusId: true, assigneeId: true, reporterId: true },
+        });
+        if (!issue || issue.statusId === targetStatusId) continue;
+
+        const actorId = await resolveAutomationActor(this.prisma, project, issue);
+        if (!actorId) {
+          this.logger.warn(
+            `Auto-transition-on-merge: no eligible actor found for issue #${issueNumber} in project ${project.id}; skipping`,
+          );
+          continue;
+        }
+
+        await this.issuesService.move(
+          actorId,
+          issue.id,
+          { statusId: targetStatusId },
+          { automated: true },
+        );
+      } catch (err) {
+        this.logger.warn(
+          `Auto-transition-on-merge failed for issue #${issueNumber} in project ${project.id}: ${String(err)}`,
+        );
+      }
+    }
   }
 
   /**

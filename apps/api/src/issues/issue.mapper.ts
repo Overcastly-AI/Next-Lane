@@ -82,6 +82,9 @@ export interface IssueWithRelations {
     };
   }>;
   _count?: { comments: number; linksTo?: number } | null;
+  /** Compact PR/MR state select — see `board.service.ts`'s `issueInclude`. */
+  githubLinks?: Array<{ state: string | null }>;
+  gitlabLinks?: Array<{ state: string | null }>;
   parent?: IssueRef | null;
   children?: IssueRef[];
   component?: { id: string; name: string } | null;
@@ -175,6 +178,21 @@ export function toIssueDto(issue: IssueWithRelations): IssueDto {
       dto.blockedByCount = issue._count.linksTo;
     }
   }
+  // Aggregated GitHub PR + GitLab MR link summary — the board card's "linked
+  // PR" badge. Only computed when at least one relation was loaded (mirrors
+  // blockedByCount's `issue._count` presence check); closed links are
+  // excluded from both counts (neither "in review" nor "merged, transition
+  // pending" applies once a PR/MR is closed without merging).
+  if (issue.githubLinks !== undefined || issue.gitlabLinks !== undefined) {
+    const states = [...(issue.githubLinks ?? []), ...(issue.gitlabLinks ?? [])].map(
+      (l) => l.state,
+    );
+    dto.prLinkSummary = {
+      open: states.filter((s) => s === 'open').length,
+      merged: states.filter((s) => s === 'merged').length,
+    };
+  }
+
   if (issue.parent !== undefined)
     dto.parent = issue.parent ? toIssueRefDto(issue.parent) : null;
   if (issue.children) dto.children = issue.children.map(toIssueRefDto);

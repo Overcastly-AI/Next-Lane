@@ -1,5 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { GitlabIntegrationDto, IssueGitlabLinkDto } from '@next-lane/shared';
+import type {
+  GitlabIntegrationDto,
+  GitlabLiveLinkStatusDto,
+  IssueGitlabLinkDto,
+  UpdateGitlabAutomationInput,
+} from '@next-lane/shared';
 import { request } from './client';
 import { qk } from './keys';
 
@@ -58,5 +63,37 @@ export function useIssueGitlabLinks(issueId: string | undefined, enabled = true)
     queryKey: qk.gitlabLinks(issueId ?? ''),
     queryFn: () => request<IssueGitlabLinkDto[]>(`/issues/${issueId}/gitlab-links`),
     enabled: enabled && !!issueId,
+  });
+}
+
+/**
+ * Update the auto-transition-on-merge automation config. Mirrors
+ * `github.ts#useUpdateGithubAutomation` exactly.
+ */
+export function useUpdateGitlabAutomation(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: UpdateGitlabAutomationInput) =>
+      request<GitlabIntegrationDto>(`/projects/${projectId}/gitlab/automation`, {
+        method: 'PATCH',
+        body: input,
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: gitlabKeys.integration(projectId) });
+    },
+  });
+}
+
+/**
+ * Live MR/pipeline status for an issue's linked GitLab MRs — polled on
+ * issue drawer open. Mirrors `github.ts#useGithubLiveStatus` exactly.
+ */
+export function useGitlabLiveStatus(issueId: string | undefined, enabled: boolean) {
+  return useQuery({
+    queryKey: qk.gitlabLiveStatus(issueId ?? ''),
+    queryFn: () => request<GitlabLiveLinkStatusDto[]>(`/issues/${issueId}/gitlab-links/live`),
+    enabled: enabled && !!issueId,
+    staleTime: 30_000,
+    retry: false,
   });
 }

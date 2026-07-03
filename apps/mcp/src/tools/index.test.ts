@@ -135,6 +135,13 @@ describe('tool registry', () => {
       'update_comment',
       'delete_comment',
       'list_project_activity',
+      // PR-status + auto-transition-on-merge (2026-07-03)
+      'get_issue_github_live_status',
+      'get_issue_gitlab_live_status',
+      'get_github_automation_config',
+      'get_gitlab_automation_config',
+      'set_github_automation_config',
+      'set_gitlab_automation_config',
     ];
     for (const name of expected) expect(names).toContain(name);
     // No duplicate names.
@@ -375,6 +382,77 @@ describe('tool registry', () => {
       'http://localhost:4000/api/issues/i1/gitlab-links',
     );
     expect(res.content[0].text).toContain('gll1');
+  });
+
+  it('get_issue_github_live_status GETs /issues/:id/github-links/live', async () => {
+    const { client, fetchImpl } = clientWith(200, [
+      { linkId: 'gl1', externalId: '42', state: 'open', merged: false, checksState: 'success', error: null },
+    ]);
+    const res = await tool('get_issue_github_live_status').handler({ issueId: 'i1' }, client);
+    expect(fetchImpl.mock.calls[0][0]).toBe(
+      'http://localhost:4000/api/issues/i1/github-links/live',
+    );
+    expect(res.content[0].text).toContain('success');
+  });
+
+  it('get_issue_gitlab_live_status GETs /issues/:id/gitlab-links/live', async () => {
+    const { client, fetchImpl } = clientWith(200, [
+      { linkId: 'mrl1', externalId: '7', state: 'merged', merged: true, checksState: 'failure', error: null },
+    ]);
+    const res = await tool('get_issue_gitlab_live_status').handler({ issueId: 'i1' }, client);
+    expect(fetchImpl.mock.calls[0][0]).toBe(
+      'http://localhost:4000/api/issues/i1/gitlab-links/live',
+    );
+    expect(res.content[0].text).toContain('failure');
+  });
+
+  it('get_github_automation_config GETs /projects/:id/github and never leaks the webhook secret', async () => {
+    const { client, fetchImpl } = clientWith(200, {
+      id: 'gi1',
+      projectId: 'p1',
+      repoFullName: 'acme/widgets',
+      webhookSecret: 'super-secret-value',
+      webhookUrl: 'http://localhost:4000/api/github/webhook/p1',
+      hasToken: true,
+      autoTransitionOnMerge: true,
+      autoTransitionStatusId: 'status-done',
+    });
+    const res = await tool('get_github_automation_config').handler({ projectId: 'p1' }, client);
+    expect(fetchImpl.mock.calls[0][0]).toBe('http://localhost:4000/api/projects/p1/github');
+    const text = res.content[0].text;
+    expect(text).toContain('autoTransitionOnMerge');
+    expect(text).toContain('status-done');
+    expect(text).not.toContain('super-secret-value');
+    expect(text).not.toContain('webhookSecret');
+    expect(text).not.toContain('webhookUrl');
+  });
+
+  it('get_github_automation_config degrades to a no-content result when GitHub is not configured', async () => {
+    const { client } = clientWith(200, null);
+    const res = await tool('get_github_automation_config').handler({ projectId: 'p1' }, client);
+    // Mirrors jsonResult's existing null/undefined convention used across the
+    // tool registry (e.g. void-action tools) rather than inventing a new shape.
+    expect(res.content[0].text).toBe('OK (no content)');
+  });
+
+  it('get_gitlab_automation_config GETs /projects/:id/gitlab and never leaks the webhook secret', async () => {
+    const { client, fetchImpl } = clientWith(200, {
+      id: 'gli1',
+      projectId: 'p1',
+      projectPath: 'acme/widgets',
+      gitlabBaseUrl: 'https://gitlab.com',
+      webhookSecret: 'another-super-secret',
+      webhookUrl: 'http://localhost:4000/api/gitlab/webhook/p1',
+      hasToken: true,
+      autoTransitionOnMerge: false,
+      autoTransitionStatusId: null,
+    });
+    const res = await tool('get_gitlab_automation_config').handler({ projectId: 'p1' }, client);
+    expect(fetchImpl.mock.calls[0][0]).toBe('http://localhost:4000/api/projects/p1/gitlab');
+    const text = res.content[0].text;
+    expect(text).toContain('autoTransitionOnMerge');
+    expect(text).not.toContain('another-super-secret');
+    expect(text).not.toContain('webhookSecret');
   });
 
   it('list_quick_links GETs /me/quick-links', async () => {
@@ -688,6 +766,54 @@ describe('tool registry', () => {
     const res = await tool('list_project_role_overrides').handler({ projectId: 'p1' }, client);
     expect(fetchImpl.mock.calls[0][0]).toBe('http://localhost:4000/api/projects/p1/members');
     expect(res.content[0].text).toContain('isOverride');
+  });
+
+  it('set_github_automation_config PATCHes /projects/:id/github/automation', async () => {
+    const { client, fetchImpl } = clientWith(200, {
+      autoTransitionOnMerge: true,
+      autoTransitionStatusId: 'status-done',
+    });
+    await tool('set_github_automation_config').handler(
+      { projectId: 'p1', enabled: true, statusId: 'status-done' },
+      client,
+    );
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toBe('http://localhost:4000/api/projects/p1/github/automation');
+    expect((init as RequestInit).method).toBe('PATCH');
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({
+      enabled: true,
+      statusId: 'status-done',
+    });
+  });
+
+  it('set_github_automation_config omits statusId when not provided (keeps stored value)', async () => {
+    const { client, fetchImpl } = clientWith(200, { autoTransitionOnMerge: false });
+    await tool('set_github_automation_config').handler(
+      { projectId: 'p1', enabled: false },
+      client,
+    );
+    const [, init] = fetchImpl.mock.calls[0];
+    const body = JSON.parse((init as RequestInit).body as string);
+    expect(body.enabled).toBe(false);
+    expect(body.statusId).toBeUndefined();
+  });
+
+  it('set_gitlab_automation_config PATCHes /projects/:id/gitlab/automation', async () => {
+    const { client, fetchImpl } = clientWith(200, {
+      autoTransitionOnMerge: true,
+      autoTransitionStatusId: 'status-done',
+    });
+    await tool('set_gitlab_automation_config').handler(
+      { projectId: 'p1', enabled: true, statusId: 'status-done' },
+      client,
+    );
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toBe('http://localhost:4000/api/projects/p1/gitlab/automation');
+    expect((init as RequestInit).method).toBe('PATCH');
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({
+      enabled: true,
+      statusId: 'status-done',
+    });
   });
 
   it('set_project_role_override PUTs role to /projects/:id/members/:userId/role', async () => {

@@ -174,6 +174,15 @@ export interface IssueDto {
    */
   blockedByCount?: number;
   /**
+   * Aggregated GitHub PR + GitLab MR link summary for this issue — the
+   * board card's "linked PR" badge. Counts open vs. merged separately
+   * (closed links are excluded from both) so the card can distinguish
+   * "in review" from "merged, transition pending". Present only on board
+   * payloads (mirrors `blockedByCount`); undefined when the caller didn't
+   * load the link relations.
+   */
+  prLinkSummary?: { open: number; merged: number };
+  /**
    * Custom field values, keyed by CustomFieldDefinition.id. Value shape depends
    * on the field type (string | number | boolean | string[] | ISO date string).
    * Absent keys mean "no value set". Only present when the issue is loaded with
@@ -955,6 +964,15 @@ export interface GithubIntegrationDto {
   webhookUrl: string;
   /** Always true once configured — a token is required to save the integration. */
   hasToken: boolean;
+  /**
+   * When true, a `merged` PR webhook event auto-moves every linked issue to
+   * `autoTransitionStatusId`, via the existing workflow-transition
+   * enforcement path's automation-bypass flag. Off by default; visible to
+   * every project member (not secret), unlike `webhookSecret`.
+   */
+  autoTransitionOnMerge: boolean;
+  /** Target status id applied on merge when `autoTransitionOnMerge` is true. */
+  autoTransitionStatusId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -964,6 +982,44 @@ export interface UpsertGithubIntegrationInput {
   repoFullName: string;
   /** The raw GitHub PAT. Write-only — never echoed back. */
   token: string;
+}
+
+/** Body for `PATCH /projects/:projectId/github/automation`. */
+export interface UpdateGithubAutomationInput {
+  /** Turn the auto-transition-on-merge behavior on/off. */
+  enabled: boolean;
+  /**
+   * Target status id. Required when enabling for the first time (no status
+   * previously stored); omit to keep the currently-stored status while just
+   * flipping `enabled`. Pass `null` to explicitly clear it (only valid
+   * together with `enabled: false`).
+   */
+  statusId?: string | null;
+}
+
+/**
+ * Live PR status for a single GitHub `IssueGithubLink` of kind `PR`, fetched
+ * on demand (issue drawer open) via the real `GithubClient` outbound call —
+ * the first live GitHub API call v1 makes. `error` is set (and every other
+ * field null) when the live call fails for any reason (network, auth,
+ * rate-limit, deleted PR) — the caller degrades gracefully rather than
+ * failing the whole request.
+ */
+export interface GithubLiveLinkStatusDto {
+  /** The `IssueGithubLink.id` this status is for. */
+  linkId: string;
+  /** The PR number (matches the link's `externalId`). */
+  externalId: string;
+  /** Live PR state, or null when the live call failed. */
+  state: 'open' | 'closed' | null;
+  /** Live merged flag, or null when the live call failed. */
+  merged: boolean | null;
+  /** Combined commit-status/CI rollup for the PR's head commit, or null when unavailable. */
+  checksState: 'success' | 'failure' | 'pending' | 'unknown' | null;
+  /** ISO 8601 timestamp this snapshot was fetched at. */
+  fetchedAt: string;
+  /** Human-readable reason the live call failed, or null on success. */
+  error: string | null;
 }
 
 /**
@@ -1021,6 +1077,9 @@ export interface GitlabIntegrationDto {
   webhookUrl: string;
   /** Always true once configured — a token is required to save the integration. */
   hasToken: boolean;
+  /** Mirrors `GithubIntegrationDto.autoTransitionOnMerge` exactly. */
+  autoTransitionOnMerge: boolean;
+  autoTransitionStatusId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -1032,6 +1091,29 @@ export interface UpsertGitlabIntegrationInput {
   gitlabBaseUrl?: string;
   /** The raw GitLab PAT. Write-only — never echoed back. */
   token: string;
+}
+
+/** Body for `PATCH /projects/:projectId/gitlab/automation`. Mirrors `UpdateGithubAutomationInput`. */
+export interface UpdateGitlabAutomationInput {
+  enabled: boolean;
+  statusId?: string | null;
+}
+
+/**
+ * Live MR status for a single GitLab `IssueGitlabLink` of kind `MR`, fetched
+ * on demand via the real `GitlabClient` outbound call. Mirrors
+ * `GithubLiveLinkStatusDto`; `checksState` is derived from the MR's GitLab
+ * CI pipeline status rather than a separate combined-status call (GitLab's
+ * MR API embeds the latest pipeline inline).
+ */
+export interface GitlabLiveLinkStatusDto {
+  linkId: string;
+  externalId: string;
+  state: 'open' | 'closed' | 'merged' | 'locked' | null;
+  merged: boolean | null;
+  checksState: 'success' | 'failure' | 'pending' | 'unknown' | null;
+  fetchedAt: string;
+  error: string | null;
 }
 
 /**
@@ -1157,10 +1239,14 @@ export interface SavedFilterDto {
  * - `webhooks:write` — POST/PATCH/DELETE on webhook subscriptions.
  * - `comments:read`  — GET issue comments.
  * - `comments:write` — POST/PATCH/DELETE on comments.
- * - `github:read`    — GET the GitHub integration config + issue GitHub links.
- * - `github:write`   — PUT/DELETE the GitHub integration config.
- * - `gitlab:read`    — GET the GitLab integration config + issue GitLab links.
- * - `gitlab:write`   — PUT/DELETE the GitLab integration config.
+ * - `github:read`    — GET the GitHub integration config + issue GitHub links
+ *                       + the automation config + live PR/CI status.
+ * - `github:write`   — PUT/DELETE the GitHub integration config + PATCH the
+ *                       auto-transition-on-merge automation config.
+ * - `gitlab:read`    — GET the GitLab integration config + issue GitLab links
+ *                       + the automation config + live MR/pipeline status.
+ * - `gitlab:write`   — PUT/DELETE the GitLab integration config + PATCH the
+ *                       auto-transition-on-merge automation config.
  *
  * An empty `scopes` array on a token means "unrestricted" (same as a browser
  * JWT session — all routes are accessible). Only non-empty scopes arrays are

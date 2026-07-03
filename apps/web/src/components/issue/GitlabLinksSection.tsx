@@ -13,9 +13,13 @@
  * project's Development history stays legible even when both providers are
  * configured (rare, but possible during a migration) — each section's own
  * icon distinguishes the provider at a glance.
+ *
+ * When at least one linked MR is present, a live MR/pipeline status poll
+ * fires on mount (`useGitlabLiveStatus`) — mirrors `GithubLinksSection`'s
+ * live-status behavior exactly, including graceful degradation on failure.
  */
-import type { IssueGitlabLinkDto, GitlabLinkKind } from '@next-lane/shared';
-import { useIssueGitlabLinks } from '@/api/gitlab';
+import type { IssueGitlabLinkDto, GitlabLinkKind, GitlabLiveLinkStatusDto } from '@next-lane/shared';
+import { useIssueGitlabLinks, useGitlabLiveStatus } from '@/api/gitlab';
 import { cn } from '@/lib/cn';
 
 const KIND_LABEL: Record<GitlabLinkKind, string> = {
@@ -68,13 +72,54 @@ function StateBadge({ state }: { state: string | null }) {
   );
 }
 
-function LinkRow({ link }: { link: IssueGitlabLinkDto }) {
+const CHECKS_ICON: Record<'success' | 'failure' | 'pending', string> = {
+  success: 'text-emerald-600',
+  failure: 'text-red-600',
+  pending: 'text-amber-500',
+};
+
+/** Small pipeline-status dot rendered next to a live-refreshed MR's state badge. */
+function ChecksIndicator({ live }: { live: GitlabLiveLinkStatusDto | undefined }) {
+  if (!live) return null;
+  if (live.error) {
+    return (
+      <span
+        data-testid="gitlab-live-status-error"
+        title={`Live status unavailable: ${live.error}`}
+        className="text-[10px] text-ink-300"
+        aria-label="Live MR/pipeline status unavailable"
+      >
+        ⋯
+      </span>
+    );
+  }
+  if (!live.checksState || live.checksState === 'unknown') return null;
+  const state = live.checksState;
+  return (
+    <span
+      data-testid="gitlab-live-checks"
+      data-checks-state={state}
+      title={`Pipeline: ${state}`}
+      className={cn('inline-flex h-2 w-2 shrink-0 rounded-full', 'bg-current', CHECKS_ICON[state])}
+      aria-label={`Pipeline ${state}`}
+    />
+  );
+}
+
+function LinkRow({
+  link,
+  live,
+}: {
+  link: IssueGitlabLinkDto;
+  live?: GitlabLiveLinkStatusDto;
+}) {
   const label =
     link.kind === 'MR'
       ? `!${link.externalId}`
       : link.kind === 'COMMIT'
         ? link.externalId.slice(0, 7)
         : link.externalId;
+  const displayState = live && !live.error && live.state ? live.state : link.state;
 
   return (
     <li data-testid="gitlab-link-row" className="flex items-center gap-2 py-1.5">
@@ -95,7 +140,8 @@ function LinkRow({ link }: { link: IssueGitlabLinkDto }) {
         <span className="font-mono text-xs text-ink-500">{label}</span>{' '}
         {link.title && <span>{link.title}</span>}
       </a>
-      <StateBadge state={link.state} />
+      {link.kind === 'MR' && <ChecksIndicator live={live} />}
+      <StateBadge state={displayState} />
     </li>
   );
 }
@@ -103,6 +149,9 @@ function LinkRow({ link }: { link: IssueGitlabLinkDto }) {
 export function GitlabLinksSection({ issueId }: { issueId: string }) {
   const linksQuery = useIssueGitlabLinks(issueId);
   const links = linksQuery.data ?? [];
+  const hasMrLink = links.some((l) => l.kind === 'MR');
+  const liveQuery = useGitlabLiveStatus(issueId, hasMrLink);
+  const liveByLinkId = new Map((liveQuery.data ?? []).map((s) => [s.linkId, s]));
 
   // Hidden entirely while loading (avoids a flash for the common case where
   // GitLab isn't configured / there are no links) and once loaded when empty
@@ -116,7 +165,7 @@ export function GitlabLinksSection({ issueId }: { issueId: string }) {
       </p>
       <ul className="divide-y divide-ink-100">
         {links.map((link) => (
-          <LinkRow key={link.id} link={link} />
+          <LinkRow key={link.id} link={link} live={liveByLinkId.get(link.id)} />
         ))}
       </ul>
     </section>

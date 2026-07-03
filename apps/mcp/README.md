@@ -2,12 +2,13 @@
 
 A [Model Context Protocol](https://modelcontextprotocol.io) server that lets
 external AI agents — **Claude Desktop**, **Claude Code**, and any other MCP host
-— **read and write** a Next Lane instance end-to-end: **97 tools** covering
+— **read and write** a Next Lane instance end-to-end: **103 tools** covering
 workspaces/projects, workflows / SDLC, issues (incl. links, labels, comments
 with author-or-admin edit/delete, checklists, worklogs), boards, statuses,
 sprints, components, versions, custom fields, saved NLQL filters, automation
 rules, dashboards, per-project role overrides, per-project agent-context
-memory, a unified project activity feed, GitHub/GitLab SCM links, and a
+memory, a unified project activity feed, GitHub/GitLab SCM links (incl. live
+PR/MR status and the auto-transition-on-merge automation toggle), and a
 one-call epic rollup.
 
 This is Next Lane's **agent-native wedge** (`docs/VISION.md`): an agent can list
@@ -172,7 +173,11 @@ minimal, so there is no `verbose` mode.
 | `list_saved_filters`| List a project's saved NLQL filters (`projectId`). **compact** `{id, name, query, shared, projectId}`. |
 | `list_automations`  | List a project's automation rules (`projectId`). **compact** `{id, name, trigger, enabled}`. |
 | `list_issue_github_links` | List an issue's linked GitHub PRs/commits (`issueId`). Requires `github:read` scope when the token is scoped. **paged**. |
+| `get_issue_github_live_status` | Live PR/CI status for an issue's linked GitHub PRs — a real GitHub API call (state, merged, combined checks), not the last webhook snapshot (`issueId`). `[]` when unconfigured/no links; per-link `error` on a failed lookup. Requires `github:read`. |
+| `get_github_automation_config` | Read a project's auto-transition-on-merge config (`projectId`). Never returns the webhook secret/PAT — a narrower surface than the REST GET. `null` when GitHub isn't configured. Requires `github:read`. |
 | `list_issue_gitlab_links` | List an issue's linked GitLab merge requests/commits/branches (`issueId`). Requires `gitlab:read` scope when the token is scoped. **paged**. |
+| `get_issue_gitlab_live_status` | Live MR/pipeline status for an issue's linked GitLab MRs — a real GitLab API call. Mirrors `get_issue_github_live_status`. Requires `gitlab:read`. |
+| `get_gitlab_automation_config` | Read a project's GitLab auto-transition-on-merge config (`projectId`). Mirrors `get_github_automation_config`. Requires `gitlab:read`. |
 | `list_quick_links`  | List the caller's personal sidebar shortcut links. **compact** `{id, label, url, group}`. |
 | `get_personal_board`| Get the caller's personal (non-project) board: columns + cards.       |
 | `list_issue_templates` | List a project's issue templates (`projectId`). **compact** `{id, name, issueType}`. |
@@ -237,6 +242,7 @@ minimal, so there is no `verbose` mode.
 | `create_dashboard_gadget` / `update_dashboard_gadget` / `delete_dashboard_gadget` | Add / edit / remove a gadget — an NLQL `query` + `visualization` (STAT/TABLE/BREAKDOWN/BURNDOWN) + `config`. Update merges `config` rather than replacing it. |
 | `set_project_role_override` / `remove_project_role_override` | Elevate/restrict (or revert) a workspace member's role scoped to one project. Requires effective project ADMIN; refuses to override a workspace admin. |
 | `update_project_context` | Full-content replace of the project's agent handoff document (`projectId`, `content` markdown, 64 KB cap). **Call before ending every work session** — and at milestones — so the next run starts with your context. Requires project MEMBER+. |
+| `set_github_automation_config` / `set_gitlab_automation_config` | Turn a project's auto-transition-on-merge automation on/off and/or set its target status (`projectId`, `enabled`, `statusId?`) — a `merged` PR/MR webhook then moves every linked issue to that status via the existing workflow-transition automation-bypass path. Requires the integration to already be connected (repo/token setup stays web-UI-only); requires project ADMIN. |
 
 `create_issue` / `update_issue` also accept `originalEstimateMinutes` (time-tracking estimate) and `customFields` (partial, keyed by field id).
 
@@ -245,9 +251,11 @@ minimal, so there is no `verbose` mode.
 - **Configuring the GitHub or GitLab integration** (`upsert`/`remove` — sets/
   rotates the webhook secret, and `GET` returns the plaintext secret to
   project admins) is admin-only and secret-bearing for both providers; it is
-  deliberately **not** wired as an MCP tool for either. Only the read-only
-  `list_issue_github_links` / `list_issue_gitlab_links` (no secret in the
-  response) are exposed. Manage either integration from project Settings in
+  deliberately **not** wired as an MCP tool for either. The read-only
+  `list_issue_github_links` / `list_issue_gitlab_links` / live-status /
+  automation-config tools (none ever return the webhook secret or PAT) and
+  the `set_*_automation_config` write tools (config-only, no secret) ARE
+  exposed. Manage the repo/token connection itself from project Settings in
   the web app.
 - **Workspace/project deletion** and other irreversible, non-confirmable
   destructive actions are intentionally out of scope for the same reason.

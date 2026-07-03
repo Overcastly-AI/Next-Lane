@@ -17,10 +17,12 @@
  * MEMBER/VIEWER: a compact read-only summary ("Connected to namespace/project"),
  * hidden entirely when nothing is configured yet.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import type { StatusDto } from '@next-lane/shared';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Field } from '@/components/ui/Field';
+import { Select } from '@/components/ui/Select';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { useToast } from '@/components/ui/Toast';
 import { errorMessage } from '@/lib/errorMessage';
@@ -29,6 +31,7 @@ import {
   useGitlabIntegration,
   useUpsertGitlabIntegration,
   useDeleteGitlabIntegration,
+  useUpdateGitlabAutomation,
 } from '@/api/gitlab';
 
 /** Card wrapper matching the other Settings section cards. */
@@ -103,12 +106,137 @@ function CopyField({
   );
 }
 
+/**
+ * Auto-transition-on-merge automation toggle. Mirrors
+ * `GithubSection.tsx`'s `AutoTransitionToggle` exactly.
+ */
+function AutoTransitionToggle({
+  projectId,
+  statuses,
+  autoTransitionOnMerge,
+  autoTransitionStatusId,
+}: {
+  projectId: string;
+  statuses: StatusDto[];
+  autoTransitionOnMerge: boolean;
+  autoTransitionStatusId: string | null;
+}) {
+  const update = useUpdateGitlabAutomation(projectId);
+  const toast = useToast();
+  const [statusId, setStatusId] = useState(autoTransitionStatusId ?? '');
+
+  useEffect(() => {
+    setStatusId(autoTransitionStatusId ?? '');
+  }, [autoTransitionStatusId]);
+
+  function handleToggle() {
+    const next = !autoTransitionOnMerge;
+    if (next && !statusId) {
+      toast.error('Pick a target status before enabling auto-transition-on-merge.');
+      return;
+    }
+    update.mutate(
+      { enabled: next, statusId: statusId || undefined },
+      {
+        onSuccess: () =>
+          toast.success(
+            next ? 'Auto-transition-on-merge enabled.' : 'Auto-transition-on-merge disabled.',
+          ),
+        onError: (err) =>
+          toast.error(errorMessage(err, 'Could not update the automation setting.')),
+      },
+    );
+  }
+
+  function handleStatusChange(e: React.ChangeEvent<HTMLSelectElement>) {
+    const value = e.target.value;
+    setStatusId(value);
+    if (autoTransitionOnMerge && value) {
+      update.mutate(
+        { enabled: true, statusId: value },
+        {
+          onError: (err) =>
+            toast.error(errorMessage(err, 'Could not update the target status.')),
+        },
+      );
+    }
+  }
+
+  const targetStatusName = statuses.find((s) => s.id === autoTransitionStatusId)?.name;
+
+  return (
+    <div
+      className="space-y-3 rounded-lg border border-ink-100 bg-ink-50/60 p-4"
+      data-testid="gitlab-auto-transition-section"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-[0.08em] text-ink-500">
+            Auto-transition on merge
+          </p>
+          <p className="mt-1 text-xs text-ink-500">
+            {autoTransitionOnMerge && targetStatusName
+              ? `Merged MRs move their linked issue to "${targetStatusName}" automatically.`
+              : 'Off by default — merged MRs only link, they never move an issue.'}
+          </p>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={autoTransitionOnMerge}
+          aria-label={
+            autoTransitionOnMerge
+              ? 'Auto-transition-on-merge on — click to disable'
+              : 'Auto-transition-on-merge off — click to enable'
+          }
+          data-testid="gitlab-auto-transition-toggle"
+          disabled={update.isPending}
+          onClick={handleToggle}
+          className={cn(
+            'relative mt-0.5 inline-flex h-5 w-9 shrink-0 items-center rounded-full',
+            'transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-300',
+            autoTransitionOnMerge ? 'bg-signal-600' : 'bg-ink-300',
+            update.isPending && 'cursor-not-allowed opacity-50',
+          )}
+        >
+          <span
+            aria-hidden="true"
+            className={cn(
+              'inline-block h-3.5 w-3.5 rounded-full bg-surface shadow transition-transform duration-200',
+              autoTransitionOnMerge ? 'translate-x-4' : 'translate-x-1',
+            )}
+          />
+        </button>
+      </div>
+      <Field label="Target status" htmlFor="gitlab-auto-transition-status">
+        <Select
+          id="gitlab-auto-transition-status"
+          data-testid="gitlab-auto-transition-status"
+          value={statusId}
+          disabled={update.isPending || statuses.length === 0}
+          onChange={handleStatusChange}
+        >
+          <option value="">— Pick a status —</option>
+          {statuses.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.name}
+            </option>
+          ))}
+        </Select>
+      </Field>
+    </div>
+  );
+}
+
 export function GitlabSection({
   projectId,
   isAdmin,
+  statuses,
 }: {
   projectId: string;
   isAdmin: boolean;
+  /** Project statuses, for the auto-transition-on-merge target picker. */
+  statuses: StatusDto[];
 }) {
   const integrationQuery = useGitlabIntegration(projectId);
   const upsert = useUpsertGitlabIntegration(projectId);
@@ -273,6 +401,15 @@ export function GitlabSection({
                 <CopyField label="Secret Token" value={integration.webhookSecret} testId="gitlab-webhook-secret" />
               )}
             </div>
+          )}
+
+          {integration && (
+            <AutoTransitionToggle
+              projectId={projectId}
+              statuses={statuses}
+              autoTransitionOnMerge={integration.autoTransitionOnMerge}
+              autoTransitionStatusId={integration.autoTransitionStatusId}
+            />
           )}
         </div>
       )}

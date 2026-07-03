@@ -896,6 +896,22 @@ const readTools: ToolDef[] = [
         .then((data) => pageResult(paginateOnly(data, args))),
   },
   {
+    name: 'get_issue_github_live_status',
+    group: 'read',
+    description:
+      'Live PR/CI status for an issue’s linked GitHub pull requests — a ' +
+      'real-time GitHub API call (state, merged, combined checks rollup), ' +
+      'not the last webhook-delivered snapshot `list_issue_github_links` ' +
+      'returns. Returns `[]` when GitHub isn’t configured or there are no ' +
+      'linked PRs. Each entry carries `error` (and null fields) instead of ' +
+      'failing the whole call when the live lookup for that one PR fails ' +
+      '(rate limit, deleted PR, network). Requires the `github:read` PAT ' +
+      'scope when the token is scoped.',
+    inputSchema: { issueId: z.string().describe('Issue id.') },
+    handler: (args, client) =>
+      client.get<ApiItem[]>(`/issues/${args.issueId}/github-links/live`).then(jsonResult),
+  },
+  {
     name: 'list_issue_gitlab_links',
     group: 'read',
     description:
@@ -911,6 +927,83 @@ const readTools: ToolDef[] = [
       client
         .get<ApiItem[]>(`/issues/${args.issueId}/gitlab-links`)
         .then((data) => pageResult(paginateOnly(data, args))),
+  },
+  {
+    name: 'get_issue_gitlab_live_status',
+    group: 'read',
+    description:
+      'Live MR/pipeline status for an issue’s linked GitLab merge requests ' +
+      '— a real-time GitLab API call (state, merged, latest pipeline ' +
+      'status), not the last webhook-delivered snapshot ' +
+      '`list_issue_gitlab_links` returns. Mirrors ' +
+      '`get_issue_github_live_status` exactly, including per-link graceful ' +
+      'degradation on a failed lookup. Requires the `gitlab:read` PAT scope ' +
+      'when the token is scoped.',
+    inputSchema: { issueId: z.string().describe('Issue id.') },
+    handler: (args, client) =>
+      client.get<ApiItem[]>(`/issues/${args.issueId}/gitlab-links/live`).then(jsonResult),
+  },
+  {
+    name: 'get_github_automation_config',
+    group: 'read',
+    description:
+      'Read a project’s GitHub auto-transition-on-merge automation config: ' +
+      'whether it’s enabled and the target status id a merged PR moves its ' +
+      'linked issue(s) to. Off by default. Returns null when GitHub isn’t ' +
+      'configured for the project. NEVER returns the webhook secret or PAT ' +
+      '— this tool is a narrower surface than the REST GET on purpose, so ' +
+      'even an admin-scoped token never sees a secret over MCP (configuring ' +
+      'the repo/token itself stays unexposed — see "Not exposed over MCP"). ' +
+      'Requires the `github:read` PAT scope when the token is scoped.',
+    inputSchema: { projectId: z.string().describe('Project id.') },
+    handler: (args, client) =>
+      client
+        .get<{
+          repoFullName: string;
+          hasToken: boolean;
+          autoTransitionOnMerge: boolean;
+          autoTransitionStatusId: string | null;
+        } | null>(`/projects/${args.projectId}/github`)
+        .then((data) =>
+          jsonResult(
+            data && {
+              repoFullName: data.repoFullName,
+              hasToken: data.hasToken,
+              autoTransitionOnMerge: data.autoTransitionOnMerge,
+              autoTransitionStatusId: data.autoTransitionStatusId,
+            },
+          ),
+        ),
+  },
+  {
+    name: 'get_gitlab_automation_config',
+    group: 'read',
+    description:
+      'Read a project’s GitLab auto-transition-on-merge automation config. ' +
+      'Mirrors `get_github_automation_config` exactly, including never ' +
+      'returning the webhook secret/PAT. Requires the `gitlab:read` PAT ' +
+      'scope when the token is scoped.',
+    inputSchema: { projectId: z.string().describe('Project id.') },
+    handler: (args, client) =>
+      client
+        .get<{
+          projectPath: string;
+          gitlabBaseUrl: string;
+          hasToken: boolean;
+          autoTransitionOnMerge: boolean;
+          autoTransitionStatusId: string | null;
+        } | null>(`/projects/${args.projectId}/gitlab`)
+        .then((data) =>
+          jsonResult(
+            data && {
+              projectPath: data.projectPath,
+              gitlabBaseUrl: data.gitlabBaseUrl,
+              hasToken: data.hasToken,
+              autoTransitionOnMerge: data.autoTransitionOnMerge,
+              autoTransitionStatusId: data.autoTransitionStatusId,
+            },
+          ),
+        ),
   },
   {
     name: 'list_quick_links',
@@ -2552,6 +2645,64 @@ const writeTools: ToolDef[] = [
     description: 'Delete a gadget from a dashboard. Requires project MEMBER+.',
     inputSchema: { id: z.string().describe('Gadget id.') },
     handler: (args, client) => client.delete(`/gadgets/${args.id}`).then(jsonResult),
+  },
+  {
+    name: 'set_github_automation_config',
+    group: 'write',
+    description:
+      'Turn a project’s auto-transition-on-merge automation on/off and/or ' +
+      'set its target status: a `merged` PR webhook event then moves every ' +
+      'linked issue to that status, reusing the same workflow-transition ' +
+      'enforcement + automation-bypass path the automation engine’s ' +
+      'TRANSITION action uses. Requires the integration to already be ' +
+      'connected (`get_github_automation_config` returns non-null) — this ' +
+      'tool does NOT connect a repo/token (that stays admin-only/web-UI-' +
+      'only, secret-bearing). Enabling for the first time requires ' +
+      '`statusId` (a project status id from `list_statuses`); omit it to ' +
+      'keep the currently-stored target while just flipping `enabled`. ' +
+      'Requires project ADMIN.',
+    inputSchema: {
+      projectId: z.string().describe('Project id.'),
+      enabled: z.boolean().describe('Turn auto-transition-on-merge on or off.'),
+      statusId: z
+        .string()
+        .optional()
+        .describe(
+          'Target status id. Required the first time you enable it; omit to keep the stored value.',
+        ),
+    },
+    handler: (args, client) =>
+      client
+        .patch(`/projects/${args.projectId}/github/automation`, {
+          enabled: args.enabled,
+          statusId: args.statusId,
+        })
+        .then(jsonResult),
+  },
+  {
+    name: 'set_gitlab_automation_config',
+    group: 'write',
+    description:
+      'Turn a project’s GitLab auto-transition-on-merge automation on/off ' +
+      'and/or set its target status. Mirrors `set_github_automation_config` ' +
+      'exactly. Requires project ADMIN.',
+    inputSchema: {
+      projectId: z.string().describe('Project id.'),
+      enabled: z.boolean().describe('Turn auto-transition-on-merge on or off.'),
+      statusId: z
+        .string()
+        .optional()
+        .describe(
+          'Target status id. Required the first time you enable it; omit to keep the stored value.',
+        ),
+    },
+    handler: (args, client) =>
+      client
+        .patch(`/projects/${args.projectId}/gitlab/automation`, {
+          enabled: args.enabled,
+          statusId: args.statusId,
+        })
+        .then(jsonResult),
   },
   {
     name: 'set_project_role_override',

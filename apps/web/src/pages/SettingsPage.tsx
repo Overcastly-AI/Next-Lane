@@ -186,9 +186,9 @@ export function SettingsPage() {
 
         <WebhooksSection projectId={projectId} isAdmin={isAdmin} />
 
-        <GithubSection projectId={projectId} isAdmin={isAdmin} />
+        <GithubSection projectId={projectId} isAdmin={isAdmin} statuses={statusesForWorkflow} />
 
-        <GitlabSection projectId={projectId} isAdmin={isAdmin} />
+        <GitlabSection projectId={projectId} isAdmin={isAdmin} statuses={statusesForWorkflow} />
 
         <AgentContextSection projectId={projectId} myRole={myRole} />
 

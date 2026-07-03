@@ -7,6 +7,7 @@ import {
   HttpCode,
   Logger,
   Param,
+  Patch,
   Put,
   Post,
   Req,
@@ -16,6 +17,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { GithubService } from './github.service';
 import { UpsertGithubIntegrationDto } from './dto/upsert-github-integration.dto';
+import { UpdateGithubAutomationDto } from './dto/update-github-automation.dto';
 import { CurrentUser, AuthUser } from '../auth/current-user.decorator';
 import { RequireScope } from '../auth/require-scope.decorator';
 import { Public } from '../auth/public.decorator';
@@ -67,6 +69,23 @@ export class GithubController {
     return this.github.remove(user.id, projectId, extractIp(req));
   }
 
+  /**
+   * Update the auto-transition-on-merge automation config. Deliberately
+   * separate from `PUT .../github` (which requires re-pasting the PAT on
+   * every save) so flipping this boolean never forces re-entering the token.
+   */
+  @ApiBearerAuth()
+  @Patch('projects/:projectId/github/automation')
+  @RequireScope('github:write')
+  updateAutomation(
+    @CurrentUser() user: AuthUser,
+    @Param('projectId') projectId: string,
+    @Body() dto: UpdateGithubAutomationDto,
+    @Req() req: Request,
+  ) {
+    return this.github.updateAutomation(user.id, projectId, dto, req, extractIp(req));
+  }
+
   @ApiBearerAuth()
   @Get('issues/:issueId/github-links')
   @RequireScope('github:read')
@@ -75,6 +94,22 @@ export class GithubController {
     @Param('issueId') issueId: string,
   ) {
     return this.github.listIssueLinks(user.id, issueId);
+  }
+
+  /**
+   * Live PR/CI status for the issue's linked GitHub PRs — polled on issue
+   * drawer open. The first endpoint in this module to make a real outbound
+   * GitHub API call (via `GithubClient`); degrades to `error` per-link
+   * rather than failing the whole request when the live call fails.
+   */
+  @ApiBearerAuth()
+  @Get('issues/:issueId/github-links/live')
+  @RequireScope('github:read')
+  getLiveStatus(
+    @CurrentUser() user: AuthUser,
+    @Param('issueId') issueId: string,
+  ) {
+    return this.github.getLiveStatus(user.id, issueId);
   }
 
   /**

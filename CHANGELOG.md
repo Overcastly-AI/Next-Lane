@@ -14,6 +14,42 @@ This section summarizes the major capabilities delivered in the pre-1.0
 development phase. A versioned release will be tagged once the v1 criteria in
 [`docs/ROADMAP.md`](./docs/ROADMAP.md) are complete.
 
+### Added — 2026-07-03 (2)
+
+**PR-status + auto-transition-on-merge, with a board-card "linked PR" badge:**
+- Per-project, off-by-default automation toggle on both the GitHub and
+  GitLab integrations (`autoTransitionOnMerge`/`autoTransitionStatusId`,
+  migration `20260703100000_add_pr_auto_transition`): a `merged` PR/MR
+  webhook event moves every linked issue to a configurable target status,
+  via a new token-free `PATCH /projects/:projectId/{github,gitlab}/automation`
+  and reusing `IssuesService.move()`'s existing workflow-transition
+  enforcement path's automation-bypass flag — the same mechanism the
+  automation engine's own TRANSITION action uses. A new shared
+  `common/automation-actor.util.ts` resolves a "who did this" actor for the
+  webhook-triggered move (assignee → reporter → project lead → longest-
+  tenured workspace ADMIN); every issue's transition is independently
+  try/caught so one ineligible actor never blocks a sibling issue or fails
+  the webhook response.
+- Board cards now show a small "PR"/"Merged" badge (mirroring the existing
+  blocked-issue badge) when the issue has linked GitHub PRs/GitLab MRs —
+  `board.service.ts`'s `issueInclude` gained a compact `githubLinks`/
+  `gitlabLinks` state-only select, aggregated into `IssueDto.prLinkSummary`.
+- The issue drawer's Development section now polls live PR/CI status
+  (GitHub) and MR/pipeline status (GitLab) on open — the first real outbound
+  calls through `GithubClient`/`GitlabClient`, both routed through the same
+  SSRF-guarded (`resolveAndCheckBlocked`, shared with `webhooks.service.ts`)
+  fetch path used for outbound webhook delivery. Degrades gracefully (a
+  quiet unavailable hint, never a hard failure) when the live call fails.
+- MCP: 6 new tools — `get_issue_github_live_status`,
+  `get_issue_gitlab_live_status`, `get_github_automation_config`,
+  `get_gitlab_automation_config`, `set_github_automation_config`,
+  `set_gitlab_automation_config` (the config reads never return the webhook
+  secret/PAT, a narrower surface than the REST GET). 104 tools total.
+- 69 new API unit tests (1731→1800), 4 new tenant-isolation-matrix rows
+  (108/108 blocked), `apps/web/e2e/pr-auto-transition.spec.ts` (6 cases ×
+  desktop+mobile, incl. a locally-HMAC-signed `merged` webhook driving a
+  real status transition).
+
 ### Changed — 2026-07-03
 
 **Idempotency hardened to claim-first (code-review follow-up to Agent

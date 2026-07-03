@@ -63,6 +63,11 @@ const issueInclude = {
       },
     },
   },
+  // Compact PR/MR state select for the board card's "linked PR" badge
+  // (mirrors the blocked-issue badge pattern above) — only `state` is
+  // needed, never the full link row, to keep the board payload light.
+  githubLinks: { where: { kind: 'PR' }, select: { state: true } },
+  gitlabLinks: { where: { kind: 'MR' }, select: { state: true } },
 } satisfies Prisma.IssueInclude;
 
 /** Prisma Board row shape (subset needed for mapping). */

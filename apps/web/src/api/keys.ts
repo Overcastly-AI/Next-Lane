@@ -58,6 +58,10 @@ export const qk = {
   githubLinks: (issueId: string) => ['githubLinks', issueId] as const,
   /** Linked GitLab MRs/commits/branches for an issue (Development section). */
   gitlabLinks: (issueId: string) => ['gitlabLinks', issueId] as const,
+  /** Live GitHub PR/CI status for an issue's linked PRs — polled on drawer open. */
+  githubLiveStatus: (issueId: string) => ['githubLiveStatus', issueId] as const,
+  /** Live GitLab MR/pipeline status for an issue's linked MRs — polled on drawer open. */
+  gitlabLiveStatus: (issueId: string) => ['gitlabLiveStatus', issueId] as const,
   /** Dashboard summaries for a project (the dashboards list/tabs). */
   dashboards: (projectId: string) => ['dashboards', projectId] as const,
   /** A single dashboard's metadata + gadgets. */

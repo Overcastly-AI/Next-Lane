@@ -7,9 +7,16 @@
  * has no GitHub integration configured OR the issue has no links yet — the
  * `GET /issues/:issueId/github-links` endpoint returns `[]` in both cases, so
  * a single "any links?" check covers it.
+ *
+ * When at least one linked PR is present, a live PR/CI status poll fires on
+ * mount (`useGithubLiveStatus`) — the first real outbound GitHub API call
+ * this product makes. Degrades gracefully: a failed live call renders a
+ * quiet "live status unavailable" hint next to that PR row instead of
+ * breaking the section (network egress may simply be unavailable, e.g. this
+ * self-hosted instance has no internet access).
  */
-import type { IssueGithubLinkDto, GithubLinkKind } from '@next-lane/shared';
-import { useIssueGithubLinks } from '@/api/github';
+import type { IssueGithubLinkDto, GithubLinkKind, GithubLiveLinkStatusDto } from '@next-lane/shared';
+import { useIssueGithubLinks, useGithubLiveStatus } from '@/api/github';
 import { cn } from '@/lib/cn';
 
 const KIND_LABEL: Record<GithubLinkKind, string> = {
@@ -60,7 +67,47 @@ function StateBadge({ state }: { state: string | null }) {
   );
 }
 
-function LinkRow({ link }: { link: IssueGithubLinkDto }) {
+const CHECKS_ICON: Record<'success' | 'failure' | 'pending', string> = {
+  success: 'text-emerald-600',
+  failure: 'text-red-600',
+  pending: 'text-amber-500',
+};
+
+/** Small CI-checks dot rendered next to a live-refreshed PR's state badge. */
+function ChecksIndicator({ live }: { live: GithubLiveLinkStatusDto | undefined }) {
+  if (!live) return null;
+  if (live.error) {
+    return (
+      <span
+        data-testid="github-live-status-error"
+        title={`Live status unavailable: ${live.error}`}
+        className="text-[10px] text-ink-300"
+        aria-label="Live PR/CI status unavailable"
+      >
+        ⋯
+      </span>
+    );
+  }
+  if (!live.checksState || live.checksState === 'unknown') return null;
+  const state = live.checksState;
+  return (
+    <span
+      data-testid="github-live-checks"
+      data-checks-state={state}
+      title={`CI checks: ${state}`}
+      className={cn('inline-flex h-2 w-2 shrink-0 rounded-full', 'bg-current', CHECKS_ICON[state])}
+      aria-label={`CI checks ${state}`}
+    />
+  );
+}
+
+function LinkRow({
+  link,
+  live,
+}: {
+  link: IssueGithubLinkDto;
+  live?: GithubLiveLinkStatusDto;
+}) {
   const label =
     link.kind === 'PR'
       ? `#${link.externalId}`
@@ -87,14 +134,34 @@ function LinkRow({ link }: { link: IssueGithubLinkDto }) {
         <span className="font-mono text-xs text-ink-500">{label}</span>{' '}
         {link.title && <span>{link.title}</span>}
       </a>
-      <StateBadge state={link.state} />
+      {link.kind === 'PR' && <ChecksIndicator live={live} />}
+      <StateBadge state={liveDisplayState(link, live)} />
     </li>
   );
+}
+
+/**
+ * Prefer the live-fetched state when available and error-free — `merged`
+ * takes precedence over the raw open/closed state (GitHub's PR API reports
+ * them as two separate fields; a merged PR is `state: "closed", merged:
+ * true`). Falls back to the webhook-derived `link.state` when there's no
+ * live data yet or the live call failed.
+ */
+function liveDisplayState(
+  link: IssueGithubLinkDto,
+  live: GithubLiveLinkStatusDto | undefined,
+): string | null {
+  if (!live || live.error || !live.state) return link.state;
+  if (live.merged) return 'merged';
+  return live.state;
 }
 
 export function GithubLinksSection({ issueId }: { issueId: string }) {
   const linksQuery = useIssueGithubLinks(issueId);
   const links = linksQuery.data ?? [];
+  const hasPrLink = links.some((l) => l.kind === 'PR');
+  const liveQuery = useGithubLiveStatus(issueId, hasPrLink);
+  const liveByLinkId = new Map((liveQuery.data ?? []).map((s) => [s.linkId, s]));
 
   // Hidden entirely while loading (avoids a flash for the common case where
   // GitHub isn't configured / there are no links) and once loaded when empty
@@ -108,7 +175,7 @@ export function GithubLinksSection({ issueId }: { issueId: string }) {
       </p>
       <ul className="divide-y divide-ink-100">
         {links.map((link) => (
-          <LinkRow key={link.id} link={link} />
+          <LinkRow key={link.id} link={link} live={liveByLinkId.get(link.id)} />
         ))}
       </ul>
     </section>

@@ -992,6 +992,17 @@ function buildMatrix(a: Tenant): Array<MatrixRow & { resolvedPath: string; resol
       method: 'GET',
       path: (t) => `/issues/${t.issueId}/github-links`,
     },
+    {
+      label: 'PATCH GitHub auto-transition-on-merge automation for project A',
+      method: 'PATCH',
+      path: (t) => `/projects/${t.projectId}/github/automation`,
+      body: (t) => ({ enabled: true, statusId: t.statusId }),
+    },
+    {
+      label: 'GET live GitHub PR/CI status for issue A',
+      method: 'GET',
+      path: (t) => `/issues/${t.issueId}/github-links/live`,
+    },
 
     // ── GitLab integration ────────────────────────────────────────────────────
     {
@@ -1017,6 +1028,17 @@ function buildMatrix(a: Tenant): Array<MatrixRow & { resolvedPath: string; resol
       label: 'GET GitLab links for issue A',
       method: 'GET',
       path: (t) => `/issues/${t.issueId}/gitlab-links`,
+    },
+    {
+      label: 'PATCH GitLab auto-transition-on-merge automation for project A',
+      method: 'PATCH',
+      path: (t) => `/projects/${t.projectId}/gitlab/automation`,
+      body: (t) => ({ enabled: true, statusId: t.statusId }),
+    },
+    {
+      label: 'GET live GitLab MR/pipeline status for issue A',
+      method: 'GET',
+      path: (t) => `/issues/${t.issueId}/gitlab-links/live`,
     },
 
     // ── Agent context ────────────────────────────────────────────────────────────────────

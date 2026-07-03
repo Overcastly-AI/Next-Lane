@@ -210,6 +210,61 @@ describe('BoardService', () => {
       );
     });
 
+    it('requests a compact githubLinks/gitlabLinks state select for the "linked PR" badge', async () => {
+      prisma.board.findFirst.mockResolvedValue(makeBoardRow());
+      prisma.status.findMany.mockResolvedValue([]);
+      prisma.issue.findMany.mockResolvedValue([]);
+
+      await service.getBoard('user-1', PROJECT_ID);
+
+      expect(prisma.issue.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          include: expect.objectContaining({
+            githubLinks: { where: { kind: 'PR' }, select: { state: true } },
+            gitlabLinks: { where: { kind: 'MR' }, select: { state: true } },
+            // The parent include (503b48d) must survive alongside the new
+            // link selects — regression guard for the "don't disturb it"
+            // requirement.
+            parent: expect.objectContaining({ select: expect.anything() }),
+          }),
+        }),
+      );
+    });
+
+    it('aggregates open/merged GitHub PR + GitLab MR link states into prLinkSummary', async () => {
+      prisma.board.findFirst.mockResolvedValue(makeBoardRow());
+      prisma.status.findMany.mockResolvedValue([]);
+      prisma.issue.findMany.mockResolvedValue([
+        {
+          ...makeIssueRow(0),
+          githubLinks: [{ state: 'open' }, { state: 'merged' }],
+          gitlabLinks: [{ state: 'merged' }, { state: 'closed' }],
+        },
+        {
+          // A second issue with linked-PR relations loaded but zero PR/MR
+          // links (empty arrays, not undefined) — the badge must render
+          // nothing (0/0), not "undefined".
+          ...makeIssueRow(1),
+          githubLinks: [],
+          gitlabLinks: [],
+        },
+        {
+          // A third issue where the caller didn't even load the relations —
+          // prLinkSummary must stay entirely absent (mirrors blockedByCount's
+          // `_count` presence check), not default to 0/0.
+          ...makeIssueRow(2),
+        },
+      ]);
+
+      const result = await service.getBoard('user-1', PROJECT_ID);
+
+      // 2 open (1 github) + 2 merged (1 github + 1 gitlab); the closed GitLab
+      // link counts toward neither bucket.
+      expect(result.issues[0].prLinkSummary).toEqual({ open: 1, merged: 2 });
+      expect(result.issues[1].prLinkSummary).toEqual({ open: 0, merged: 0 });
+      expect(result.issues[2].prLinkSummary).toBeUndefined();
+    });
+
     it('sets issuesTruncated: true and slices to CAP when result exceeds cap', async () => {
       const rows = Array.from({ length: BOARD_ISSUES_CAP + 1 }, (_, i) =>
         makeIssueRow(i),

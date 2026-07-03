@@ -191,6 +191,47 @@ export const IssueCard = forwardRef<HTMLDivElement, IssueCardProps>(
             </div>
           )}
 
+          {/* Linked PR/MR badge — mirrors the blocked-issue badge pattern above.
+              Merged takes visual priority over open (purple > emerald) since
+              "merged, transition pending" is the more actionable state. */}
+          {issue.prLinkSummary &&
+            (issue.prLinkSummary.open > 0 || issue.prLinkSummary.merged > 0) && (
+              <div className="mb-2">
+                {(() => {
+                  const { open, merged } = issue.prLinkSummary!;
+                  const total = open + merged;
+                  const isMerged = merged > 0;
+                  const label = isMerged ? 'PR merged' : 'PR open';
+                  return (
+                    <span
+                      data-testid="issue-pr-badge"
+                      data-pr-state={isMerged ? 'merged' : 'open'}
+                      aria-label={`${label}${total > 1 ? ` · ${total} linked` : ''}`}
+                      title={`${label}${total > 1 ? ` · ${total} linked` : ''}`}
+                      className={cn(
+                        'inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-[10px] font-semibold ring-1 ring-inset',
+                        isMerged
+                          ? 'bg-purple-50 text-purple-700 ring-purple-200'
+                          : 'bg-emerald-50 text-emerald-700 ring-emerald-200',
+                      )}
+                    >
+                      <svg
+                        width="10"
+                        height="10"
+                        viewBox="0 0 16 16"
+                        fill="currentColor"
+                        aria-hidden="true"
+                      >
+                        <path d="M1.5 3.25a2.25 2.25 0 1 1 3 2.122v5.256a2.251 2.251 0 1 1-1.5 0V5.372A2.25 2.25 0 0 1 1.5 3.25Zm5.677-.177L9.573.677A.25.25 0 0 1 10 .854V2.5h1A2.5 2.5 0 0 1 13.5 5v5.628a2.251 2.251 0 1 1-1.5 0V5a1 1 0 0 0-1-1h-1v1.646a.25.25 0 0 1-.427.177L7.177 3.427a.25.25 0 0 1 0-.354ZM3.75 2.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm0 9.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm8.25.75a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Z" />
+                      </svg>
+                      {isMerged ? 'Merged' : 'PR'}
+                      {total > 1 ? ` · ${total}` : ''}
+                    </span>
+                  );
+                })()}
+              </div>
+            )}
+
           {/* Due date chip */}
           {issue.dueDate && (
             <div className="mb-2">

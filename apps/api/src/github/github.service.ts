@@ -1,29 +1,41 @@
 import { randomBytes } from 'node:crypto';
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Role, SocketEvents } from '@next-lane/shared';
-import type { GithubIntegrationDto, IssueGithubLinkDto } from '@next-lane/shared';
+import type {
+  GithubIntegrationDto,
+  GithubLiveLinkStatusDto,
+  IssueGithubLinkDto,
+} from '@next-lane/shared';
 import type { Request } from 'express';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { AuditService } from '../audit/audit.service';
+import { IssuesService } from '../issues/issues.service';
 import {
   assertProjectMember,
   assertProjectRole,
   getEffectiveProjectRole,
 } from '../common/membership.util';
-import { encryptGithubToken } from './github-crypto.util';
+import { resolveAutomationActor } from '../common/automation-actor.util';
+import { encryptGithubToken, decryptGithubToken } from './github-crypto.util';
 import { verifyGithubSignature } from './github-signature.util';
 import { extractIssueNumbers } from './github-issue-key.util';
+import { GithubClient } from './github-client.service';
 import type { UpsertGithubIntegrationDto } from './dto/upsert-github-integration.dto';
+import type { UpdateGithubAutomationDto } from './dto/update-github-automation.dto';
 
 /** Truncate long PR/commit titles for display (first line, capped length). */
 const MAX_TITLE_LENGTH = 300;
+/** Cap on how many linked PRs a single drawer-open live-status poll fetches. */
+const MAX_LIVE_STATUS_LOOKUPS = 5;
 
 type GithubIntegrationRow = {
   id: string;
   projectId: string;
   repoFullName: string;
   webhookSecret: string;
+  autoTransitionOnMerge: boolean;
+  autoTransitionStatusId: string | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -52,6 +64,9 @@ function toIntegrationDto(
     webhookSecret: opts.isAdmin ? row.webhookSecret : null,
     webhookUrl: `${base}/api/github/webhook/${row.projectId}`,
     hasToken: true,
+    // Visible to every project member (not secret), unlike webhookSecret.
+    autoTransitionOnMerge: row.autoTransitionOnMerge,
+    autoTransitionStatusId: row.autoTransitionStatusId,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -101,6 +116,8 @@ export class GithubService {
     private readonly prisma: PrismaService,
     private readonly realtime: RealtimeService,
     private readonly audit: AuditService,
+    private readonly issuesService: IssuesService,
+    private readonly githubClient: GithubClient,
   ) {}
 
   // ---- Admin config CRUD ---------------------------------------------------
@@ -202,6 +219,69 @@ export class GithubService {
     return { ok: true };
   }
 
+  /**
+   * Update the auto-transition-on-merge automation config. ADMIN-only,
+   * token-free (separate from `upsert()`'s full PUT so flipping the toggle
+   * never forces re-entering the PAT). Requires the integration to already
+   * be configured — 404 otherwise.
+   *
+   * Enabling requires a target status: either passed in this call
+   * (`dto.statusId`) or already stored from a previous save. The status must
+   * belong to THIS project (400 otherwise — the same "wrong-project safety"
+   * guard every cross-reference in the codebase applies).
+   */
+  async updateAutomation(
+    userId: string,
+    projectId: string,
+    dto: UpdateGithubAutomationDto,
+    req?: Request,
+    ip?: string | null,
+  ): Promise<GithubIntegrationDto> {
+    const project = await assertProjectRole(this.prisma, userId, projectId, Role.ADMIN);
+    const existing = await this.prisma.githubIntegration.findUnique({ where: { projectId } });
+    if (!existing) {
+      throw new NotFoundException('GitHub integration not configured for this project');
+    }
+
+    const resolvedStatusId =
+      dto.statusId !== undefined ? dto.statusId : existing.autoTransitionStatusId;
+
+    if (dto.enabled) {
+      if (!resolvedStatusId) {
+        throw new BadRequestException(
+          'A target status is required to enable auto-transition-on-merge',
+        );
+      }
+      const status = await this.prisma.status.findUnique({
+        where: { id: resolvedStatusId },
+        select: { projectId: true },
+      });
+      if (!status || status.projectId !== projectId) {
+        throw new BadRequestException('statusId does not belong to this project');
+      }
+    }
+
+    const row = await this.prisma.githubIntegration.update({
+      where: { projectId },
+      data: {
+        autoTransitionOnMerge: dto.enabled,
+        autoTransitionStatusId: resolvedStatusId,
+      },
+    });
+
+    this.audit.record({
+      workspaceId: project.workspaceId,
+      actorId: userId,
+      action: 'github.automation_update',
+      targetType: 'GithubIntegration',
+      targetId: row.id,
+      metadata: { projectId, autoTransitionOnMerge: dto.enabled, autoTransitionStatusId: resolvedStatusId },
+      ip,
+    });
+
+    return toIntegrationDto(row, { isAdmin: true, req });
+  }
+
   // ---- Read: issue's linked PRs/commits/branches ---------------------------
 
   /** Linked GitHub PRs/commits/branches for a single issue. Any project member. */
@@ -218,6 +298,99 @@ export class GithubService {
       orderBy: { updatedAt: 'desc' },
     });
     return rows.map(toLinkDto);
+  }
+
+  /**
+   * Live PR/CI status for an issue's linked GitHub PRs — the first REAL
+   * outbound call this module makes (see `GithubClient`'s header comment).
+   * Any project member may poll this (mirrors `listIssueLinks`'s access
+   * level); returns `[]` when GitHub isn't configured or the issue has no PR
+   * links, rather than an error, so the drawer can call this unconditionally.
+   *
+   * Never throws on a live-call failure — each link's entry carries `error`
+   * instead so one bad/rate-limited lookup doesn't blank the whole section.
+   * Capped at MAX_LIVE_STATUS_LOOKUPS most-recently-updated PR links per call
+   * to bound the outbound fan-out from a single drawer open.
+   */
+  async getLiveStatus(userId: string, issueId: string): Promise<GithubLiveLinkStatusDto[]> {
+    const issue = await this.prisma.issue.findUnique({
+      where: { id: issueId },
+      select: { projectId: true },
+    });
+    if (!issue) throw new NotFoundException('Issue not found');
+    await assertProjectMember(this.prisma, userId, issue.projectId);
+
+    const integration = await this.prisma.githubIntegration.findUnique({
+      where: { projectId: issue.projectId },
+    });
+    if (!integration) return [];
+
+    const prLinks = await this.prisma.issueGithubLink.findMany({
+      where: { issueId, kind: 'PR' },
+      orderBy: { updatedAt: 'desc' },
+      take: MAX_LIVE_STATUS_LOOKUPS,
+    });
+    if (prLinks.length === 0) return [];
+
+    let token: string;
+    try {
+      token = decryptGithubToken(integration.tokenEncrypted);
+    } catch (err) {
+      this.logger.warn(`Failed to decrypt GitHub token for project ${issue.projectId}: ${String(err)}`);
+      const fetchedAt = new Date().toISOString();
+      return prLinks.map((link) => ({
+        linkId: link.id,
+        externalId: link.externalId,
+        state: null,
+        merged: null,
+        checksState: null,
+        fetchedAt,
+        error: 'Stored GitHub token could not be decrypted',
+      }));
+    }
+
+    return Promise.all(
+      prLinks.map(async (link): Promise<GithubLiveLinkStatusDto> => {
+        const fetchedAt = new Date().toISOString();
+        const number = Number(link.externalId);
+        if (!Number.isFinite(number)) {
+          return {
+            linkId: link.id,
+            externalId: link.externalId,
+            state: null,
+            merged: null,
+            checksState: null,
+            fetchedAt,
+            error: 'Not a numeric PR number',
+          };
+        }
+        const live = await this.githubClient.getPullRequestStatus(
+          integration.repoFullName,
+          token,
+          number,
+        );
+        if (!live) {
+          return {
+            linkId: link.id,
+            externalId: link.externalId,
+            state: null,
+            merged: null,
+            checksState: null,
+            fetchedAt,
+            error: 'GitHub API unreachable',
+          };
+        }
+        return {
+          linkId: link.id,
+          externalId: link.externalId,
+          state: live.state,
+          merged: live.merged,
+          checksState: live.checksState,
+          fetchedAt,
+          error: null,
+        };
+      }),
+    );
   }
 
   // ---- Inbound webhook ------------------------------------------------------
@@ -321,7 +494,7 @@ export class GithubService {
   ): Promise<{ linksUpserted: number }> {
     const project = await this.prisma.project.findUnique({
       where: { id: projectId },
-      select: { id: true, key: true },
+      select: { id: true, key: true, workspaceId: true, leadId: true },
     });
     if (!project) return { linksUpserted: 0 };
 
@@ -357,7 +530,78 @@ export class GithubService {
       authorLogin: pr.user?.login ?? null,
     }));
 
-    return this.upsertLinks(project.id, inputs);
+    const result = await this.upsertLinks(project.id, inputs);
+
+    if (state === 'merged' && issueNumbers.size > 0) {
+      // Post-commit side effect: never let an auto-transition failure turn
+      // an otherwise-successful webhook delivery into an error response
+      // (mirrors the "guard post-commit side effects" pattern used
+      // elsewhere for notification/webhook fan-out).
+      await this.applyAutoTransition(project, [...issueNumbers]).catch((err) => {
+        this.logger.error(`Auto-transition-on-merge failed for project ${project.id}: ${String(err)}`);
+      });
+    }
+
+    return result;
+  }
+
+  /**
+   * When the project's GitHub integration has `autoTransitionOnMerge` on,
+   * move every issue referenced by a just-merged PR to
+   * `autoTransitionStatusId` — reusing `IssuesService.move()`'s existing
+   * workflow-transition enforcement path via the automation-bypass flag
+   * (`{ automated: true }`), the exact mechanism the automation engine's own
+   * TRANSITION action uses (`automation-engine.service.ts`).
+   *
+   * Disabled by default (schema default `false`) and a no-op with zero DB
+   * queries beyond the integration lookup when off. Every issue is handled
+   * independently and failures are logged + skipped rather than thrown, so
+   * one issue with a restricted actor or a deleted target status never
+   * blocks the others.
+   */
+  private async applyAutoTransition(
+    project: { id: string; workspaceId: string; leadId: string | null },
+    issueNumbers: number[],
+  ): Promise<void> {
+    const integration = await this.prisma.githubIntegration.findUnique({
+      where: { projectId: project.id },
+      select: { autoTransitionOnMerge: true, autoTransitionStatusId: true },
+    });
+    if (!integration?.autoTransitionOnMerge || !integration.autoTransitionStatusId) return;
+    const targetStatusId = integration.autoTransitionStatusId;
+
+    for (const issueNumber of issueNumbers) {
+      try {
+        // Re-scoped to THIS project — never a cross-project write, mirrors
+        // upsertLinks' own findFirst-by-projectId guard.
+        const issue = await this.prisma.issue.findFirst({
+          where: { projectId: project.id, number: issueNumber },
+          select: { id: true, statusId: true, assigneeId: true, reporterId: true },
+        });
+        if (!issue || issue.statusId === targetStatusId) continue;
+
+        const actorId = await resolveAutomationActor(this.prisma, project, issue);
+        if (!actorId) {
+          this.logger.warn(
+            `Auto-transition-on-merge: no eligible actor found for issue #${issueNumber} in project ${project.id}; skipping`,
+          );
+          continue;
+        }
+
+        await this.issuesService.move(
+          actorId,
+          issue.id,
+          { statusId: targetStatusId },
+          { automated: true },
+        );
+      } catch (err) {
+        // Never let one issue's failure (e.g. an actor lacking effective
+        // project access) block the rest of the batch.
+        this.logger.warn(
+          `Auto-transition-on-merge failed for issue #${issueNumber} in project ${project.id}: ${String(err)}`,
+        );
+      }
+    }
   }
 
   /**
