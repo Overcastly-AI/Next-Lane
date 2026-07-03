@@ -118,6 +118,73 @@ describe('ReportsService', () => {
     });
   });
 
+  describe('velocityTrend', () => {
+    it('reverses the DESC-ordered/take-N query back into oldest → newest', async () => {
+      mockDoneStatuses(prisma);
+      // Prisma is queried newest-first (ORDER BY ... DESC, take: n) so the
+      // DB does the bounding; the service must reverse it back to the same
+      // oldest → newest shape `velocity()` returns.
+      prisma.sprint.findMany.mockResolvedValue([
+        {
+          id: 'sp-3',
+          name: 'Sprint 3',
+          state: SprintState.ACTIVE,
+          issues: [{ storyPoints: 5, statusId: STATUS.todo.id }],
+        },
+        {
+          id: 'sp-2',
+          name: 'Sprint 2',
+          state: SprintState.COMPLETED,
+          issues: [{ storyPoints: 4, statusId: STATUS.done.id }],
+        },
+      ]);
+
+      const result = await service.velocityTrend('user-1', PROJECT_ID, 6);
+
+      expect(prisma.sprint.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          orderBy: [{ startDate: 'desc' }, { createdAt: 'desc' }],
+          take: 6,
+        }),
+      );
+      expect(result).toEqual({
+        projectId: PROJECT_ID,
+        sprints: 6,
+        points: [
+          { sprintId: 'sp-2', sprintName: 'Sprint 2', state: SprintState.COMPLETED, committed: 4, completed: 4 },
+          { sprintId: 'sp-3', sprintName: 'Sprint 3', state: SprintState.ACTIVE, committed: 5, completed: 0 },
+        ],
+      });
+    });
+
+    it('clamps the requested sprint count to [1, 24]', async () => {
+      mockDoneStatuses(prisma);
+      prisma.sprint.findMany.mockResolvedValue([]);
+
+      await service.velocityTrend('user-1', PROJECT_ID, 999);
+      expect(prisma.sprint.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ take: 24 }),
+      );
+
+      await service.velocityTrend('user-1', PROJECT_ID, 0);
+      expect(prisma.sprint.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ take: 6 }), // 0 || default(6)
+      );
+
+      await service.velocityTrend('user-1', PROJECT_ID, -3);
+      expect(prisma.sprint.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ take: 1 }),
+      );
+    });
+
+    it('requires project membership', async () => {
+      mockDoneStatuses(prisma);
+      prisma.sprint.findMany.mockResolvedValue([]);
+      await service.velocityTrend('user-1', PROJECT_ID, 6);
+      expect(membership.assertProjectMember).toHaveBeenCalledWith(prisma, 'user-1', PROJECT_ID);
+    });
+  });
+
   describe('burndown', () => {
     it('throws when the sprint is not found in the project', async () => {
       mockDoneStatuses(prisma);

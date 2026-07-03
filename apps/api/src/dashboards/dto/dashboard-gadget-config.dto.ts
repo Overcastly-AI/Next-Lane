@@ -2,6 +2,7 @@ import {
   ArrayMaxSize,
   IsArray,
   IsInt,
+  IsNumber,
   IsOptional,
   IsString,
   Max,
@@ -17,11 +18,18 @@ import {
  * cross-field rule `class-validator` can't express cleanly).
  */
 export class DashboardGadgetConfigDto {
-  /** Grid order — lower renders earlier. */
+  /**
+   * Grid order — lower renders earlier. A fractional/midpoint value, NOT a
+   * dense integer: drag-to-reorder computes the new position as the
+   * numeric midpoint between the two new neighbors (or ±1 past an end) so
+   * only the ONE moved gadget is ever written — never a renumber of the
+   * whole list. Can be negative (repeatedly moving something to the very
+   * front) or fractional (e.g. 1.5) — `@IsInt()` would reject both.
+   */
   @IsOptional()
-  @IsInt()
-  @Min(0)
-  @Max(1000)
+  @IsNumber()
+  @Min(-1_000_000)
+  @Max(1_000_000)
   position?: number;
 
   /** Grid column span (1 = default, 2 = wide). */
@@ -53,4 +61,11 @@ export class DashboardGadgetConfigDto {
   @Min(1)
   @Max(50)
   limit?: number;
+
+  /** VELOCITY_TREND: number of most-recent sprints to include (server also clamps). */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(24)
+  sprints?: number;
 }

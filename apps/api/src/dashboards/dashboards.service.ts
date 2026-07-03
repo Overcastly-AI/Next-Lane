@@ -25,6 +25,7 @@ import {
   type NlqlUser,
   type ValidateCustomFieldDef,
 } from '@next-lane/shared';
+import { VELOCITY_TREND_DEFAULT_SPRINTS } from '../reports/reports.service';
 import { loadNlqlEvalContext } from '../common/nlql-eval-context.util';
 import {
   evaluateBreakdown,
@@ -54,6 +55,50 @@ import type { UpdateDashboardGadgetDto } from './dto/update-dashboard-gadget.dto
  * evaluated set was partial.
  */
 export const DASHBOARD_ISSUES_CAP = 2000;
+
+/**
+ * Hard cap on dashboards per project / gadgets per dashboard. Both surfaces
+ * are MEMBER-writable and MCP-writable with no prior upper bound — one bad
+ * agent loop could otherwise create hundreds of dashboards or gadgets, and
+ * `getDashboardData` fans out one NLQL evaluation per gadget on every read
+ * (engineering-auditor Pass 12, P2-2). Enforced with a `BadRequestException`
+ * before insert, mirroring `DASHBOARD_ISSUES_CAP`.
+ */
+export const MAX_DASHBOARDS_PER_PROJECT = 20;
+export const MAX_GADGETS_PER_DASHBOARD = 30;
+
+/**
+ * A brand-new project's very first dashboard is pre-populated with a small,
+ * generically-useful set of gadgets instead of starting empty — closes the
+ * Phase-1 "empty by default" scope delta now that the framework is proven.
+ * Every subsequent dashboard (including a second dashboard on the same
+ * project) still starts empty; this only fires once, on dashboard #1.
+ */
+const DEFAULT_GADGETS: ReadonlyArray<{
+  title: string;
+  query: string;
+  visualization: DashboardGadgetVisualization;
+  config: Record<string, unknown>;
+}> = [
+  {
+    title: 'Open issues',
+    query: 'statusCategory != DONE',
+    visualization: DashboardGadgetVisualization.STAT,
+    config: { position: 0 },
+  },
+  {
+    title: 'Status overview',
+    query: '',
+    visualization: DashboardGadgetVisualization.BREAKDOWN,
+    config: { position: 1, field: 'status' },
+  },
+  {
+    title: 'My open issues',
+    query: 'assignee = me() AND statusCategory != DONE',
+    visualization: DashboardGadgetVisualization.TABLE,
+    config: { position: 2, limit: 10 },
+  },
+];
 
 const issueInclude = {
   status: true,
@@ -143,18 +188,41 @@ export class DashboardsService {
   ): Promise<DashboardSummaryDto> {
     await assertProjectRole(this.prisma, userId, projectId, Role.MEMBER);
 
+    const existingCount = await this.prisma.dashboard.count({ where: { projectId } });
+    if (existingCount >= MAX_DASHBOARDS_PER_PROJECT) {
+      throw new BadRequestException(
+        `This project already has the maximum of ${MAX_DASHBOARDS_PER_PROJECT} dashboards. Delete one before creating another.`,
+      );
+    }
+
     const last = await this.prisma.dashboard.findFirst({
       where: { projectId },
       orderBy: { order: 'desc' },
       select: { order: true },
     });
     const order = (last?.order ?? -1) + 1;
+    const isFirstDashboard = existingCount === 0;
 
     const dashboard = await this.prisma.dashboard.create({
       data: { projectId, name: dto.name, order },
     });
+
+    let gadgetCount = 0;
+    if (isFirstDashboard) {
+      await this.prisma.dashboardGadget.createMany({
+        data: DEFAULT_GADGETS.map((g) => ({
+          dashboardId: dashboard.id,
+          title: g.title,
+          query: g.query,
+          visualization: g.visualization,
+          config: g.config as Prisma.InputJsonValue,
+        })),
+      });
+      gadgetCount = DEFAULT_GADGETS.length;
+    }
+
     this.emitDashboardUpdated(projectId, dashboard.id);
-    return toDashboardSummaryDto(dashboard, 0);
+    return toDashboardSummaryDto(dashboard, gadgetCount);
   }
 
   async getDashboard(userId: string, dashboardId: string): Promise<DashboardDto> {
@@ -218,6 +286,15 @@ export class DashboardsService {
   ) {
     const dashboard = await this.getDashboardOr404(dashboardId);
     await assertProjectRole(this.prisma, userId, dashboard.projectId, Role.MEMBER);
+
+    const existingGadgetCount = await this.prisma.dashboardGadget.count({
+      where: { dashboardId },
+    });
+    if (existingGadgetCount >= MAX_GADGETS_PER_DASHBOARD) {
+      throw new BadRequestException(
+        `This dashboard already has the maximum of ${MAX_GADGETS_PER_DASHBOARD} gadgets. Delete one before adding another.`,
+      );
+    }
 
     const customFieldDefs = await this.loadCustomFieldDefs(dashboard.projectId);
     this.assertValidGadgetQuery(dto.query, customFieldDefs);
@@ -360,10 +437,15 @@ export class DashboardsService {
       includeSprints: referencedKinds.has('sprint'),
     });
 
-    const gadgets: DashboardGadgetResult[] = [];
-    for (const row of gadgetRows) {
-      gadgets.push(
-        await this.evaluateGadget(
+    // Evaluate every gadget in parallel — `evaluateGadget` never throws (it
+    // catches internally and returns a per-gadget `error`), so `Promise.all`
+    // is safe and preserves `gadgetRows`' order. Bounded by
+    // MAX_GADGETS_PER_DASHBOARD, so this can't fan out unboundedly
+    // (engineering-auditor Pass 12, P2-2 — was a sequential loop, up to ~200
+    // serial NLQL evaluations per read before the cap existed).
+    const gadgets: DashboardGadgetResult[] = await Promise.all(
+      gadgetRows.map((row) =>
+        this.evaluateGadget(
           row,
           dashboard.projectId,
           userId,
@@ -372,8 +454,8 @@ export class DashboardsService {
           users,
           sprints,
         ),
-      );
-    }
+      ),
+    );
 
     return { dashboardId, gadgets, issuesTruncated };
   }
@@ -450,6 +532,28 @@ export class DashboardsService {
           return {
             ...base,
             error: err instanceof Error ? err.message : 'Failed to compute burndown',
+          };
+        }
+      }
+      case DashboardGadgetVisualization.VELOCITY_TREND: {
+        // Project-wide by design — `filtered` isn't used (there's no single
+        // issue set to filter; the trend spans every sprint's own issues).
+        // The query is still validated above for pipeline consistency with
+        // every other visualization, just not applied here.
+        const sprintsCount =
+          typeof base.config.sprints === 'number' && base.config.sprints > 0
+            ? base.config.sprints
+            : VELOCITY_TREND_DEFAULT_SPRINTS;
+        try {
+          const trend = await this.reports.velocityTrend(userId, projectId, sprintsCount);
+          return {
+            ...base,
+            data: { kind: 'VELOCITY_TREND', sprints: trend.sprints, points: trend.points },
+          };
+        } catch (err) {
+          return {
+            ...base,
+            error: err instanceof Error ? err.message : 'Failed to compute velocity trend',
           };
         }
       }

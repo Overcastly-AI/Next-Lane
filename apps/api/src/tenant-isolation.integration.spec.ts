@@ -701,6 +701,11 @@ function buildMatrix(a: Tenant): Array<MatrixRow & { resolvedPath: string; resol
       path: (t) => `/projects/${t.projectId}/reports/velocity`,
     },
     {
+      label: 'GET velocity trend report for project A',
+      method: 'GET',
+      path: (t) => `/projects/${t.projectId}/reports/velocity-trend`,
+    },
+    {
       label: 'GET CFD report for project A',
       method: 'GET',
       path: (t) => `/projects/${t.projectId}/reports/cfd`,

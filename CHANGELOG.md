@@ -44,11 +44,51 @@ development phase. A versioned release will be tagged once the v1 criteria in
   `get_issue_gitlab_live_status`, `get_github_automation_config`,
   `get_gitlab_automation_config`, `set_github_automation_config`,
   `set_gitlab_automation_config` (the config reads never return the webhook
-  secret/PAT, a narrower surface than the REST GET). 104 tools total.
+  secret/PAT, a narrower surface than the REST GET). 103 tools total.
 - 69 new API unit tests (1731→1800), 4 new tenant-isolation-matrix rows
   (108/108 blocked), `apps/web/e2e/pr-auto-transition.spec.ts` (6 cases ×
   desktop+mobile, incl. a locally-HMAC-signed `merged` webhook driving a
   real status transition).
+
+### Added — 2026-07-03 (3)
+
+**Configurable dashboards — Phase 2: cross-sprint velocity trend, drag-to-reorder, default gadgets, engineering hardening:**
+- New `VELOCITY_TREND` dashboard gadget — cross-sprint committed vs.
+  completed story points (`GET /projects/:id/reports/velocity-trend?sprints=N`,
+  default 6, clamped 1-24), project-wide by design (the gadget's NLQL
+  `query` isn't used to scope it — there's no single issue set to filter
+  across every sprint's own issues). Renders via the existing `VelocityChart`
+  component the Reports page already uses — a real gadget-framework reuse,
+  not a bespoke report page. Migration `20260703090000_add_velocity_trend_
+  gadget_visualization` adds the enum value.
+- Drag-to-reorder gadgets — the Phase-1 up/down buttons replaced with a real
+  dnd-kit sortable grid (`rectSortingStrategy`, a dedicated grab handle so
+  Edit/Delete stay clickable); `config.position` is now a numeric
+  fractional-midpoint value computed client-side and PATCHed for only the
+  moved gadget (never a renumber of the rest), with an optimistic
+  client-side reorder.
+- A project's very first dashboard is now pre-populated with 3 starter
+  gadgets (Open issues / Status overview / My open issues) — every
+  dashboard after that still starts empty.
+- Engineering hardening (AUDIT-ENGINEERING.md Pass 12, P2-2):
+  `MAX_DASHBOARDS_PER_PROJECT` (20) / `MAX_GADGETS_PER_DASHBOARD` (30) caps
+  (`BadRequestException` before insert), and `getDashboardData`'s per-gadget
+  NLQL evaluation loop parallelized with `Promise.all` (was sequential).
+- Cross-workspace gadget scoping audited and verified correct (already
+  project-derived, never keyed off the app's global "active workspace"); a
+  real dashboard-selection race found and fixed along the way — creating a
+  second dashboard while one was already selected could briefly snap back to
+  dashboard #1 before the list refetch landed.
+- MCP: new `get_velocity_trend_report` tool; the dashboard gadget tool
+  family's `visualization`/`config` schemas extended with `VELOCITY_TREND`/
+  `sprints`/fractional `position`; `create_dashboard`/`create_dashboard_gadget`
+  descriptions now name the caps proactively. 104 tools total.
+- New API unit tests for cap rejection, default-gadget seeding, and
+  `VELOCITY_TREND` gadget/report evaluation; 1 new tenant-isolation-matrix
+  row (108/108 blocked); `apps/web/e2e/dashboards-phase2.spec.ts` (6 cases ×
+  desktop+mobile) covering the trend gadget, default gadgets, drag-to-reorder
+  (a real `page.mouse` sequence — dnd-kit listens on Pointer Events, not
+  HTML5 DnD), and cross-workspace scoping.
 
 ### Changed — 2026-07-03
 

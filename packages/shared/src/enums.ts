@@ -104,6 +104,12 @@ export enum DashboardGadgetVisualization {
   BREAKDOWN = 'BREAKDOWN',
   /** Sprint burndown, scoped to the single sprint the query's issues belong to. */
   BURNDOWN = 'BURNDOWN',
+  /**
+   * Committed vs completed story points over the project's last N sprints
+   * (`config.sprints`, default 6). Project-wide — unlike every other
+   * visualization, the gadget's NLQL `query` isn't used to scope it.
+   */
+  VELOCITY_TREND = 'VELOCITY_TREND',
 }
 
 export const ISSUE_TYPES = Object.values(IssueType);

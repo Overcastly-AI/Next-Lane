@@ -124,16 +124,27 @@ const templateEnum = z
   );
 
 const dashboardVisualizationEnum = z
-  .enum(['STAT', 'TABLE', 'BREAKDOWN', 'BURNDOWN'])
+  .enum(['STAT', 'TABLE', 'BREAKDOWN', 'BURNDOWN', 'VELOCITY_TREND'])
   .describe(
     'STAT = single count; TABLE = compact issue list; BREAKDOWN = counts ' +
-      "grouped by config.field; BURNDOWN = sprint burndown scoped to the " +
-      'single sprint the query resolves to.',
+      'grouped by config.field; BURNDOWN = sprint burndown scoped to the ' +
+      'single sprint the query resolves to; VELOCITY_TREND = committed vs ' +
+      "completed points over the project's last N sprints (config.sprints, " +
+      "default 6) — project-wide, the gadget's `query` isn't used to scope it.",
   );
 
 const dashboardGadgetConfigSchema = z
   .object({
-    position: z.number().int().min(0).optional().describe('Grid order, lower renders earlier.'),
+    position: z
+      .number()
+      .min(-1_000_000)
+      .max(1_000_000)
+      .optional()
+      .describe(
+        'Grid order, lower renders earlier. A fractional/midpoint value, not a ' +
+          'dense integer — drag-to-reorder in the UI computes the midpoint ' +
+          'between two neighbors, so this can be negative or a decimal.',
+      ),
     size: z.number().int().min(1).max(2).optional().describe('Grid column span (1 or 2).'),
     field: z
       .string()
@@ -147,6 +158,13 @@ const dashboardGadgetConfigSchema = z
       .optional()
       .describe('TABLE only: subset of key/title/status/assignee/points (default all).'),
     limit: z.number().int().min(1).max(50).optional().describe('TABLE only: max rows.'),
+    sprints: z
+      .number()
+      .int()
+      .min(1)
+      .max(24)
+      .optional()
+      .describe('VELOCITY_TREND only: number of most-recent sprints to include (default 6).'),
   })
   .describe('Visualization + grid-layout settings for a gadget.');
 
@@ -1090,6 +1108,32 @@ const readTools: ToolDef[] = [
     inputSchema: { projectId: z.string().describe('Project id.') },
     handler: (args, client) =>
       client.get(`/projects/${args.projectId}/reports/velocity`).then(jsonResult),
+  },
+  {
+    name: 'get_velocity_trend_report',
+    group: 'read',
+    description:
+      "Cross-sprint velocity trend: the same committed/completed points as " +
+      "get_velocity_report, bounded to the project's most recent N sprints " +
+      "(default 6, max 24) — \"are we speeding up or slowing down\" without " +
+      'paging through the full velocity report. Also powers the dashboard ' +
+      'VELOCITY_TREND gadget.',
+    inputSchema: {
+      projectId: z.string().describe('Project id.'),
+      sprints: z
+        .number()
+        .int()
+        .min(1)
+        .max(24)
+        .optional()
+        .describe('Number of most-recent sprints to include (default 6, max 24).'),
+    },
+    handler: (args, client) =>
+      client
+        .get(`/projects/${args.projectId}/reports/velocity-trend`, {
+          sprints: args.sprints as number | undefined,
+        })
+        .then(jsonResult),
   },
   {
     name: 'get_burndown_report',
@@ -2560,7 +2604,10 @@ const writeTools: ToolDef[] = [
     group: 'write',
     description:
       'Create a dashboard in a project (a per-project view holding NLQL-native ' +
-      'gadgets). Requires project MEMBER+.',
+      "gadgets). Requires project MEMBER+. A brand-new project's very first " +
+      'dashboard is pre-populated with 3 starter gadgets (open issues, by ' +
+      'status, my open issues) — every dashboard after that starts empty. ' +
+      'Capped at 20 dashboards per project; a 400 at the cap names the limit.',
     inputSchema: {
       projectId: z.string().describe('Project the dashboard belongs to.'),
       name: z.string().min(1).max(80).describe('Dashboard name.'),
@@ -2597,7 +2644,9 @@ const writeTools: ToolDef[] = [
     description:
       'Add a gadget to a dashboard: an NLQL `query` (empty string matches ' +
       'every issue in the project) rendered as `visualization`. BREAKDOWN ' +
-      'gadgets require `config.field`. Requires project MEMBER+.',
+      "gadgets require `config.field`. VELOCITY_TREND ignores `query` — it's " +
+      "project-wide (config.sprints, default 6). Requires project MEMBER+. " +
+      'Capped at 30 gadgets per dashboard; a 400 at the cap names the limit.',
     inputSchema: {
       dashboardId: z.string().describe('Dashboard to add the gadget to.'),
       title: z.string().min(1).max(120).describe('Gadget title.'),

@@ -481,6 +481,20 @@ export interface BurndownDto {
 }
 
 /**
+ * Cross-sprint velocity trend: the same committed/completed points per sprint
+ * as {@link VelocityPointDto}, bounded to the project's most recent N
+ * sprints (oldest → newest, suitable for the same grouped-bar chart the full
+ * velocity report uses) — "are we speeding up or slowing down" without
+ * opening each sprint's report individually.
+ */
+export interface VelocityTrendDto {
+  projectId: string;
+  /** Effective sprint count after clamping the requested value (1-24). */
+  sprints: number;
+  points: VelocityPointDto[];
+}
+
+/**
  * One day in a Cumulative Flow Diagram: the count of issues in each status
  * category on that calendar day. `date` is an ISO date (YYYY-MM-DD). Suitable
  * for a stacked-area chart.
@@ -1755,8 +1769,12 @@ export interface UpdateIssueTemplateDto {
  *    custom SELECT field's key) — required to compute the gadget.
  *  - TABLE: `columns` (subset of key/title/status/assignee/points; defaults
  *    to all) and `limit` (max rows, server-capped).
- *  - All gadgets: `position` (grid order, lower = earlier) and `size` (grid
- *    span in columns; 1 = default, 2 = wide).
+ *  - VELOCITY_TREND: `sprints` (number of most-recent sprints to include,
+ *    default 6, server-clamped to 1-24).
+ *  - All gadgets: `position` (grid order — a fractional/midpoint numeric
+ *    value so drag-to-reorder only ever updates the ONE moved gadget, never
+ *    renumbers the rest) and `size` (grid span in columns; 1 = default,
+ *    2 = wide).
  */
 export interface DashboardGadgetConfig {
   position?: number;
@@ -1764,6 +1782,7 @@ export interface DashboardGadgetConfig {
   field?: string;
   columns?: string[];
   limit?: number;
+  sprints?: number;
 }
 
 /** A single gadget on a dashboard. */
@@ -1877,11 +1896,24 @@ export interface DashboardBurndownGadgetData {
   series: BurndownPointDto[];
 }
 
+/**
+ * A VELOCITY_TREND gadget's computed data — committed vs completed story
+ * points over the project's last N sprints. Project-wide: the gadget's NLQL
+ * query is validated but not used to scope this (there's no single issue set
+ * to filter — the trend spans every sprint's own issue set).
+ */
+export interface DashboardVelocityTrendGadgetData {
+  kind: 'VELOCITY_TREND';
+  sprints: number;
+  points: VelocityPointDto[];
+}
+
 export type DashboardGadgetResultData =
   | DashboardStatGadgetData
   | DashboardTableGadgetData
   | DashboardBreakdownGadgetData
-  | DashboardBurndownGadgetData;
+  | DashboardBurndownGadgetData
+  | DashboardVelocityTrendGadgetData;
 
 /**
  * One gadget's evaluated result within a dashboard's data payload. `data` is

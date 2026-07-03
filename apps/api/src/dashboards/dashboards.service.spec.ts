@@ -7,7 +7,12 @@ import {
   StatusCategory,
 } from '@next-lane/shared';
 import * as membership from '../common/membership.util';
-import { DashboardsService, DASHBOARD_ISSUES_CAP } from './dashboards.service';
+import {
+  DashboardsService,
+  DASHBOARD_ISSUES_CAP,
+  MAX_DASHBOARDS_PER_PROJECT,
+  MAX_GADGETS_PER_DASHBOARD,
+} from './dashboards.service';
 import type { PrismaService } from '../prisma/prisma.service';
 import type { ReportsService } from '../reports/reports.service';
 import type { RealtimeService } from '../realtime/realtime.service';
@@ -25,14 +30,16 @@ function makePrisma() {
       create: jest.fn(),
       update: jest.fn(),
       delete: jest.fn(),
+      count: jest.fn().mockResolvedValue(0),
     },
     dashboardGadget: {
       findMany: jest.fn(),
       findUnique: jest.fn(),
       create: jest.fn(),
+      createMany: jest.fn().mockResolvedValue({ count: 0 }),
       update: jest.fn(),
       delete: jest.fn(),
-      count: jest.fn(),
+      count: jest.fn().mockResolvedValue(0),
     },
     customFieldDefinition: { findMany: jest.fn().mockResolvedValue([]) },
     issue: { findMany: jest.fn().mockResolvedValue([]) },
@@ -47,11 +54,13 @@ function makePrisma() {
       create: jest.Mock;
       update: jest.Mock;
       delete: jest.Mock;
+      count: jest.Mock;
     };
     dashboardGadget: {
       findMany: jest.Mock;
       findUnique: jest.Mock;
       create: jest.Mock;
+      createMany: jest.Mock;
       update: jest.Mock;
       delete: jest.Mock;
       count: jest.Mock;
@@ -69,7 +78,8 @@ type MockPrisma = ReturnType<typeof makePrisma>;
 function makeReports() {
   return {
     burndown: jest.fn(),
-  } as unknown as ReportsService & { burndown: jest.Mock };
+    velocityTrend: jest.fn(),
+  } as unknown as ReportsService & { burndown: jest.Mock; velocityTrend: jest.Mock };
 }
 
 function makeProjectRow() {
@@ -191,6 +201,7 @@ describe('DashboardsService', () => {
   // ── createDashboard ────────────────────────────────────────────────────
 
   it('createDashboard requires MEMBER role and appends after the last order', async () => {
+    prisma.dashboard.count.mockResolvedValue(3); // project already has dashboards
     prisma.dashboard.findFirst.mockResolvedValue({ order: 2 });
     prisma.dashboard.create.mockResolvedValue(makeDashboardRow({ order: 3 }));
 
@@ -200,7 +211,9 @@ describe('DashboardsService', () => {
     expect(prisma.dashboard.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ order: 3, projectId: PROJECT_ID }) }),
     );
+    // Not the project's first dashboard — no default gadgets seeded.
     expect(result.gadgetCount).toBe(0);
+    expect(prisma.dashboardGadget.createMany).not.toHaveBeenCalled();
     expect(realtime.emitToProject).toHaveBeenCalledTimes(1);
     expect(realtime.emitToProject).toHaveBeenCalledWith(
       PROJECT_ID,
@@ -209,7 +222,34 @@ describe('DashboardsService', () => {
     );
   });
 
+  it('createDashboard rejects at the MAX_DASHBOARDS_PER_PROJECT cap', async () => {
+    prisma.dashboard.count.mockResolvedValue(MAX_DASHBOARDS_PER_PROJECT);
+
+    await expect(
+      service.createDashboard('user-1', PROJECT_ID, { name: 'One too many' }),
+    ).rejects.toThrow(BadRequestException);
+    expect(prisma.dashboard.create).not.toHaveBeenCalled();
+  });
+
+  it('createDashboard seeds default gadgets on a project’s first dashboard', async () => {
+    prisma.dashboard.count.mockResolvedValue(0);
+    prisma.dashboard.findFirst.mockResolvedValue(null);
+    prisma.dashboard.create.mockResolvedValue(makeDashboardRow({ order: 0 }));
+
+    const result = await service.createDashboard('user-1', PROJECT_ID, { name: 'First' });
+
+    expect(prisma.dashboardGadget.createMany).toHaveBeenCalledTimes(1);
+    const created = prisma.dashboardGadget.createMany.mock.calls[0][0].data as Array<{
+      dashboardId: string;
+      visualization: DashboardGadgetVisualization;
+    }>;
+    expect(created).toHaveLength(3);
+    expect(created.every((g) => g.dashboardId === DASHBOARD_ID)).toBe(true);
+    expect(result.gadgetCount).toBe(3);
+  });
+
   it('createDashboard defaults order to 0 when no dashboards exist', async () => {
+    prisma.dashboard.count.mockResolvedValue(0);
     prisma.dashboard.findFirst.mockResolvedValue(null);
     prisma.dashboard.create.mockResolvedValue(makeDashboardRow({ order: 0 }));
 
@@ -330,6 +370,20 @@ describe('DashboardsService', () => {
       'dashboard.updated',
       { dashboardId: DASHBOARD_ID },
     );
+  });
+
+  it('createGadget rejects at the MAX_GADGETS_PER_DASHBOARD cap', async () => {
+    prisma.dashboard.findUnique.mockResolvedValue(makeDashboardRow());
+    prisma.dashboardGadget.count.mockResolvedValue(MAX_GADGETS_PER_DASHBOARD);
+
+    await expect(
+      service.createGadget('user-1', DASHBOARD_ID, {
+        title: 'One too many',
+        query: '',
+        visualization: DashboardGadgetVisualization.STAT,
+      }),
+    ).rejects.toThrow(BadRequestException);
+    expect(prisma.dashboardGadget.create).not.toHaveBeenCalled();
   });
 
   // ── updateGadget ───────────────────────────────────────────────────────
@@ -511,6 +565,77 @@ describe('DashboardsService', () => {
       expect(result.gadgets[0].data).toBeUndefined();
       expect(result.gadgets[0].error).toMatch(/no issues matched/i);
       expect(reports.burndown).not.toHaveBeenCalled();
+    });
+
+    it('computes a VELOCITY_TREND gadget project-wide, ignoring the gadget query', async () => {
+      prisma.dashboardGadget.findMany.mockResolvedValue([
+        makeGadgetRow({
+          query: 'priority = HIGH', // deliberately non-matching — must be ignored
+          visualization: DashboardGadgetVisualization.VELOCITY_TREND,
+          config: { position: 0, sprints: 4 },
+        }),
+      ]);
+      prisma.issue.findMany.mockResolvedValue([makeIssueRow(1)]); // priority MEDIUM
+      reports.velocityTrend.mockResolvedValue({
+        projectId: PROJECT_ID,
+        sprints: 4,
+        points: [
+          { sprintId: 'sp-1', sprintName: 'Sprint 1', state: 'COMPLETED', committed: 10, completed: 8 },
+          { sprintId: 'sp-2', sprintName: 'Sprint 2', state: 'ACTIVE', committed: 6, completed: 0 },
+        ],
+      });
+
+      const result = await service.getDashboardData('user-1', DASHBOARD_ID);
+
+      expect(reports.velocityTrend).toHaveBeenCalledWith('user-1', PROJECT_ID, 4);
+      expect(result.gadgets[0].data).toEqual({
+        kind: 'VELOCITY_TREND',
+        sprints: 4,
+        points: [
+          { sprintId: 'sp-1', sprintName: 'Sprint 1', state: 'COMPLETED', committed: 10, completed: 8 },
+          { sprintId: 'sp-2', sprintName: 'Sprint 2', state: 'ACTIVE', committed: 6, completed: 0 },
+        ],
+      });
+      expect(result.gadgets[0].error).toBeUndefined();
+    });
+
+    it('defaults VELOCITY_TREND to 6 sprints when config.sprints is unset', async () => {
+      prisma.dashboardGadget.findMany.mockResolvedValue([
+        makeGadgetRow({ query: '', visualization: DashboardGadgetVisualization.VELOCITY_TREND }),
+      ]);
+      prisma.issue.findMany.mockResolvedValue([]);
+      reports.velocityTrend.mockResolvedValue({ projectId: PROJECT_ID, sprints: 6, points: [] });
+
+      await service.getDashboardData('user-1', DASHBOARD_ID);
+
+      expect(reports.velocityTrend).toHaveBeenCalledWith('user-1', PROJECT_ID, 6);
+    });
+
+    it('returns a per-gadget error when velocityTrend fails, instead of throwing', async () => {
+      prisma.dashboardGadget.findMany.mockResolvedValue([
+        makeGadgetRow({ query: '', visualization: DashboardGadgetVisualization.VELOCITY_TREND }),
+      ]);
+      prisma.issue.findMany.mockResolvedValue([]);
+      reports.velocityTrend.mockRejectedValue(new Error('boom'));
+
+      const result = await service.getDashboardData('user-1', DASHBOARD_ID);
+
+      expect(result.gadgets[0].data).toBeUndefined();
+      expect(result.gadgets[0].error).toBe('boom');
+    });
+
+    it('evaluates every gadget in parallel (order preserved, one bad gadget does not block the rest)', async () => {
+      prisma.dashboardGadget.findMany.mockResolvedValue([
+        makeGadgetRow({ id: 'g-1', query: 'status = ' }), // invalid — errors
+        makeGadgetRow({ id: 'g-2', query: '', visualization: DashboardGadgetVisualization.STAT }),
+      ]);
+      prisma.issue.findMany.mockResolvedValue([makeIssueRow(1), makeIssueRow(2)]);
+
+      const result = await service.getDashboardData('user-1', DASHBOARD_ID);
+
+      expect(result.gadgets.map((g) => g.gadgetId)).toEqual(['g-1', 'g-2']);
+      expect(result.gadgets[0].error).toBeTruthy();
+      expect(result.gadgets[1].data).toEqual({ kind: 'STAT', count: 2 });
     });
 
     it('sets issuesTruncated when the project issue set exceeds the cap', async () => {

@@ -22,6 +22,11 @@ const VISUALIZATION_OPTIONS: { value: DashboardGadgetVisualization; label: strin
   { value: DashboardGadgetVisualization.TABLE, label: 'Table', hint: 'A compact list of matching issues.' },
   { value: DashboardGadgetVisualization.BREAKDOWN, label: 'Breakdown', hint: 'Counts grouped by a field.' },
   { value: DashboardGadgetVisualization.BURNDOWN, label: 'Burndown', hint: "Sprint burndown for the query's sprint." },
+  {
+    value: DashboardGadgetVisualization.VELOCITY_TREND,
+    label: 'Velocity trend',
+    hint: 'Committed vs completed points over the project’s last N sprints.',
+  },
 ];
 
 const STANDARD_BREAKDOWN_FIELDS = [
@@ -66,6 +71,7 @@ export function GadgetFormModal({ open, onClose, projectId, dashboardId, gadget 
   const [field, setField] = useState('');
   const [columns, setColumns] = useState<string[]>(TABLE_COLUMN_OPTIONS.map((c) => c.value));
   const [limit, setLimit] = useState(10);
+  const [sprintsCount, setSprintsCount] = useState(6);
   const [wide, setWide] = useState(false);
 
   useEffect(() => {
@@ -77,6 +83,7 @@ export function GadgetFormModal({ open, onClose, projectId, dashboardId, gadget 
       setField(gadget.config.field ?? '');
       setColumns(gadget.config.columns ?? TABLE_COLUMN_OPTIONS.map((c) => c.value));
       setLimit(gadget.config.limit ?? 10);
+      setSprintsCount(gadget.config.sprints ?? 6);
       setWide((gadget.config.size ?? 1) >= 2);
     } else {
       setTitle('');
@@ -85,6 +92,7 @@ export function GadgetFormModal({ open, onClose, projectId, dashboardId, gadget 
       setField('');
       setColumns(TABLE_COLUMN_OPTIONS.map((c) => c.value));
       setLimit(10);
+      setSprintsCount(6);
       setWide(false);
     }
   }, [open, gadget]);
@@ -133,6 +141,9 @@ export function GadgetFormModal({ open, onClose, projectId, dashboardId, gadget 
         ...(visualization === DashboardGadgetVisualization.BREAKDOWN ? { field } : {}),
         ...(visualization === DashboardGadgetVisualization.TABLE
           ? { columns, limit }
+          : {}),
+        ...(visualization === DashboardGadgetVisualization.VELOCITY_TREND
+          ? { sprints: sprintsCount }
           : {}),
         size: wide ? 2 : 1,
       },
@@ -283,6 +294,30 @@ export function GadgetFormModal({ open, onClose, projectId, dashboardId, gadget 
             This gadget's query must match issues from exactly one sprint —
             e.g. <code className="font-mono">sprint = &quot;Sprint 3&quot;</code>.
           </p>
+        )}
+
+        {visualization === DashboardGadgetVisualization.VELOCITY_TREND && (
+          <>
+            <Field label="Sprints to include" htmlFor="gadget-sprints">
+              <Input
+                id="gadget-sprints"
+                data-testid="gadget-sprints-input"
+                type="number"
+                min={1}
+                max={24}
+                value={sprintsCount}
+                onChange={(e) =>
+                  setSprintsCount(Math.min(24, Math.max(1, Number(e.target.value) || 6)))
+                }
+                className="w-24"
+              />
+            </Field>
+            <p className="rounded-lg bg-ink-50 px-3 py-2 text-xs text-ink-500">
+              Shows committed vs. completed story points across the project's
+              most recent sprints, project-wide — the query above isn't used
+              for this visualization.
+            </p>
+          </>
         )}
 
         <label className="flex items-center gap-1.5 text-xs text-ink-700">

@@ -1,11 +1,27 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import type { DashboardGadgetDto, DashboardSummaryDto } from '@next-lane/shared';
+import {
+  DndContext,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  arrayMove,
+  rectSortingStrategy,
+  sortableKeyboardCoordinates,
+  useSortable,
+} from '@dnd-kit/sortable';
+import type { DashboardGadgetDto, DashboardGadgetResult, DashboardSummaryDto } from '@next-lane/shared';
 import { useProject } from '@/api/projects';
 import { useMyRole } from '@/api/workspaces';
 import { useBoardRealtime } from '@/api/socket';
 import { canEdit } from '@/lib/permissions';
 import { errorMessage } from '@/lib/errorMessage';
+import { EditableSafeKeyboardSensor } from '@/lib/dndSensors';
 import {
   useDashboards,
   useDashboard,
@@ -14,7 +30,7 @@ import {
   useUpdateDashboard,
   useDeleteDashboard,
   useDeleteGadget,
-  useUpdateGadget,
+  useReorderGadget,
 } from '@/api/dashboards';
 import { AppHeader } from '@/components/AppHeader';
 import { ProjectNav } from '@/components/project/ProjectNav';
@@ -28,6 +44,59 @@ import { ErrorState, LoadingState, EmptyState } from '@/components/ui/States';
 import { cn } from '@/lib/cn';
 import { GadgetCard } from '@/components/dashboards/GadgetCard';
 import { GadgetFormModal } from '@/components/dashboards/GadgetFormModal';
+
+/** Sort gadgets by their config-derived grid position (mirrors the server's `sortGadgets`). */
+function byPosition(a: DashboardGadgetDto, b: DashboardGadgetDto): number {
+  return (a.config.position ?? 0) - (b.config.position ?? 0);
+}
+
+/**
+ * Sortable wrapper around `GadgetCard` — owns the `useSortable` hook and
+ * hands the drag handle's attributes/listeners down as props, mirroring the
+ * `SortablePersonalCard` pattern (`PersonalBoardPage.tsx`): only a dedicated
+ * grab handle activates the drag, so the card's Edit/Delete buttons and the
+ * gadget's own content stay clickable.
+ */
+function SortableGadgetCard({
+  gadget,
+  result,
+  loading,
+  editable,
+  onEdit,
+  onDelete,
+}: {
+  gadget: DashboardGadgetDto;
+  result: DashboardGadgetResult | undefined;
+  loading: boolean;
+  editable: boolean;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: gadget.id,
+    disabled: !editable,
+  });
+
+  const style: React.CSSProperties = {
+    transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
+    transition,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} className={cn((gadget.config.size ?? 1) >= 2 && 'sm:col-span-2')}>
+      <GadgetCard
+        gadget={gadget}
+        result={result}
+        loading={loading}
+        editable={editable}
+        onEdit={onEdit}
+        onDelete={onDelete}
+        dragHandle={editable ? { attributes, listeners } : undefined}
+        isDragging={isDragging}
+      />
+    </div>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // New dashboard modal
@@ -143,7 +212,7 @@ export function DashboardsPage() {
   const updateDashboard = useUpdateDashboard(projectId);
   const deleteDashboard = useDeleteDashboard(projectId);
   const deleteGadget = useDeleteGadget(selectedId ?? '', projectId);
-  const updateGadget = useUpdateGadget(selectedId ?? '');
+  const reorderGadget = useReorderGadget(selectedId ?? '');
 
   const [newDashboardOpen, setNewDashboardOpen] = useState(false);
   const [gadgetModalOpen, setGadgetModalOpen] = useState(false);
@@ -153,8 +222,47 @@ export function DashboardsPage() {
   const [renaming, setRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState('');
 
-  const gadgets = dashboardQuery.data?.gadgets ?? [];
+  // Sort client-side too (not just trust the server's order) so an
+  // optimistic drag reorder — which only patches the moved gadget's
+  // `config.position` in the cache, not the array order — repaints
+  // immediately instead of snapping back until the refetch lands.
+  const gadgets = [...(dashboardQuery.data?.gadgets ?? [])].sort(byPosition);
   const activeDashboard = dashboards.find((d) => d.id === selectedId);
+
+  const dragSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(EditableSafeKeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  function handleGadgetDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const oldIndex = gadgets.findIndex((g) => g.id === active.id);
+    const newIndex = gadgets.findIndex((g) => g.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    // Fractional-midpoint reorder: compute the dragged gadget's new
+    // `config.position` from its neighbors AFTER the move, then PATCH only
+    // that ONE gadget — never renumber the rest of the list.
+    const reordered = arrayMove(gadgets, oldIndex, newIndex);
+    const draggedIdx = reordered.findIndex((g) => g.id === active.id);
+    const prevPos = reordered[draggedIdx - 1]?.config.position ?? null;
+    const nextPos = reordered[draggedIdx + 1]?.config.position ?? null;
+    const newPosition =
+      prevPos === null && nextPos === null
+        ? 0
+        : prevPos === null
+          ? nextPos! - 1
+          : nextPos === null
+            ? prevPos + 1
+            : (prevPos + nextPos) / 2;
+
+    reorderGadget.mutate(
+      { gadgetId: String(active.id), position: newPosition },
+      { onError: (err) => toast.error(errorMessage(err, 'Could not reorder gadgets.')) },
+    );
+  }
 
   function openCreateGadget() {
     setEditingGadget(undefined);
@@ -164,28 +272,6 @@ export function DashboardsPage() {
   function openEditGadget(g: DashboardGadgetDto) {
     setEditingGadget(g);
     setGadgetModalOpen(true);
-  }
-
-  async function handleMoveGadget(index: number, direction: -1 | 1) {
-    const target = gadgets[index + direction];
-    const current = gadgets[index];
-    if (!target || !current) return;
-    const currentPos = current.config.position ?? index;
-    const targetPos = target.config.position ?? index + direction;
-    try {
-      await Promise.all([
-        updateGadget.mutateAsync({
-          gadgetId: current.id,
-          patch: { config: { ...current.config, position: targetPos } },
-        }),
-        updateGadget.mutateAsync({
-          gadgetId: target.id,
-          patch: { config: { ...target.config, position: currentPos } },
-        }),
-      ]);
-    } catch (err) {
-      toast.error(errorMessage(err, 'Could not reorder gadgets.'));
-    }
   }
 
   async function confirmDeleteGadget() {
@@ -360,23 +446,27 @@ export function DashboardsPage() {
                   }
                 />
               ) : (
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  {gadgets.map((g, i) => (
-                    <GadgetCard
-                      key={g.id}
-                      gadget={g}
-                      result={dataQuery.data?.gadgets.find((r) => r.gadgetId === g.id)}
-                      loading={dataQuery.isLoading}
-                      editable={editable}
-                      isFirst={i === 0}
-                      isLast={i === gadgets.length - 1}
-                      onEdit={() => openEditGadget(g)}
-                      onDelete={() => setDeletingGadgetId(g.id)}
-                      onMoveUp={() => void handleMoveGadget(i, -1)}
-                      onMoveDown={() => void handleMoveGadget(i, 1)}
-                    />
-                  ))}
-                </div>
+                <DndContext
+                  sensors={dragSensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={handleGadgetDragEnd}
+                >
+                  <SortableContext items={gadgets.map((g) => g.id)} strategy={rectSortingStrategy}>
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      {gadgets.map((g) => (
+                        <SortableGadgetCard
+                          key={g.id}
+                          gadget={g}
+                          result={dataQuery.data?.gadgets.find((r) => r.gadgetId === g.id)}
+                          loading={dataQuery.isLoading}
+                          editable={editable}
+                          onEdit={() => openEditGadget(g)}
+                          onDelete={() => setDeletingGadgetId(g.id)}
+                        />
+                      ))}
+                    </div>
+                  </SortableContext>
+                </DndContext>
               )}
               {dataQuery.data?.issuesTruncated && (
                 <p className="text-xs text-ink-400">

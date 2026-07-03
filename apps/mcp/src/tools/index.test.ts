@@ -135,6 +135,8 @@ describe('tool registry', () => {
       'update_comment',
       'delete_comment',
       'list_project_activity',
+      // Configurable dashboards — Phase 2: cross-sprint velocity trend (2026-07-03)
+      'get_velocity_trend_report',
       // PR-status + auto-transition-on-merge (2026-07-03)
       'get_issue_github_live_status',
       'get_issue_gitlab_live_status',
@@ -496,6 +498,21 @@ describe('tool registry', () => {
     );
   });
 
+  it('get_velocity_trend_report GETs /projects/:id/reports/velocity-trend', async () => {
+    const { client, fetchImpl } = clientWith(200, { projectId: 'p1', sprints: 6, points: [] });
+    await tool('get_velocity_trend_report').handler({ projectId: 'p1' }, client);
+    expect(fetchImpl.mock.calls[0][0]).toBe(
+      'http://localhost:4000/api/projects/p1/reports/velocity-trend',
+    );
+  });
+
+  it('get_velocity_trend_report passes an explicit sprints count as a query param', async () => {
+    const { client, fetchImpl } = clientWith(200, { projectId: 'p1', sprints: 4, points: [] });
+    await tool('get_velocity_trend_report').handler({ projectId: 'p1', sprints: 4 }, client);
+    const url = fetchImpl.mock.calls[0][0] as string;
+    expect(url).toBe('http://localhost:4000/api/projects/p1/reports/velocity-trend?sprints=4');
+  });
+
   it('get_burndown_report GETs /projects/:id/sprints/:id/burndown', async () => {
     const { client, fetchImpl } = clientWith(200, {});
     await tool('get_burndown_report').handler({ projectId: 'p1', sprintId: 's1' }, client);
@@ -741,6 +758,48 @@ describe('tool registry', () => {
       visualization: 'BREAKDOWN',
       config: { field: 'status' },
     });
+  });
+
+  it('create_dashboard_gadget supports VELOCITY_TREND with config.sprints (query still passed through, unused by the API)', async () => {
+    const { client, fetchImpl } = clientWith(200, { id: 'g1', visualization: 'VELOCITY_TREND' });
+    await tool('create_dashboard_gadget').handler(
+      {
+        dashboardId: 'd1',
+        title: 'Velocity trend',
+        query: '',
+        visualization: 'VELOCITY_TREND',
+        config: { sprints: 4 },
+      },
+      client,
+    );
+    const [, init] = fetchImpl.mock.calls[0];
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({
+      title: 'Velocity trend',
+      query: '',
+      visualization: 'VELOCITY_TREND',
+      config: { sprints: 4 },
+    });
+  });
+
+  it('create_dashboard_gadget surfaces the API’s cap-rejection message verbatim on 400', async () => {
+    const { client } = clientWith(400, {
+      message: 'This dashboard already has the maximum of 30 gadgets. Delete one before adding another.',
+    });
+    await expect(
+      tool('create_dashboard_gadget').handler(
+        { dashboardId: 'd1', title: 'One too many', query: '', visualization: 'STAT' },
+        client,
+      ),
+    ).rejects.toThrow(/maximum of 30 gadgets.*\[HTTP 400\]/);
+  });
+
+  it('create_dashboard surfaces the API’s dashboard-cap-rejection message verbatim on 400', async () => {
+    const { client } = clientWith(400, {
+      message: 'This project already has the maximum of 20 dashboards. Delete one before creating another.',
+    });
+    await expect(
+      tool('create_dashboard').handler({ projectId: 'p1', name: 'One too many' }, client),
+    ).rejects.toThrow(/maximum of 20 dashboards.*\[HTTP 400\]/);
   });
 
   it('update_dashboard_gadget PATCHes /gadgets/:id', async () => {

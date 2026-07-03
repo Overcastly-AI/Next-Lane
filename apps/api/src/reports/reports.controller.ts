@@ -1,6 +1,6 @@
 import { Controller, Get, Param, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { ReportsService } from './reports.service';
+import { ReportsService, VELOCITY_TREND_DEFAULT_SPRINTS } from './reports.service';
 import { CurrentUser, AuthUser } from '../auth/current-user.decorator';
 
 @ApiTags('reports')
@@ -16,6 +16,26 @@ export class ReportsController {
     @Param('projectId') projectId: string,
   ) {
     return this.reports.velocity(user.id, projectId);
+  }
+
+  /**
+   * Cross-sprint velocity trend: the same committed/completed figures as
+   * `velocity`, bounded to the project's most recent `sprints` sprints
+   * (default 6) — "are we speeding up or slowing down" at a glance. Also
+   * powers the dashboard VELOCITY_TREND gadget.
+   */
+  @Get('projects/:projectId/reports/velocity-trend')
+  velocityTrend(
+    @CurrentUser() user: AuthUser,
+    @Param('projectId') projectId: string,
+    @Query('sprints') sprintsStr?: string,
+  ) {
+    const sprints = sprintsStr ? Math.round(Number(sprintsStr)) : VELOCITY_TREND_DEFAULT_SPRINTS;
+    return this.reports.velocityTrend(
+      user.id,
+      projectId,
+      isNaN(sprints) ? VELOCITY_TREND_DEFAULT_SPRINTS : sprints,
+    );
   }
 
   /** Burndown: daily ideal vs remaining story points for one sprint. */

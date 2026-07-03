@@ -4,11 +4,17 @@ import { assertProjectMember } from '../common/membership.util';
 import { SprintState, StatusCategory } from '@next-lane/shared';
 import type {
   VelocityPointDto,
+  VelocityTrendDto,
   BurndownDto,
   BurndownPointDto,
   CfdDto,
   CfdPointDto,
 } from '@next-lane/shared';
+
+/** Default `sprints` count for the velocity trend when the caller omits it. */
+export const VELOCITY_TREND_DEFAULT_SPRINTS = 6;
+/** Hard cap on `sprints` for the velocity trend, regardless of the requested value. */
+export const VELOCITY_TREND_MAX_SPRINTS = 24;
 
 /** Story points are optional on issues; a null value contributes 0 points. */
 function points(storyPoints: number | null): number {
@@ -104,6 +110,63 @@ export class ReportsService {
         completed,
       };
     });
+  }
+
+  /**
+   * Cross-sprint velocity trend: the same committed/completed figures as
+   * {@link velocity}, bounded to the project's `sprintsParam` most-recent
+   * ACTIVE/COMPLETED sprints (oldest → newest) — "are we speeding up or
+   * slowing down" without paging through the full velocity report. Powers
+   * both `GET /projects/:id/reports/velocity-trend` and the dashboard
+   * VELOCITY_TREND gadget.
+   */
+  async velocityTrend(
+    userId: string,
+    projectId: string,
+    sprintsParam: number,
+  ): Promise<VelocityTrendDto> {
+    await assertProjectMember(this.prisma, userId, projectId);
+
+    const doneStatusIds = await this.doneStatusIds(projectId);
+    const n = Math.min(
+      Math.max(1, Math.round(sprintsParam) || VELOCITY_TREND_DEFAULT_SPRINTS),
+      VELOCITY_TREND_MAX_SPRINTS,
+    );
+
+    // Most-recent N first (so `take` bounds the query to what we need), then
+    // reversed into the same oldest → newest order `velocity()` returns.
+    const sprints = await this.prisma.sprint.findMany({
+      where: {
+        projectId,
+        state: { in: [SprintState.ACTIVE, SprintState.COMPLETED] },
+      },
+      orderBy: [{ startDate: 'desc' }, { createdAt: 'desc' }],
+      take: n,
+      include: {
+        issues: { select: { storyPoints: true, statusId: true } },
+      },
+    });
+
+    const trendPoints: VelocityPointDto[] = sprints
+      .map((sprint) => {
+        let committed = 0;
+        let completed = 0;
+        for (const issue of sprint.issues) {
+          const p = points(issue.storyPoints);
+          committed += p;
+          if (doneStatusIds.has(issue.statusId)) completed += p;
+        }
+        return {
+          sprintId: sprint.id,
+          sprintName: sprint.name,
+          state: sprint.state as SprintState,
+          committed,
+          completed,
+        };
+      })
+      .reverse();
+
+    return { projectId, sprints: n, points: trendPoints };
   }
 
   /**

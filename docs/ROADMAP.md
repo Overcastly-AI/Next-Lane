@@ -286,7 +286,9 @@ audits' evidence implies, ahead of any new pillar or moonshot.
 
 **MCP-QA pass 1, finding 1 fixed (2026-07-03): NLQL person/sprint name resolution.** `assignee = "<display name or email>"` and `sprint = "<name>"` — the two most natural ways an agent asks "what is X working on?" / "what's left in sprint N?" — silently matched **zero** issues server-side (id-only lookups worked; the shared evaluator's existing name/email resolution for `user`-kind fields was never fed workspace members, and `sprint` had no name-resolution at all). Fixed at the shared layer (`packages/shared/src/nlql`: a new `sprint` `FieldKind` mirroring `user`'s id-or-name resolution, plus `getReferencedFieldKinds()` so a call site loads only the side-context a query needs) and wired through every server-side NLQL evaluation call site — `IssuesService.exportCsv` (the path `list_issues`'s `query` mode and `get_project_csv` drive over MCP), the dashboard-gadget evaluator, and the automation engine's condition eval — via a shared `loadNlqlEvalContext` helper, batch-loaded once per evaluation. Live-verified over REST against a real named-user/named-sprint fixture: 0→5 and 0→4 respectively, matching the QA-reported truth counts exactly. See the ticked `docs/BACKLOG.md` entry for full detail.
 
-**PR-status + auto-transition-on-merge — ✅ shipped 2026-07-03 (Ready queue #1).** The GitHub/GitLab link plumbing now *acts*: an opt-in (off-by-default) auto-transition-on-merge automation, a board-card "linked PR" badge, and the first real outbound GitHub/GitLab API calls (live PR/CI status in the drawer, SSRF-guarded). Closes the biggest remaining "Integrations" Better-than-Jira gap short of Gitea/smart-commit syntax — see the ticked Phase 9 entry above for full detail. Next up per this sequencing: Configurable dashboards Phase 2 (Ready queue #2).
+**PR-status + auto-transition-on-merge — ✅ shipped 2026-07-03 (Ready queue #1).** The GitHub/GitLab link plumbing now *acts*: an opt-in (off-by-default) auto-transition-on-merge automation, a board-card "linked PR" badge, and the first real outbound GitHub/GitLab API calls (live PR/CI status in the drawer, SSRF-guarded). Closes the biggest remaining "Integrations" Better-than-Jira gap short of Gitea/smart-commit syntax — see the ticked Phase 9 entry above for full detail.
+
+**Configurable dashboards — Phase 2 — ✅ shipped 2026-07-03 (Ready queue #2).** Cross-sprint velocity-trend gadget (reuses the Reports page's own `VelocityChart`, not a bespoke report page), cross-workspace gadget scoping verified with a real multi-workspace deep-link e2e case (plus a genuine dashboard-selection race found and fixed along the way), drag-to-reorder gadgets (dnd-kit, replacing the v1 up/down buttons), pre-built starter gadgets on a project's first dashboard, and the bundled engineering hardening (`MAX_DASHBOARDS_PER_PROJECT`/`MAX_GADGETS_PER_DASHBOARD` caps + parallelized gadget evaluation, engineering-auditor Pass-12 P2-2). See item 5 above and the ticked `docs/BACKLOG.md` entry for full detail. Both former Ready-queue P1s are now shipped — see `docs/BACKLOG.md` § Ready for the refilled queue (NLQL unresolved-name diagnostics, epic-swimlanes e2e gap, cross-project issue MOVE, Gitea v1, dashboard-sharing public embed).
 
 **Agent Experience Round 2 — ✅ shipped 2026-07-03 (founder-relayed field report #2 — "genuinely production-grade for AI-agent-driven project management" once these land).** All 7 acceptance criteria: fixed the confirmed-live P1 data-integrity bug (`POST /issues` accepted a cross-project `statusId`, rendering the issue on no board — `create()` now shares the same `assertSameProject` guard `update()`/`move()` already had; a second real gap, bulk `addLabelIds` with no project-scope check at all, was also found and closed); optional `idempotencyKey` on `create_issue`/`add_comment` (new additive `IdempotencyRecord` table, ~24h window) so a retried call after a network blip replays the original result instead of duplicating; `bulk_update_issues` gained `parentId` (cross-project-guarded — one call now parents 30 tickets under an epic) plus `atomic: true` (validates the whole batch first, writes inside one shared transaction, all-or-nothing) and `dryRun: true` (per-item verdicts, zero writes); comment edit/delete over MCP (REST gating upgraded from author-only to author-or-effective-project-ADMIN, mirroring work logs); a new unified `GET /projects/:id/activity` feed (+ MCP `list_project_activity`) merges issue field changes, comments, and work logs project-wide so an agent can ask "what changed since I last looked" in one call instead of polling blind; `expectedProjectKey` upgraded from a soft recommendation to MUST-pass language everywhere (tool description, server instructions, the `project-context` skill) plus an optional `NEXT_LANE_MCP_STRICT_PROJECT_KEY` hard-enforcement env var. Folded in from MCP-QA pass 1: agent-context staleness now also counts comments + work logs (was field changes + audit events only); `list_users` gained a server-side `q` name/email filter; new `create_project`/`create_workspace` MCP tools. MCP surface: **92 → 97 tools**. 44 new API unit tests (1683→1727), 13 new MCP tests (84→97), 1 new tenant-isolation row (103/103 BLOCKED), all live-verified against the running API. See the ticked `docs/BACKLOG.md` entry for full per-criterion detail.
 
@@ -519,13 +521,27 @@ pass — groom the board against this sequencing next.)*
    read / 51 write); 18 new unit tests (80 total, all green); `apps/mcp/README.md`
    tables + counts updated. Evidence bar met: an epic status question is one
    tool call; a filtered list response is single-digit KB, not 150.
-5. **Configurable dashboards — Phase 2 (parity, closing toward better).**
-   Phase 1 verified strong this pass (all 4 gadget types, custom-field
-   grouping, precise NLQL validation, excellent empty/error states —
-   AUDIT-PRODUCT.md Pass 12, 8/10) — this is what flipped Reporting
-   Behind → Parity. Phase 2: cross-sprint trend view, cross-workspace gadget
-   scoping, dashboard sharing/public read-only embed (reusing the existing
-   public-board share-token pattern). **Realtime coverage ✅ shipped
+5. **Configurable dashboards — Phase 2 (parity, closing toward better) — ✅
+   shipped 2026-07-03.** Phase 1 verified strong (all 4 gadget types,
+   custom-field grouping, precise NLQL validation, excellent empty/error
+   states — AUDIT-PRODUCT.md Pass 12, 8/10) — this is what flipped Reporting
+   Behind → Parity; Phase 2 is what moves it toward Better. **Shipped:** a
+   cross-sprint velocity-trend gadget (`GET /projects/:id/reports/
+   velocity-trend?sprints=N`, new `VELOCITY_TREND` visualization reusing the
+   existing `VelocityChart` component — project-wide, not query-scoped);
+   cross-workspace gadget scoping verified correct (project-derived, never
+   the app's "active workspace") with a new multi-workspace e2e case, plus a
+   real dashboard-selection race fixed along the way (creating a second
+   dashboard could snap back to dashboard #1 before the list refetch
+   landed); drag-to-reorder gadgets (replacing the v1 up/down buttons with a
+   real dnd-kit sortable grid, fractional-midpoint `config.position`); a
+   project's first dashboard now seeds 3 starter gadgets; `MAX_DASHBOARDS_
+   PER_PROJECT`/`MAX_GADGETS_PER_DASHBOARD` caps + `getDashboardData`
+   parallelized with `Promise.all` (engineering-auditor Pass-12 P2-2).
+   Dashboard sharing/public read-only embed (reusing the board share-token
+   pattern) was intentionally left for a separate Next(P2) item in
+   `docs/BACKLOG.md` rather than bundled into this slice. See the ticked
+   `docs/BACKLOG.md` entry for full detail. **Realtime coverage ✅ shipped
    2026-07-02 (Pass-12 fix batch):** `SocketEvents.DashboardUpdated` added
    (`packages/shared`), emitted from `DashboardsService` on every
    dashboard/gadget CRUD mutation (create/update/delete dashboard,
@@ -534,9 +550,7 @@ pass — groom the board against this sequencing next.)*
    whole `['dashboardData']` query family on any `issue.*` event (mirroring
    `invalidateBoardFamily`'s "invalidate the family, not a single key"
    shape) and the specific dashboard's summary/detail/data on
-   `dashboard.updated` — closes AUDIT-ENGINEERING.md Pass 12, P1-2. Still
-   open: a per-project/per-dashboard gadget cap (engineering P2-2, currently
-   unbounded) — tracked separately, not part of this fix batch.
+   `dashboard.updated` — closes AUDIT-ENGINEERING.md Pass 12, P1-2.
 
 **Re-affirmed Better, not part of this queue:** Board speed & feel, Workflow
 flexibility, and Keyboard-first ergonomics all re-verified with fresh Pass-12

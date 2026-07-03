@@ -2,7 +2,7 @@
 
 A [Model Context Protocol](https://modelcontextprotocol.io) server that lets
 external AI agents — **Claude Desktop**, **Claude Code**, and any other MCP host
-— **read and write** a Next Lane instance end-to-end: **103 tools** covering
+— **read and write** a Next Lane instance end-to-end: **104 tools** covering
 workspaces/projects, workflows / SDLC, issues (incl. links, labels, comments
 with author-or-admin edit/delete, checklists, worklogs), boards, statuses,
 sprints, components, versions, custom fields, saved NLQL filters, automation
@@ -184,6 +184,7 @@ minimal, so there is no `verbose` mode.
 | `get_project_analytics` | Team analytics for a project (`projectId`, `days?`).               |
 | `get_my_analytics`  | Personal analytics for the caller (`days?`).                          |
 | `get_velocity_report` | Velocity per completed/active sprint (`projectId`).                 |
+| `get_velocity_trend_report` | Cross-sprint velocity trend: the same committed/completed points, bounded to the project's most recent N sprints (`projectId`, `sprints?` default 6, max 24). Also powers the dashboard VELOCITY_TREND gadget. |
 | `get_burndown_report` | Daily ideal-vs-remaining points for one sprint (`projectId`, `sprintId`). |
 | `get_cfd_report`    | Cumulative Flow Diagram series (`projectId`, `days?`).                |
 | `list_notifications`| List the caller's notifications, newest first. **compact** `{id, type, issueKey, message, read}`; response always includes `unreadCount`. |
@@ -238,8 +239,8 @@ minimal, so there is no `verbose` mode.
 | `create_issue_from_template`    | Create an issue from an issue template, with per-field overrides. |
 | `bulk_update_issues`            | Apply the same status/assignee/priority/sprint/type/parentId/label change to up to 100 issues at once — one call parents 30 tickets under an epic. `atomic: true` makes the whole batch all-or-nothing (validates every issue first, writes only if all pass); `dryRun: true` previews per-item verdicts with zero writes (with or without atomic). Cross-project references (foreign `parentId`/`statusId`/`sprintId`) are rejected per-item with the same precise message as `update_issue`. |
 | `mark_notification_read` / `mark_all_notifications_read` | Mark one or all of the caller's notifications read. |
-| `create_dashboard` / `update_dashboard` / `delete_dashboard` | Create a project dashboard; rename/reorder; delete (gadgets cascade). |
-| `create_dashboard_gadget` / `update_dashboard_gadget` / `delete_dashboard_gadget` | Add / edit / remove a gadget — an NLQL `query` + `visualization` (STAT/TABLE/BREAKDOWN/BURNDOWN) + `config`. Update merges `config` rather than replacing it. |
+| `create_dashboard` / `update_dashboard` / `delete_dashboard` | Create a project dashboard (a brand-new project's first dashboard is pre-populated with 3 starter gadgets); rename/reorder; delete (gadgets cascade). Capped at 20 dashboards/project. |
+| `create_dashboard_gadget` / `update_dashboard_gadget` / `delete_dashboard_gadget` | Add / edit / remove a gadget — an NLQL `query` + `visualization` (STAT/TABLE/BREAKDOWN/BURNDOWN/VELOCITY_TREND) + `config`. Update merges `config` rather than replacing it. VELOCITY_TREND ignores `query` (project-wide); capped at 20 dashboards/project and 30 gadgets/dashboard — a 400 at the cap names the limit. |
 | `set_project_role_override` / `remove_project_role_override` | Elevate/restrict (or revert) a workspace member's role scoped to one project. Requires effective project ADMIN; refuses to override a workspace admin. |
 | `update_project_context` | Full-content replace of the project's agent handoff document (`projectId`, `content` markdown, 64 KB cap). **Call before ending every work session** — and at milestones — so the next run starts with your context. Requires project MEMBER+. |
 | `set_github_automation_config` / `set_gitlab_automation_config` | Turn a project's auto-transition-on-merge automation on/off and/or set its target status (`projectId`, `enabled`, `statusId?`) — a `merged` PR/MR webhook then moves every linked issue to that status via the existing workflow-transition automation-bypass path. Requires the integration to already be connected (repo/token setup stays web-UI-only); requires project ADMIN. |

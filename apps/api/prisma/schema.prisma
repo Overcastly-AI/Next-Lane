@@ -68,12 +68,15 @@ enum BoardType {
 
 /// How a DashboardGadget renders its NLQL query result.
 /// STAT = single count; TABLE = compact issue list; BREAKDOWN = counts
-/// grouped by a field; BURNDOWN = sprint burndown scoped to the query's sprint.
+/// grouped by a field; BURNDOWN = sprint burndown scoped to the query's sprint;
+/// VELOCITY_TREND = committed vs completed points over the project's last N
+/// sprints (project-wide — the gadget's NLQL query isn't used to scope it).
 enum DashboardGadgetVisualization {
   STAT
   TABLE
   BREAKDOWN
   BURNDOWN
+  VELOCITY_TREND
 }
 
 enum Role {

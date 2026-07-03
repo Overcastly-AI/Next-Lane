@@ -8,9 +8,11 @@ import type {
   DashboardBurndownGadgetData,
   DashboardStatGadgetData,
   DashboardTableGadgetData,
+  DashboardVelocityTrendGadgetData,
 } from '@next-lane/shared';
 import { Badge } from '@/components/ui/Badge';
 import { BurndownChart } from '@/components/reports/BurndownChart';
+import { VelocityChart } from '@/components/reports/VelocityChart';
 import { EmptyState } from '@/components/ui/States';
 
 const COLUMN_LABELS: Record<string, string> = {
@@ -129,4 +131,23 @@ export function BurndownGadget({ data }: { data: DashboardBurndownGadgetData }) 
       <BurndownChart series={data.series} totalCommitted={data.totalCommitted} />
     </div>
   );
+}
+
+/**
+ * Cross-sprint velocity trend — reuses `VelocityChart`, the same grouped-bar
+ * renderer the full Reports page uses, so this is genuinely "the gadget
+ * framework reusing an existing chart", not a bespoke report page.
+ */
+export function VelocityTrendGadget({ data }: { data: DashboardVelocityTrendGadgetData }) {
+  if (data.points.length === 0) {
+    return (
+      <div className="py-4">
+        <EmptyState
+          title="No sprint data yet"
+          description="The velocity trend needs at least one active or completed sprint."
+        />
+      </div>
+    );
+  }
+  return <VelocityChart data={data.points} />;
 }
