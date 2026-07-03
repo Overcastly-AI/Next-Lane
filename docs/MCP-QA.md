@@ -197,3 +197,177 @@ row twice (back-to-back, lines 232–233).
 - **P3s:** staleness ignores comments (5); `list_users` `q` filter (6);
   project activity read tool (7); toolset token footprint (8); README dup
   row (9).
+
+---
+
+## Pass 2 — 2026-07-03 (AX Round 2 surface, commits `f79268f` + `66c3f0b`)
+
+**Scope.** Acceptance of Agent Experience Round 2: idempotency keys
+(claim-first hardening), `bulk_update_issues` `parentId`/`atomic`/`dryRun`,
+`update_comment`/`delete_comment` gating, `list_project_activity`, the
+`expectedProjectKey` MUST-mandate (+ strict mode), context staleness counting
+comments/worklogs, `list_users q`, `create_project`/`create_workspace` — plus
+regression checks on every pass-1 finding.
+
+**Method.** Built `apps/mcp` from the committed tree, drove it over stdio
+(`@modelcontextprotocol/sdk` 1.29.0), two authenticated clients
+(`demo@nextlane.dev` ADMIN, `alex@nextlane.dev` MEMBER), API on `:4000`.
+Engagement: project **AXR2** ("Mobile App GA QA-Pass2 93204") in the seeded
+workspace — 1 epic + 15 children, sprint pulled/assigned/labeled via bulk,
+statuses worked, comments incl. an edited decision, worklog, two context
+handoffs, then interrogated. **~113 tool calls, zero REST fallbacks** (pass 1
+needed one labeled REST call to create the project; `create_project` closes
+that). A second stdio server instance was launched with
+`NEXT_LANE_MCP_STRICT_PROJECT_KEY=1` for the strict-mode checks.
+
+### Verdicts on the seven AX-Round-2 criteria
+
+| Criterion | Verdict | Evidence |
+| --- | --- | --- |
+| `idempotencyKey` (create_issue / add_comment) | **PASS** | Replay with same key → same issue id (AXR2-2 both times, byte-identical 1,330 B response; comment replay same id, 474 B). Same key + different payload → **409, 129 B**: `This idempotencyKey was already used with a different request payload. Use a new key for each distinct request.` — one-retry actionable. **Concurrent duplicate** (two simultaneous calls, fresh key): both return 200 with the SAME id, exactly 1 row created (loser polled the winner: 46 ms vs 279 ms; comments: 27 ms vs 266 ms). Claim-release verified: failed attempt (bogus statusId, 400) then SAME key with corrected payload → creates normally (AXR2-16); identical failing retry genuinely re-runs (400 again, not replayed as success). The `66c3f0b` hardening holds under every abuse I could construct. |
+| `bulk_update_issues` parentId/atomic/dryRun | **PASS** (2 misfire notes → findings 2, 3) | Bulk-parent 14 issues to the epic, `atomic:true`: one call, **53 B** response, all 14 verified via `get_epic_overview`. `dryRun:true` → `wouldUpdate` list, verified zero writes. `dryRun+atomic+bad id` → both flags echoed, per-item `failed:[{id,reason:"Issue not found"}]` AND full `wouldUpdate` (best failure envelope on the surface). Real `atomic` + bad id → `updated:0`, nothing written (verified). `atomic` + cross-project statusId → `updated:0`, per-item `statusId does not belong to this project`, target issue confirmed unmoved. Foreign `parentId` → per-item `parentId does not belong to this project`; foreign `addLabelIds` → per-item message naming the offending label id. 101 ids → clean client-side zod rejection; zero change-fields → `changes must contain at least one field to update [HTTP 400]`. |
+| `update_comment` / `delete_comment` | **PASS** | Full matrix: author edits own ✓; workspace-ADMIN edits member's ✓; MEMBER non-author edit AND delete of another's → **403, 76 B**: `Only the author or a project admin can modify this comment` — states the exact rule; bogus id → 404 `Comment not found` (35 B). Author-or-admin parity with worklogs confirmed behaviorally. |
+| `list_project_activity` | **MIXED** — the shape/economics are right, the coverage is not (findings 1, 2, 5, 6) | "What happened since I last looked": **1 call, 11 items, 4,639 B** vs the pass-1 assembly path (`list_issues updated>=today` 3,137 B + `list_comments` × 15 issues ≈ 16 calls / ~18 KB) — **16× fewer calls**. Cursor pagination: 20+6 items, zero overlap, ascending, `nextCursor` round-trips. `since` filter exact; bad `since` → clear 400 `since must be a valid ISO 8601 date string`. Full 27-item history = 11.1 KB (~410 B/item). BUT: sprint/parent/label changes never appear (finding 1), status/assignee summaries are raw ids (finding 2). |
+| `expectedProjectKey` mandate | **PASS** for create_issue; gap on bulk (finding 3) | Server instructions (1,389 B at initialize) carry the MUST language + strict-mode warning; tool description repeats it with the field-report rationale. Wrong key → **183 B** error naming both keys + project name + id, `No issue was created.` (verified). Strict server: omitted key → **212 B** hard error, nothing created; lower-case `axr2` accepted (case-insensitive). |
+| Context staleness counts comments+worklogs | **PASS** (with the finding-1 blind spot) | Fresh handoff → `changesSinceUpdate:0`; `add_comment` → **1**; `add_worklog` → 7→**8** with `lastProjectActivityAt` bumped. Pass-1 finding 5 is fixed. |
+| `list_users q` / `create_project` / `create_workspace` | **PASS** | `q:"alex"` → **332 B / 1 call** (pass 1: up to 3 calls / ~22 KB against 126 users; now 128 users, unfiltered page still 7,246 B). Case-insensitive, matches email substrings, clean 81 B empty result. `create_workspace` → 193 B echo with id+slug. `create_project` → 278 B echo with id+key, statuses+board seeded (verified: board worked immediately, `list_statuses` 3 rows). Duplicate key → 409 `Project key already in use` (44 B; terse — doesn't echo the key/workspace, P3 nit). Pass-1 findings 2 and 6 are fixed. |
+
+### Pass-1 regression sweep
+
+- **Finding 1 (P1, NLQL silent-empty for names): FIXED.** `assignee = "Alex
+  Rivera"` → 3 items (= truth by id); `sprint = "Sprint 1 — GA Blockers"` →
+  7 items (= truth by id). Residual: an *unknown* name (`assignee =
+  "Nonexistent Person"`) is still a silent `total:0`, not an error → carried
+  as new finding 7 (P3, was P1; typos still produce confident wrong answers).
+- Finding 2 (`create_project`): **FIXED** (shipped, tested above).
+- Finding 3 ("what's blocked" costs 1+N): **STILL OPEN** — `get_epic_overview`
+  children still carry only `{id,key,title,type,status}`; no links/blocked
+  exposure anywhere cheaper than per-issue `list_issue_links`.
+- Finding 4 (cross-project move): **STILL OPEN** — no move tool on the 97-tool
+  surface; recovery from a misfile remains lossy delete+recreate.
+- Finding 5 (staleness ignores comments): **FIXED** (comments AND worklogs).
+- Finding 6 (`list_users q`): **FIXED.** Finding 7 (activity read tool):
+  **SHIPPED** (with new gaps, below). Finding 9 (README dup row): **FIXED**.
+- Finding 8 (toolset footprint): **GREW** — 97 tools, `tools/list` =
+  **82,182 B** (pass 1: 91 tools / 73.7 KB; +11.5%). Still ~20K tokens before
+  the first call.
+
+### New findings (this pass), ranked
+
+**1. P1 — Sprint, parent, and label changes are invisible to BOTH
+`list_project_activity` and context staleness.** Blocks: "what changed since
+my handoff" — the exact question the feed and `staleness` exist to answer.
+The AX2 flagship op itself (bulk-parent N tickets to an epic) leaves no
+trace. Measured repro: bulk-parent 14 issues (atomic) → **0 feed entries**;
+bulk sprint pull of 6 → **0**; bulk label of 6 → **0**; then single-issue
+`update_issue sprintId`, unparent, re-parent, `add_issue_label` → `since`
+query returns **0 items (74 B)** — so it is field-level (ActivityLog never
+records these fields), not a bulk-path miss. Priority/assignee/status DO log
+(incl. from bulk). `changesSinceUpdate` sat unchanged through all of it: an
+agent that re-scoped a sprint and re-parented an epic hands off with
+staleness claiming nothing happened. Contrast: the same session's comment
+bumped it within one call. Fix shape: write ActivityLog rows for
+sprint/parent/label mutations in `writeIssueUpdate`/label services (they
+already have before/after values in hand); the feed and staleness then pick
+them up for free.
+
+**2. P2 — Activity summaries for status/assignee are raw ids, defeating the
+"skimmable summary" contract.** Measured items: `"summary": "status:
+cmr4z8qvk000tskz73wmr1w7z → cmr4z8qvk000uskz7158g1hq8"`, `"assignee: (none)
+→ cmqx2rt9g000113mav73zu1oc"` — while `actor` on the same row IS resolved to
+a name, and priority renders readably (`priority: HIGH → LOW`). The tool
+description promises a summary "cheap to skim without interpreting
+field/from/to yourself"; for the two most common change kinds an agent needs
++2 joins (`list_statuses`, `list_users`) to say "moved to In Progress,
+assigned to Alex". Fix shape: resolve status/user display names at feed-read
+time (both tables are already joined for `actor`); keep ids in `from`/`to`.
+
+**3. P2 — `bulk_update_issues` is the highest-blast-radius write tool (100
+ids) yet has no misfire guard and a blind success envelope.** Measured: ids
+from two different projects + `priority` → `{"updated":2,"failed":[]}` —
+34 B, a foreign project's issue silently mutated, nothing in the response
+reveals it (no keys, no project echo; only failures are itemized).
+Cross-project statusId/sprintId/parentId/labels ARE caught per-item, but
+project-agnostic fields (priority, assignee, type) write anywhere the caller
+has access — precisely the pasted-stale-id scenario `expectedProjectKey`
+exists to stop on `create_issue`. Fix shape: optional `expectedProjectKey`
+on bulk (reject any id resolving outside that project) + echo
+`updated: [{id,key}]` (or at least the distinct project keys touched) in the
+success envelope; `dryRun.wouldUpdate` should echo keys too, ids alone can't
+be eyeballed.
+
+**4. P3 — The compact read surface speaks `key`, every write tool speaks
+`id`, and nothing bridges them for free.** Compact `list_issues` items have
+no `id` (by design: `{key,title,status,assignee,priority,type}`), `get_issue`
+takes only ids, so acting on an issue found in a compact list costs one
+extra hop: `search_issues q:"AXR2-3"` (458 B — works, key is indexed) or
+re-list with `verbose:true` (8.2× bytes). This bit this very pass (a
+compact-item `.id` silently serialized as `null` into a bulk call — caught
+only by zod). Fix shape: add `id` to the compact issue shape (+~28 B/issue,
+still ~8× under verbose) or accept issue keys anywhere an issueId is taken.
+
+**5. P3 — COMMENT feed items carry no body preview** — `summary:
+"commented"`. "What happened today" surfaces THAT someone commented on
+AXR2-2 but not that it was the GA-date decision; retrieving it costs
+`list_comments` per flagged issue (1,138 B here). Fix shape: first ~120
+chars of the body in `summary` (the UI's activity row shows a preview too).
+
+**6. P3 — A garbage `cursor` is silently ignored** — `cursor:"garbage"` →
+full history from the beginning (10,758 B), same as omitting it. A truncated
+cursor in an agent loop restarts the walk with no signal (double-processing).
+Bad `since` correctly 400s; cursor should too.
+
+**7. P3 (residual of pass-1 finding 1) — NLQL user/sprint *name* resolution
+now works, but an unknown/misspelled name is still a silent empty set.**
+`assignee = "Nonexistent Person"` → `total: 0`, no error (81 B). One typo →
+"nothing assigned", confidently. Fix shape (unchanged from pass 1's minimum
+bar): unresolvable name on a user/sprint field → 400 naming the value and
+suggesting `list_users q` / `list_sprints`.
+
+**8. P3 — `tools/list` footprint grew to 82.2 KB / 97 tools** (+11.5% over
+pass 1) — tracked, per-feature growth is the definition-of-done's own
+side-effect; grouped/dynamic toolsets remain the fix shape.
+
+### What worked well (marketing-grade, all measured this pass)
+
+- **Retry-safe writes are real, under real concurrency.** Two simultaneous
+  identical creates with one idempotency key → one issue, both callers get
+  the same 200 (the loser transparently waits ~230 ms for the winner's
+  response). Key reuse with a different payload → a precise 409. A failed
+  attempt releases the key so the corrected retry just works. This is
+  Stripe-grade idempotency semantics on an issue tracker, exercised from an
+  agent client.
+- **Atomic bulk is trustworthy:** 14 issues re-parented in one 53 B-response
+  call; a poisoned batch (bad id, foreign status) writes *nothing* — verified
+  by before/after reads, not by trusting the envelope. `dryRun+atomic`
+  returns the complete would-pass/would-fail split for free.
+- **The guardrail mandate reaches the agent at every layer:** initialize
+  instructions (1,389 B), tool description, and an optional server-side hard
+  mode — wrong key fails in 183 B *before* any write, naming both sides.
+- **Question economics keep improving:** "who is Alex" 3 calls/22 KB → **1
+  call/332 B**; "what happened here since I last looked" unanswerable → **1
+  call/4.6 KB** (16× fewer calls than the assembly path); epic status still
+  1 call/3.0 KB; "Alex's in-progress work" 2 calls/491 B — or now 1 call by
+  plain name, since the pass-1 P1 (NLQL name resolution) is verifiably fixed.
+- **Comment gating errors state the rule itself:** `Only the author or a
+  project admin can modify this comment` — the agent learns the policy from
+  the 403.
+- **Zero REST fallbacks this pass** — `create_workspace` → `create_project`
+  → plan → work → interrogate → hand off, 113 calls, all through the MCP
+  surface. The agent-native claim held end-to-end.
+
+### For the groomer
+
+- **P1** ActivityLog blindness: sprint/parent/label mutations produce no
+  activity rows → `list_project_activity` AND context `staleness` both miss
+  them (finding 1). This gates trust in the two newest AX surfaces; fix at
+  the write path, both consumers inherit it.
+- **P2** Resolve status/assignee names in activity `summary` (finding 2).
+- **P2** `expectedProjectKey` + `{id,key}` success echo on
+  `bulk_update_issues` (finding 3).
+- **P3s:** compact-issue `id` (or key-addressable writes) (4); comment body
+  preview in feed (5); 400 on malformed cursor (6); 400 on unresolvable
+  NLQL user/sprint name (7); toolset footprint 82.2 KB (8); duplicate
+  project-key 409 could name the key (nit).
+- **Still open from pass 1:** one-call "what's blocked" (P2), cross-project
+  issue move (P2).
