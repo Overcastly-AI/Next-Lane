@@ -171,6 +171,331 @@ const roleEnum = z
   .describe('ADMIN > MEMBER > VIEWER (workspace or per-project role).');
 
 // ---------------------------------------------------------------------------
+// List-tool pagination + compact/verbose shaping
+//
+// A single full DTO (a label, a status, an issue...) is small on its own, but
+// an agent's context window pays for the *sum* across every item a list tool
+// returns — a real MCP-agent field report measured 150 KB for 44 issues from
+// one `list_issues` call. Every list_*/search_* tool below returns a uniform
+// envelope `{ items, total, limit, offset, hasMore }`; tools whose full DTO
+// carries materially more than the common-case fields also default to a
+// hand-picked compact shape and take `verbose: true` to opt into the full API
+// object per item. `total`/`hasMore` are computed from the full (unpaginated)
+// set the underlying REST call returned, so an agent always knows whether it
+// saw everything or needs another page.
+// ---------------------------------------------------------------------------
+
+/** Default page size for list tools when `limit` is omitted. */
+const DEFAULT_LIST_LIMIT = 50;
+/** Hard cap on `limit`, independent of any single tool's own schema max. */
+const MAX_LIST_LIMIT = 200;
+
+const limitParam = z
+  .number()
+  .int()
+  .min(1)
+  .max(MAX_LIST_LIMIT)
+  .optional()
+  .describe(`Max items to return (default ${DEFAULT_LIST_LIMIT}, max ${MAX_LIST_LIMIT}).`);
+
+const offsetParam = z
+  .number()
+  .int()
+  .min(0)
+  .optional()
+  .describe('Number of items to skip, for paging through a long list (default 0).');
+
+const verboseParam = z
+  .boolean()
+  .optional()
+  .describe(
+    'Return the full API object for each item instead of the compact default ' +
+      'fields below. Only set this when you actually need the extra fields — ' +
+      'it multiplies the response size.',
+  );
+
+/** Shared limit+offset params for list tools whose items are already minimal. */
+const pageParams = { limit: limitParam, offset: offsetParam };
+/** Shared limit+offset+verbose params for list tools with a compact default shape. */
+const compactPageParams = { limit: limitParam, offset: offsetParam, verbose: verboseParam };
+
+/** Loosely-typed JSON object — list-tool items before/after compacting. */
+type ApiItem = Record<string, unknown>;
+
+interface PageEnvelope<T> {
+  items: T[];
+  total: number;
+  limit: number;
+  offset: number;
+  hasMore: boolean;
+}
+
+function resolveLimitOffset(args: Record<string, unknown>): { limit: number; offset: number } {
+  const rawLimit = Number(args.limit);
+  const limit = Math.min(
+    Math.max(Number.isFinite(rawLimit) && rawLimit > 0 ? rawLimit : DEFAULT_LIST_LIMIT, 1),
+    MAX_LIST_LIMIT,
+  );
+  const rawOffset = Number(args.offset);
+  const offset = Math.max(Number.isFinite(rawOffset) ? rawOffset : 0, 0);
+  return { limit, offset };
+}
+
+/** Slice `all` per limit/offset args, without changing item shape. */
+function paginateOnly<T>(all: T[], args: Record<string, unknown>): PageEnvelope<T> {
+  const { limit, offset } = resolveLimitOffset(args);
+  const total = all.length;
+  const items = all.slice(offset, offset + limit);
+  return { items, total, limit, offset, hasMore: offset + items.length < total };
+}
+
+/** Slice + compact (unless `verbose: true`) `all` per limit/offset/verbose args. */
+function paginateCompact<C>(
+  all: ApiItem[],
+  args: Record<string, unknown>,
+  compact: (item: ApiItem) => C,
+): PageEnvelope<ApiItem | C> {
+  const page = paginateOnly(all, args);
+  const items: (ApiItem | C)[] = args.verbose ? page.items : page.items.map(compact);
+  return { ...page, items };
+}
+
+/** Wrap a `paginateOnly`/`paginateCompact` envelope as a tool text result. */
+function pageResult(envelope: PageEnvelope<unknown>): ToolResult {
+  return jsonResult(envelope);
+}
+
+// ---------------------------------------------------------------------------
+// Compact field-set mappers (one per resource shape returned by a list tool).
+// Each keeps just the identifying / commonly-needed fields; `verbose: true`
+// returns the untouched API object instead.
+// ---------------------------------------------------------------------------
+
+const compactProject = (p: ApiItem) => ({ id: p.id, key: p.key, name: p.name });
+
+const compactWorkspace = (w: ApiItem) => ({ id: w.id, name: w.name, slug: w.slug });
+
+const compactBoard = (b: ApiItem) => ({
+  id: b.id,
+  name: b.name,
+  type: b.type,
+  isDefault: b.isDefault,
+});
+
+const compactStatus = (s: ApiItem) => ({ id: s.id, name: s.name, category: s.category });
+
+const compactWorkflow = (w: ApiItem) => ({
+  id: w.id,
+  name: w.name,
+  enforced: w.enforced,
+  transitionCount: w.transitionCount,
+  boardCount: w.boardCount,
+});
+
+const compactUser = (u: ApiItem) => ({ id: u.id, name: u.name, email: u.email });
+
+const compactSprint = (s: ApiItem) => ({ id: s.id, name: s.name, state: s.state });
+
+const compactComponent = (c: ApiItem) => {
+  const defaultAssignee = c.defaultAssignee as ApiItem | null;
+  return { id: c.id, name: c.name, defaultAssignee: defaultAssignee?.name ?? null };
+};
+
+const compactVersion = (v: ApiItem) => ({
+  id: v.id,
+  name: v.name,
+  state: v.state,
+  releaseDate: v.releaseDate,
+  issueCount: v.issueCount,
+});
+
+const compactCustomField = (f: ApiItem) => ({
+  id: f.id,
+  key: f.key,
+  name: f.name,
+  type: f.type,
+  required: f.required,
+});
+
+const compactSavedFilter = (f: ApiItem) => ({
+  id: f.id,
+  name: f.name,
+  query: f.query,
+  shared: f.shared,
+  projectId: f.projectId,
+});
+
+const compactAutomation = (a: ApiItem) => ({
+  id: a.id,
+  name: a.name,
+  trigger: a.trigger,
+  enabled: a.enabled,
+});
+
+const compactQuickLink = (q: ApiItem) => ({
+  id: q.id,
+  label: q.label,
+  url: q.url,
+  group: q.group,
+});
+
+const compactTemplate = (t: ApiItem) => ({
+  id: t.id,
+  name: t.name,
+  issueType: t.issueType,
+});
+
+const compactNotification = (n: ApiItem) => ({
+  id: n.id,
+  type: n.type,
+  issueKey: n.issueKey,
+  message: n.message,
+  read: n.read,
+});
+
+const compactRoleOverride = (m: ApiItem) => {
+  const user = m.user as ApiItem | undefined;
+  return {
+    userId: m.userId,
+    name: user?.name,
+    effectiveRole: m.effectiveRole,
+    isOverride: m.isOverride,
+  };
+};
+
+const compactDashboard = (d: ApiItem) => ({
+  id: d.id,
+  name: d.name,
+  order: d.order,
+  gadgetCount: d.gadgetCount,
+});
+
+/** Compact issue shape used by `list_issues` — the field report's own ask. */
+const compactIssue = (i: ApiItem) => {
+  const status = i.status as ApiItem | undefined;
+  const assignee = i.assignee as ApiItem | null | undefined;
+  const out: ApiItem = {
+    key: i.key,
+    title: i.title,
+    status: status?.name ?? i.statusId,
+    assignee: assignee ? (assignee.name ?? assignee.email) : null,
+    priority: i.priority,
+    type: i.type,
+  };
+  if (i.startDate !== undefined) out.startDate = i.startDate;
+  return out;
+};
+
+// ---------------------------------------------------------------------------
+// NLQL-filtered issue listing (`list_issues` with `query` set)
+//
+// There is no existing REST endpoint that evaluates NLQL and returns JSON
+// issues directly. The only endpoint that runs the real parser/evaluator
+// server-side is `GET /projects/:id/issues.csv?q=<nlql>` (same pipeline the
+// board search bar and CSV export use) — but it returns CSV text keyed by
+// issue `key`, not `id`, so it can't stand in for `list_issues` on its own.
+// We compose it as an oracle ("which issues match, and is the query valid")
+// and hydrate full issue objects (with `id`) via the existing paginated
+// `GET /issues`. See apps/mcp/README.md for the follow-up note: a JSON NLQL
+// list endpoint would let this be a single round trip.
+// ---------------------------------------------------------------------------
+
+/** Number of `GET /issues` pages (at MAX_LIST_LIMIT each) fetched while
+ *  hydrating NLQL matches. Bounds worst-case latency for very large projects;
+ *  any matched key not found within this budget is silently omitted (the
+ *  common case — the field report's projects — resolves in a single page). */
+const NLQL_HYDRATE_PAGE_BUDGET = 10;
+
+/**
+ * Minimal RFC-4180 CSV parser: handles quoted fields with embedded commas,
+ * doubled quotes, and CRLF/LF line endings (matches `apps/api/.../csv.util.ts`
+ * output exactly, since that's the only producer we ever parse here).
+ */
+function parseCsv(text: string): string[][] {
+  const rows: string[][] = [];
+  let field = '';
+  let row: string[] = [];
+  let inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (text[i + 1] === '"') {
+          field += '"';
+          i++;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        field += c;
+      }
+      continue;
+    }
+    if (c === '"') {
+      inQuotes = true;
+    } else if (c === ',') {
+      row.push(field);
+      field = '';
+    } else if (c === '\r') {
+      // Swallowed; the following \n (or end of input) terminates the row.
+    } else if (c === '\n') {
+      row.push(field);
+      rows.push(row);
+      row = [];
+      field = '';
+    } else {
+      field += c;
+    }
+  }
+  if (field.length > 0 || row.length > 0) {
+    row.push(field);
+    rows.push(row);
+  }
+  return rows;
+}
+
+/**
+ * Resolve an NLQL `query` against a project into full (hydrated) issue
+ * objects, in the CSV's own order (issue number ascending). Throws the API's
+ * `ApiError` verbatim on an invalid query (precise parser message, 400).
+ */
+async function fetchNlqlFilteredIssues(
+  client: NextLaneClient,
+  projectId: string,
+  query: string,
+): Promise<ApiItem[]> {
+  const csv = await client.get<string>(`/projects/${projectId}/issues.csv`, { q: query });
+  const rows = parseCsv(String(csv));
+  if (rows.length <= 1) return [];
+  const header = rows[0];
+  const keyIdx = header.indexOf('Key');
+  const matchedKeys = rows
+    .slice(1)
+    .filter((r) => r.length > keyIdx && r[keyIdx])
+    .map((r) => r[keyIdx]);
+  if (matchedKeys.length === 0) return [];
+  const wanted = new Set(matchedKeys);
+
+  const byKey = new Map<string, ApiItem>();
+  let cursor: string | undefined;
+  for (let page = 0; page < NLQL_HYDRATE_PAGE_BUDGET && byKey.size < wanted.size; page++) {
+    const data = await client.get<{ items: ApiItem[]; nextCursor: string | null }>('/issues', {
+      projectId,
+      cursor,
+      limit: MAX_LIST_LIMIT,
+    });
+    for (const item of data.items) {
+      const key = item.key as string;
+      if (wanted.has(key)) byKey.set(key, item);
+    }
+    if (!data.nextCursor) break;
+    cursor = data.nextCursor;
+  }
+
+  return matchedKeys.map((k) => byKey.get(k)).filter((v): v is ApiItem => Boolean(v));
+}
+
+// ---------------------------------------------------------------------------
 // Read tools
 // ---------------------------------------------------------------------------
 
@@ -180,59 +505,83 @@ const readTools: ToolDef[] = [
     group: 'read',
     description:
       'List projects in a workspace. Provide workspaceId to scope the list. ' +
-      'Use this first to discover projectId values for other tools.',
+      'Use this first to discover projectId values for other tools. Compact ' +
+      '`{id, key, name}` per project by default — pass `verbose: true` for ' +
+      'the full project object.',
     inputSchema: {
       workspaceId: z
         .string()
         .describe('Workspace id to list projects for.'),
+      ...compactPageParams,
     },
     handler: (args, client) =>
       client
-        .get('/projects', { workspaceId: args.workspaceId as string })
-        .then(jsonResult),
+        .get<ApiItem[]>('/projects', { workspaceId: args.workspaceId as string })
+        .then((data) => pageResult(paginateCompact(data, args, compactProject))),
   },
   {
     name: 'list_workspaces',
     group: 'read',
     description:
       'List all workspaces the authenticated token can access. Use to find a ' +
-      'workspaceId for list_projects.',
-    inputSchema: {},
-    handler: (_args, client) => client.get('/workspaces').then(jsonResult),
+      'workspaceId for list_projects. Compact `{id, name, slug}` per ' +
+      'workspace by default — pass `verbose: true` for the full object.',
+    inputSchema: { ...compactPageParams },
+    handler: (args, client) =>
+      client
+        .get<ApiItem[]>('/workspaces')
+        .then((data) => pageResult(paginateCompact(data, args, compactWorkspace))),
   },
   {
     name: 'list_boards',
     group: 'read',
-    description: 'List all boards for a project (kanban/scrum boards).',
+    description:
+      'List all boards for a project (kanban/scrum boards). Compact ' +
+      '`{id, name, type, isDefault}` per board by default — pass ' +
+      '`verbose: true` for the full board (filterQuery, colorRules, ' +
+      'workflowId, defaultGroupBy, timestamps).',
     inputSchema: {
       projectId: z.string().describe('Project id to list boards for.'),
+      ...compactPageParams,
     },
     handler: (args, client) =>
-      client.get(`/projects/${args.projectId}/boards`).then(jsonResult),
+      client
+        .get<ApiItem[]>(`/projects/${args.projectId}/boards`)
+        .then((data) => pageResult(paginateCompact(data, args, compactBoard))),
   },
   {
     name: 'list_statuses',
     group: 'read',
     description:
       'List the workflow statuses (columns) defined for a project. Status ids ' +
-      'are needed to build workflow transitions and move issues.',
+      'are needed to build workflow transitions and move issues. Compact ' +
+      '`{id, name, category}` per status by default — pass `verbose: true` ' +
+      'for the full object (order, wipLimit).',
     inputSchema: {
       projectId: z.string().describe('Project id to list statuses for.'),
+      ...compactPageParams,
     },
     handler: (args, client) =>
-      client.get(`/projects/${args.projectId}/statuses`).then(jsonResult),
+      client
+        .get<ApiItem[]>(`/projects/${args.projectId}/statuses`)
+        .then((data) => pageResult(paginateCompact(data, args, compactStatus))),
   },
   {
     name: 'list_workflows',
     group: 'read',
     description:
       'List named workflows for a project, each with its transition and board ' +
-      'counts. A workflow defines the allowed status transitions (the SDLC).',
+      'counts. A workflow defines the allowed status transitions (the SDLC). ' +
+      'Compact `{id, name, enforced, transitionCount, boardCount}` per ' +
+      'workflow by default — pass `verbose: true` for the full object.',
     inputSchema: {
       projectId: z.string().describe('Project id to list workflows for.'),
+      ...compactPageParams,
     },
     handler: (args, client) =>
-      client.get(`/projects/${args.projectId}/workflows`).then(jsonResult),
+      client
+        .get<ApiItem[]>(`/projects/${args.projectId}/workflows`)
+        .then((data) => pageResult(paginateCompact(data, args, compactWorkflow))),
   },
   {
     name: 'get_workflow',
@@ -250,38 +599,81 @@ const readTools: ToolDef[] = [
     name: 'list_issues',
     group: 'read',
     description:
-      'List issues, optionally filtered by project, sprint, assignee, type, ' +
-      'status, or a free-text query (q). Supports cursor pagination via ' +
-      'cursor + limit.',
+      'List issues. Two modes: (1) default — filter by project/sprint/' +
+      'assignee/type/status and/or a short free-text `q`, cursor-paginated ' +
+      'via `cursor` + `limit`; (2) `query` set — a full NLQL expression (the ' +
+      'same language as the board search bar / saved filters / ' +
+      'get_project_csv, e.g. `status = "In Progress" AND assignee = me()`), ' +
+      'validated and evaluated server-side against the whole project so you ' +
+      "never have to pull every issue to find one. Requires projectId; the " +
+      'structural filters and `q`/`cursor` are ignored in this mode — express ' +
+      'them inside the NLQL string instead. An invalid query fails with the ' +
+      "API parser's own message (not a generic error). Returns a compact " +
+      '`{key, title, status, assignee, priority, type}` per issue by default ' +
+      '— pass `verbose: true` for the full issue object (id, description, ' +
+      'labels, custom fields, etc). Response shape: ' +
+      '`{ items, limit, hasMore, total?, offset?, nextCursor? }` — `total`/' +
+      '`offset` are only present in `query` mode (default mode is cursor-' +
+      'paginated and does not compute a full count).',
     inputSchema: {
-      projectId: z.string().optional().describe('Filter by project id.'),
-      sprintId: z.string().optional().describe('Filter by sprint id.'),
-      assigneeId: z.string().optional().describe('Filter by assignee user id.'),
-      type: z.string().optional().describe('Filter by issue type.'),
-      statusId: z.string().optional().describe('Filter by status id.'),
-      q: z.string().optional().describe('Free-text / NLQL search query.'),
-      cursor: z.string().optional().describe('Pagination cursor from a prior page.'),
-      limit: z
-        .number()
-        .int()
-        .min(1)
-        .max(200)
+      projectId: z
+        .string()
         .optional()
-        .describe('Page size (1-200).'),
+        .describe('Filter by project id. Required when `query` is set.'),
+      sprintId: z.string().optional().describe('Filter by sprint id (ignored when `query` is set).'),
+      assigneeId: z
+        .string()
+        .optional()
+        .describe('Filter by assignee user id (ignored when `query` is set).'),
+      type: z.string().optional().describe('Filter by issue type (ignored when `query` is set).'),
+      statusId: z.string().optional().describe('Filter by status id (ignored when `query` is set).'),
+      q: z
+        .string()
+        .optional()
+        .describe('Short free-text search over title/description (ignored when `query` is set).'),
+      query: z
+        .string()
+        .optional()
+        .describe(
+          'NLQL filter expression, e.g. `status = "In Progress" AND ' +
+            'assignee = me()`, or `type = EPIC AND priority = HIGHEST`. ' +
+            'Requires projectId. Switches this call to offset pagination ' +
+            '(limit/offset) instead of cursor.',
+        ),
+      cursor: z.string().optional().describe('Pagination cursor from a prior page (default mode only).'),
+      offset: offsetParam,
+      verbose: verboseParam,
+      limit: limitParam,
     },
-    handler: (args, client) =>
-      client
-        .get('/issues', {
-          projectId: args.projectId as string | undefined,
-          sprintId: args.sprintId as string | undefined,
-          assigneeId: args.assigneeId as string | undefined,
-          type: args.type as string | undefined,
-          statusId: args.statusId as string | undefined,
-          q: args.q as string | undefined,
-          cursor: args.cursor as string | undefined,
-          limit: args.limit as number | undefined,
-        })
-        .then(jsonResult),
+    handler: async (args, client) => {
+      const query = (args.query as string | undefined)?.trim();
+      if (query) {
+        if (!args.projectId) {
+          throw new Error('list_issues: projectId is required when query (NLQL) is set.');
+        }
+        const matched = await fetchNlqlFilteredIssues(client, args.projectId as string, query);
+        return pageResult(paginateCompact(matched, args, compactIssue));
+      }
+
+      const data = await client.get<{ items: ApiItem[]; nextCursor: string | null }>('/issues', {
+        projectId: args.projectId as string | undefined,
+        sprintId: args.sprintId as string | undefined,
+        assigneeId: args.assigneeId as string | undefined,
+        type: args.type as string | undefined,
+        statusId: args.statusId as string | undefined,
+        q: args.q as string | undefined,
+        cursor: args.cursor as string | undefined,
+        limit: args.limit as number | undefined,
+      });
+      const verbose = Boolean(args.verbose);
+      const items = verbose ? data.items : data.items.map(compactIssue);
+      return jsonResult({
+        items,
+        limit: (args.limit as number | undefined) ?? DEFAULT_LIST_LIMIT,
+        hasMore: data.nextCursor !== null,
+        nextCursor: data.nextCursor,
+      });
+    },
   },
   {
     name: 'get_issue',
@@ -299,122 +691,187 @@ const readTools: ToolDef[] = [
     description:
       'List the typed links (dependencies / relations) for an issue, resolved ' +
       "from that issue's perspective — e.g. an issue it blocks, or is blocked " +
-      'by. Each entry includes the link id (needed for unlink_issues).',
+      'by. Each entry includes the link id (needed for unlink_issues). Already ' +
+      'a minimal shape; `limit`/`offset` cap a very heavily-linked issue.',
     inputSchema: {
       issueId: z.string().describe('Issue id to list links for.'),
+      ...pageParams,
     },
     handler: (args, client) =>
-      client.get(`/issues/${args.issueId}/links`).then(jsonResult),
+      client
+        .get<ApiItem[]>(`/issues/${args.issueId}/links`)
+        .then((data) => pageResult(paginateOnly(data, args))),
   },
   {
     name: 'list_labels',
     group: 'read',
     description:
       'List the labels defined in a project, with their ids and colors. Use ' +
-      'this to find a labelId for add_issue_label / remove_issue_label.',
+      'this to find a labelId for add_issue_label / remove_issue_label. ' +
+      'Already a minimal shape; `limit`/`offset` cap a project with many labels.',
     inputSchema: {
       projectId: z.string().describe('Project id to list labels for.'),
+      ...pageParams,
     },
     handler: (args, client) =>
-      client.get(`/projects/${args.projectId}/labels`).then(jsonResult),
+      client
+        .get<ApiItem[]>(`/projects/${args.projectId}/labels`)
+        .then((data) => pageResult(paginateOnly(data, args))),
   },
   {
     name: 'list_users',
     group: 'read',
     description:
       'List users the caller can see (workspace members). Use to find an ' +
-      'assigneeId / default-assignee id for create_issue, update_issue, etc.',
-    inputSchema: {},
-    handler: (_args, client) => client.get('/users').then(jsonResult),
+      'assigneeId / default-assignee id for create_issue, update_issue, etc. ' +
+      'Compact `{id, name, email}` per user by default — pass `verbose: true` ' +
+      'for the full object (avatarColor, emailNotifications, createdAt).',
+    inputSchema: { ...compactPageParams },
+    handler: (args, client) =>
+      client
+        .get<ApiItem[]>('/users')
+        .then((data) => pageResult(paginateCompact(data, args, compactUser))),
   },
   {
     name: 'search_issues',
     group: 'read',
     description:
       'Full-text search issues by title/key/description. Scope to one project ' +
-      'with projectId, or omit it to search everything the caller can access.',
+      'with projectId, or omit it to search everything the caller can access. ' +
+      'Results are already the minimal `SearchIssueDto` shape (no verbose ' +
+      'mode); `limit`/`offset` page the `issues` array (the `projects` array ' +
+      'of matched project names/keys is returned in full, it is normally tiny).',
     inputSchema: {
       q: z.string().describe('Search text.'),
       projectId: z.string().optional().describe('Restrict to this project.'),
+      ...pageParams,
     },
-    handler: (args, client) =>
-      client
-        .get('/search', { q: args.q as string, projectId: args.projectId as string | undefined })
-        .then(jsonResult),
+    handler: async (args, client) => {
+      const data = await client.get<{ issues: ApiItem[]; projects: ApiItem[] }>('/search', {
+        q: args.q as string,
+        projectId: args.projectId as string | undefined,
+      });
+      const { limit, offset, total, hasMore, items: issues } = paginateOnly(data.issues, args);
+      return jsonResult({ issues, projects: data.projects, total, limit, offset, hasMore });
+    },
   },
   {
     name: 'list_sprints',
     group: 'read',
-    description: 'List a project’s sprints (with state, dates, goal).',
-    inputSchema: { projectId: z.string().describe('Project id.') },
+    description:
+      'List a project’s sprints (with state, dates, goal). Compact ' +
+      '`{id, name, state}` per sprint by default — pass `verbose: true` for ' +
+      'the full object (goal, startDate, endDate).',
+    inputSchema: { projectId: z.string().describe('Project id.'), ...compactPageParams },
     handler: (args, client) =>
-      client.get(`/projects/${args.projectId}/sprints`).then(jsonResult),
+      client
+        .get<ApiItem[]>(`/projects/${args.projectId}/sprints`)
+        .then((data) => pageResult(paginateCompact(data, args, compactSprint))),
   },
   {
     name: 'list_components',
     group: 'read',
-    description: 'List a project’s components with their ids.',
-    inputSchema: { projectId: z.string().describe('Project id.') },
+    description:
+      'List a project’s components with their ids. Compact ' +
+      '`{id, name, defaultAssignee}` per component by default — pass ' +
+      '`verbose: true` for the full object (description, timestamps).',
+    inputSchema: { projectId: z.string().describe('Project id.'), ...compactPageParams },
     handler: (args, client) =>
-      client.get(`/projects/${args.projectId}/components`).then(jsonResult),
+      client
+        .get<ApiItem[]>(`/projects/${args.projectId}/components`)
+        .then((data) => pageResult(paginateCompact(data, args, compactComponent))),
   },
   {
     name: 'list_versions',
     group: 'read',
-    description: 'List a project’s versions/releases with their ids and state.',
-    inputSchema: { projectId: z.string().describe('Project id.') },
+    description:
+      'List a project’s versions/releases with their ids and state. Compact ' +
+      '`{id, name, state, releaseDate, issueCount}` per version by default — ' +
+      'pass `verbose: true` for the full object (description, timestamps).',
+    inputSchema: { projectId: z.string().describe('Project id.'), ...compactPageParams },
     handler: (args, client) =>
-      client.get(`/projects/${args.projectId}/versions`).then(jsonResult),
+      client
+        .get<ApiItem[]>(`/projects/${args.projectId}/versions`)
+        .then((data) => pageResult(paginateCompact(data, args, compactVersion))),
   },
   {
     name: 'list_custom_fields',
     group: 'read',
     description:
       'List a project’s custom field definitions (key, name, type, options). ' +
-      'Needed to set customFields on issues.',
-    inputSchema: { projectId: z.string().describe('Project id.') },
+      'Needed to set customFields on issues. Compact ' +
+      '`{id, key, name, type, required}` per field by default — pass ' +
+      '`verbose: true` for the full object (options, appliesToTypes, ' +
+      'showOnCard, order).',
+    inputSchema: { projectId: z.string().describe('Project id.'), ...compactPageParams },
     handler: (args, client) =>
-      client.get(`/projects/${args.projectId}/custom-fields`).then(jsonResult),
+      client
+        .get<ApiItem[]>(`/projects/${args.projectId}/custom-fields`)
+        .then((data) => pageResult(paginateCompact(data, args, compactCustomField))),
   },
   {
     name: 'list_comments',
     group: 'read',
-    description: 'List the comments on an issue (newest-relevant order).',
-    inputSchema: { issueId: z.string().describe('Issue id.') },
+    description:
+      'List the comments on an issue (newest-relevant order). Full comment ' +
+      '(including body) is already the minimal useful shape — no verbose ' +
+      'mode; `limit`/`offset` page a long comment thread.',
+    inputSchema: { issueId: z.string().describe('Issue id.'), ...pageParams },
     handler: (args, client) =>
-      client.get(`/issues/${args.issueId}/comments`).then(jsonResult),
+      client
+        .get<ApiItem[]>(`/issues/${args.issueId}/comments`)
+        .then((data) => pageResult(paginateOnly(data, args))),
   },
   {
     name: 'list_worklogs',
     group: 'read',
-    description: 'List the time-tracking work logs on an issue.',
-    inputSchema: { issueId: z.string().describe('Issue id.') },
+    description:
+      'List the time-tracking work logs on an issue. Already a minimal shape ' +
+      '— no verbose mode; `limit`/`offset` page an issue with many log entries.',
+    inputSchema: { issueId: z.string().describe('Issue id.'), ...pageParams },
     handler: (args, client) =>
-      client.get(`/issues/${args.issueId}/worklogs`).then(jsonResult),
+      client
+        .get<ApiItem[]>(`/issues/${args.issueId}/worklogs`)
+        .then((data) => pageResult(paginateOnly(data, args))),
   },
   {
     name: 'list_checklist',
     group: 'read',
-    description: 'List an issue’s checklist items (with done state + ids).',
-    inputSchema: { issueId: z.string().describe('Issue id.') },
+    description:
+      'List an issue’s checklist items (with done state + ids). Already a ' +
+      'minimal shape — no verbose mode; `limit`/`offset` page a long checklist.',
+    inputSchema: { issueId: z.string().describe('Issue id.'), ...pageParams },
     handler: (args, client) =>
-      client.get(`/issues/${args.issueId}/checklist`).then(jsonResult),
+      client
+        .get<ApiItem[]>(`/issues/${args.issueId}/checklist`)
+        .then((data) => pageResult(paginateOnly(data, args))),
   },
   {
     name: 'list_saved_filters',
     group: 'read',
-    description: 'List a project’s saved NLQL filters (own + shared).',
-    inputSchema: { projectId: z.string().describe('Project id.') },
+    description:
+      'List a project’s saved NLQL filters (own + shared). Compact ' +
+      '`{id, name, query, shared, projectId}` per filter by default — pass ' +
+      '`verbose: true` for the full object (ownerId, timestamps).',
+    inputSchema: { projectId: z.string().describe('Project id.'), ...compactPageParams },
     handler: (args, client) =>
-      client.get(`/projects/${args.projectId}/saved-filters`).then(jsonResult),
+      client
+        .get<ApiItem[]>(`/projects/${args.projectId}/saved-filters`)
+        .then((data) => pageResult(paginateCompact(data, args, compactSavedFilter))),
   },
   {
     name: 'list_automations',
     group: 'read',
-    description: 'List a project’s automation rules (trigger, condition, actions).',
-    inputSchema: { projectId: z.string().describe('Project id.') },
+    description:
+      'List a project’s automation rules (trigger, condition, actions). ' +
+      'Compact `{id, name, trigger, enabled}` per rule by default — pass ' +
+      '`verbose: true` for the full object (condition, actions, order, ' +
+      'timestamps).',
+    inputSchema: { projectId: z.string().describe('Project id.'), ...compactPageParams },
     handler: (args, client) =>
-      client.get(`/projects/${args.projectId}/automations`).then(jsonResult),
+      client
+        .get<ApiItem[]>(`/projects/${args.projectId}/automations`)
+        .then((data) => pageResult(paginateCompact(data, args, compactAutomation))),
   },
   {
     name: 'list_issue_github_links',
@@ -424,17 +881,26 @@ const readTools: ToolDef[] = [
       'push/PR webhook integration, if configured). Requires the `github:read` ' +
       'PAT scope when the token is scoped. Does not include the project’s ' +
       'webhook secret — configuring the integration itself is not exposed over ' +
-      'MCP (admin-only, secret-bearing).',
-    inputSchema: { issueId: z.string().describe('Issue id.') },
+      'MCP (admin-only, secret-bearing). Already a minimal shape; `limit`/' +
+      '`offset` cap an issue with many linked PRs/commits.',
+    inputSchema: { issueId: z.string().describe('Issue id.'), ...pageParams },
     handler: (args, client) =>
-      client.get(`/issues/${args.issueId}/github-links`).then(jsonResult),
+      client
+        .get<ApiItem[]>(`/issues/${args.issueId}/github-links`)
+        .then((data) => pageResult(paginateOnly(data, args))),
   },
   {
     name: 'list_quick_links',
     group: 'read',
-    description: 'List the caller’s personal shortcut links (sidebar quick links), ordered.',
-    inputSchema: {},
-    handler: (_args, client) => client.get('/me/quick-links').then(jsonResult),
+    description:
+      'List the caller’s personal shortcut links (sidebar quick links), ' +
+      'ordered. Compact `{id, label, url, group}` per link by default — pass ' +
+      '`verbose: true` for the full object (color, order, timestamps).',
+    inputSchema: { ...compactPageParams },
+    handler: (args, client) =>
+      client
+        .get<ApiItem[]>('/me/quick-links')
+        .then((data) => pageResult(paginateCompact(data, args, compactQuickLink))),
   },
   {
     name: 'get_personal_board',
@@ -453,10 +919,14 @@ const readTools: ToolDef[] = [
     description:
       'List a project’s issue templates (name, target issue type, default ' +
       'title/description/priority/assignee/component/labels). Use with ' +
-      'create_issue_from_template.',
-    inputSchema: { projectId: z.string().describe('Project id.') },
+      'create_issue_from_template. Compact `{id, name, issueType}` per ' +
+      'template by default — pass `verbose: true` for the full object (default ' +
+      'title/description/priority/assignee/component/labels).',
+    inputSchema: { projectId: z.string().describe('Project id.'), ...compactPageParams },
     handler: (args, client) =>
-      client.get(`/projects/${args.projectId}/issue-templates`).then(jsonResult),
+      client
+        .get<ApiItem[]>(`/projects/${args.projectId}/issue-templates`)
+        .then((data) => pageResult(paginateCompact(data, args, compactTemplate))),
   },
   {
     name: 'get_project_analytics',
@@ -536,9 +1006,17 @@ const readTools: ToolDef[] = [
   {
     name: 'list_notifications',
     group: 'read',
-    description: 'List the caller’s notifications, newest first.',
-    inputSchema: {},
-    handler: (_args, client) => client.get('/notifications').then(jsonResult),
+    description:
+      'List the caller’s notifications, newest first. Compact ' +
+      '`{id, type, issueKey, message, read}` per notification by default — ' +
+      'pass `verbose: true` for the full object (actor, issueId, projectId, ' +
+      'createdAt). Response always includes `unreadCount`.',
+    inputSchema: { ...compactPageParams },
+    handler: async (args, client) => {
+      const data = await client.get<{ items: ApiItem[]; unreadCount: number }>('/notifications');
+      const page = paginateCompact(data.items, args, compactNotification);
+      return jsonResult({ ...page, unreadCount: data.unreadCount });
+    },
   },
   {
     name: 'get_unread_notification_count',
@@ -570,12 +1048,17 @@ const readTools: ToolDef[] = [
     name: 'list_dashboards',
     group: 'read',
     description:
-      'List a project’s configurable dashboards (id, name, order, gadget count).',
+      'List a project’s configurable dashboards. Already a minimal summary ' +
+      'shape (`{id, name, order, gadgetCount}`, plus timestamps in ' +
+      '`verbose: true`); `limit`/`offset` cap a project with many dashboards.',
     inputSchema: {
       projectId: z.string().describe('Project id to list dashboards for.'),
+      ...compactPageParams,
     },
     handler: (args, client) =>
-      client.get(`/projects/${args.projectId}/dashboards`).then(jsonResult),
+      client
+        .get<ApiItem[]>(`/projects/${args.projectId}/dashboards`)
+        .then((data) => pageResult(paginateCompact(data, args, compactDashboard))),
   },
   {
     name: 'get_dashboard',
@@ -607,12 +1090,84 @@ const readTools: ToolDef[] = [
       'their workspace role, their effective role on this project, and ' +
       'whether that role comes from a per-project override (`isOverride`). ' +
       'Use to find a userId for set_project_role_override / ' +
-      'remove_project_role_override.',
+      'remove_project_role_override. Compact ' +
+      '`{userId, name, effectiveRole, isOverride}` per member by default — ' +
+      'pass `verbose: true` for the full object (full user, workspaceRole).',
     inputSchema: {
       projectId: z.string().describe('Project id to list effective members for.'),
+      ...compactPageParams,
     },
     handler: (args, client) =>
-      client.get(`/projects/${args.projectId}/members`).then(jsonResult),
+      client
+        .get<ApiItem[]>(`/projects/${args.projectId}/members`)
+        .then((data) => pageResult(paginateCompact(data, args, compactRoleOverride))),
+  },
+  {
+    name: 'get_epic_overview',
+    group: 'read',
+    description:
+      'One tool call for "what\'s in this epic and where does it stand": the ' +
+      'epic itself (key, title, status, type), its children in compact form ' +
+      '(id, key, title, type, status), a per-status breakdown of the ' +
+      'children, and a done/total progress figure (done = children whose ' +
+      'status category is DONE). Composed from the same parent→children ' +
+      'relation the issue drawer uses (a plain get_issue already returns ' +
+      "children, but only status/type — not assignee/priority/startDate; call " +
+      'get_issue on a specific child for its full detail). `epicId` can be ' +
+      'any issue id with children, not only EPIC-typed ones — a story with ' +
+      'sub-tasks works identically. `limit`/`offset`/`verbose` apply to the ' +
+      'children list (default compact, same as list_issues).',
+    inputSchema: {
+      epicId: z.string().describe('Epic (or any parent) issue id.'),
+      ...compactPageParams,
+    },
+    handler: async (args, client) => {
+      const epic = await client.get<ApiItem>(`/issues/${args.epicId}`);
+      const children = (epic.children as ApiItem[] | undefined) ?? [];
+
+      const breakdown = new Map<string, { status: string; category: unknown; count: number }>();
+      let done = 0;
+      for (const child of children) {
+        const status = child.status as ApiItem | undefined;
+        const name = (status?.name as string | undefined) ?? String(child.statusId ?? 'Unknown');
+        const category = status?.category;
+        const bucket = breakdown.get(name) ?? { status: name, category, count: 0 };
+        bucket.count += 1;
+        breakdown.set(name, bucket);
+        if (category === 'DONE') done += 1;
+      }
+      const total = children.length;
+
+      const compactChild = (c: ApiItem) => {
+        const status = c.status as ApiItem | undefined;
+        return {
+          id: c.id,
+          key: c.key,
+          title: c.title,
+          type: c.type,
+          status: status?.name ?? c.statusId,
+        };
+      };
+      const page = paginateCompact(children, args, compactChild);
+      const epicStatus = epic.status as ApiItem | undefined;
+
+      return jsonResult({
+        epic: {
+          id: epic.id,
+          key: epic.key,
+          title: epic.title,
+          type: epic.type,
+          status: epicStatus?.name ?? epic.statusId,
+        },
+        children: page.items,
+        childrenTotal: page.total,
+        childrenLimit: page.limit,
+        childrenOffset: page.offset,
+        childrenHasMore: page.hasMore,
+        statusBreakdown: Array.from(breakdown.values()),
+        progress: { done, total, fraction: total > 0 ? done / total : 0 },
+      });
+    },
   },
 ];
 
@@ -790,10 +1345,26 @@ const writeTools: ToolDef[] = [
     group: 'write',
     description:
       'Create an issue in a project. Only projectId and title are required; ' +
-      'the rest are optional.',
+      'the rest are optional. CONFIRM THE TARGET PROJECT before calling — ' +
+      'pasting/dictating a projectId from a stale context is the single ' +
+      'easiest way to file an issue into the wrong project, and there is no ' +
+      'undo. The response always echoes the resolved `project: {id, key, ' +
+      'name}` so you can verify after the fact; pass `expectedProjectKey` ' +
+      '(the project key you believe you are targeting, e.g. "NL") to fail ' +
+      'BEFORE creating anything if it does not match — prefer that over ' +
+      'checking the echo after a mistake is already made.',
     inputSchema: {
       projectId: z.string().describe('Project to create the issue in.'),
       title: z.string().min(1).max(300).describe('Issue title.'),
+      expectedProjectKey: z
+        .string()
+        .optional()
+        .describe(
+          'Safety check: the project key (e.g. "NL") you believe projectId ' +
+            'resolves to. Case-insensitive. If it does not match the ' +
+            'projectId\'s actual key, the call fails with a clear error and no ' +
+            'issue is created.',
+        ),
       type: issueTypeEnum.optional().describe('Issue type (default TASK).'),
       description: z.string().max(50000).optional(),
       statusId: z.string().optional().describe('Initial status id.'),
@@ -802,6 +1373,10 @@ const writeTools: ToolDef[] = [
       parentId: z.string().optional().describe('Parent issue id (for subtasks).'),
       sprintId: z.string().optional(),
       storyPoints: z.number().int().min(0).max(999).optional(),
+      startDate: z
+        .string()
+        .optional()
+        .describe('ISO-8601 date string. When both startDate and dueDate are set, startDate must be <= dueDate.'),
       dueDate: z.string().optional().describe('ISO-8601 date string.'),
       componentId: z.string().optional(),
       originalEstimateMinutes: z
@@ -815,25 +1390,40 @@ const writeTools: ToolDef[] = [
         .optional()
         .describe('Custom field values keyed by field id (from list_custom_fields).'),
     },
-    handler: (args, client) =>
-      client
-        .post('/issues', {
-          projectId: args.projectId,
-          title: args.title,
-          type: args.type,
-          description: args.description,
-          statusId: args.statusId,
-          assigneeId: args.assigneeId,
-          priority: args.priority,
-          parentId: args.parentId,
-          sprintId: args.sprintId,
-          storyPoints: args.storyPoints,
-          dueDate: args.dueDate,
-          componentId: args.componentId,
-          originalEstimateMinutes: args.originalEstimateMinutes,
-          customFields: args.customFields,
-        })
-        .then(jsonResult),
+    handler: async (args, client) => {
+      const project = await client.get<ApiItem>(`/projects/${args.projectId}`);
+      const expectedKey = (args.expectedProjectKey as string | undefined)?.trim();
+      if (expectedKey && String(project.key).toUpperCase() !== expectedKey.toUpperCase()) {
+        throw new Error(
+          `Refusing to create issue: expectedProjectKey "${expectedKey}" does not ` +
+            `match the target project "${project.key}" (${String(project.name)}, ` +
+            `id ${args.projectId}). No issue was created.`,
+        );
+      }
+
+      const issue = await client.post<ApiItem>('/issues', {
+        projectId: args.projectId,
+        title: args.title,
+        type: args.type,
+        description: args.description,
+        statusId: args.statusId,
+        assigneeId: args.assigneeId,
+        priority: args.priority,
+        parentId: args.parentId,
+        sprintId: args.sprintId,
+        storyPoints: args.storyPoints,
+        startDate: args.startDate,
+        dueDate: args.dueDate,
+        componentId: args.componentId,
+        originalEstimateMinutes: args.originalEstimateMinutes,
+        customFields: args.customFields,
+      });
+
+      return jsonResult({
+        ...issue,
+        project: { id: project.id, key: project.key, name: project.name },
+      });
+    },
   },
   {
     name: 'update_issue',
@@ -843,8 +1433,10 @@ const writeTools: ToolDef[] = [
       '(partial update). Use parentId to re-parent an issue (e.g. attach a ' +
       'subtask to an epic/story) or pass parentId:null to unparent it; the same ' +
       'null-to-clear rule applies to assigneeId, sprintId, componentId, ' +
-      'storyPoints, dueDate, and originalEstimateMinutes. To change status use ' +
-      'move_issue (it can apply workflow rules); to link issues use link_issues.',
+      'storyPoints, startDate, dueDate, and originalEstimateMinutes. When both ' +
+      'startDate and dueDate end up set, startDate must be <= dueDate. To ' +
+      'change status use move_issue (it can apply workflow rules); to link ' +
+      'issues use link_issues.',
     inputSchema: {
       issueId: z.string().describe('Issue id to update.'),
       parentId: z
@@ -881,6 +1473,11 @@ const writeTools: ToolDef[] = [
         .nullable()
         .optional()
         .describe('Story points, or null to clear.'),
+      startDate: z
+        .string()
+        .nullable()
+        .optional()
+        .describe('ISO-8601 date string, or null to clear.'),
       dueDate: z
         .string()
         .nullable()
@@ -914,6 +1511,7 @@ const writeTools: ToolDef[] = [
           sprintId: args.sprintId,
           componentId: args.componentId,
           storyPoints: args.storyPoints,
+          startDate: args.startDate,
           dueDate: args.dueDate,
           customFields: args.customFields,
           originalEstimateMinutes: args.originalEstimateMinutes,

@@ -122,6 +122,8 @@ describe('tool registry', () => {
       'list_project_role_overrides',
       'set_project_role_override',
       'remove_project_role_override',
+      // Agent Experience (AX) batch, Phase B — MCP ergonomics sweep (2026-07-03)
+      'get_epic_overview',
     ];
     for (const name of expected) expect(names).toContain(name);
     // No duplicate names.
@@ -330,7 +332,7 @@ describe('tool registry', () => {
   });
 
   it('search_issues GETs /search with q + projectId query', async () => {
-    const { client, fetchImpl } = clientWith(200, []);
+    const { client, fetchImpl } = clientWith(200, { issues: [], projects: [] });
     await tool('search_issues').handler({ q: 'login bug', projectId: 'p1' }, client);
     const url = fetchImpl.mock.calls[0][0] as string;
     expect(url).toContain('http://localhost:4000/api/search?');
@@ -412,7 +414,7 @@ describe('tool registry', () => {
   });
 
   it('list_notifications GETs /notifications', async () => {
-    const { client, fetchImpl } = clientWith(200, []);
+    const { client, fetchImpl } = clientWith(200, { items: [], unreadCount: 0 });
     await tool('list_notifications').handler({}, client);
     expect(fetchImpl.mock.calls[0][0]).toBe('http://localhost:4000/api/notifications');
   });
@@ -661,5 +663,347 @@ describe('tool registry', () => {
     const [url, init] = fetchImpl.mock.calls[0];
     expect(url).toBe('http://localhost:4000/api/projects/p1/members/u1/role');
     expect((init as RequestInit).method).toBe('DELETE');
+  });
+
+  // ── Agent Experience (AX) batch, Phase B — MCP ergonomics sweep ───────────
+
+  /** A fetch stub that returns a different canned response per successive call. */
+  function sequencedClient(
+    responses: { status: number; body: unknown; contentType?: string }[],
+  ) {
+    let i = 0;
+    const fetchImpl = vi.fn(async () => {
+      const r = responses[Math.min(i, responses.length - 1)];
+      i++;
+      return new Response(typeof r.body === 'string' ? r.body : JSON.stringify(r.body), {
+        status: r.status,
+        headers: { 'Content-Type': r.contentType ?? 'application/json' },
+      });
+    });
+    return { client: new NextLaneClient(config, fetchImpl as unknown as typeof fetch), fetchImpl };
+  }
+
+  const fullIssue = (overrides: Record<string, unknown> = {}) => ({
+    id: 'i-full-1',
+    key: 'NL-1',
+    title: 'Fix the login bug',
+    description: 'Long description text that would bloat a compact listing...',
+    type: 'BUG',
+    priority: 'HIGH',
+    statusId: 's-inprog',
+    status: { id: 's-inprog', name: 'In Progress', category: 'IN_PROGRESS' },
+    assigneeId: 'u1',
+    assignee: { id: 'u1', name: 'Ada Lovelace', email: 'ada@example.com' },
+    labels: [{ id: 'l1', name: 'urgent', color: '#ef4444' }],
+    customFields: { cf1: 'x' },
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-02T00:00:00.000Z',
+    ...overrides,
+  });
+
+  it('list_issues (default mode) returns compact fields by default, full DTO with verbose:true', async () => {
+    const { client, fetchImpl } = clientWith(200, {
+      items: [fullIssue()],
+      nextCursor: null,
+    });
+
+    const compact = await tool('list_issues').handler({ projectId: 'p1' }, client);
+    const compactBody = JSON.parse(compact.content[0].text);
+    expect(compactBody.items).toEqual([
+      { key: 'NL-1', title: 'Fix the login bug', status: 'In Progress', assignee: 'Ada Lovelace', priority: 'HIGH', type: 'BUG' },
+    ]);
+    expect(compactBody.hasMore).toBe(false);
+    // Compact output must not leak the bulky fields the field report complained about.
+    expect(compact.content[0].text).not.toContain('description');
+    expect(compact.content[0].text).not.toContain('customFields');
+
+    const verbose = await tool('list_issues').handler({ projectId: 'p1', verbose: true }, client);
+    const verboseBody = JSON.parse(verbose.content[0].text);
+    expect(verboseBody.items[0]).toMatchObject({ id: 'i-full-1', description: expect.any(String) });
+
+    expect(fetchImpl.mock.calls[0][0]).toContain('/api/issues?projectId=p1');
+  });
+
+  it('list_issues (default mode) forwards limit/cursor to GET /issues', async () => {
+    const { client, fetchImpl } = clientWith(200, { items: [], nextCursor: 'cur2' });
+    const res = await tool('list_issues').handler(
+      { projectId: 'p1', limit: 10, cursor: 'cur1' },
+      client,
+    );
+    const url = fetchImpl.mock.calls[0][0] as string;
+    expect(url).toContain('limit=10');
+    expect(url).toContain('cursor=cur1');
+    const body = JSON.parse(res.content[0].text);
+    expect(body.hasMore).toBe(true);
+    expect(body.nextCursor).toBe('cur2');
+  });
+
+  it('list_issues query mode: passes NLQL to the CSV endpoint, hydrates full issues, and returns compact results', async () => {
+    const csv =
+      'Key,Title,Type,Status,Priority,Assignee,Reporter,Story Points,Sprint,Labels,Start Date,Due Date,Description,Component,Fix Versions,Parent,Original Estimate (minutes),Created,Updated\r\n' +
+      'NL-1,Fix the login bug,BUG,In Progress,HIGH,Ada Lovelace,,,,,,,,,,,,,\r\n';
+    const { client, fetchImpl } = sequencedClient([
+      { status: 200, body: csv, contentType: 'text/csv; charset=utf-8' },
+      { status: 200, body: { items: [fullIssue(), fullIssue({ id: 'i-full-2', key: 'NL-2' })], nextCursor: null } },
+    ]);
+
+    const res = await tool('list_issues').handler(
+      { projectId: 'p1', query: 'status = "In Progress" AND assignee = me()' },
+      client,
+    );
+    const body = JSON.parse(res.content[0].text);
+    expect(body.items).toEqual([
+      { key: 'NL-1', title: 'Fix the login bug', status: 'In Progress', assignee: 'Ada Lovelace', priority: 'HIGH', type: 'BUG' },
+    ]);
+    expect(body.total).toBe(1);
+    expect(body.hasMore).toBe(false);
+
+    // First call is the CSV NLQL oracle, with the query passed as `q`.
+    const csvUrl = fetchImpl.mock.calls[0][0] as string;
+    expect(csvUrl).toContain('/api/projects/p1/issues.csv?');
+    expect(csvUrl).toContain('q=status');
+  });
+
+  it('list_issues query mode requires projectId', async () => {
+    const { client } = clientWith(200, {});
+    await expect(
+      tool('list_issues').handler({ query: 'status = Done' }, client),
+    ).rejects.toThrow(/projectId is required/);
+  });
+
+  it('list_issues query mode surfaces the API\'s precise NLQL parser error, not a generic failure', async () => {
+    const { client } = clientWith(400, {
+      statusCode: 400,
+      message: 'Invalid NLQL query: unexpected token "AND" at position 7',
+      error: 'Bad Request',
+    });
+    await expect(
+      tool('list_issues').handler({ projectId: 'p1', query: 'status AND AND' }, client),
+    ).rejects.toThrow(/Invalid NLQL query: unexpected token "AND" at position 7/);
+  });
+
+  it('list_issues query mode supports verbose + limit/offset over the hydrated set', async () => {
+    const csv =
+      'Key,Title,Type,Status,Priority,Assignee\r\n' +
+      'NL-1,One,BUG,In Progress,HIGH,\r\n' +
+      'NL-2,Two,TASK,In Progress,LOW,\r\n';
+    const { client } = sequencedClient([
+      { status: 200, body: csv, contentType: 'text/csv' },
+      {
+        status: 200,
+        body: {
+          items: [fullIssue({ id: 'id-1', key: 'NL-1' }), fullIssue({ id: 'id-2', key: 'NL-2' })],
+          nextCursor: null,
+        },
+      },
+    ]);
+    const res = await tool('list_issues').handler(
+      { projectId: 'p1', query: 'type != EPIC', verbose: true, limit: 1, offset: 1 },
+      client,
+    );
+    const body = JSON.parse(res.content[0].text);
+    expect(body.total).toBe(2);
+    expect(body.limit).toBe(1);
+    expect(body.offset).toBe(1);
+    expect(body.hasMore).toBe(false);
+    expect(body.items).toHaveLength(1);
+    expect(body.items[0]).toMatchObject({ id: 'id-2', key: 'NL-2' });
+  });
+
+  it('list_boards / list_users / list_sprints default to compact fields, verbose:true returns the full object', async () => {
+    const boards = clientWith(200, [
+      { id: 'b1', name: 'Main board', type: 'KANBAN', isDefault: true, filterQuery: null, colorRules: [] },
+    ]);
+    const compactBoards = await tool('list_boards').handler({ projectId: 'p1' }, boards.client);
+    expect(JSON.parse(compactBoards.content[0].text).items).toEqual([
+      { id: 'b1', name: 'Main board', type: 'KANBAN', isDefault: true },
+    ]);
+    const verboseBoards = await tool('list_boards').handler(
+      { projectId: 'p1', verbose: true },
+      boards.client,
+    );
+    expect(JSON.parse(verboseBoards.content[0].text).items[0]).toMatchObject({ colorRules: [] });
+
+    const users = clientWith(200, [
+      { id: 'u1', name: 'Ada', email: 'ada@example.com', avatarColor: '#000', createdAt: 'x' },
+    ]);
+    const compactUsers = await tool('list_users').handler({}, users.client);
+    expect(JSON.parse(compactUsers.content[0].text).items).toEqual([
+      { id: 'u1', name: 'Ada', email: 'ada@example.com' },
+    ]);
+  });
+
+  it('list_* tools apply limit/offset and report total/hasMore', async () => {
+    const { client } = clientWith(200, [
+      { id: 'l1', name: 'a', color: '#111' },
+      { id: 'l2', name: 'b', color: '#222' },
+      { id: 'l3', name: 'c', color: '#333' },
+    ]);
+    const res = await tool('list_labels').handler({ projectId: 'p1', limit: 1, offset: 1 }, client);
+    const body = JSON.parse(res.content[0].text);
+    expect(body.items).toEqual([{ id: 'l2', name: 'b', color: '#222' }]);
+    expect(body.total).toBe(3);
+    expect(body.limit).toBe(1);
+    expect(body.offset).toBe(1);
+    expect(body.hasMore).toBe(true);
+  });
+
+  it('search_issues paginates the issues array and leaves projects untouched', async () => {
+    const { client } = clientWith(200, {
+      issues: [{ id: 's1', key: 'NL-1' }, { id: 's2', key: 'NL-2' }],
+      projects: [{ id: 'p1', key: 'NL' }],
+    });
+    const res = await tool('search_issues').handler({ q: 'bug', limit: 1 }, client);
+    const body = JSON.parse(res.content[0].text);
+    expect(body.issues).toEqual([{ id: 's1', key: 'NL-1' }]);
+    expect(body.projects).toEqual([{ id: 'p1', key: 'NL' }]);
+    expect(body.total).toBe(2);
+    expect(body.hasMore).toBe(true);
+  });
+
+  it('list_notifications compacts fields and keeps unreadCount at the top level', async () => {
+    const { client } = clientWith(200, {
+      items: [
+        { id: 'n1', type: 'ISSUE_ASSIGNED', issueKey: 'NL-1', message: 'Assigned to you', read: false, actor: { id: 'u1' } },
+      ],
+      unreadCount: 1,
+    });
+    const res = await tool('list_notifications').handler({}, client);
+    const body = JSON.parse(res.content[0].text);
+    expect(body.unreadCount).toBe(1);
+    expect(body.items).toEqual([
+      { id: 'n1', type: 'ISSUE_ASSIGNED', issueKey: 'NL-1', message: 'Assigned to you', read: false },
+    ]);
+  });
+
+  it('create_issue POSTs startDate through to the API', async () => {
+    const { client, fetchImpl } = sequencedClient([
+      { status: 200, body: { id: 'p1', key: 'NL', name: 'Next Lane' } },
+      { status: 201, body: { id: 'i1', key: 'NL-1', startDate: '2026-08-01' } },
+    ]);
+    await tool('create_issue').handler(
+      { projectId: 'p1', title: 'With a start date', startDate: '2026-08-01' },
+      client,
+    );
+    const [, init] = fetchImpl.mock.calls[1];
+    expect(JSON.parse((init as RequestInit).body as string)).toMatchObject({
+      startDate: '2026-08-01',
+    });
+  });
+
+  it('update_issue PATCHes startDate (including null-to-clear)', async () => {
+    const { client, fetchImpl } = clientWith(200, { id: 'i1' });
+    await tool('update_issue').handler({ issueId: 'i1', startDate: null }, client);
+    const [, init] = fetchImpl.mock.calls[0];
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({ startDate: null });
+  });
+
+  it('list_issues verbose output includes startDate; compact output surfaces it too when present', async () => {
+    const { client } = clientWith(200, {
+      items: [fullIssue({ startDate: '2026-08-01' })],
+      nextCursor: null,
+    });
+    const res = await tool('list_issues').handler({ projectId: 'p1' }, client);
+    const body = JSON.parse(res.content[0].text);
+    expect(body.items[0].startDate).toBe('2026-08-01');
+  });
+
+  it('create_issue echoes the resolved project key + name', async () => {
+    const { client, fetchImpl } = sequencedClient([
+      { status: 200, body: { id: 'p1', key: 'NL', name: 'Next Lane' } },
+      { status: 201, body: { id: 'i1', key: 'NL-42', title: 'New issue' } },
+    ]);
+    const res = await tool('create_issue').handler({ projectId: 'p1', title: 'New issue' }, client);
+    const body = JSON.parse(res.content[0].text);
+    expect(body).toMatchObject({
+      id: 'i1',
+      key: 'NL-42',
+      project: { id: 'p1', key: 'NL', name: 'Next Lane' },
+    });
+    expect(fetchImpl.mock.calls[0][0]).toBe('http://localhost:4000/api/projects/p1');
+    expect(fetchImpl.mock.calls[1][0]).toBe('http://localhost:4000/api/issues');
+  });
+
+  it('create_issue expectedProjectKey mismatch fails BEFORE creating the issue', async () => {
+    const { client, fetchImpl } = sequencedClient([
+      { status: 200, body: { id: 'p1', key: 'NL', name: 'Next Lane' } },
+      { status: 201, body: { id: 'i1', key: 'OTHER-1' } },
+    ]);
+    await expect(
+      tool('create_issue').handler(
+        { projectId: 'p1', title: 'Oops wrong project', expectedProjectKey: 'OTHER' },
+        client,
+      ),
+    ).rejects.toThrow(/expectedProjectKey "OTHER" does not match the target project "NL"/);
+    // Only the project lookup happened — no POST /issues was made.
+    expect(fetchImpl.mock.calls).toHaveLength(1);
+  });
+
+  it('create_issue expectedProjectKey match (case-insensitive) proceeds normally', async () => {
+    const { client, fetchImpl } = sequencedClient([
+      { status: 200, body: { id: 'p1', key: 'NL', name: 'Next Lane' } },
+      { status: 201, body: { id: 'i1', key: 'NL-43' } },
+    ]);
+    const res = await tool('create_issue').handler(
+      { projectId: 'p1', title: 'Correct project', expectedProjectKey: 'nl' },
+      client,
+    );
+    expect(fetchImpl.mock.calls).toHaveLength(2);
+    expect(JSON.parse(res.content[0].text)).toMatchObject({ key: 'NL-43' });
+  });
+
+  it('get_epic_overview composes children + status rollup + progress from a single GET /issues/:id call', async () => {
+    const { client, fetchImpl } = clientWith(200, {
+      id: 'epic1',
+      key: 'NL-100',
+      title: 'Q3 Launch',
+      type: 'EPIC',
+      statusId: 's-inprog',
+      status: { id: 's-inprog', name: 'In Progress', category: 'IN_PROGRESS' },
+      children: [
+        { id: 'c1', key: 'NL-101', title: 'Task A', type: 'TASK', statusId: 's-done', status: { id: 's-done', name: 'Done', category: 'DONE' } },
+        { id: 'c2', key: 'NL-102', title: 'Task B', type: 'TASK', statusId: 's-todo', status: { id: 's-todo', name: 'To Do', category: 'TODO' } },
+        { id: 'c3', key: 'NL-103', title: 'Task C', type: 'TASK', statusId: 's-done', status: { id: 's-done', name: 'Done', category: 'DONE' } },
+      ],
+    });
+
+    const res = await tool('get_epic_overview').handler({ epicId: 'epic1' }, client);
+    const body = JSON.parse(res.content[0].text);
+
+    expect(body.epic).toEqual({ id: 'epic1', key: 'NL-100', title: 'Q3 Launch', type: 'EPIC', status: 'In Progress' });
+    expect(body.progress).toEqual({ done: 2, total: 3, fraction: 2 / 3 });
+    expect(body.statusBreakdown).toEqual(
+      expect.arrayContaining([
+        { status: 'Done', category: 'DONE', count: 2 },
+        { status: 'To Do', category: 'TODO', count: 1 },
+      ]),
+    );
+    expect(body.children).toEqual([
+      { id: 'c1', key: 'NL-101', title: 'Task A', type: 'TASK', status: 'Done' },
+      { id: 'c2', key: 'NL-102', title: 'Task B', type: 'TASK', status: 'To Do' },
+      { id: 'c3', key: 'NL-103', title: 'Task C', type: 'TASK', status: 'Done' },
+    ]);
+    expect(body.childrenTotal).toBe(3);
+
+    // The whole rollup came from exactly one REST call.
+    expect(fetchImpl.mock.calls).toHaveLength(1);
+    expect(fetchImpl.mock.calls[0][0]).toBe('http://localhost:4000/api/issues/epic1');
+  });
+
+  it('get_epic_overview handles an epic with no children', async () => {
+    const { client } = clientWith(200, {
+      id: 'epic2',
+      key: 'NL-200',
+      title: 'Empty epic',
+      type: 'EPIC',
+      statusId: 's-todo',
+      status: { id: 's-todo', name: 'To Do', category: 'TODO' },
+      children: [],
+    });
+    const res = await tool('get_epic_overview').handler({ epicId: 'epic2' }, client);
+    const body = JSON.parse(res.content[0].text);
+    expect(body.progress).toEqual({ done: 0, total: 0, fraction: 0 });
+    expect(body.children).toEqual([]);
+    expect(body.statusBreakdown).toEqual([]);
   });
 });

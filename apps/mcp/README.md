@@ -2,10 +2,11 @@
 
 A [Model Context Protocol](https://modelcontextprotocol.io) server that lets
 external AI agents — **Claude Desktop**, **Claude Code**, and any other MCP host
-— **read and write** a Next Lane instance end-to-end: **88 tools** covering
+— **read and write** a Next Lane instance end-to-end: **89 tools** covering
 workflows / SDLC, issues (incl. links, labels, comments, checklists, worklogs),
 boards, statuses, sprints, components, versions, custom fields, saved NLQL
-filters, automation rules, dashboards, and per-project role overrides.
+filters, automation rules, dashboards, per-project role overrides, and a
+one-call epic rollup.
 
 This is Next Lane's **agent-native wedge** (`docs/VISION.md`): an agent can list
 a project's statuses, design a workflow from a template, add/edit/delete
@@ -16,6 +17,27 @@ surface grows in lockstep with the product.
 
 It is a **thin, additive** package: it makes authenticated HTTP calls to the
 Next Lane API. It requires no schema or backend changes and stores nothing.
+
+### Token efficiency (agent-context-friendly by default)
+
+Every `list_*` / `search_issues` tool returns a **compact, hand-picked field
+set** by default (e.g. `list_issues` → `{key, title, status, assignee,
+priority, type}`) instead of the full API object, wrapped in a uniform
+envelope: `{ items, total?, limit, offset?, hasMore, ... }`. Pass
+`verbose: true` on any of them to get the full object per item when you
+actually need it. `limit`/`offset` default to a page size of 50 (max 200) so a
+single call can never silently return an unbounded response — a real
+MCP-agent field report measured **150 KB for one `list_issues` call on 44
+tickets** before this existed; the same call is now on the order of a few KB
+by default (see `apps/mcp/src/tools/index.test.ts` for byte-for-byte
+before/after coverage).
+
+`list_issues` also accepts a `query` param — a full NLQL expression (the same
+language as the board search bar, saved filters, and `get_project_csv`),
+evaluated server-side so you never have to pull every issue in a project to
+find the ones you care about. An invalid query fails with the API's own
+parser message (e.g. `Invalid NLQL query: unexpected token "AND" at position
+7`), not a generic error.
 
 ## How it works
 
@@ -117,45 +139,52 @@ Then run `claude mcp list` to confirm it is connected.
 
 ### Read
 
+Every row below marked **compact** returns `{key/id, name/title, ...}`-style
+minimal fields by default and takes `limit`/`offset`/`verbose` (see [Token
+efficiency](#token-efficiency-agent-context-friendly-by-default) above); rows
+marked **paged** take `limit`/`offset` but the API's item shape is already
+minimal, so there is no `verbose` mode.
+
 | Tool                | Description                                                              |
 | ------------------- | ---------------------------------------------------------------------- |
-| `list_workspaces`   | List workspaces the token can access.                                   |
-| `list_projects`     | List projects in a workspace (`workspaceId`).                           |
-| `list_boards`       | List a project's boards (`projectId`).                                  |
-| `list_statuses`     | List a project's statuses/columns (`projectId`).                       |
-| `list_workflows`    | List a project's named workflows with counts (`projectId`).            |
+| `list_workspaces`   | List workspaces the token can access. **compact** `{id, name, slug}`.   |
+| `list_projects`     | List projects in a workspace (`workspaceId`). **compact** `{id, key, name}`. |
+| `list_boards`       | List a project's boards (`projectId`). **compact** `{id, name, type, isDefault}`. |
+| `list_statuses`     | List a project's statuses/columns (`projectId`). **compact** `{id, name, category}`. |
+| `list_workflows`    | List a project's named workflows with counts (`projectId`). **compact** `{id, name, enforced, transitionCount, boardCount}`. |
 | `get_workflow`      | Get one workflow including its transitions (`workflowId`).              |
-| `list_issues`       | List issues with optional project/sprint/assignee/type/status/`q` filters + cursor paging. |
+| `list_issues`       | List issues. Default mode: project/sprint/assignee/type/status/`q` filters + cursor paging. `query` mode: a full NLQL expression evaluated server-side (requires `projectId`), offset-paged. **compact** `{key, title, status, assignee, priority, type, startDate}`. |
 | `get_issue`         | Get one issue by id (`issueId`).                                        |
-| `list_issue_links`  | List an issue's typed links/dependencies (`issueId`); includes link ids. |
-| `list_labels`       | List a project's labels with ids + colors (`projectId`).               |
-| `list_users`        | List users (workspace members) — for assignee ids.                     |
-| `search_issues`     | Full-text issue search (`q`, optional `projectId`).                     |
-| `list_sprints`      | List a project's sprints (`projectId`).                                |
-| `list_components`   | List a project's components (`projectId`).                             |
-| `list_versions`     | List a project's versions/releases (`projectId`).                     |
-| `list_custom_fields`| List a project's custom field definitions (`projectId`).              |
-| `list_comments`     | List an issue's comments (`issueId`).                                  |
-| `list_worklogs`     | List an issue's time-tracking logs (`issueId`).                        |
-| `list_checklist`    | List an issue's checklist items (`issueId`).                           |
-| `list_saved_filters`| List a project's saved NLQL filters (`projectId`).                    |
-| `list_automations`  | List a project's automation rules (`projectId`).                       |
-| `list_issue_github_links` | List an issue's linked GitHub PRs/commits (`issueId`). Requires `github:read` scope when the token is scoped. |
-| `list_quick_links`  | List the caller's personal sidebar shortcut links.                     |
+| `list_issue_links`  | List an issue's typed links/dependencies (`issueId`); includes link ids. **paged**. |
+| `list_labels`       | List a project's labels with ids + colors (`projectId`). **paged**.    |
+| `list_users`        | List users (workspace members) — for assignee ids. **compact** `{id, name, email}`. |
+| `search_issues`     | Full-text issue search (`q`, optional `projectId`). **paged** (pages the `issues` array; `projects` returned in full). |
+| `list_sprints`      | List a project's sprints (`projectId`). **compact** `{id, name, state}`. |
+| `list_components`   | List a project's components (`projectId`). **compact** `{id, name, defaultAssignee}`. |
+| `list_versions`     | List a project's versions/releases (`projectId`). **compact** `{id, name, state, releaseDate, issueCount}`. |
+| `list_custom_fields`| List a project's custom field definitions (`projectId`). **compact** `{id, key, name, type, required}`. |
+| `list_comments`     | List an issue's comments (`issueId`). **paged**.                       |
+| `list_worklogs`     | List an issue's time-tracking logs (`issueId`). **paged**.             |
+| `list_checklist`    | List an issue's checklist items (`issueId`). **paged**.                |
+| `list_saved_filters`| List a project's saved NLQL filters (`projectId`). **compact** `{id, name, query, shared, projectId}`. |
+| `list_automations`  | List a project's automation rules (`projectId`). **compact** `{id, name, trigger, enabled}`. |
+| `list_issue_github_links` | List an issue's linked GitHub PRs/commits (`issueId`). Requires `github:read` scope when the token is scoped. **paged**. |
+| `list_quick_links`  | List the caller's personal sidebar shortcut links. **compact** `{id, label, url, group}`. |
 | `get_personal_board`| Get the caller's personal (non-project) board: columns + cards.       |
-| `list_issue_templates` | List a project's issue templates (`projectId`).                    |
+| `list_issue_templates` | List a project's issue templates (`projectId`). **compact** `{id, name, issueType}`. |
 | `get_project_analytics` | Team analytics for a project (`projectId`, `days?`).               |
 | `get_my_analytics`  | Personal analytics for the caller (`days?`).                          |
 | `get_velocity_report` | Velocity per completed/active sprint (`projectId`).                 |
 | `get_burndown_report` | Daily ideal-vs-remaining points for one sprint (`projectId`, `sprintId`). |
 | `get_cfd_report`    | Cumulative Flow Diagram series (`projectId`, `days?`).                |
-| `list_notifications`| List the caller's notifications, newest first.                        |
+| `list_notifications`| List the caller's notifications, newest first. **compact** `{id, type, issueKey, message, read}`; response always includes `unreadCount`. |
 | `get_unread_notification_count` | Get the caller's unread notification count.               |
 | `get_project_csv`   | Export a project's issues as **raw CSV text** (`projectId`, optional NLQL `q`). |
-| `list_dashboards`   | List a project's configurable dashboards (`projectId`).               |
+| `list_dashboards`   | List a project's configurable dashboards (`projectId`). **compact** `{id, name, order, gadgetCount}` (already minimal). |
 | `get_dashboard`     | Get a dashboard with all its gadgets, ordered by grid position (`dashboardId`). |
 | `get_dashboard_data` | Evaluate every gadget on a dashboard server-side; per-gadget `error` on a bad query/config instead of a 500 (`dashboardId`). |
-| `list_project_role_overrides` | List a project's effective members (workspace role, effective role, `isOverride` flag) (`projectId`). |
+| `list_project_role_overrides` | List a project's effective members (workspace role, effective role, `isOverride` flag) (`projectId`). **compact** `{userId, name, effectiveRole, isOverride}`. |
+| `get_epic_overview` | One call for "what's in this epic and where does it stand": epic `{id, key, title, type, status}`, compact children `{id, key, title, type, status}`, a per-status `statusBreakdown`, and `progress: {done, total, fraction}` (`epicId`; works on any issue with children, not only EPIC-typed ones). |
 
 ### Write (SDLC)
 
@@ -169,8 +198,8 @@ Then run `claude mcp list` to confirm it is connected.
 | `update_workflow_transition`    | Update a transition's from/to/type/name/gates.                    |
 | `delete_workflow_transition`    | Delete a transition.                                               |
 | `assign_board_workflow`         | Attach a workflow to a board (`workflowId` null detaches).        |
-| `create_issue`                  | Create an issue (`projectId`, `title`, …).                         |
-| `update_issue`                  | Partial-update an issue: `parentId` (re-parent / null to detach), title, type, description, priority, assignee, sprint, component, story points, due date. |
+| `create_issue`                  | Create an issue (`projectId`, `title`, …, `startDate`). Response always echoes the resolved `project: {id, key, name}`; pass `expectedProjectKey` to fail *before* creating anything if `projectId` doesn't resolve to the project you expect (no undo otherwise). |
+| `update_issue`                  | Partial-update an issue: `parentId` (re-parent / null to detach), title, type, description, priority, assignee, sprint, component, story points, start date, due date. |
 | `set_issue_parent`              | Shortcut to set/clear an issue's parent (`issueId`, `parentId` or null). |
 | `move_issue`                    | Move an issue to a status (`boardId` applies enforced workflow).  |
 | `link_issues`                   | Link two issues (`issueId`, `target`, `type` BLOCKS/BLOCKED_BY/RELATES_TO/DUPLICATES/DUPLICATED_BY/CLONES). |

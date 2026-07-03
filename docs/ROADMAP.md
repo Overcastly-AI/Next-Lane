@@ -466,6 +466,44 @@ pass — groom the board against this sequencing next.)*
    data-model gap, not just an MCP gap — closing it here means Phase B's
    `list_issues`/`create_issue`/`get_epic_overview` MCP work (next) exposes a
    real field instead of the description-hack workaround.
+
+   **Agent Experience (AX) batch, Phase B — ✅ shipped 2026-07-03** (the MCP
+   surface, landed the same day Phase A did). Closes the remaining four
+   frictions from the same field report, `apps/mcp` only (no API/schema
+   changes — every fix composes existing REST endpoints):
+   (1) **NLQL on `list_issues`:** new `query` param passes a full NLQL
+   expression through to `GET /projects/:id/issues.csv?q=` (the only existing
+   endpoint that runs the real parser/evaluator server-side) as a
+   match-oracle, then hydrates full issue objects via the existing
+   cursor-paginated `GET /issues` — an invalid query surfaces the API's exact
+   parser message (`Invalid NLQL query: ...`), not a generic failure;
+   documented missing-endpoint follow-up: a JSON NLQL-filtered issue list
+   endpoint would remove this two-call composition and its id-hydration cap.
+   (2) **Token-efficiency sweep across every `list_*`/`search_issues` tool**
+   (25 tools, not just issues): a uniform `{ items, total?, limit, offset?,
+   hasMore }` envelope, a hand-picked compact field set per resource
+   (`list_issues` → `{key, title, status, assignee, priority, type,
+   startDate}`) with `verbose: true` to opt into the full DTO, and
+   `limit`/`offset` defaulting to 50 (max 200) — live-verified against a
+   44-ticket fixture project: the same `list_issues` call that would have
+   been ~150 KB is 11 KB compact / 3.8 KB for an NLQL-narrowed subset (was
+   84 KB verbose). (3) **Wrong-project guard on `create_issue`:** response
+   always echoes the resolved `project: {id, key, name}`; description tells
+   agents to confirm the target project; optional `expectedProjectKey` fails
+   *before* creating anything on a mismatch. (4) **`get_epic_overview`**: one
+   REST call (`GET /issues/:id`, reusing the same parent→children relation
+   the issue drawer's sub-tasks list uses) returns the epic, compact
+   children, a per-status breakdown, and a `{done, total, fraction}`
+   progress figure — children can't carry `assignee`/`startDate` because the
+   API's `IssueRefDto` doesn't project those fields; call `get_issue` per
+   child for that. (5) **startDate exposed on MCP**: `create_issue`/
+   `update_issue` gain `startDate`; compact + verbose `list_issues` output
+   both include it. `get_epic_overview` children omit it — the API's
+   children relation doesn't select it (see above), filed as a small
+   follow-up for whoever next touches that endpoint. 89 tools total (38
+   read / 51 write); 18 new unit tests (80 total, all green); `apps/mcp/README.md`
+   tables + counts updated. Evidence bar met: an epic status question is one
+   tool call; a filtered list response is single-digit KB, not 150.
 5. **Configurable dashboards — Phase 2 (parity, closing toward better).**
    Phase 1 verified strong this pass (all 4 gadget types, custom-field
    grouping, precise NLQL validation, excellent empty/error states —
