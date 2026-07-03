@@ -1,4 +1,5 @@
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { Role } from '@next-lane/shared';
 import { CommentsService } from './comments.service';
 import type { PrismaService } from '../prisma/prisma.service';
@@ -74,7 +75,23 @@ function makePrisma(opts: {
     projectMembership: {
       findUnique: jest.fn().mockResolvedValue(null),
     },
+    // Claim-first mock: create() enforces the unique constraint with a real
+    // P2002, mirroring Postgres (see common/idempotency.util.spec.ts).
     idempotencyRecord: {
+      create: jest.fn((args: { data: { key: string; userId: string; endpoint: string; requestHash: string } }) => {
+        const k = `${args.data.key}|${args.data.userId}|${args.data.endpoint}`;
+        if (idemStore.has(k)) {
+          return Promise.reject(
+            new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+              code: 'P2002',
+              clientVersion: 'test',
+            }),
+          );
+        }
+        const row = { id: 'row-1', requestHash: args.data.requestHash, responseBody: null as unknown, createdAt: new Date() };
+        idemStore.set(k, row);
+        return Promise.resolve(row);
+      }),
       findUnique: jest.fn((args: { where: { key_userId_endpoint: { key: string; userId: string; endpoint: string } } }) =>
         Promise.resolve(
           idemStore.get(
@@ -82,13 +99,13 @@ function makePrisma(opts: {
           ) ?? null,
         ),
       ),
-      upsert: jest.fn((args: {
+      update: jest.fn((args: {
         where: { key_userId_endpoint: { key: string; userId: string; endpoint: string } };
-        create: { responseBody: unknown };
+        data: { responseBody: unknown };
       }) => {
         const k = `${args.where.key_userId_endpoint.key}|${args.where.key_userId_endpoint.userId}|${args.where.key_userId_endpoint.endpoint}`;
-        const row = { responseBody: args.create.responseBody, createdAt: new Date() };
-        idemStore.set(k, row);
+        const row = idemStore.get(k)!;
+        row.responseBody = args.data.responseBody;
         return Promise.resolve(row);
       }),
       deleteMany: jest.fn().mockResolvedValue({ count: 0 }),

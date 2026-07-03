@@ -1,4 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { NotificationType, Priority, Role, rankBetween } from '@next-lane/shared';
 import {
   IssuesService,
@@ -2650,17 +2651,39 @@ describe('IssuesService.create — cross-project write validation (criterion 1)'
 describe('IssuesService.create — idempotencyKey (criterion 2)', () => {
   it('replays the SAME created issue id on a retried create with the same idempotencyKey', async () => {
     const { prisma, tx } = makeCompCreatePrisma();
-    const idemStore = new Map<string, { responseBody: unknown; createdAt: Date }>();
+    // Claim-first mock: create() enforces the unique constraint with a real
+    // P2002, mirroring Postgres (see common/idempotency.util.spec.ts).
+    const idemStore = new Map<
+      string,
+      { id: string; requestHash: string; responseBody: unknown | null; createdAt: Date }
+    >();
     const prismaWithIdem = prisma as typeof prisma & {
-      idempotencyRecord: { findUnique: jest.Mock; upsert: jest.Mock; deleteMany: jest.Mock };
+      idempotencyRecord: { create: jest.Mock; findUnique: jest.Mock; update: jest.Mock; deleteMany: jest.Mock };
     };
     prismaWithIdem.idempotencyRecord = {
-      findUnique: jest.fn(() => Promise.resolve(idemStore.get('retry-1') ?? null)),
-      upsert: jest.fn(({ create }: { create: { responseBody: unknown } }) => {
-        const row = { responseBody: create.responseBody, createdAt: new Date() };
-        idemStore.set('retry-1', row);
+      create: jest.fn(({ data }: { data: { key: string; requestHash: string } }) => {
+        if (idemStore.has(data.key)) {
+          return Promise.reject(
+            new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+              code: 'P2002',
+              clientVersion: 'test',
+            }),
+          );
+        }
+        const row = { id: 'row-1', requestHash: data.requestHash, responseBody: null, createdAt: new Date() };
+        idemStore.set(data.key, row);
         return Promise.resolve(row);
       }),
+      findUnique: jest.fn(({ where }: { where: { key_userId_endpoint: { key: string } } }) =>
+        Promise.resolve(idemStore.get(where.key_userId_endpoint.key) ?? null),
+      ),
+      update: jest.fn(
+        ({ where, data }: { where: { key_userId_endpoint: { key: string } }; data: { responseBody: unknown } }) => {
+          const row = idemStore.get(where.key_userId_endpoint.key)!;
+          row.responseBody = data.responseBody;
+          return Promise.resolve(row);
+        },
+      ),
       deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
     };
 

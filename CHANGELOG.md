@@ -14,6 +14,26 @@ This section summarizes the major capabilities delivered in the pre-1.0
 development phase. A versioned release will be tagged once the v1 criteria in
 [`docs/ROADMAP.md`](./docs/ROADMAP.md) are complete.
 
+### Changed — 2026-07-03
+
+**Idempotency hardened to claim-first (code-review follow-up to Agent
+Experience Round 2):**
+- `withIdempotency` now inserts a pending claim row BEFORE running the
+  mutation — the unique constraint elects exactly one executor, and a
+  concurrent duplicate (the classic client-timeout retry) polls for the
+  winner's stored response instead of running the mutation a second time.
+- A failed first attempt releases the claim (nothing recorded), so its retry
+  genuinely re-runs instead of filing a duplicate; post-commit notification
+  failures no longer fail `create` (which would have poisoned the claim).
+- Reusing an `idempotencyKey` with a different request payload now returns
+  409 (payload hash comparison) instead of silently replaying the first
+  response.
+- `atomic: true` bulk updates no longer surface a post-commit side-effect
+  failure as a whole-batch error after every write already committed.
+- 4 new unit tests (1727→1731 API total): concurrent-duplicate single
+  execution, poll timeout 409, failed-attempt claim release, payload-mismatch
+  409.
+
 ### Added — 2026-07-03
 
 **Issue start date field (Agent Experience Phase A):**

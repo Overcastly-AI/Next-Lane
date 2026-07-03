@@ -1756,8 +1756,15 @@ model IdempotencyRecord {
   endpoint       String
   /// The JSON response body that was returned the first time this key was
   /// used for this user+endpoint — replayed verbatim on a retry within the
-  /// window.
-  responseBody   Json
+  /// window. NULL while the first request is still executing: the row is
+  /// inserted as a claim BEFORE the mutation runs (claim-first), so a
+  /// concurrent duplicate polls for this to fill in rather than re-running
+  /// the mutation.
+  responseBody   Json?
+  /// SHA-256 of the logical request payload recorded with the claim. A
+  /// replay whose payload hash differs gets a 409 instead of silently
+  /// replaying the first response (reused-key caller bug).
+  requestHash    String   @default("")
   createdAt      DateTime @default(now())
 
   @@unique([key, userId, endpoint])

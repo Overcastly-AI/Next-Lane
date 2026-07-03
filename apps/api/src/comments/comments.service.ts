@@ -99,9 +99,15 @@ export class CommentsService {
     dto: CreateCommentDto,
     opts?: CommentMutationOpts,
   ): Promise<CommentDto> {
+    const { idempotencyKey, ...payload } = dto;
     return withIdempotency(
       this.prisma,
-      { userId, endpoint: 'POST comments', key: dto.idempotencyKey },
+      {
+        userId,
+        endpoint: 'POST comments',
+        key: idempotencyKey,
+        requestFingerprint: { issueId, ...payload },
+      },
       () => this.createInner(userId, issueId, dto, opts),
     );
   }

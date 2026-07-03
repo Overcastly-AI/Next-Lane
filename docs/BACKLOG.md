@@ -393,6 +393,20 @@ Pass 9/10/11 that are real but not yet the highest-leverage next step.
 
 ## Already Done (recent shipments — ticked for reference)
 
+- [x] (P1, S) **Idempotency claim-first hardening (2026-07-03)** — code-review
+  follow-up on AX Round 2 (all 4 findings fixed same-day): `withIdempotency`
+  rewritten claim-first (pending row inserted before the mutation; unique
+  constraint elects one executor; concurrent duplicate polls for the winner's
+  response — closes the client-timeout-retry duplicate the old
+  check-then-write TOCTOU allowed); failed attempts release the claim instead
+  of poisoning retries; post-commit `notifyAssignment` guarded in
+  create/finishUpdate (a notify failure no longer 500s a committed write);
+  reused key + different payload → 409 via stored request hash;
+  `bulkUpdateAtomic`'s post-commit fan-out loop per-item guarded. Migration
+  `20260703083000_idempotency_claim_first` (responseBody nullable +
+  requestHash). Live-verified: replay same-id, 409 on payload mismatch,
+  dryRun no-write, cross-project 400s. API 1731/1731. [orchestrator]
+
 - [x] (P1, M) **Agent Experience Round 2 — "production-grade for AI-agent-driven PM" batch — SHIPPED 2026-07-03** (founder-relayed field report #2). Per-criterion:
   1. **Cross-project write validation** — fixed the confirmed-live P1: `create()` now runs the same `assertSameProject` guard as `update()`/`move()` for statusId/sprintId/parentId (was only checking componentId on create). Already-safe relations verified and left unchanged: `update()` (statusId/sprintId/parentId/componentId), `move()` (statusId + beforeId/afterId neighbor), `LabelsService.addToIssue`/`removeFromIssue` (single-issue label attach), `VersionsService.setIssueVersions` (bulk-replace) — all already validated their referenced ids belong to the same project. One additional real gap found and fixed: `bulkUpdate`'s `addLabelIds` path (`attachLabel`) had NO project-scope check at all — new `assertLabelsInProject` helper closes it in both the classic per-issue path and the new atomic path. 19 new unit tests (create cross-project ×3 fields + accept-same-project, bulk label cross-project ×2).
   2. **Idempotency keys** — additive `IdempotencyRecord` model (migration `20260703070000_add_idempotency_records`, numbered after the newest existing folder), `key`+`userId`+`endpoint` unique, ~24h window, opportunistic `deleteMany` cleanup on write. `common/idempotency.util.ts` (`withIdempotency`) wraps `IssuesService.create` and `CommentsService.create` end-to-end (optional `idempotencyKey` DTO field); a retry with the same key replays the ORIGINAL response, no duplicate — live-verified (same issue id + same comment id on retry, only one row created each). MCP `create_issue`/`add_comment` accept `idempotencyKey`; descriptions tell agents to pass one on retries. 16 new unit tests (util + wiring).

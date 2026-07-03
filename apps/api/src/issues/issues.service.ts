@@ -214,9 +214,15 @@ export class IssuesService {
    * {@link withIdempotency} (Agent Experience Round 2, criterion 2).
    */
   async create(userId: string, dto: CreateIssueDto, opts?: MutationOpts): Promise<IssueDto> {
+    const { idempotencyKey, ...payload } = dto;
     return withIdempotency(
       this.prisma,
-      { userId, endpoint: 'POST /issues', key: dto.idempotencyKey },
+      {
+        userId,
+        endpoint: 'POST /issues',
+        key: idempotencyKey,
+        requestFingerprint: payload,
+      },
       () => this.createInner(userId, dto, opts),
     );
   }
@@ -357,7 +363,13 @@ export class IssuesService {
       dtoOut,
     );
     if (dtoOut.assigneeId) {
-      await this.notifyAssignment(userId, dtoOut.assigneeId, dtoOut);
+      // The issue is already committed at this point; a notification failure
+      // must not fail the create — under an idempotencyKey it would release
+      // the claim after the write, and the client's retry would then file a
+      // real duplicate.
+      await this.notifyAssignment(userId, dtoOut.assigneeId, dtoOut).catch(
+        () => {},
+      );
     }
 
     // Emit automation event AFTER the mutation + dispatch are done.
@@ -1079,7 +1091,11 @@ export class IssuesService {
       dto.assigneeId != null &&
       dto.assigneeId !== existing.assigneeId
     ) {
-      await this.notifyAssignment(userId, dto.assigneeId, dtoOut);
+      // Post-commit side effect: never let a notification failure surface as
+      // a failed update (the write is already durable).
+      await this.notifyAssignment(userId, dto.assigneeId, dtoOut).catch(
+        () => {},
+      );
     }
 
     // Fan out WATCHED_UPDATED to all watchers (minus actor) when any meaningful
@@ -2080,9 +2096,16 @@ export class IssuesService {
     }
 
     for (const { issue, prep } of results) {
-      await this.finishUpdate(userId, issue, prep.existing, updateDto, prep.changedFields, {
-        workflowEnforced: hints.bulkWorkflowEnforced,
-      });
+      // Every write in the batch is already committed; a side-effect failure
+      // (realtime/webhook/notification) on one item must not turn the whole
+      // atomic call into an error response after the fact.
+      try {
+        await this.finishUpdate(userId, issue, prep.existing, updateDto, prep.changedFields, {
+          workflowEnforced: hints.bulkWorkflowEnforced,
+        });
+      } catch {
+        // Swallow: the mutation succeeded; only post-commit fan-out failed.
+      }
     }
 
     return { updated: results.length, failed: [], atomic: true };
