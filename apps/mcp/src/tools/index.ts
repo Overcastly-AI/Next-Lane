@@ -626,7 +626,11 @@ const readTools: ToolDef[] = [
       "never have to pull every issue to find one. Requires projectId; the " +
       'structural filters and `q`/`cursor` are ignored in this mode — express ' +
       'them inside the NLQL string instead. An invalid query fails with the ' +
-      "API parser's own message (not a generic error). Returns a compact " +
+      "API parser's own message (not a generic error) — this includes an " +
+      'unresolvable `assignee`/`reporter`/`sprint` value (e.g. a misspelled ' +
+      'name): it 400s naming the value rather than silently returning zero ' +
+      'issues, so a "0 results" answer for those fields always means the ' +
+      'name was found and genuinely has nothing matching. Returns a compact ' +
       '`{key, title, status, assignee, priority, type}` per issue by default ' +
       '— pass `verbose: true` for the full issue object (id, description, ' +
       'labels, custom fields, etc). Response shape: ' +

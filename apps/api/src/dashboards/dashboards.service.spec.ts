@@ -726,6 +726,65 @@ describe('DashboardsService', () => {
       expect(prisma.sprint.findMany).not.toHaveBeenCalled();
     });
 
+    // ── Unresolved user/sprint name → per-gadget error (MCP-QA pass 1,
+    // finding 1 RESIDUAL) ────────────────────────────────────────────────
+    //
+    // A typo'd/nonexistent name must surface as THAT gadget's error state,
+    // never a 500/400 for the whole dashboard read — one bad gadget must
+    // never take down its siblings (docs/BACKLOG.md).
+
+    it('flags a single gadget with an unresolved assignee name, without failing the whole read', async () => {
+      prisma.dashboardGadget.findMany.mockResolvedValue([
+        makeGadgetRow({ id: 'g-bad', query: 'assignee = "Nobody By This Name"' }),
+        makeGadgetRow({ id: 'g-good', query: '' }),
+      ]);
+      prisma.issue.findMany.mockResolvedValue([makeIssueRow(1, { assigneeId: 'u-alex' })]);
+      prisma.membership.findMany.mockResolvedValue([
+        { user: { id: 'u-alex', email: 'alex@nextlane.dev', name: 'Alex Rivera' } },
+      ]);
+
+      const result = await service.getDashboardData('user-1', DASHBOARD_ID);
+
+      const bad = result.gadgets.find((g) => g.gadgetId === 'g-bad');
+      const good = result.gadgets.find((g) => g.gadgetId === 'g-good');
+      expect(bad?.error).toBe(
+        'unknown user "Nobody By This Name" — use an exact display name, an id, or me(); see list_users',
+      );
+      expect(bad?.data).toBeUndefined();
+      expect(good?.error).toBeUndefined();
+      expect(good?.data).toEqual({ kind: 'STAT', count: 1 });
+    });
+
+    it('flags a gadget with an unresolved sprint name', async () => {
+      prisma.dashboardGadget.findMany.mockResolvedValue([
+        makeGadgetRow({ query: 'sprint = "Nonexistent Sprint"' }),
+      ]);
+      prisma.issue.findMany.mockResolvedValue([makeIssueRow(1, { sprintId: 'sp-july-b' })]);
+      prisma.sprint.findMany.mockResolvedValue([{ id: 'sp-july-b', name: 'July-B' }]);
+
+      const result = await service.getDashboardData('user-1', DASHBOARD_ID);
+
+      expect(result.gadgets[0].error).toBe(
+        'unknown sprint "Nonexistent Sprint" — use an exact sprint name or an id; see list_sprints',
+      );
+    });
+
+    it('does not flag an opaque-id-shaped assignee operand even when unresolved', async () => {
+      const staleId = 'usr-cljk3n9d80000ab12removedmember';
+      prisma.dashboardGadget.findMany.mockResolvedValue([
+        makeGadgetRow({ query: `assignee = "${staleId}"` }),
+      ]);
+      prisma.issue.findMany.mockResolvedValue([makeIssueRow(1, { assigneeId: 'u-alex' })]);
+      prisma.membership.findMany.mockResolvedValue([
+        { user: { id: 'u-alex', email: 'alex@nextlane.dev', name: 'Alex Rivera' } },
+      ]);
+
+      const result = await service.getDashboardData('user-1', DASHBOARD_ID);
+
+      expect(result.gadgets[0].error).toBeUndefined();
+      expect(result.gadgets[0].data).toEqual({ kind: 'STAT', count: 0 });
+    });
+
     it('evaluates gadgets in grid-position order', async () => {
       prisma.dashboardGadget.findMany.mockResolvedValue([
         makeGadgetRow({ id: 'g-2', title: 'Second', config: { position: 1 } }),

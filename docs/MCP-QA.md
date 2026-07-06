@@ -324,6 +324,14 @@ now works, but an unknown/misspelled name is still a silent empty set.**
 bar): unresolvable name on a user/sprint field → 400 naming the value and
 suggesting `list_users q` / `list_sprints`.
 
+> **CLOSED 2026-07-06.** `resolveQueryNames` (`packages/shared/src/nlql`)
+> now 400s an unresolved `assignee`/`reporter`/`sprint` name across every
+> server evaluation path — `exportCsv` (the `list_issues` query-mode oracle),
+> per-gadget on dashboards, and a `FAILED` automation run — live-verified:
+> `assignee = "Alex Rivera"` (nonexistent) → 400 `unknown user "Alex Rivera"
+> — use an exact display name, an id, or me(); see list_users`. See
+> `docs/BACKLOG.md`'s ticked NLQL-residual entry for full detail.
+
 **8. P3 — `tools/list` footprint grew to 82.2 KB / 97 tools** (+11.5% over
 pass 1) — tracked, per-feature growth is the definition-of-done's own
 side-effect; grouped/dynamic toolsets remain the fix shape.

@@ -47,6 +47,7 @@ import {
   filterIssues,
   validateQuery,
   getReferencedFieldKinds,
+  resolveQueryNames,
 } from '@next-lane/shared';
 import type {
   IssueDto,
@@ -1785,6 +1786,21 @@ export class IssuesService {
         includeUsers: referencedKinds.has('user'),
         includeSprints: referencedKinds.has('sprint'),
       });
+
+      // Fail loud on an unresolved assignee/reporter/sprint NAME (MCP-QA
+      // pass 1, finding 1 residual): a typo'd or nonexistent name must never
+      // silently evaluate to a confident "0 results" on this agent-facing
+      // path (also the MCP `list_issues` query oracle — see
+      // `fetchNlqlFilteredIssues` in apps/mcp) — an agent/human would walk
+      // away believing nobody matches when the truth is there is no such
+      // user/sprint.
+      const nameCheck = resolveQueryNames(trimmedQ, { users, sprints });
+      if (!nameCheck.ok) {
+        throw new BadRequestException(
+          `Invalid NLQL query: ${nameCheck.error?.message ?? 'unresolved user or sprint reference'}`,
+        );
+      }
+
       issueDtos = filterIssues(issueDtos, trimmedQ, {
         currentUserId: userId,
         users,

@@ -35,7 +35,23 @@ async function fetchCsvBlob(
   const res = await fetch(url, { method: 'GET', headers });
 
   if (!res.ok) {
-    throw new Error(`Export failed (${res.status})`);
+    // Surface the API's own message when present (e.g. an NLQL 400 —
+    // "Invalid NLQL query: unknown user \"Alex Rivera\" — ..." — MCP-QA pass
+    // 1, finding 1 residual) instead of a generic "(400)" the caller can't
+    // act on. Falls back to the status-only message if the body isn't the
+    // usual `{ message }` JSON error shape (e.g. a proxy error page).
+    let message = `Export failed (${res.status})`;
+    try {
+      const body: unknown = await res.json();
+      if (body && typeof body === 'object' && 'message' in body) {
+        const raw = (body as { message?: unknown }).message;
+        const text = Array.isArray(raw) ? raw.join(', ') : raw;
+        if (typeof text === 'string' && text.trim()) message = text;
+      }
+    } catch {
+      // Non-JSON error body — keep the generic status message.
+    }
+    throw new Error(message);
   }
 
   // Derive filename from Content-Disposition if the server sends one.

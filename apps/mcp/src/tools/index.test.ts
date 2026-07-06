@@ -1020,6 +1020,28 @@ describe('tool registry', () => {
     ).rejects.toThrow(/Invalid NLQL query: unexpected token "AND" at position 7/);
   });
 
+  // MCP-QA pass 1, finding 1 residual: `assignee = "<real name>"` resolves
+  // correctly, but a typo'd/nonexistent name used to silently return `0`
+  // instead of a rejected query — an agent would conclude "nobody has this
+  // name" when the truth is "there is no such user". The API now 400s this
+  // path (`GET /projects/:id/issues.csv?q=...`, the exact oracle this tool
+  // drives); verify the message passes through verbatim, the same way the
+  // parser-error case above does.
+  it('list_issues query mode surfaces an unresolved-name error verbatim (not a silent empty result)', async () => {
+    const { client } = clientWith(400, {
+      statusCode: 400,
+      message:
+        'Invalid NLQL query: unknown user "Alex Rivera" — use an exact display name, an id, or me(); see list_users',
+      error: 'Bad Request',
+    });
+    await expect(
+      tool('list_issues').handler(
+        { projectId: 'p1', query: 'assignee = "Alex Rivera"' },
+        client,
+      ),
+    ).rejects.toThrow(/unknown user "Alex Rivera".*see list_users/);
+  });
+
   it('list_issues query mode supports verbose + limit/offset over the hydrated set', async () => {
     const csv =
       'Key,Title,Type,Status,Priority,Assignee\r\n' +

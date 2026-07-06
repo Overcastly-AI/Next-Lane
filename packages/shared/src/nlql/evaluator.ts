@@ -11,6 +11,28 @@
  *    and friends cannot be reached.
  *  - String "contains" (`~`) uses String.prototype.includes — a RegExp is never
  *    built from user input, so there is no ReDoS surface.
+ *
+ * Documented behavior for library consumers — unresolved user/sprint names:
+ *  - `assignee`/`reporter` (`user`-kind) and `sprint` (`sprint`-kind) fields
+ *    resolve a comparison operand against `ctx.users`/`ctx.sprints` (by id,
+ *    then case-insensitive email/name). When the operand matches nothing,
+ *    {@link resolveUserOperand}/{@link resolveSprintOperand} deliberately fall
+ *    back to treating it as a literal id rather than throwing — a query
+ *    referencing an unknown name therefore matches zero issues *silently*,
+ *    the same as any other non-matching value. This is intentional and
+ *    covered by dedicated tests (`evaluator.test.ts`, "a name that resolves
+ *    to no known user/sprint silently matches nothing (no error)") so any
+ *    future change here is a deliberate one, not a regression.
+ *  - This is the right default for a pure, side-effect-free evaluator over an
+ *    in-memory array. It is the *wrong* default for a server surface backing
+ *    an agent or a human query bar, where "0 results" reads as "nobody has
+ *    this name" instead of "there is no such user" (MCP-QA pass 1, finding 1
+ *    residual). Callers that want fail-loud behavior should run
+ *    {@link resolveQueryNames} (`./validate`) once per evaluation — as a
+ *    prepare step, BEFORE calling {@link evaluate}/{@link filterIssues}, never
+ *    per-issue — and reject/flag the query when it reports an unresolved
+ *    name. See `apps/api/src/common/nlql-eval-context.util.ts` and its three
+ *    call sites for the reference implementation.
  */
 import { CustomFieldType, Priority, PRIORITY_ORDER } from '../enums';
 import type { IssueDto } from '../types';

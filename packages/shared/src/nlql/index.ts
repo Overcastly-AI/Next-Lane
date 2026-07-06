@@ -56,11 +56,17 @@ export type {
 } from './evaluator';
 
 // Validation
-export { validateQuery, getReferencedFieldKinds, NLQL_MAX_LENGTH } from './validate';
+export {
+  validateQuery,
+  getReferencedFieldKinds,
+  resolveQueryNames,
+  NLQL_MAX_LENGTH,
+} from './validate';
 export type {
   ValidationResult,
   ValidateOptions,
   ValidateCustomFieldDef,
+  ResolveNamesContext,
 } from './validate';
 
 // Autocomplete suggestion engine

@@ -474,7 +474,16 @@ describe('AutomationEngineService', () => {
       );
     });
 
-    it('a name that resolves to no known user is SKIPPED, not FAILED (mirrors evaluator semantics)', async () => {
+    // ── Unresolved name → FAILED run (MCP-QA pass 1, finding 1 RESIDUAL) ────
+    //
+    // Was: an unresolved name silently evaluated the condition to `false`
+    // (SKIPPED — indistinguishable from a real non-match). Now: the engine
+    // mirrors its existing invalid-condition handling exactly (a FAILED run
+    // with a clear error, logged, no actions run) rather than crashing the
+    // event pipeline or silently skipping — a rule author debugging "why
+    // didn't this fire" needs to see "no such user", not "condition false".
+
+    it('a name that resolves to no known user is FAILED with an actionable error, not silently SKIPPED', async () => {
       const rule = makeRule({ condition: 'assignee = "Nobody By This Name"' });
       const prisma = makePrisma([rule]);
       prisma.issue.findUnique.mockResolvedValue({ ...ISSUE_ROW, assigneeId: 'u-alex' });
@@ -488,6 +497,82 @@ describe('AutomationEngineService', () => {
       expect(issues.update).not.toHaveBeenCalled();
       const row = firstRunRow(prisma);
       expect(row.matched).toBe(false);
+      expect(row.status).toBe(AutomationRunStatus.FAILED);
+      expect(String(row.error)).toContain(
+        'unknown user "Nobody By This Name" — use an exact display name, an id, or me(); see list_users',
+      );
+    });
+
+    it('an unresolved sprint name is FAILED with an actionable error', async () => {
+      const rule = makeRule({ condition: 'sprint = "Nonexistent Sprint"' });
+      const prisma = makePrisma([rule]);
+      prisma.issue.findUnique.mockResolvedValue({ ...ISSUE_ROW, sprintId: 'sp-july-b' });
+      prisma.sprint.findMany.mockResolvedValue([{ id: 'sp-july-b', name: 'July-B' }]);
+      const { engine } = makeEngine(prisma);
+
+      await engine.onIssueCreated(makeEvent());
+
+      const row = firstRunRow(prisma);
+      expect(row.status).toBe(AutomationRunStatus.FAILED);
+      expect(String(row.error)).toContain(
+        'unknown sprint "Nonexistent Sprint" — use an exact sprint name or an id; see list_sprints',
+      );
+    });
+
+    it('one rule with an unresolved name FAILs without blocking a sibling rule on the same event', async () => {
+      const rules = [
+        makeRule({ id: 'rule-bad', order: 0, condition: 'assignee = "Nobody By This Name"' }),
+        makeRule({ id: 'rule-good', order: 1, condition: null }),
+      ];
+      const prisma = makePrisma(rules);
+      const { engine, issues } = makeEngine(prisma);
+
+      await engine.onIssueCreated(makeEvent());
+
+      // The good (unconditional) rule's default action still ran.
+      expect(issues.update).toHaveBeenCalledWith(
+        RULE_CREATOR_ID,
+        ISSUE_ID,
+        { priority: Priority.HIGH },
+        { automated: true },
+      );
+      const rows = allRunRows(prisma);
+      const bad = rows.find((r) => r.ruleId === 'rule-bad');
+      const good = rows.find((r) => r.ruleId === 'rule-good');
+      expect(bad).toBeDefined();
+      expect(good).toBeDefined();
+      expect(bad?.status).toBe(AutomationRunStatus.FAILED);
+      expect(good?.status).toBe(AutomationRunStatus.SUCCESS);
+    });
+
+    it('does not fail on assignee = me()', async () => {
+      const rule = makeRule({ condition: 'assignee = me()' });
+      const prisma = makePrisma([rule]);
+      prisma.issue.findUnique.mockResolvedValue({ ...ISSUE_ROW, assigneeId: ACTOR_USER_ID });
+      const { engine } = makeEngine(prisma);
+
+      await engine.onIssueCreated(makeEvent());
+
+      const row = firstRunRow(prisma);
+      expect(row.status).not.toBe(AutomationRunStatus.FAILED);
+    });
+
+    it('does not fail on an opaque-id-shaped assignee operand even when unresolved', async () => {
+      const staleId = 'usr-cljk3n9d80000ab12removedmember';
+      const rule = makeRule({ condition: `assignee = "${staleId}"` });
+      const prisma = makePrisma([rule]);
+      prisma.issue.findUnique.mockResolvedValue({ ...ISSUE_ROW, assigneeId: 'u-alex' });
+      prisma.membership.findMany.mockResolvedValue([
+        { user: { id: 'u-alex', email: 'alex@nextlane.dev', name: 'Alex Rivera' } },
+      ]);
+      const { engine, issues } = makeEngine(prisma);
+
+      await engine.onIssueCreated(makeEvent());
+
+      // Falls back to the pure evaluator's literal-id comparison (no match,
+      // since the issue's assigneeId is 'u-alex'), not a FAILED run.
+      expect(issues.update).not.toHaveBeenCalled();
+      const row = firstRunRow(prisma);
       expect(row.status).toBe(AutomationRunStatus.SKIPPED);
     });
 

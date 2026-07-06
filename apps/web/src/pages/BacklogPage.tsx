@@ -72,7 +72,7 @@ export function BacklogPage() {
     // boardQuery (declared above) — `board` is derived further down; reading it
     // here would be a temporal-dead-zone error that crashes the page.
     projectKey: boardQuery.data?.project.key,
-    onError: () => toast.error("Couldn't export issues."),
+    onError: (err) => toast.error(err.message || "Couldn't export issues."),
   });
 
   const [createOpen, setCreateOpen] = useState(false);

@@ -18,6 +18,7 @@ import {
   StatusCategory,
   filterIssues,
   validateQuery,
+  resolveQueryNames,
   type CustomFieldDefinitionDto,
   type EvalContext,
   type IssueDto,
@@ -350,7 +351,7 @@ export function BoardPage() {
     projectId,
     nlqlQuery,
     projectKey: board?.project.key,
-    onError: () => toast.error("Couldn't export issues."),
+    onError: (err) => toast.error(err.message || "Couldn't export issues."),
   });
 
   // ── Modals ────────────────────────────────────────────────────────────────
@@ -396,11 +397,29 @@ export function BoardPage() {
     [customFieldsQuery.data],
   );
 
+  // Users/sprints shaped for NLQL name resolution — reused by both the query
+  // bar's validation below and the actual filtering further down.
+  const nlqlUsers = useMemo(
+    () => (usersQuery.data ?? []).map((u) => ({ id: u.id, name: u.name, email: u.email })),
+    [usersQuery.data],
+  );
+  const nlqlSprints = useMemo(
+    () => (sprintsQuery.data ?? []).map((s) => ({ id: s.id, name: s.name })),
+    [sprintsQuery.data],
+  );
+
   const nlqlValidation = useMemo(() => {
     const q = nlqlQuery.trim();
     if (!q) return null; // empty = no filter, no error
-    return validateQuery(q, { customFieldDefs });
-  }, [nlqlQuery, customFieldDefs]);
+    const syntax = validateQuery(q, { customFieldDefs });
+    if (!syntax.ok) return syntax;
+    // Fail loud on an unresolved assignee/reporter/sprint NAME (MCP-QA pass
+    // 1, finding 1 residual) — board filtering runs entirely client-side, so
+    // there is no server round trip to 400 here; instead this reuses the
+    // query bar's existing error affordance to give the same "there is no
+    // such user" signal immediately, instead of a confident empty board.
+    return resolveQueryNames(q, { users: nlqlUsers, sprints: nlqlSprints });
+  }, [nlqlQuery, customFieldDefs, nlqlUsers, nlqlSprints]);
 
   // ── Card colors ───────────────────────────────────────────────────────────
 
@@ -413,15 +432,12 @@ export function BoardPage() {
   const colorCtx = useMemo<EvalContext>(
     () => ({
       currentUserId: currentUser?.id,
-      users: (usersQuery.data ?? []).map((u) => ({
-        id: u.id,
-        name: u.name,
-        email: u.email,
-      })),
+      users: nlqlUsers,
+      sprints: nlqlSprints,
       customFieldDefs,
       now: new Date(),
     }),
-    [currentUser?.id, usersQuery.data, customFieldDefs],
+    [currentUser?.id, nlqlUsers, nlqlSprints, customFieldDefs],
   );
 
   // ── Grouped issues ────────────────────────────────────────────────────────
@@ -431,12 +447,6 @@ export function BoardPage() {
     if (!board) return map;
     for (const s of statuses) map.set(s.id, []);
     const term = search.trim().toLowerCase();
-
-    const users = (usersQuery.data ?? []).map((u) => ({
-      id: u.id,
-      name: u.name,
-      email: u.email,
-    }));
 
     // Board-level default scope: the board's own NLQL filter, ALWAYS applied
     // first so e.g. an "Epics" board only ever shows epics. The user's pill /
@@ -448,7 +458,8 @@ export function BoardPage() {
       try {
         baseIssues = filterIssues(board.issues, boardFilter, {
           currentUserId: currentUser?.id,
-          users,
+          users: nlqlUsers,
+          sprints: nlqlSprints,
           customFieldDefs,
           now: new Date(),
         });
@@ -482,7 +493,8 @@ export function BoardPage() {
       try {
         finalIssues = filterIssues(pillFiltered, trimmedQuery, {
           currentUserId: currentUser?.id,
-          users,
+          users: nlqlUsers,
+          sprints: nlqlSprints,
           customFieldDefs,
           now: new Date(),
         });
@@ -547,7 +559,8 @@ export function BoardPage() {
     nlqlQuery,
     nlqlValidation,
     customFieldDefs,
-    usersQuery.data,
+    nlqlUsers,
+    nlqlSprints,
     currentUser?.id,
     activePresets,
   ]);

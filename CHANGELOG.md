@@ -14,6 +14,32 @@ This section summarizes the major capabilities delivered in the pre-1.0
 development phase. A versioned release will be tagged once the v1 criteria in
 [`docs/ROADMAP.md`](./docs/ROADMAP.md) are complete.
 
+### Fixed — 2026-07-06 (NLQL unresolved assignee/sprint name)
+
+**A typo'd or nonexistent assignee/sprint name in an NLQL query now 400s
+instead of silently matching zero issues** (MCP-QA pass 1, finding 1
+residual — the deliberately-deferred half of the earlier name-resolution
+fix). New shared `resolveQueryNames(query, ctx)` (`packages/shared/src/nlql`)
+is a fail-loud prepare step run once per evaluation, alongside the existing
+`loadNlqlEvalContext`; the pure evaluator itself is unchanged and keeps its
+documented silent-fallback behavior for library consumers.
+- `IssuesService.exportCsv` (also the MCP `list_issues` query-mode oracle)
+  now throws a 400 naming the unresolved value, e.g. `Invalid NLQL query:
+  unknown user "Alex Rivera" — use an exact display name, an id, or me();
+  see list_users`.
+- The dashboard-gadget evaluator flags only the offending gadget's `error`
+  field — a bad query in one gadget never fails the whole dashboard read.
+- The automation engine's condition eval now produces a `FAILED` run with
+  the same message (was previously an indistinguishable-from-real
+  `SKIPPED`), mirroring its existing invalid-condition handling.
+- The board query bar's client-side validation reuses the same helper
+  (existing `nlql-error` affordance) for immediate feedback while typing.
+- Bonus: the CSV-export toast was silently swallowing the API's actual
+  error message for every NLQL 400 (not just this one) — now surfaces it
+  verbatim; the board's client-side filter context was also missing
+  `sprints` entirely, so `sprint = "<name>"` never resolved there even for
+  a real sprint.
+
 ### Fixed — 2026-07-06 (Hardening Night frontend batch)
 
 **Mobile toast/modal overlap, "Merged" badge dark-mode break, dashboard

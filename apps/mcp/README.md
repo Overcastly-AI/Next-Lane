@@ -40,7 +40,10 @@ language as the board search bar, saved filters, and `get_project_csv`),
 evaluated server-side so you never have to pull every issue in a project to
 find the ones you care about. An invalid query fails with the API's own
 parser message (e.g. `Invalid NLQL query: unexpected token "AND" at position
-7`), not a generic error.
+7`), not a generic error — including an unresolvable `assignee`/`reporter`/
+`sprint` value (a misspelled or nonexistent name 400s naming the value
+instead of silently returning zero issues, so a `0` result for those fields
+always means the name resolved and genuinely has nothing matching).
 
 ## How it works
 

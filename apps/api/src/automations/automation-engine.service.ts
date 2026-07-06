@@ -30,6 +30,7 @@ import {
   parse,
   evaluate,
   getReferencedFieldKinds,
+  resolveQueryNames,
 } from '@next-lane/shared';
 import type {
   AutomationActionDto,
@@ -196,9 +197,18 @@ export class AutomationEngineService {
     if (rule.condition) {
       try {
         const ast = parse(rule.condition);
+        // Fail loud on an unresolved assignee/reporter/sprint NAME (MCP-QA
+        // pass 1, finding 1 residual) — mirrors the existing invalid-
+        // condition handling below (FAILED run, logged, engine keeps
+        // running) rather than crashing the event pipeline or silently
+        // treating the rule as non-matching.
+        const nameCheck = resolveQueryNames(rule.condition, evalCtx);
+        if (!nameCheck.ok) {
+          throw new Error(nameCheck.error?.message ?? 'Unknown user or sprint reference');
+        }
         matched = evaluate(ast, issueDto, evalCtx);
       } catch (err) {
-        // Parse/eval error → collect FAILED run, continue to next rule.
+        // Parse/eval/name-resolution error → collect FAILED run, continue to next rule.
         return {
           ruleId: rule.id,
           issueId: issueDto.id,

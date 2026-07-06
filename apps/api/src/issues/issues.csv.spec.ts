@@ -646,16 +646,6 @@ describe('IssuesService.exportCsv — NLQL person/sprint name resolution', () =>
     expect(prisma.sprint.findMany).not.toHaveBeenCalled();
   });
 
-  it('an unresolved assignee name silently matches nothing (no error) — locks current semantics', async () => {
-    const issues = alexAssignedIssues(2);
-    const prisma = makePrisma({ issues, members: [alex] });
-    const service = makeService(prisma);
-
-    const { csv } = await service.exportCsv('user-1', 'proj-1', 'assignee = "Nobody By This Name"');
-    const lines = csv.split('\r\n').filter(Boolean);
-    expect(lines).toHaveLength(1); // header only — no throw, no match
-  });
-
   it('a compound query combining assignee-by-name and sprint-by-name resolves both', async () => {
     const julyB = { id: 'sp-july-b', name: 'July-B' };
     const match = makeIssueRow({
@@ -690,6 +680,94 @@ describe('IssuesService.exportCsv — NLQL person/sprint name resolution', () =>
     const lines = csv.split('\r\n').filter(Boolean);
     expect(lines).toHaveLength(2); // header + 1 match
     expect(lines[1]).toContain('Match');
+  });
+});
+
+// ── NLQL unresolved-name → 400 (MCP-QA pass 1, finding 1 RESIDUAL) ────────────
+//
+// The name-resolution fix above (`ec9f02e`) made a REAL name resolve; this
+// closes the deliberately-deferred other half: a typo'd/nonexistent name must
+// 400, not silently evaluate to a confident "0 results" (docs/BACKLOG.md,
+// docs/MCP-QA.md pass 1 finding 1 residual). This is also the exact path the
+// MCP `list_issues` query oracle drives (`fetchNlqlFilteredIssues` in
+// apps/mcp), so the 400 + message here is what an agent sees verbatim.
+
+describe('IssuesService.exportCsv — unresolved user/sprint name → 400', () => {
+  const alex = { id: 'u-alex', email: 'alex@nextlane.dev', name: 'Alex Rivera' };
+
+  it('400s on an unresolved assignee name with an actionable message', async () => {
+    const issues = [
+      makeIssueRow({
+        id: 'i-1',
+        number: 1,
+        assignee: { id: alex.id, email: alex.email, name: alex.name, avatarColor: '#fff', createdAt: new Date() },
+      }),
+    ];
+    const prisma = makePrisma({ issues, members: [alex] });
+    const service = makeService(prisma);
+
+    await expect(
+      service.exportCsv('user-1', 'proj-1', 'assignee = "Nobody By This Name"'),
+    ).rejects.toMatchObject({
+      status: 400,
+      message: expect.stringContaining(
+        'unknown user "Nobody By This Name" — use an exact display name, an id, or me(); see list_users',
+      ),
+    });
+  });
+
+  it('400s on an unresolved sprint name with an actionable message', async () => {
+    const julyB = { id: 'sp-july-b', name: 'July-B' };
+    const prisma = makePrisma({ issues: [makeIssueRow()], sprints: [julyB] });
+    const service = makeService(prisma);
+
+    await expect(
+      service.exportCsv('user-1', 'proj-1', 'sprint = "Nonexistent Sprint"'),
+    ).rejects.toMatchObject({
+      status: 400,
+      message: expect.stringContaining(
+        'unknown sprint "Nonexistent Sprint" — use an exact sprint name or an id; see list_sprints',
+      ),
+    });
+  });
+
+  it('does NOT 400 on a resolved name (regression guard)', async () => {
+    const issues = [
+      makeIssueRow({
+        id: 'i-1',
+        number: 1,
+        assignee: { id: alex.id, email: alex.email, name: alex.name, avatarColor: '#fff', createdAt: new Date() },
+      }),
+    ];
+    const prisma = makePrisma({ issues, members: [alex] });
+    const service = makeService(prisma);
+
+    await expect(
+      service.exportCsv('user-1', 'proj-1', 'assignee = "Alex Rivera"'),
+    ).resolves.toBeDefined();
+  });
+
+  it('does NOT 400 on an opaque-id-shaped assignee operand even when it matches no current member', async () => {
+    const staleId = 'usr-cljk3n9d80000ab12removedmember';
+    const prisma = makePrisma({ issues: [makeIssueRow()], members: [alex] });
+    const service = makeService(prisma);
+
+    // No throw — falls back to the pure evaluator's existing literal-id
+    // comparison semantics (silently matches nothing here since no issue has
+    // this assigneeId), preserving support for querying a raw id the caller's
+    // workspace-membership snapshot doesn't happen to include.
+    const { csv } = await service.exportCsv('user-1', 'proj-1', `assignee = "${staleId}"`);
+    const lines = csv.split('\r\n').filter(Boolean);
+    expect(lines).toHaveLength(1); // header only
+  });
+
+  it('does NOT 400 on assignee = me() even with no matching context user', async () => {
+    const prisma = makePrisma({ issues: [makeIssueRow()], members: [] });
+    const service = makeService(prisma);
+
+    await expect(
+      service.exportCsv('user-1', 'proj-1', 'assignee = me()'),
+    ).resolves.toBeDefined();
   });
 });
 

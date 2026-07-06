@@ -16,6 +16,7 @@ import {
   filterIssues,
   validateQuery,
   getReferencedFieldKinds,
+  resolveQueryNames,
   type DashboardDataDto,
   type DashboardDto,
   type DashboardGadgetResult,
@@ -479,6 +480,18 @@ export class DashboardsService {
     const validation = validateQuery(row.query, { customFieldDefs });
     if (!validation.ok) {
       return { ...base, error: validation.error?.message ?? 'Invalid query' };
+    }
+
+    // Fail loud on an unresolved assignee/reporter/sprint NAME (MCP-QA pass
+    // 1, finding 1 residual) — but only THIS gadget's result becomes an
+    // error state; one bad gadget query must never fail the whole dashboard
+    // read (same per-gadget-error contract as every other check below).
+    const nameCheck = resolveQueryNames(row.query, { users, sprints });
+    if (!nameCheck.ok) {
+      return {
+        ...base,
+        error: nameCheck.error?.message ?? 'Unknown user or sprint reference',
+      };
     }
 
     let filtered: IssueDto[];
