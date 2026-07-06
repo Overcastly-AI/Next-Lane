@@ -661,5 +661,51 @@ describe('GiteaService', () => {
       });
       expect(result.linksUpserted).toBe(0);
     });
+
+    it('links ONLY the webhook project when two projects share the same issue number (cross-tenant collision, review follow-up on 8f46d27)', async () => {
+      // Both projects have an issue "#7": project-1 is NL-7, project-2 is
+      // OTHER-7. A webhook arriving on project-1's URL referencing NL-7 must
+      // look the issue up scoped to project-1 — the collision-prone bare
+      // number must never resolve into project-2.
+      prisma.project.findUnique.mockResolvedValue({ id: PROJECT_ID, key: 'NL' });
+      prisma.issue.findFirst.mockImplementation(
+        ({ where }: { where: { projectId: string; number: number } }) => {
+          // The DB "contains" an issue #7 in BOTH projects; the mock returns
+          // whichever one the query's projectId scoping asks for.
+          if (where.projectId === PROJECT_ID && where.number === 7) {
+            return Promise.resolve({ id: 'issue-own-7' });
+          }
+          if (where.projectId === OTHER_PROJECT_ID && where.number === 7) {
+            return Promise.resolve({ id: 'issue-foreign-7' });
+          }
+          return Promise.resolve(null);
+        },
+      );
+      prisma.issueGiteaLink.upsert.mockResolvedValue({});
+
+      const result = await service.handlePullRequestEvent(PROJECT_ID, {
+        pull_request: {
+          number: 200,
+          title: 'NL-7 fix the collision case',
+          html_url: 'https://git.example.com/acme/widgets/pulls/200',
+          state: 'open',
+          merged: false,
+          head: { ref: 'main' },
+          user: { login: 'octocat' },
+        },
+      });
+
+      expect(result.linksUpserted).toBe(1);
+      // Every issue lookup was scoped to the webhook URL's own project.
+      for (const call of prisma.issue.findFirst.mock.calls) {
+        expect(call[0].where.projectId).toBe(PROJECT_ID);
+      }
+      // And the link row landed on project-1's issue, never project-2's.
+      expect(prisma.issueGiteaLink.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          create: expect.objectContaining({ issueId: 'issue-own-7' }),
+        }),
+      );
+    });
   });
 });
