@@ -211,6 +211,24 @@ Experience Round 2):**
   execution, poll timeout 409, failed-attempt claim release, payload-mismatch
   409.
 
+### Fixed — 2026-07-03 (activity feed blind spots)
+
+**Sprint/parent/component/label mutations now logged to the activity feed:**
+- The project activity feed and agent-context staleness measurement were
+  previously blind to sprint re-scoping, parent/epic re-assignment, component
+  changes, and label attach/detach — a bulk sprint re-parent or atomic
+  re-assignment looked like nothing happened while a single comment
+  immediately bumped staleness. Fixed at the write path:
+  - `prepareUpdate` now logs sprint/parent/component field changes (both
+    single-issue and bulk-update paths share it, and changes now count as
+    `changedFields` for watcher notifications too).
+  - Label attach/detach logs an `'label'` activity in all three paths
+    (`LabelsService` add/remove, bulk `addLabelIds` classic and atomic), with
+    no-op-safe semantics (a repeat attach or detach-of-unattached logs
+    nothing).
+- Live-verified (parent activity row written on PATCH). 9 new unit tests;
+  affected suites green; tsc clean.
+
 ### Added — 2026-07-03
 
 **Issue start date field (Agent Experience Phase A):**
