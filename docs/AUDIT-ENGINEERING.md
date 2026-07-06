@@ -6,6 +6,192 @@ groomer alongside the product audit and QA reviews.
 
 ---
 
+## 2026-07-06 — Pass 13 (Hardening Night — GitLab v1, agent-context, PR-status/auto-transition, AX Round 2, Dashboards Phase 2)
+
+Scope: everything since Pass 12 — GitLab integration v1 (`apps/api/src/gitlab/**`,
+mirrors GitHub's design), per-project agent-context memory (API +
+`AgentContextSection.tsx` web panel), Agent Experience Round 2 (cross-project
+write guards, claim-first `IdempotencyRecord`, atomic/dryRun bulk updates,
+comment edit/delete gating, the project activity feed), activity-logging for
+sprint/parent/component/label mutations, PR-status polling +
+auto-transition-on-merge (the first REAL outbound calls via `GithubClient`/
+`GitlabClient`), Dashboards Phase 2 (velocity trend, per-project/per-dashboard
+caps, parallelized gadget evaluation), and the MCP surface's growth toward
+104 tools. `tsc --noEmit` clean on both `api` and `web`; full API unit suite
+green (**84 suites / 1808 tests**, up from 1727 at Pass 12).
+
+**Important scope note — a live build was in flight during this audit.** This
+branch's working tree contained a large **uncommitted, in-progress "Hardening
+Night" PAT-scope sweep** for the entire duration of this review (confirmed via
+`git status`/`git diff`, which grew from ~16 to 36 modified controllers plus a
+new `apps/api/src/pat-scope-rollout.integration.spec.ts` while this audit was
+running). Per this project's own multi-agent protocol ("never edit, revert, or
+commit another agent's in-flight files"), this pass treats that work as
+read-only evidence of current reality rather than reverting to the last commit
+(`a4e08a6`) — the findings below on `@RequireScope` coverage describe what was
+observed, and this pass independently arrived at the identical top-priority
+finding the concurrent builder was already mid-fix on, which is a good
+cross-check signal (see the Debugging & QA-discipline section). Everything
+else in this report (the docker-compose finding, the dependency-CVE findings,
+the SSRF TOCTOU finding, the shadow-state finding) is untouched by that sweep
+and independently found this pass.
+
+### Ratings
+
+| Area | Score | Delta | Note |
+|---|---|---|---|
+| Architecture & module boundaries | 4 | — | `gitlab/**` mirrors `github/**` cleanly (shared `resolveAndCheckBlocked`, shared `secret-crypto.util.ts` extracted from the GitHub pattern); `resolveAutomationActor` is a well-factored shared seam for both auto-transition services. |
+| Data model & migrations | 5 | +1 | 6 new additive migrations this pass (`GitlabIntegration`, `IdempotencyRecord` + claim-first alter, PR auto-transition columns, agent-context) — all correctly indexed, `SetNull` FKs where a deleted target (status) shouldn't corrupt the parent row, unique constraints doing double duty as idempotency keys. |
+| AuthN/AuthZ & multi-tenant isolation | 4 | — | Membership/role checks on every new service method are correct and unit-tested (verified `getEffectiveProjectRole`, cross-project `statusId` guard on GitHub/GitLab automation config, comment author-or-admin gating). See the dedicated `@RequireScope` section below for the PAT-scope-specific finding, tracked separately since it's a different (token-capability) axis than tenant isolation. |
+| Input validation | 5 | — | `agent-context`'s `IsMaxByteLength` (UTF-8-aware 64 KiB cap), dashboard gadget config's per-field caps (`position`/`size`/`sprints`/`limit`), GitHub/GitLab DTOs — no gaps found in any new surface. |
+| Injection/SSRF/crypto | 4 | -1 | GitHub/GitLab crypto (shared `secret-crypto.util.ts`, AES-256-GCM, random IV, verified auth tag) and GitLab's `timingSafeEqual` webhook-token check are both correct; every `$queryRaw` site remains fully parameterized; NLQL has no `eval`/`Function`/`vm` anywhere. Docked one point for a real, evidenced TOCTOU in the shared SSRF guard now reachable via two new outbound-call paths — see Risk 3. |
+| DoS / resource | 4 | — | Dashboards' Pass-12 fixes (caps + `Promise.all`) verified still in place; `bulkUpdateAtomic`/`bulkUpdateDryRun` correctly reuse the Pass-12 `resolvedWorkflowIds` precomputation (no N+1 regression); `getLiveStatus` (GitHub/GitLab) caps fan-out at `MAX_LIVE_STATUS_LOOKUPS = 5` and parallelizes with `Promise.all`; `IdempotencyRecord` is self-cleaning (opportunistic `deleteMany` on every write). One diagnosability nit (Risk 6). |
+| Error hygiene | 5 | — | `AllExceptionsFilter` unchanged and still correct; no new 500-should-be-4xx or stack-trace-leak found in any new controller. |
+| Dependency risk | **3** | -1 | First `pnpm audit --prod` ever run against this repo in an audit pass (registries reachable) surfaced **5 high + 10 moderate** advisories — see Risk 4. No prior pass had actually executed it despite five passes noting "no automated CVE scanning" as a standing gap. |
+| Operational (docker-compose prod posture) | **2** | new row | **The headline finding of this pass** — `docker-compose.yml`'s `api` service forwards only 7 of the ~20+ environment variables `.env.example` documents; verified with the real `docker compose config` command. See Risk 1. |
+| Debugging / QA discipline | 3 | +1 | See dedicated section — one new instance of the project's named failure mode (Risk 1) found and fully root-caused with tool evidence, but also a positive: this audit and a concurrent build-loop pass independently converged on the same top authZ finding the same night, which is the system working as intended. |
+| Realtime correctness | 4 | — | `agent-context.updated` emits correctly on every upsert; Dashboards Phase 2's velocity trend gadget rides the existing `dashboardData` invalidation family from Pass 12's fix — no new realtime gaps found. |
+| Rank / ordering integrity | 5 | — | Gadget drag-to-reorder uses the same fractional-midpoint pattern as board/sprint ranking (`DashboardGadgetConfigDto.position`, `Min(-1_000_000)`/`Max(1_000_000)`, never a renumber). |
+| Test coverage (unit + e2e) | 5 | +1 | 1808 unit tests (up from 1727), plus a new real-HTTP `pat-scope-rollout.integration.spec.ts` (in flight) that boots the actual Nest app and asserts DENY/ALLOW per scoped route — a materially stronger regression guard than a mocked `ScopeGuard` unit test. |
+| Type safety | 5 | — | `tsc --noEmit` clean on both apps throughout the audit, including against the in-flight uncommitted changes. |
+| Build / CI / Docker | 3 | -1 | Docked for the same reason as "Operational" above — `docker-compose.yml`/`docker-compose.dev.yml` have silently drifted out of sync with the growing `.env.example` configuration surface, and nothing in CI (`images.yml`/`e2e.yml`) catches it. |
+| Secrets / config hygiene | 4 | — | GitLab PAT storage mirrors GitHub's (AES-256-GCM, JWT_SECRET-derived fallback key) correctly. Docked for `GITLAB_TOKEN_ENCRYPTION_KEY` being entirely undocumented in `.env.example` (Risk 5) despite its GitHub sibling being fully documented there. |
+
+### Top risks & debt (ranked by impact × probability)
+
+**[Risk 1 — P1, "Tonight"] `docker-compose.yml` silently drops most of the documented self-host configuration surface — SMTP (password-reset email) never actually forwards to the container**
+- What: `docker-compose.yml`'s `api` service `environment:` block (lines 43-52) lists exactly seven keys: `DATABASE_URL`, `JWT_SECRET`, `JWT_EXPIRES_IN`, `REDIS_URL`, `API_PORT`, `NODE_ENV`, `AUTO_SEED`. There is no `env_file:` directive anywhere in the file. Verified directly with the real tool — `docker compose --env-file <file-with-SMTP_HOST-and-CORS_ORIGINS-set> config` — and the rendered `api.environment` in the output contains **only those same seven keys**; `SMTP_HOST` and `CORS_ORIGINS` are completely absent regardless of what a self-hoster puts in `.env`. This means, in the actual shipped `docker compose up -d --build` artifact:
+  - **`SMTP_HOST`/`SMTP_PORT`/`SMTP_USER`/`SMTP_PASS`/`MAIL_FROM`** (`.env.example:163-205`, which explicitly states "**You must configure SMTP to support password recovery in production**") never reach `apps/api/src/mail/mail.service.ts`. Since `NODE_ENV=production` IS correctly forwarded, `MailService.send()` always takes the `devLog()` production branch (`mail.service.ts:110-127`), which logs `[mail] SMTP_HOST is not configured — email ... was NOT delivered` for **every single password-reset request**, forever, no matter how correctly the operator follows the documented setup. No error is ever surfaced to the user (`forgot-password` still returns 200) — this fails completely silently.
+  - **`CORS_ORIGINS`** (`main.ts:50`) is likewise never forwarded; every deployment falls back to the hardcoded default `http://localhost:3000` regardless of `.env`. Harmless for the default single-host demo, but any self-hoster running behind a custom domain/reverse proxy (an extremely common self-host pattern) hits a CORS failure with no working fix available via the documented mechanism.
+  - Also affected, lower severity because each has a graceful fallback: `GITHUB_TOKEN_ENCRYPTION_KEY`/`GITLAB_TOKEN_ENCRYPTION_KEY` (silently fall back to a `JWT_SECRET`-derived key — functionally fine, but the documented override is a dead letter), the `OIDC_ISSUER_URL`/`OIDC_CLIENT_ID`/`OIDC_CLIENT_SECRET` env-var path (has a working DB-backed admin-UI fallback per `oidc-config.service.ts`, so OIDC itself is NOT broken, just one of its two documented configuration paths is silently inert), `WEBHOOK_ALLOW_PRIVATE`, `THROTTLE_LIMIT`/`THROTTLE_TTL`, and `RATE_LIMIT_DISABLED` (the exact variable `CLAUDE.md`'s own "environment recipe" tells every agent to set for the dev/test harness — ironic that the same variable is inert in the compose path).
+  - A related, distinct defect in the same block: `AUTO_SEED: "true"` (line 52) is a **hardcoded literal**, not `${AUTO_SEED:-true}` — so the code comment directly above it ("Production deployments should omit this (or set AUTO_SEED=false)") is simply false for anyone using the shipped compose file; there is no way to opt out short of hand-editing `docker-compose.yml`.
+- Why this reached this point undetected: this is a fresh, direct instance of the project's own named failure mode ("tests pass ≠ works for the user" — nginx CSP blocking login, compose syntax, etc., per `CLAUDE.md`). Nothing in `.github/workflows/*.yml`, `scripts/smoke-web-csp.sh`, or any e2e spec references `SMTP_HOST` or `CORS_ORIGINS` at all (`grep` across `.github`, `scripts`, `apps/web/e2e` returns zero hits) — no test has ever booted the real compose stack and checked that a documented env var actually reaches the container process.
+- Impact/likelihood: **High impact** (password-reset — a security-relevant flow — is silently non-functional for every self-hosted production deployment that follows the project's own setup instructions; CORS breaks any custom-domain deployment with no documented fix), **certain likelihood** (reproduces on every single `docker compose up -d --build` today, verified with the actual tool, not inferred).
+- Files: `docker-compose.yml:43-52`, `docker-compose.dev.yml:4-9` (same gap), `apps/api/src/mail/mail.service.ts:51-57,110-127`, `apps/api/src/main.ts:50`, `.env.example:27,163-205`.
+- Fix: add `env_file: .env` to the `api` service (a root `.env` file is already a hard requirement today, since `${JWT_SECRET:?...}` interpolation needs one — this costs nothing new) so every documented variable passes through by default; keep the explicit `environment:` block for the handful of compose-internal values (`DATABASE_URL`, `REDIS_URL`) that must stay derived from the other services' names rather than user-supplied. Parameterize `AUTO_SEED: ${AUTO_SEED:-true}`. Regression guard (see Ideation #2): a CI step that runs `docker compose config` (or boots the stack) with a sentinel `.env` and asserts every `.env.example`-documented variable name appears in the rendered `api` service environment.
+- Size: S (the compose fix itself) + M (the CI regression guard).
+
+**[Risk 2 — in progress, verify-before-commit] `@RequireScope` (PAT-scope) coverage — a comprehensive sweep was live during this audit; recommend the structural closer before calling it done**
+- What: At the start of this audit, roughly half of all controllers (`labels`, `sprints`, `statuses`, `workflow` (14 routes — the single largest gap), `work-logs`, `versions`, `standups`, `poker`, `personal-boards`, `saved-filters`, `share-tokens`, `search`, `roadmap`, `users`, `notifications`, `me`) had **zero** `@RequireScope` decorators despite `PAT_SCOPES` (`packages/shared/src/types.ts`) already defining scopes like `comments:read`/`comments:write` that were themselves unenforced on their own controller. Concretely verified before any fix: a PAT scoped to `comments:read` only (which the token-creation UI explicitly promises "restricts this token to only those permissions", `ApiTokensSection.tsx:169-172`) could still hit `POST /issues/:id/checklist`, `PATCH /projects/:id/workflow`, and (most severe) `PATCH /admin/oidc-config` — reconfiguring instance-wide SSO — because `ScopeGuard` (`scope.guard.ts:60-61`) passes any route with no `@RequireScope` metadata regardless of the token's declared scope. Since every MCP tool authenticates by forwarding a user-supplied PAT verbatim (`apps/mcp/src/client.ts:80`), this directly undermines the "scope down an agent's token" safety story the agent-native positioning depends on.
+- **This was fixed live, during this audit, by a concurrent builder** (`git status`/`git diff` showed 36 controllers plus `packages/shared/src/types.ts` modified, uncommitted, growing over the course of this review) — new scopes added (`workspaces:read/write`, `admin:read/write`, `tokens:read/write`, with an explicit design note preventing a scoped token from minting itself an unrestricted replacement token), `projects:read/write` extended to cover the full project-config surface (statuses/labels/sprints/boards/custom-fields/components/versions/workflows/dashboards/automations/poker/standups/saved-filters/share-tokens/roadmap/reports/analytics), `issues:read/write` extended to checklist/work-logs/attachments/notifications/search, and a genuinely well-reasoned, per-route identity exemption for `/me`/`/auth/me` self-resource routes (with `personal-boards.controller.ts`'s `promoteCard` correctly carved OUT of that exemption and scoped `issues:write`, since it creates a real project `Issue`). A new **real-HTTP** integration spec, `apps/api/src/pat-scope-rollout.integration.spec.ts`, was added covering ~100 routes with DENY (wrong scope → 403 with the exact `ScopeGuard` message) and ALLOW assertions — materially stronger than a mocked-guard unit test. `tsc --noEmit` clean and the full 1808-test unit suite passes against this in-flight state.
+- What's still worth closing, once tonight's sweep lands: (a) the new `pat-scope-rollout.integration.spec.ts` matrix only covers the routes *this* sweep touched — the controllers that already had scopes before tonight (`issues`, `github`, `gitlab`, `webhooks`, `project-memberships`, `issue-links`, `agent-context`) aren't in the same exhaustive DENY/ALLOW matrix, so there are now two tiers of assurance for the same guard; folding them in gives one single source of truth. (b) More importantly: the matrix is a **hand-maintained list of routes**, not a live introspection of the Nest route table — it will not fail if route #201 ships next month with no `@RequireScope` and no matching matrix row added. This is the exact "regression guard covers the reported instance, not the class" pattern this document's own history keeps finding (Pass 11's `useSyncActiveWorkspace`, Pass 12's CSP `script-src` gap) — see Ideation #1 for the structural closer.
+- Impact/likelihood: was High/High before tonight's fix; Low/Low once the sweep lands and is committed, contingent on the structural closer landing too so it can't silently reopen.
+- Files: `apps/api/src/**/*.controller.ts` (36 modified, uncommitted at time of audit), `packages/shared/src/types.ts`, `apps/api/src/pat-scope-rollout.integration.spec.ts` (new, uncommitted), `apps/web/src/components/settings/ApiTokensSection.tsx`.
+- Size: the sweep itself appears essentially complete (S remaining to verify + commit); the structural closer is M.
+
+**[Risk 3 — P2] DNS-rebinding TOCTOU in the shared SSRF guard, now reachable via two new outbound-call paths**
+- What: `resolveAndCheckBlocked` (`apps/api/src/webhooks/webhooks.service.ts:84-123`) resolves the target hostname via `dns.promises.lookup` and checks the resolved IP(s) against a private/loopback/link-local blocklist — but the subsequent `fetch()` call in every caller (`webhooks.service.ts:252`, `github-client.service.ts:73/121/172`, `gitlab-client.service.ts:73/121`) re-resolves DNS itself. An attacker-controlled hostname with a very short TTL can resolve to a public IP at check-time and to `127.0.0.1`/`169.254.169.254`/an internal service at fetch-time — the classic DNS-rebinding SSRF bypass. This guard now backs **three** outbound-call families instead of one: the pre-existing webhook delivery, plus this pass's two new real GitHub/GitLab API clients. `GitlabClient`'s `baseUrl` is admin-supplied per project (self-hosted GitLab is a first-class target — `gitlab-client.service.ts:45-53`'s own doc comment calls this out as "the primary SSRF risk this module carries"), making it the higher-value target of the two new paths; `GithubClient`'s fixed `api.github.com` host is lower-risk defense-in-depth by comparison (its own header comment says as much).
+- Impact/likelihood: Medium impact (requires a project ADMIN to configure a malicious `gitlabBaseUrl` pointing at attacker DNS — already a privileged action — so this is a defense-in-depth gap, not an open-to-anyone hole), low-medium likelihood (needs an attacker to control DNS with a short TTL and win a narrow race window).
+- Files: `apps/api/src/webhooks/webhooks.service.ts:84-123`, `apps/api/src/github/github-client.service.ts`, `apps/api/src/gitlab/gitlab-client.service.ts`.
+- Fix: resolve once, then `fetch` the resolved IP literal directly with the original hostname sent via the `Host`/SNI header (Node's `fetch`/`undici` supports a custom `dispatcher` with a fixed-address connector), eliminating the re-resolution window structurally for all three call sites in one shared helper. Size: M.
+
+**[Risk 4 — P2] First-ever `pnpm audit` run surfaces 5 high + 10 moderate CVEs; the most actionable is a transitive `multer` vulnerable to 3 DoS advisories, reachable on every upload endpoint**
+- What: `pnpm audit --prod` (registries reachable in this environment) reports:
+  - **`multer` — 3 high + 1 moderate DoS advisories**, all fixed at `>=2.2.0`/`>=2.1.1`/`>=2.1.0`. `apps/api/package.json` already pins `multer: "^2.2.0"` directly (patched) — but `pnpm-lock.yaml` resolves a **second, older `multer@2.0.2`** transitively via `@nestjs/platform-express` (and `@nestjs/event-emitter → @nestjs/core → @nestjs/platform-express`). Confirmed the vulnerable instance is the one that actually matters: every upload endpoint (`workspaces.controller.ts:140` logo upload, `issues-import.controller.ts:84` CSV import, `attachments.controller.ts:44` issue attachments) uses `FileInterceptor` **from `@nestjs/platform-express`**, which bundles and uses its own internal `multer`, not the app's direct dependency — so bumping the app's own `package.json` multer version (already done) has **not** actually fixed the vulnerable code path that runs on every real upload request.
+  - **`lodash` (high — code injection via `_.template`, moderate — prototype pollution)** via `@nestjs/swagger`; **`js-yaml` (moderate — prototype pollution + quadratic-complexity DoS)** via `@nestjs/swagger`; **`qs` (moderate — DoS)** and **`@nestjs/core` (moderate — output-neutralization/injection)** via `@nestjs/platform-express`/`express`; **`file-type` (moderate — infinite loop parsing a malformed ASF file)** — this one is a **direct** dependency pinned at `file-type: "16"` (`apps/api/package.json`), used for magic-byte MIME sniffing on every uploaded attachment/logo (`attachments.service.ts`, `workspaces.service.ts`), and version 16 falls inside the vulnerable range for the ASF-parser advisory (the separate ZIP-decompression-bomb advisory needs `>=20`, so that one doesn't apply to the pinned v16).
+  - No `.github/workflows/*` runs `pnpm audit` at all — five prior audit passes (1, 2, 4, 5, 8) each noted "no Dependabot / automated CVE scanning" as a standing gap without anyone actually running the scan; this pass is the first to execute it.
+- Impact/likelihood: Medium impact (all are DoS-class, not RCE; multer's is the most concretely reachable since 3 endpoints accept untrusted uploads today), medium likelihood (multer's advisories are specifically about malformed/aborted multipart uploads, which any internet-facing upload endpoint receives incidentally, not just from a targeted attacker).
+- Files: `apps/api/package.json` (`multer`, `file-type`), `pnpm-lock.yaml`, `package.json` (root — no `pnpm.overrides` block exists yet).
+- Fix: add a root `pnpm.overrides: { "multer": "^2.2.0" }` to force every transitive resolution to the patched version (confirmed via `pnpm why multer` that only the vulnerable 2.0.2 needs overriding); verify with a fresh `pnpm audit` that the multer advisories clear. Plan a `file-type` major-version upgrade separately (v17+ is ESM-only, which is why v16 was pinned for this CJS NestJS app — needs a dynamic `import()` refactor of the two `require('file-type')` call sites, so treat as its own small ticket rather than bundling with the override fix). Add `pnpm audit --prod --audit-level=high` as a CI gate (see Ideation #3).
+- Size: S (multer override) + S (CI gate) + S (file-type modernization, separate ticket).
+
+**[Risk 5 — P3] `GITLAB_TOKEN_ENCRYPTION_KEY` is undocumented in `.env.example`, unlike its GitHub sibling**
+- What: `.env.example` documents `GITHUB_TOKEN_ENCRYPTION_KEY` (`.env.example:251-260`) in full, but has zero mention of `GITLAB_TOKEN_ENCRYPTION_KEY` anywhere (`grep -n GITLAB .env.example` returns nothing) even though `gitlab-crypto.util.ts:16-20` reads it with the identical fallback-to-`JWT_SECRET` design. Not a functional bug (the fallback works correctly, verified), but an operator wanting key separation between GitHub and GitLab PAT encryption (a real, sensible ask) has no way to discover the knob exists.
+- Impact/likelihood: Low/Low — purely a documentation-discoverability gap.
+- Files: `.env.example`, `apps/api/src/gitlab/gitlab-crypto.util.ts:16-27`.
+- Fix: mirror the existing `GITHUB_TOKEN_ENCRYPTION_KEY` block in `.env.example` for GitLab. Size: S (trivial).
+
+**[Risk 6 — P3] Silent (unlogged) catch on post-commit side-effect failure in the new atomic bulk-update path**
+- What: `bulkUpdateAtomic`'s post-commit fan-out loop (`apps/api/src/issues/issues.service.ts:2159-2170`) wraps `finishUpdate(...)` in `try { } catch { /* Swallow */ }` with **no `this.logger.warn`/`error` call at all** — unlike every other post-commit-failure catch in this codebase (e.g. `github.service.ts:543-545`'s `applyAutoTransition` catch, which does log). If a webhook/notification/realtime emit fails after an atomic batch update commits, there is currently zero trace of it anywhere.
+- Impact/likelihood: Low impact (the mutation itself is unaffected — this is purely a "silent degraded fan-out" diagnosability gap), low likelihood of the underlying failure but total silence when it happens.
+- Files: `apps/api/src/issues/issues.service.ts:2163-2169`.
+- Fix: add a one-line `this.logger.warn(...)` in the catch block, consistent with the pattern already used elsewhere in the same file/module. Size: S (trivial).
+
+**[Risk 7 — shadow-state lens, standing directive] Dashboards' active-tab selection is local component state, not derived from the route — can't deep-link, resets on reload**
+- What: `DashboardsPage.tsx:198` — `const [selectedId, setSelectedId] = useState<string | undefined>(undefined)` tracks which of a project's dashboards is showing. Confirmed via `grep` that this page never touches `useSearchParams`/`navigate()`/`history` — the selection lives purely in memory. A user who reloads the page, or shares a link to "this dashboard" with a teammate, always lands back on whichever dashboard the list-ordering puts first, silently losing their place. This is a smaller-blast-radius instance of the same anti-pattern the standing shadow-state directive names (opt-in/local state standing in for route-derived truth) — not a cross-page desync of a *global* indicator like the workspace-selector bug class, but the same root cause: view-selection state that should live in the URL doesn't.
+- Impact/likelihood: Low-medium impact (paper cut, not a correctness bug — no data is ever wrong, just the wrong tab is shown), medium likelihood (any team that bookmarks or shares a specific dashboard link hits this).
+- Files: `apps/web/src/pages/DashboardsPage.tsx:183-230`.
+- Fix: promote to a route param (`/projects/:projectId/dashboards/:dashboardId`, with the bare `/dashboards` route redirecting to the first dashboard) so the URL is the single source of truth and reload/deep-link/share all just work, matching the `ScopedLayouts` precedent this project already established for the workspace/project chip. Size: S.
+
+### Debugging & QA-discipline audit (Pass 13 — mandatory)
+
+This pass's headline finding (Risk 1) is a fresh, previously-undetected instance
+of the exact failure mode `CLAUDE.md` calls out by name — a config surface
+that is fully documented, fully implemented in application code, unit-tested
+in isolation, and **silently inert in the real `docker compose up -d --build`
+artifact**. It evaded detection for the same structural reason as the CSP
+`script-src` bug in Pass 12: nothing in the test suite boots the actual
+compose stack and checks that a *specific documented environment variable*
+actually reaches the container process — `scripts/smoke-web-csp.sh` checks
+response headers on the `web` service, but nothing analogous exists for the
+`api` service's environment. The fix is the same shape as Pass 12's own
+recommendation, applied to a new domain: (1) parameterize the compose file
+correctly (Risk 1's fix), and (2) add a **config-parity smoke test** — boot
+`docker compose config` (cheap, no containers needed) with a sentinel `.env`
+and assert every `.env.example`-documented variable name is present in the
+rendered service environment (with an explicit, reviewed ignore-list for the
+handful of intentionally-composed values like `DATABASE_URL`/`REDIS_URL`).
+This closes the *class* — any future env var added to `.env.example` without
+a matching compose entry fails CI immediately — rather than only this
+instance.
+
+Positive note this pass: the PAT-scope finding (Risk 2) is the first time in
+this document's 13-pass history that this independent audit and a **concurrent,
+same-night build-loop pass** converged on the identical top-priority finding
+without coordinating — mirroring exactly the cross-audit convergence the
+standing shadow-state directive was written to institutionalize (two
+independent Pass-11 audits finding the same defect class the same day). That
+convergence is a good signal the org's audit-and-build feedback loop is
+tightening, not just a coincidence to note in passing.
+
+Diagnosability: no regressions. Pino/correlation-IDs/`/health`/`/health/live`
+unaffected. Risk 6 (silent catch) is this pass's one new diagnosability gap;
+small and isolated.
+
+### Ideation — concrete technical investments (mandatory every pass)
+
+1. **A dynamic PAT-scope route-coverage test (Nest `DiscoveryService`/`Reflector` walk).** Tonight's `pat-scope-rollout.integration.spec.ts` is a strong regression guard for the ~100 routes it explicitly lists, but it's a hand-maintained matrix, not a live introspection of the actual route table — it cannot fail when route #201 ships next month with no `@RequireScope` and no added matrix row. A small companion test that enumerates every registered controller method at runtime (via Nest's `DiscoveryService`) and asserts each one carries either `@RequireScope` metadata or is on a small, reviewed, centrally-documented allowlist (the `/me`/`/auth/me` self-identity exemption, currently explained via three separate per-file comments) turns "did we forget one" into something structurally impossible to skip, the same way `ScopedLayouts` did for the workspace-chip class in Pass 11. *Priority: P1. Size: M.*
+2. **A config-parity CI smoke test for `docker-compose.yml` vs. `.env.example`.** Directly closes Risk 1's class, not just this instance — see the Debugging & QA-discipline section above. Cheap (uses `docker compose config`, no containers) and mirrors the `smoke-web-csp.sh` precedent this project already trusts. *Priority: P1. Size: S–M.*
+3. **`pnpm audit` as a CI gate + a written dependency-update cadence.** Five previous audit passes flagged "no automated CVE scanning" as a standing gap and it was never acted on until this pass manually ran the scan. Wire `pnpm audit --prod --audit-level=high` into `ci.yml` (fail the build on new high/critical advisories) and add a root `pnpm.overrides` for the `multer` finding today. *Priority: P2. Size: S.*
+4. **DNS-pin the shared SSRF-guarded fetch helper.** One shared `ssrfSafeFetch(url, opts)` helper that resolves DNS once, connects to the resolved IP literal directly, and sends the original `Host` header — removing the TOCTOU window (Risk 3) structurally for all three current outbound-call families (webhooks, GitHub, GitLab) and every future one, in one place instead of three. *Priority: P2. Size: M.*
+
+### Direction (Pass 13)
+
+The feature velocity this cycle (GitLab v1, agent-context, AX Round 2, real
+outbound PR-status/auto-transition calls, Dashboards Phase 2) shipped with
+consistently strong fundamentals — clean module boundaries, thorough input
+validation, correct crypto, and genuinely good test coverage (1808 unit tests,
+zero regressions found in any of the newest code paths). The two things that
+matter most right now are not code-quality fixes so much as **artifact-fidelity
+fixes**: Risk 1 (the compose env-var gap) and Risk 2 (the PAT-scope sweep,
+already mid-flight) are both instances of "the code is correct but the
+deployed reality doesn't match what's documented/promised," which is exactly
+the class of bug this project has been burned by before and has explicitly
+committed to hunting for every pass. The single highest-leverage move next is
+finishing and committing tonight's PAT-scope sweep together with its
+real-HTTP regression test, then immediately following with the docker-compose
+env-passthrough fix and its config-parity CI guard (Ideation #1 and #2) —
+both are cheap, both close a *class* of bug rather than an instance, and both
+directly extend patterns (`ScopedLayouts`, `smoke-web-csp.sh`) this project
+has already proven it trusts. The `multer` CVE fix (Risk 4) is the smallest,
+cheapest, highest-confidence item on this list and should land in the same
+batch since it's a one-line `pnpm.overrides` entry.
+
+### Backlog-groomer feed (Pass 13 — compact)
+
+- **Fix `docker-compose.yml`/`docker-compose.dev.yml` env-var passthrough (SMTP/CORS/GitHub+GitLab key/OIDC-env-path/webhook/throttle vars never reach the `api` container; parameterize `AUTO_SEED`)** · P1 · S · Verified via `docker compose config` — password-reset email is silently non-functional in every stock self-hosted deployment despite `.env.example` calling SMTP setup mandatory for production; `docker-compose.yml:43-52`, `docker-compose.dev.yml:4-9`
+- **Add a config-parity CI smoke test diffing `.env.example` variable names against the rendered `docker compose config` output** · P1 · S–M · Structural closer for the above; mirrors `scripts/smoke-web-csp.sh`'s precedent
+- **Verify + commit tonight's in-flight PAT-scope (`@RequireScope`) sweep; fold pre-existing scoped controllers into the same exhaustive `pat-scope-rollout.integration.spec.ts` matrix** · P1 · S · Sweep observed live during this audit (36 controllers, new real-HTTP DENY/ALLOW test); confirm full coverage and commit before this reopens; `apps/api/src/**/*.controller.ts`, `apps/api/src/pat-scope-rollout.integration.spec.ts`
+- **Add a dynamic route-discovery test asserting every controller route has `@RequireScope` or is on a reviewed identity-exemption allowlist** · P1 · M · Structural closer so a future unscoped route can't silently ship again; `apps/api/src/auth/scope.guard.spec.ts` (extend) or a new spec using Nest `DiscoveryService`
+- **Add `pnpm.overrides: { multer: "^2.2.0" }`; wire `pnpm audit --prod --audit-level=high` into CI** · P2 · S · 5 high + 10 moderate CVEs found on first-ever audit run; multer's 3 high DoS advisories are reachable transitively via `@nestjs/platform-express`'s `FileInterceptor` on every live upload endpoint despite the app's own direct multer dependency already being patched; `package.json`, `apps/api/package.json`, `.github/workflows/ci.yml`
+- **DNS-pin the shared SSRF-guarded fetch helper (resolve once, connect to the resolved IP + Host header) across webhooks/GitHub/GitLab outbound calls** · P2 · M · Closes a TOCTOU DNS-rebinding window now reachable via 2 new outbound-call paths this pass added; `apps/api/src/webhooks/webhooks.service.ts:84-123`, `apps/api/src/github/github-client.service.ts`, `apps/api/src/gitlab/gitlab-client.service.ts`
+- **Document `GITLAB_TOKEN_ENCRYPTION_KEY` in `.env.example` (mirror the existing `GITHUB_TOKEN_ENCRYPTION_KEY` block)** · P3 · S · `.env.example`
+- **Log the swallowed post-commit side-effect failure in `bulkUpdateAtomic`** · P3 · S · Currently zero trace on a realtime/webhook/notification failure after an atomic batch commit; `apps/api/src/issues/issues.service.ts:2163-2169`
+- **Promote `DashboardsPage`'s `selectedId` to a route param** · P3 · S · Shadow-state lens finding: reload/deep-link/share all lose the selected dashboard today since it's local `useState`, not URL-derived; `apps/web/src/pages/DashboardsPage.tsx:183-230`
+- **Plan a `file-type` v16→21 upgrade (ESM-only, needs a dynamic-`import()` refactor of the two `require('file-type')` call sites)** · P3 · S · Closes the one applicable moderate CVE (ASF-parser infinite loop) on the pinned v16; `apps/api/src/attachments/attachments.service.ts`, `apps/api/src/workspaces/workspaces.service.ts`
+
+---
+
 ## 2026-06-26 — Pass 1 (initial deep audit)
 
 Scope: full API (`apps/api`), shared package (`packages/shared`), data model
