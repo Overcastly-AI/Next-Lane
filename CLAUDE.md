@@ -155,6 +155,11 @@ This project is built by a **team of specialized AI agents**, not one generalist
 - **Killing a stale API:** ONLY `pkill -9 -f 'dist/main[.]js'` (bracket pattern).
   NEVER `pkill -f "node dist/main.js"` — the plain string matches the harness
   shell's own cmdline and kills your session's launcher (silent exit-1, empty logs).
+  **When sibling agents are running** (parallel builds/QA), that pattern kills
+  THEIR instances too (it matched a QA agent's :4010 worktree API on
+  2026-07-06). Before killing, check `ps aux | grep 'dist/main[.]js'` — if any
+  process isn't yours (different cwd/port), kill by PID only, or skip the kill
+  and run your own instance on a free port from a detached worktree.
 - **Starting the API:** rebuild with `cd apps/api && rm -rf dist *.tsbuildinfo && pnpm build`
   (stale `.tsbuildinfo` produces a partial `dist/` with missing-module crashes),
   then start it **in a separate Bash call** with `RATE_LIMIT_DISABLED=true`
