@@ -18,7 +18,7 @@ teams find it — that's the only ask.**
 [![CI](https://github.com/Overcastly-AI/Next-Lane/actions/workflows/ci.yml/badge.svg)](https://github.com/Overcastly-AI/Next-Lane/actions/workflows/ci.yml)
 [![E2E](https://github.com/Overcastly-AI/Next-Lane/actions/workflows/e2e.yml/badge.svg)](https://github.com/Overcastly-AI/Next-Lane/actions/workflows/e2e.yml)
 [![MCP server](https://img.shields.io/badge/MCP-105%20tools-8A2BE2.svg)](./apps/mcp/README.md)
-[![Unit tests](https://img.shields.io/badge/unit%20tests-1906-brightgreen.svg)](./docs/ROADMAP.md)
+[![Unit tests](https://img.shields.io/badge/unit%20tests-1999-brightgreen.svg)](./docs/ROADMAP.md)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6.svg?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Docker](https://img.shields.io/badge/Docker-compose%20up-2496ED.svg?logo=docker&logoColor=white)](#-quickstart)
 [![Self-hosted](https://img.shields.io/badge/self--hosted-your%20data-success.svg)](#why-next-lane)
@@ -162,14 +162,13 @@ for where we're still catching up):
 | **Hosting & data** | Self-hosted via Docker Compose or Kubernetes — your Postgres, your box, no egress | Vendor's cloud only — your data lives on their servers |
 | **License** | MIT — read the source, fork it, extend it | Closed source |
 | **Query language** | **NLQL** — one query language for search, saved filters, automations, *and* dashboards | Separate, non-interchangeable mechanisms for search vs. automation vs. dashboards |
-| **AI / agent access** | **MCP-native**: 97-tool server (read *and* write), server-side NLQL filtering, and **persistent per-project agent memory** that survives across sessions | Bolt-on AI add-ons, usually cloud-only, rate- or seat-limited — no first-party protocol for an agent to read *and* write |
+| **AI / agent access** | **MCP-native**: 105-tool server (read *and* write), server-side NLQL filtering, and **persistent per-project agent memory** that survives across sessions | Bolt-on AI add-ons, usually cloud-only, rate- or seat-limited — no first-party protocol for an agent to read *and* write |
 | **Source-control links** | Two-way GitHub, GitLab, **and** Gitea issue ↔ PR/MR/commit/branch linking, HMAC-verified webhooks | Varies by vendor and pricing tier |
 | **Setup** | `docker compose up -d --build` on hardware you already own | Nothing to run — but nothing you can run yourself, either |
 
 **Honest limits, not glossed over:** mobile is web-only today (no native app —
 see the [scorecard](./docs/VISION.md#better-than-jira-scorecard) for current
-rough edges being tracked); SSO ships as OIDC today, with SAML and
-multi-provider on the [roadmap](#-on-the-roadmap); GitHub, GitLab, and Gitea
+rough edges being tracked); SSO ships as OIDC + SAML with multi-provider support and just-in-time provisioning; GitHub, GitLab, and Gitea
 (links-only v1) are shipped, with live PR/CI status and auto-transition-on-merge on the roadmap.
 We'd rather tell you where we're behind than let you find out after `docker compose up`.
 
@@ -269,7 +268,7 @@ Kubernetes, SSO/OIDC with in-app admin configuration, per-project role overrides
 GitHub, GitLab, and Gitea two-way integration with HMAC-verified webhooks, workspace
 branding, and a 102-endpoint tenant-isolation regression matrix.
 
-**For AI-agent users** — the 97-tool `@next-lane/mcp` server, server-side NLQL
+**For AI-agent users** — the 105-tool `@next-lane/mcp` server, server-side NLQL
 filtering, one-call epic rollups, persistent per-project agent memory, an
 installable Agent Skill, and personal API tokens scoped for agent auth.
 
@@ -297,7 +296,7 @@ The full capability matrix:
 | **Workspace** | **Branding** — custom name, accent color, logo · workspace audit log |
 | **Admin & security** | Roles & permissions (Admin / Member / Viewer) · **per-project role overrides** (elevate or restrict a member on one project) · password reset over SMTP · HMAC-signed outbound webhooks (with SSRF guard) · 102-endpoint tenant-isolation regression matrix |
 | **Integrations** | **GitHub**, **GitLab**, and **Gitea** two-way issue ↔ PR/MR/commit/branch linking, HMAC/token-verified webhooks, self-hosted URLs support |
-| **Ops & deploy** | One-command Docker Compose · **Helm chart + Kustomize** for Kubernetes · GHCR multi-arch image builds · structured JSON logs · health/readiness probes · CI (typecheck + build + **1906 unit tests**) + full Playwright **e2e suite, desktop and mobile** |
+| **Ops & deploy** | One-command Docker Compose · **Helm chart + Kustomize** for Kubernetes · GHCR multi-arch image builds · structured JSON logs · health/readiness probes · CI (typecheck + build + **1999 unit tests**) + full Playwright **e2e suite, desktop and mobile** |
 
 ## 🚀 Quickstart
 
@@ -376,7 +375,7 @@ Deeper dives: [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) ·
 ```
 Next-Lane/
 ├── apps/
-│   ├── api/        # NestJS backend (REST + WebSocket, 1906 unit tests)
+│   ├── api/        # NestJS backend (REST + WebSocket, 1999 unit tests)
 │   ├── web/        # React + Vite frontend
 │   └── mcp/        # MCP server (stdio, 105 tools with persistent agent memory) for AI agents
 ├── packages/
