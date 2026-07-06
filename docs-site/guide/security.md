@@ -47,8 +47,18 @@ misconfigured or intentionally insecure deployment.
 - **Terminate TLS** at a reverse proxy (nginx, Caddy, Traefik) or via the Helm
   chart's cert-manager Ingress.
 - **Restrict `CORS_ORIGINS`** to the origins you actually serve.
-- **SSRF guard is enabled by default** for outbound webhooks — only set
+- **SSRF guard is enabled by default** for outbound webhooks and for outbound
+  GitHub/GitLab status polling, pinned against DNS-rebinding — only set
   `WEBHOOK_ALLOW_PRIVATE=true` on a fully private, trusted deployment.
+- **Personal Access Token scopes are enforced on every route** — a token
+  restricted to, say, `issues:read` cannot touch projects, workspaces,
+  reports, or any other resource family it wasn't granted (20 scopes total;
+  see [Connecting](./agents-mcp#connecting) in the AI Agents & MCP chapter).
+  Re-check any narrowly scoped agent tokens minted before this hardening
+  pass — they may need `projects:read`/`workspaces:read` added.
+- **Zero high-severity CVEs in production dependencies** — `pnpm audit --prod`
+  reports none as of this writing; re-run it yourself before deploying, since
+  the dependency tree changes over time.
 
 Full details in
 [`SECURITY.md`](https://github.com/Overcastly-AI/Next-Lane/blob/main/SECURITY.md).

@@ -136,6 +136,27 @@ editor alike. Invalid queries report the exact parse position.
 
 ![NLQL autocomplete in the board query bar](/screenshots/nlql-autocomplete-desktop.png)
 
+### Fail-loud on unknown names
+
+Comparing `assignee` or `sprint` against a name resolves it against your
+project's real members and sprints. If the name doesn't match anyone —
+typically a typo, e.g. `assignee = "Alex Rivers"` — the query now returns an
+actionable error instead of silently matching zero issues:
+
+```
+Invalid NLQL query: unknown user "Alex Rivers" — use an exact display name,
+an id, or me(); see list_users
+```
+
+This applies everywhere a query is evaluated server-side: the CSV export, a
+dashboard gadget (only that gadget shows the error; the rest of the
+dashboard still renders), and automation conditions (the run is marked
+`FAILED` rather than a silent `SKIPPED`). The board query bar surfaces the
+same message inline as you type. A literal that looks like a raw id (a
+Prisma `cuid()` or UUID) is never flagged this way even if it matches
+nobody — only names are, so historical filters referencing a deleted
+member's id don't start erroring.
+
 ### Saved filters
 
 Save any NLQL query with a name (star icon next to the query bar). Filters are
@@ -203,6 +224,17 @@ time when project issues change, and report per-gadget errors on a bad query
 instead of failing the whole dashboard.
 
 ![Dashboards with STAT, BREAKDOWN, BURNDOWN, and TABLE gadgets](/screenshots/dashboard-desktop.png)
+
+### Public share links
+
+Admins can mint a **share link** for a dashboard (Share button on the
+Dashboards page toolbar) that publishes it read-only, no login required, at
+`/share/dashboard/<token>` — the same pattern as board share links, on its
+own token so a dashboard link can never double as a board link. A gadget
+whose query calls `me()` has no signed-in identity to resolve on a public
+link, so it shows an explicit **"needs a signed-in user"** error instead of
+silently rendering as if unassigned. Links are revocable at any time from
+the same Share panel.
 
 ---
 
@@ -374,6 +406,18 @@ commits, and branches referencing an issue key show on the issue; inbound
 webhooks are verified via GitLab's Secret Token header. See
 [Configuration](./configuration#gitlab-integration).
 
+### Gitea
+
+The third self-hosted forge alongside GitHub and GitLab (Project Settings →
+Gitea, admin): pull requests, commits, and branches referencing an issue key
+show up in the issue drawer's **Development** section next to any
+GitHub/GitLab links. Gitea has no shared SaaS host, so the instance URL is
+required (e.g. `https://git.example.com`). Inbound webhooks are verified via
+HMAC-SHA256 (`X-Gitea-Signature`). v1 is deliberately **links-only** — no
+live PR/CI status and no auto-transition-on-merge yet (unlike the GitHub/GitLab
+follow-up work). See
+[Configuration](./configuration#gitea-integration).
+
 ### Webhooks
 
 Outbound webhooks deliver issue events to any system: HMAC-signed payloads,
@@ -382,6 +426,6 @@ delivery with retries when Redis is configured.
 
 ### AI agents (MCP)
 
-The flagship integration — 92 tools over the Model Context Protocol, with
+The flagship integration — 105 tools over the Model Context Protocol, with
 per-project agent memory. See the dedicated
 [AI Agents & MCP](./agents-mcp) chapter.

@@ -229,6 +229,44 @@ it is saved.
 
 ---
 
+## Gitea integration
+
+The third self-hosted forge, after GitHub and GitLab. Per-project two-way
+link to a Gitea repository — pull requests, commits, and branches whose
+title/message/name references an issue key (e.g. `NL-123`) show up on that
+issue's "Development" section. Configured per-project from **Project
+Settings → Gitea** (ADMIN only). Unlike GitHub/GitLab, the **Gitea instance
+URL is required** — Gitea has no shared SaaS host, so there is no sensible
+default. v1 is deliberately **links-only**: no live PR/CI status and no
+auto-transition-on-merge (both are shipped for GitHub/GitLab).
+
+**Setup (self-hosted):**
+
+1. In Next Lane, open **Project Settings → Gitea** as an ADMIN and enter your
+   Gitea instance URL (e.g. `https://git.example.com`), the repository path
+   (`owner/repo`), and a Gitea access token with repo read scope. Save.
+2. Copy the generated **Webhook URL** and **Secret** shown in the "Webhook
+   setup" panel.
+3. In Gitea: **Repository → Settings → Webhooks → Add Webhook → Gitea**.
+   Paste the URL and secret, and subscribe to the **Push** and **Pull
+   Request** events.
+4. Push a commit or open a PR whose title/message/branch contains the issue
+   key — the link appears on the issue within seconds.
+
+**Security:** every inbound delivery's `X-Gitea-Signature` header is verified
+as an HMAC-SHA256 of the raw request body (hex-encoded, no `sha256=` prefix)
+using the per-project secret before any payload is processed; unsigned or
+mismatched deliveries are rejected with `401` and never touch the database.
+The access token is encrypted at rest (AES-256-GCM) and is never returned by
+any API response after it is saved.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `GITEA_TOKEN_ENCRYPTION_KEY` | derived from `JWT_SECRET` | Key used to encrypt stored Gitea tokens at rest. Optional — the zero-config path derives a key from the already-required `JWT_SECRET`. Set explicitly if you want Gitea token encryption to survive a `JWT_SECRET` rotation. |
+| `GITEA_WEBHOOK_BASE_URL` | derived from the incoming request | Explicit origin used to build the webhook URL shown in Settings (e.g. `https://tracker.example.com`). Recommended in production behind a reverse proxy; otherwise derived from the incoming request's protocol + host. |
+
+---
+
 ## File attachments
 
 | Variable | Default | Description |

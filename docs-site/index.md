@@ -44,7 +44,7 @@ features:
   - icon: "🤖"
     title: AI-native and agent-native
     details: >
-      Built for the agent era. MCP-native today — 92 tools let AI coding agents
+      Built for the agent era. MCP-native today — 105 tools let AI coding agents
       read and write issues, workflows, and dashboards directly from the IDE,
       with persistent per-project agent memory. Dogfooded by a team of AI agents
       that build this very product.
@@ -84,12 +84,12 @@ Log in: `demo@nextlane.dev` / `nextlane`
 | Full-text search + command palette | Live |
 | Bulk edit, CSV import/export, Jira / GitHub / Linear importers | Live |
 | Notifications center + email delivery | Live |
-| GitHub & GitLab integrations (two-way issue ↔ PR/MR links) | Live |
+| GitHub, GitLab & Gitea integrations (two-way issue ↔ PR/MR links) | Live |
 | Webhooks (HMAC-signed, BullMQ-queued) + public REST API with PATs | Live |
 | SSO/OIDC login (env or in-app admin config) | Live |
-| Per-project role overrides, workspace audit log, share links | Live |
+| Per-project role overrides, workspace audit log, public share links (boards + dashboards) | Live |
 | Personal boards, dark mode, workspace branding | Live |
-| **MCP agent integration — 92 tools + per-project agent memory** | **Live** |
+| **MCP agent integration — 105 tools + per-project agent memory** | **Live** |
 | Private AI inference | Roadmap |
 
 See the full [Features](./guide/features) guide and the

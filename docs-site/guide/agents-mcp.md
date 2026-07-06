@@ -2,7 +2,7 @@
 
 Next Lane is **agent-native**: AI agents are first-class users of the tracker,
 not an afterthought. The official MCP server — **`@next-lane/mcp`** — exposes
-**92 tools** over the [Model Context Protocol](https://modelcontextprotocol.io)
+**105 tools** over the [Model Context Protocol](https://modelcontextprotocol.io)
 so Claude Code, Claude Desktop, and any other MCP host can read *and write*
 your Next Lane instance end-to-end: file bugs, move cards, design workflows,
 run NLQL queries, log time, build dashboards, and hand off context between
@@ -17,7 +17,7 @@ in lockstep with the product.
 
 ## What "agent-native" means here
 
-- **Full read/write coverage** — 92 tools spanning the whole product surface
+- **Full read/write coverage** — 105 tools spanning the whole product surface
   (issues, boards, sprints, workflows, dashboards, automations, analytics,
   notifications, and more), not a read-only wrapper.
 - **Token-efficient by design** — compact responses, pagination everywhere,
@@ -47,20 +47,30 @@ writes last, with a measured staleness signal.*
    only once.
 
 The token inherits your account's permissions. You can optionally restrict it
-to specific scopes when creating it:
+to specific scopes when creating it. An empty scopes list means unrestricted
+(same as your browser session); a scoped token is enforced on **every** route
+in the API, not just a subset:
 
-```
-issues:read    issues:write
-projects:read  projects:write
-comments:read  comments:write
-webhooks:read  webhooks:write
-github:read    github:write
-gitlab:read    gitlab:write
-```
+| Scope | Covers |
+|---|---|
+| `issues:read` / `issues:write` | Issue CRUD/move/watch, checklist items, work logs, attachments, notifications, search. |
+| `projects:read` / `projects:write` | Project CRUD plus every project-scoped structure/config tool: boards, statuses, labels, sprints, custom fields, components, versions, workflows, dashboards, automations, planning poker, standups, saved filters, share tokens, roadmap, reports, project analytics. |
+| `comments:read` / `comments:write` | Issue comments. |
+| `webhooks:read` / `webhooks:write` | Webhook subscriptions + delivery logs. |
+| `github:read` / `github:write` | GitHub integration config, linked PRs, live PR/CI status, auto-transition config. |
+| `gitlab:read` / `gitlab:write` | GitLab integration config, linked MRs, live MR/pipeline status, auto-transition config. |
+| `gitea:read` / `gitea:write` | Gitea integration config, linked PRs/commits/branches. No live-status/auto-transition scope yet — v1 is links-only. |
+| `workspaces:read` / `workspaces:write` | Workspace CRUD/membership and `list_users` (the co-member directory). |
+| `tokens:read` / `tokens:write` | Managing your own PATs — not exposed over MCP. |
+| `admin:read` / `admin:write` | Instance SSO/OIDC config — not exposed over MCP. |
 
-An empty scopes list means unrestricted (same as your browser session). If you
-scope a token, note that `list_issue_github_links` requires `github:read` and
-`list_issue_gitlab_links` requires `gitlab:read`.
+If you scope a token, note that `list_issue_github_links` requires
+`github:read`, `list_issue_gitlab_links` requires `gitlab:read`, and
+`list_issue_gitea_links` requires `gitea:read`. A narrowly-scoped token also
+needs `projects:read`/`workspaces:read` for tools like `list_projects`,
+`list_workspaces`, and the report tools — scoping is enforced across every
+route in the API, so a token minted before this hardening pass may need those
+two scopes added to keep working.
 
 ### 2. Build the server
 
@@ -113,7 +123,7 @@ Two environment variables configure the server:
 
 ---
 
-## The 92-tool surface at a glance
+## The 105-tool surface at a glance
 
 Grouped by area (see the
 [full tool table in `apps/mcp/README.md`](https://github.com/Overcastly-AI/Next-Lane/blob/main/apps/mcp/README.md)
@@ -131,12 +141,14 @@ for every tool and parameter):
 | **Epic rollups** | `get_epic_overview` — one call returns the epic, compact children, a per-status breakdown, and `progress: {done, total, fraction}` |
 | **People & access** | List workspace members, per-project role overrides (set/remove) |
 | **Personal** | Personal board cards, quick links, notifications (list / mark read) |
-| **SCM links** | Read an issue's linked GitHub PRs/commits and GitLab MRs/commits/branches |
+| **SCM links** | Read an issue's linked GitHub PRs/commits, GitLab MRs/commits/branches, and Gitea PRs/commits/branches |
 | **Agent memory** | `get_project_context` / `update_project_context` — the persistent per-project handoff document |
 
-**Deliberately not exposed:** configuring the GitHub/GitLab integrations and
-instance SSO settings (admin-only and secret-bearing), and workspace/project
-deletion (irreversible). Manage those from the web app.
+**Deliberately not exposed:** configuring the GitHub/GitLab/Gitea
+integrations and instance SSO settings (admin-only and secret-bearing),
+workspace/project deletion (irreversible), and public dashboard/board share
+links (a no-token browser surface, not an agent action). Manage those from
+the web app.
 
 ---
 
@@ -153,8 +165,13 @@ The agent gets back only the matching issues, already sorted, instead of
 paging through the whole project and filtering in-context. Invalid queries
 fail with the parser's own message (e.g.
 `Invalid NLQL query: unexpected token "AND" at position 7`), so an agent can
-self-correct. The same language powers the board query bar, saved filters,
-dashboards, and automation conditions.
+self-correct. This also applies to an `assignee`/`sprint` comparison whose
+name doesn't resolve to anyone — a typo'd `assignee = "Alex Rivers"` 400s with
+`unknown user "Alex Rivers" — use an exact display name, an id, or me(); see
+list_users` instead of silently returning zero issues, so an agent doesn't
+mistake "no such user" for "this user has no issues". The same language
+powers the board query bar, saved filters, dashboards, and automation
+conditions.
 
 ---
 
