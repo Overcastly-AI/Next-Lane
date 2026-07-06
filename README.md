@@ -7,7 +7,7 @@
 Next Lane is an **open source project tracker**: boards, sprints, backlog, custom
 workflows, and reporting, running entirely on **your** hardware with **your** data,
 under an MIT license. It's also built for a world where AI coding agents write half
-your code — a first-party **MCP server** with 104 tools lets Claude (or any MCP
+your code — a first-party **MCP server** with 105 tools lets Claude (or any MCP
 client) **read and write your tracker directly**, not just chat about it.
 
 **⭐ If Next Lane is useful to you (or your agent), starring the repo helps other
@@ -17,8 +17,8 @@ teams find it — that's the only ask.**
 [![Documentation](https://img.shields.io/badge/docs-overcastly--ai.github.io-0B7285.svg?logo=readthedocs&logoColor=white)](https://overcastly-ai.github.io/Next-Lane/)
 [![CI](https://github.com/Overcastly-AI/Next-Lane/actions/workflows/ci.yml/badge.svg)](https://github.com/Overcastly-AI/Next-Lane/actions/workflows/ci.yml)
 [![E2E](https://github.com/Overcastly-AI/Next-Lane/actions/workflows/e2e.yml/badge.svg)](https://github.com/Overcastly-AI/Next-Lane/actions/workflows/e2e.yml)
-[![MCP server](https://img.shields.io/badge/MCP-104%20tools-8A2BE2.svg)](./apps/mcp/README.md)
-[![Unit tests](https://img.shields.io/badge/unit%20tests-1823-brightgreen.svg)](./docs/ROADMAP.md)
+[![MCP server](https://img.shields.io/badge/MCP-105%20tools-8A2BE2.svg)](./apps/mcp/README.md)
+[![Unit tests](https://img.shields.io/badge/unit%20tests-1906-brightgreen.svg)](./docs/ROADMAP.md)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6.svg?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Docker](https://img.shields.io/badge/Docker-compose%20up-2496ED.svg?logo=docker&logoColor=white)](#-quickstart)
 [![Self-hosted](https://img.shields.io/badge/self--hosted-your%20data-success.svg)](#why-next-lane)
@@ -147,7 +147,7 @@ advantages** a cloud-first, per-seat, closed product can't match (full thesis in
 |---|---|---|
 | 💸 | **Free & unlimited** | No per-seat pricing. Unlimited users, projects, automation runs, and (on the roadmap) AI — because it's your hardware. |
 | 🔒 | **Your data, your compute** | Fully self-hosted. No egress, direct SQL access to your own data, private by default — the one thing regulated teams can't buy from any cloud. |
-| 🧩 | **Open & extensible** | MIT licensed. No marketplace tax, code-level extensibility, and two-way links to self-hosted-friendly forges (GitHub and GitLab today), not just the big clouds. |
+| 🧩 | **Open & extensible** | MIT licensed. No marketplace tax, code-level extensibility, and two-way links to self-hosted-friendly forges (GitHub, GitLab, and Gitea), not just the big clouds. |
 | 🤖 | **AI-native & agent-native** | An MCP server ships in the box with persistent per-project agent memory, and the product itself is built and dogfooded by a team of AI agents — see below. |
 
 ## 📊 How Next Lane compares
@@ -163,15 +163,15 @@ for where we're still catching up):
 | **License** | MIT — read the source, fork it, extend it | Closed source |
 | **Query language** | **NLQL** — one query language for search, saved filters, automations, *and* dashboards | Separate, non-interchangeable mechanisms for search vs. automation vs. dashboards |
 | **AI / agent access** | **MCP-native**: 97-tool server (read *and* write), server-side NLQL filtering, and **persistent per-project agent memory** that survives across sessions | Bolt-on AI add-ons, usually cloud-only, rate- or seat-limited — no first-party protocol for an agent to read *and* write |
-| **Source-control links** | Two-way GitHub **and** GitLab issue ↔ PR/commit/branch linking, HMAC-verified webhooks | Varies by vendor and pricing tier |
+| **Source-control links** | Two-way GitHub, GitLab, **and** Gitea issue ↔ PR/MR/commit/branch linking, HMAC-verified webhooks | Varies by vendor and pricing tier |
 | **Setup** | `docker compose up -d --build` on hardware you already own | Nothing to run — but nothing you can run yourself, either |
 
 **Honest limits, not glossed over:** mobile is web-only today (no native app —
 see the [scorecard](./docs/VISION.md#better-than-jira-scorecard) for current
 rough edges being tracked); SSO ships as OIDC today, with SAML and
-multi-provider on the [roadmap](#-on-the-roadmap); GitHub and GitLab are
-shipped, Gitea is next. We'd rather tell you where we're behind than let you
-find out after `docker compose up`.
+multi-provider on the [roadmap](#-on-the-roadmap); GitHub, GitLab, and Gitea
+(links-only v1) are shipped, with live PR/CI status and auto-transition-on-merge on the roadmap.
+We'd rather tell you where we're behind than let you find out after `docker compose up`.
 
 ## 🤖 Agent-native: your coding agent can run the tracker
 
@@ -179,11 +179,11 @@ This is the part no incumbent — closed or open — has: an issue tracker built
 a world where AI agents are first-class users, not an API afterthought.
 
 Next Lane ships **`@next-lane/mcp`** — a first-party [Model Context
-Protocol](https://modelcontextprotocol.io) server with **104 tools** (46 read, 58
+Protocol](https://modelcontextprotocol.io) server with **105 tools** (47 read, 58
 write) that let Claude Desktop, Claude Code, or any MCP client **read *and write*
 your workspace**: issues (with server-side **NLQL** `query` evaluation and
 pagination), sprints, comments, worklogs, checklists, labels, components,
-versions, NLQL-native dashboards, saved filters, automations, GitHub/GitLab links,
+versions, NLQL-native dashboards, saved filters, automations, GitHub/GitLab/Gitea links,
 personal boards, issue templates, analytics, reports, bulk updates, CSV export,
 role overrides, and one-call rollups like `get_epic_overview` — plus the
 workflow/SDLC graph itself (statuses, transitions, gates, board assignment). No
@@ -266,7 +266,7 @@ burndown/velocity/CFD reports, planning poker, and async standups.
 
 **For self-hosters** — one-command Docker Compose or Helm/Kustomize for
 Kubernetes, SSO/OIDC with in-app admin configuration, per-project role overrides,
-GitHub and GitLab two-way integration with HMAC-verified webhooks, workspace
+GitHub, GitLab, and Gitea two-way integration with HMAC-verified webhooks, workspace
 branding, and a 102-endpoint tenant-isolation regression matrix.
 
 **For AI-agent users** — the 97-tool `@next-lane/mcp` server, server-side NLQL
@@ -296,8 +296,8 @@ The full capability matrix:
 | **Navigation & UI** | **Persistent sidebar** (desktop fixed/collapsible, mobile drawer) with workspace switcher and per-project views (Board/Backlog/Roadmap/Reports) · **light / dark mode** with system preference awareness and toggle in sidebar/header |
 | **Workspace** | **Branding** — custom name, accent color, logo · workspace audit log |
 | **Admin & security** | Roles & permissions (Admin / Member / Viewer) · **per-project role overrides** (elevate or restrict a member on one project) · password reset over SMTP · HMAC-signed outbound webhooks (with SSRF guard) · 102-endpoint tenant-isolation regression matrix |
-| **Integrations** | **GitHub** and **GitLab** two-way issue ↔ PR/MR/commit/branch linking, HMAC/token-verified webhooks, self-hosted GitLab base URL support |
-| **Ops & deploy** | One-command Docker Compose · **Helm chart + Kustomize** for Kubernetes · GHCR multi-arch image builds · structured JSON logs · health/readiness probes · CI (typecheck + build + **1823 unit tests**) + full Playwright **e2e suite, desktop and mobile** |
+| **Integrations** | **GitHub**, **GitLab**, and **Gitea** two-way issue ↔ PR/MR/commit/branch linking, HMAC/token-verified webhooks, self-hosted URLs support |
+| **Ops & deploy** | One-command Docker Compose · **Helm chart + Kustomize** for Kubernetes · GHCR multi-arch image builds · structured JSON logs · health/readiness probes · CI (typecheck + build + **1906 unit tests**) + full Playwright **e2e suite, desktop and mobile** |
 
 ## 🚀 Quickstart
 
@@ -356,7 +356,7 @@ Other useful scripts: `pnpm build`, `pnpm lint`, `pnpm test`, `pnpm format`.
 | Frontend | React + Vite + TypeScript |
 | UI | Tailwind CSS + shadcn/ui · TanStack Query · dnd-kit |
 | Auth | JWT access token · SSO/OIDC · personal API tokens (PATs) |
-| Agents | MCP server (`apps/mcp`, stdio, 104 tools with persistent agent memory) over the same REST API |
+| Agents | MCP server (`apps/mcp`, stdio, 105 tools with persistent agent memory) over the same REST API |
 | Infra | Docker Compose · Helm / Kustomize for Kubernetes |
 
 ```mermaid
@@ -376,9 +376,9 @@ Deeper dives: [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) ·
 ```
 Next-Lane/
 ├── apps/
-│   ├── api/        # NestJS backend (REST + WebSocket, 1823 unit tests)
+│   ├── api/        # NestJS backend (REST + WebSocket, 1906 unit tests)
 │   ├── web/        # React + Vite frontend
-│   └── mcp/        # MCP server (stdio, 104 tools with persistent agent memory) for AI agents
+│   └── mcp/        # MCP server (stdio, 105 tools with persistent agent memory) for AI agents
 ├── packages/
 │   └── shared/     # Shared TypeScript types / contracts
 ├── skills/
@@ -396,7 +396,7 @@ foundation; here's where the structural advantages get spent (full plan, with st
 markers, in [`docs/ROADMAP.md`](./docs/ROADMAP.md) — driven by [`docs/VISION.md`](./docs/VISION.md)):
 
 - **📱 Mobile polish** — closing the mobile rough edges flagged in the [scorecard](./docs/VISION.md#better-than-jira-scorecard) before a native app is even on the table.
-- **🔗 Developer Graph, deepened** — GitHub and GitLab two-way issue ↔ PR/MR/commit/branch linking are shipped; next: live PR/CI status on cards, auto-transition on merge, smart-commits, and **Gitea**.
+- **🔗 Developer Graph, deepened** — GitHub, GitLab, and Gitea two-way issue ↔ PR/MR/commit/branch linking are shipped; next: live PR/CI status on cards, auto-transition on merge (GitHub/GitLab shipped, Gitea coming), and smart-commits.
 - **🔐 SAML & multi-provider SSO** — Phase 2 of the OIDC login work already shipped, plus per-workspace/role JIT provisioning.
 - **🤖 Autopilot** — a self-hosted AI teammate: private, unlimited, $0 AI (natural-language → NLQL, auto-triage, semantic dedupe, sprint risk radar) building further on the MCP-native foundation and persistent agent memory already shipped.
 - **Data ownership (Glass Box Phase 2)** — SQL / warehouse export, Grafana dashboards, scheduled/emailed reports.
