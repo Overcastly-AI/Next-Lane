@@ -14,6 +14,7 @@ import { UpdateDashboardDto } from './dto/update-dashboard.dto';
 import { CreateDashboardGadgetDto } from './dto/create-dashboard-gadget.dto';
 import { UpdateDashboardGadgetDto } from './dto/update-dashboard-gadget.dto';
 import { CurrentUser, AuthUser } from '../auth/current-user.decorator';
+import { RequireScope } from '../auth/require-scope.decorator';
 
 @ApiTags('dashboards')
 @ApiBearerAuth()
@@ -23,6 +24,7 @@ export class DashboardsController {
 
   /** List a project's dashboards (VIEWER+). */
   @Get('projects/:projectId/dashboards')
+  @RequireScope('projects:read')
   listDashboards(
     @CurrentUser() user: AuthUser,
     @Param('projectId') projectId: string,
@@ -32,6 +34,7 @@ export class DashboardsController {
 
   /** Create a dashboard in a project (MEMBER+). */
   @Post('projects/:projectId/dashboards')
+  @RequireScope('projects:write')
   createDashboard(
     @CurrentUser() user: AuthUser,
     @Param('projectId') projectId: string,
@@ -42,6 +45,7 @@ export class DashboardsController {
 
   /** Get a dashboard with its gadgets, ordered by grid position (VIEWER+). */
   @Get('dashboards/:dashboardId')
+  @RequireScope('projects:read')
   getDashboard(
     @CurrentUser() user: AuthUser,
     @Param('dashboardId') dashboardId: string,
@@ -51,6 +55,7 @@ export class DashboardsController {
 
   /** Evaluate every gadget on a dashboard server-side (VIEWER+). */
   @Get('dashboards/:dashboardId/data')
+  @RequireScope('projects:read')
   getDashboardData(
     @CurrentUser() user: AuthUser,
     @Param('dashboardId') dashboardId: string,
@@ -60,6 +65,7 @@ export class DashboardsController {
 
   /** Rename or reorder a dashboard (MEMBER+). */
   @Patch('dashboards/:dashboardId')
+  @RequireScope('projects:write')
   updateDashboard(
     @CurrentUser() user: AuthUser,
     @Param('dashboardId') dashboardId: string,
@@ -70,6 +76,7 @@ export class DashboardsController {
 
   /** Delete a dashboard (its gadgets cascade) (MEMBER+). */
   @Delete('dashboards/:dashboardId')
+  @RequireScope('projects:write')
   deleteDashboard(
     @CurrentUser() user: AuthUser,
     @Param('dashboardId') dashboardId: string,
@@ -79,6 +86,7 @@ export class DashboardsController {
 
   /** Add a gadget to a dashboard (MEMBER+). */
   @Post('dashboards/:dashboardId/gadgets')
+  @RequireScope('projects:write')
   createGadget(
     @CurrentUser() user: AuthUser,
     @Param('dashboardId') dashboardId: string,
@@ -89,6 +97,7 @@ export class DashboardsController {
 
   /** Update a gadget's title/query/visualization/config (MEMBER+). */
   @Patch('gadgets/:gadgetId')
+  @RequireScope('projects:write')
   updateGadget(
     @CurrentUser() user: AuthUser,
     @Param('gadgetId') gadgetId: string,
@@ -99,6 +108,7 @@ export class DashboardsController {
 
   /** Delete a gadget (MEMBER+). */
   @Delete('gadgets/:gadgetId')
+  @RequireScope('projects:write')
   deleteGadget(
     @CurrentUser() user: AuthUser,
     @Param('gadgetId') gadgetId: string,

@@ -3,6 +3,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { AuditService } from './audit.service';
 import { ListAuditEventsQueryDto } from './dto/audit-event.dto';
 import { CurrentUser, AuthUser } from '../auth/current-user.decorator';
+import { RequireScope } from '../auth/require-scope.decorator';
 import type { Request } from 'express';
 import { Req } from '@nestjs/common';
 
@@ -20,6 +21,7 @@ export class AuditController {
    * receive 403.
    */
   @Get()
+  @RequireScope('workspaces:read')
   list(
     @CurrentUser() user: AuthUser,
     @Param('id') workspaceId: string,

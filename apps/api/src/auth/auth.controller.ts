@@ -89,6 +89,18 @@ export class AuthController {
     return { message: 'Password updated successfully.' };
   }
 
+  /**
+   * `GET`/`PATCH /auth/me` are intentionally NOT `@RequireScope`-gated.
+   * Every route here is either `@Public()` (register/login/providers/
+   * forgot-password/reset-password — no `request.user` exists yet for
+   * `ScopeGuard` to check) or operates on the caller's own identity as
+   * resolved directly from the bearer token itself (JWT or PAT — either way
+   * "acting as this user"). A PAT scope model restricts what a token can do
+   * *to shared team resources*; it has no meaningful reduction to apply to
+   * "read/update the profile of the very user this token authenticates as" —
+   * the same reasoning that keeps `/me/work` and `/me/quick-links` (see
+   * `me.controller.ts`) ungated.
+   */
   @ApiBearerAuth()
   @Get('me')
   async me(@CurrentUser() user: AuthUser) {

@@ -13,6 +13,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { WorkLogsService } from './work-logs.service';
 import { CreateWorkLogDto, UpdateWorkLogDto } from './dto/work-log.dto';
 import { CurrentUser, AuthUser } from '../auth/current-user.decorator';
+import { RequireScope } from '../auth/require-scope.decorator';
 
 @ApiTags('work-logs')
 @ApiBearerAuth()
@@ -22,6 +23,7 @@ export class WorkLogsController {
 
   /** GET /issues/:issueId/worklogs — list work logs for an issue (VIEWER+). */
   @Get('issues/:issueId/worklogs')
+  @RequireScope('issues:read')
   findAll(
     @CurrentUser() user: AuthUser,
     @Param('issueId') issueId: string,
@@ -31,6 +33,7 @@ export class WorkLogsController {
 
   /** POST /issues/:issueId/worklogs — log time against an issue (MEMBER+). */
   @Post('issues/:issueId/worklogs')
+  @RequireScope('issues:write')
   create(
     @CurrentUser() user: AuthUser,
     @Param('issueId') issueId: string,
@@ -41,6 +44,7 @@ export class WorkLogsController {
 
   /** PATCH /worklogs/:id — update a work log (author or project admin). */
   @Patch('worklogs/:id')
+  @RequireScope('issues:write')
   update(
     @CurrentUser() user: AuthUser,
     @Param('id') workLogId: string,
@@ -52,6 +56,7 @@ export class WorkLogsController {
   /** DELETE /worklogs/:id — delete a work log (author or project admin). 204. */
   @Delete('worklogs/:id')
   @HttpCode(HttpStatus.NO_CONTENT)
+  @RequireScope('issues:write')
   remove(
     @CurrentUser() user: AuthUser,
     @Param('id') workLogId: string,

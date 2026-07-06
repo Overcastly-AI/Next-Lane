@@ -19,6 +19,7 @@ import {
   PatchWorkflowTransitionDto,
 } from './dto/workflow.dto';
 import { CurrentUser, AuthUser } from '../auth/current-user.decorator';
+import { RequireScope } from '../auth/require-scope.decorator';
 
 @ApiTags('workflows')
 @ApiBearerAuth()
@@ -34,6 +35,7 @@ export class WorkflowController {
    * Authorization: any project member (VIEWER+).
    */
   @Get('projects/:projectId/workflow')
+  @RequireScope('projects:read')
   getWorkflow(
     @CurrentUser() user: AuthUser,
     @Param('projectId') projectId: string,
@@ -48,6 +50,7 @@ export class WorkflowController {
    * Authorization: project ADMIN.
    */
   @Patch('projects/:projectId/workflow')
+  @RequireScope('projects:write')
   patchWorkflow(
     @CurrentUser() user: AuthUser,
     @Param('projectId') projectId: string,
@@ -62,6 +65,7 @@ export class WorkflowController {
    * Authorization: project ADMIN.
    */
   @Post('projects/:projectId/workflow/transitions')
+  @RequireScope('projects:write')
   createTransition(
     @CurrentUser() user: AuthUser,
     @Param('projectId') projectId: string,
@@ -76,6 +80,7 @@ export class WorkflowController {
    * Authorization: project ADMIN (resolved from the transition's projectId).
    */
   @Patch('workflow/transitions/:id')
+  @RequireScope('projects:write')
   updateTransition(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
@@ -91,6 +96,7 @@ export class WorkflowController {
    */
   @Delete('workflow/transitions/:id')
   @HttpCode(204)
+  @RequireScope('projects:write')
   async deleteTransition(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
@@ -106,6 +112,7 @@ export class WorkflowController {
    * Authorization: any project member (VIEWER+).
    */
   @Get('projects/:projectId/workflows')
+  @RequireScope('projects:read')
   listWorkflows(
     @CurrentUser() user: AuthUser,
     @Param('projectId') projectId: string,
@@ -119,6 +126,7 @@ export class WorkflowController {
    * Authorization: project ADMIN.
    */
   @Post('projects/:projectId/workflows')
+  @RequireScope('projects:write')
   createWorkflow(
     @CurrentUser() user: AuthUser,
     @Param('projectId') projectId: string,
@@ -134,6 +142,7 @@ export class WorkflowController {
    * Authorization: project ADMIN.
    */
   @Post('projects/:projectId/workflows/from-template')
+  @RequireScope('projects:write')
   createWorkflowFromTemplate(
     @CurrentUser() user: AuthUser,
     @Param('projectId') projectId: string,
@@ -148,6 +157,7 @@ export class WorkflowController {
    * Authorization: any project member (VIEWER+).
    */
   @Get('workflows/:id')
+  @RequireScope('projects:read')
   getWorkflowById(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
@@ -161,6 +171,7 @@ export class WorkflowController {
    * Authorization: project ADMIN.
    */
   @Patch('workflows/:id')
+  @RequireScope('projects:write')
   updateWorkflow(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
@@ -176,6 +187,7 @@ export class WorkflowController {
    */
   @Delete('workflows/:id')
   @HttpCode(204)
+  @RequireScope('projects:write')
   async deleteWorkflow(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
@@ -192,6 +204,7 @@ export class WorkflowController {
    * Authorization: project ADMIN.
    */
   @Post('workflows/:id/transitions')
+  @RequireScope('projects:write')
   createWorkflowTransition(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
@@ -206,6 +219,7 @@ export class WorkflowController {
    * Authorization: project ADMIN.
    */
   @Patch('workflow-transitions/:id')
+  @RequireScope('projects:write')
   updateWorkflowTransition(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
@@ -221,6 +235,7 @@ export class WorkflowController {
    */
   @Delete('workflow-transitions/:id')
   @HttpCode(204)
+  @RequireScope('projects:write')
   async deleteWorkflowTransition(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,

@@ -17,7 +17,16 @@ import { CreatePersonalCardDto } from './dto/create-personal-card.dto';
 import { UpdatePersonalCardDto } from './dto/update-personal-card.dto';
 import { PromotePersonalCardDto } from './dto/promote-personal-card.dto';
 import { CurrentUser, AuthUser } from '../auth/current-user.decorator';
+import { RequireScope } from '../auth/require-scope.decorator';
 
+/**
+ * Every route except `promoteCard` is intentionally NOT `@RequireScope`-gated:
+ * the personal board (columns/cards) is user-private data resolved strictly
+ * from the caller's own identity, never a shared team/project resource — same
+ * exemption rationale as `me.controller.ts`. `promoteCard` is the one
+ * exception: it creates a real tracked `Issue` in a project, so it is gated
+ * with `issues:write` like every other issue-creating route.
+ */
 @ApiTags('personal-boards')
 @ApiBearerAuth()
 @Controller('me')
@@ -127,6 +136,7 @@ export class PersonalBoardsController {
    * The caller must be a project MEMBER+. Returns `{ card, issue }`.
    */
   @Post('personal-cards/:id/promote')
+  @RequireScope('issues:write')
   promoteCard(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,

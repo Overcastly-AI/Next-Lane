@@ -17,6 +17,7 @@ import {
   CastVoteDto,
   CommitEstimateDto,
 } from './dto/poker.dto';
+import { RequireScope } from '../auth/require-scope.decorator';
 
 @ApiTags('poker')
 @ApiBearerAuth()
@@ -28,6 +29,7 @@ export class PokerController {
 
   /** POST /projects/:projectId/poker-sessions — create a new session (MEMBER+) */
   @Post('projects/:projectId/poker-sessions')
+  @RequireScope('projects:write')
   createSession(
     @CurrentUser() user: AuthUser,
     @Param('projectId') projectId: string,
@@ -38,6 +40,7 @@ export class PokerController {
 
   /** GET /projects/:projectId/poker-sessions — list sessions most-recent first (VIEWER+) */
   @Get('projects/:projectId/poker-sessions')
+  @RequireScope('projects:read')
   listSessions(
     @CurrentUser() user: AuthUser,
     @Param('projectId') projectId: string,
@@ -49,12 +52,14 @@ export class PokerController {
 
   /** GET /poker-sessions/:id — fetch session with items + masked votes (VIEWER+) */
   @Get('poker-sessions/:id')
+  @RequireScope('projects:read')
   getSession(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.poker.getSession(user.id, id);
   }
 
   /** PATCH /poker-sessions/:id — update name/state/activeItemId (MEMBER+) */
   @Patch('poker-sessions/:id')
+  @RequireScope('projects:write')
   updateSession(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
@@ -67,6 +72,7 @@ export class PokerController {
 
   /** POST /poker-sessions/:id/items — add an item (MEMBER+) */
   @Post('poker-sessions/:id/items')
+  @RequireScope('projects:write')
   addItem(
     @CurrentUser() user: AuthUser,
     @Param('id') sessionId: string,
@@ -79,6 +85,7 @@ export class PokerController {
 
   /** DELETE /poker-items/:itemId — remove an item (MEMBER+) */
   @Delete('poker-items/:itemId')
+  @RequireScope('projects:write')
   removeItem(
     @CurrentUser() user: AuthUser,
     @Param('itemId') itemId: string,
@@ -88,6 +95,7 @@ export class PokerController {
 
   /** POST /poker-items/:itemId/vote — cast or update a vote (MEMBER+) */
   @Post('poker-items/:itemId/vote')
+  @RequireScope('projects:write')
   castVote(
     @CurrentUser() user: AuthUser,
     @Param('itemId') itemId: string,
@@ -98,6 +106,7 @@ export class PokerController {
 
   /** POST /poker-items/:itemId/reveal — reveal an item's votes (MEMBER+) */
   @Post('poker-items/:itemId/reveal')
+  @RequireScope('projects:write')
   revealItem(
     @CurrentUser() user: AuthUser,
     @Param('itemId') itemId: string,
@@ -107,6 +116,7 @@ export class PokerController {
 
   /** POST /poker-items/:itemId/commit — commit final estimate (MEMBER+) */
   @Post('poker-items/:itemId/commit')
+  @RequireScope('projects:write')
   commitEstimate(
     @CurrentUser() user: AuthUser,
     @Param('itemId') itemId: string,

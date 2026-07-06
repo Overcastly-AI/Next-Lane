@@ -31,6 +31,7 @@ export class ProjectsController {
   constructor(private readonly projects: ProjectsService) {}
 
   @Get()
+  @RequireScope('projects:read')
   findAll(
     @CurrentUser() user: AuthUser,
     @Query('workspaceId') workspaceId: string,
@@ -39,6 +40,7 @@ export class ProjectsController {
   }
 
   @Post()
+  @RequireScope('projects:write')
   create(
     @CurrentUser() user: AuthUser,
     @Body() dto: CreateProjectDto,
@@ -48,6 +50,7 @@ export class ProjectsController {
   }
 
   @Get(':id')
+  @RequireScope('projects:read')
   findOne(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.projects.findOne(user.id, id);
   }
@@ -70,6 +73,7 @@ export class ProjectsController {
   }
 
   @Patch(':id')
+  @RequireScope('projects:write')
   update(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
@@ -79,6 +83,7 @@ export class ProjectsController {
   }
 
   @Delete(':id')
+  @RequireScope('projects:write')
   archive(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,

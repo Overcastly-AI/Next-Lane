@@ -11,6 +11,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { LabelsService } from './labels.service';
 import { CreateLabelDto, UpdateLabelDto, AddIssueLabelDto } from './dto/label.dto';
 import { CurrentUser, AuthUser } from '../auth/current-user.decorator';
+import { RequireScope } from '../auth/require-scope.decorator';
 
 @ApiTags('labels')
 @ApiBearerAuth()
@@ -19,6 +20,7 @@ export class LabelsController {
   constructor(private readonly labels: LabelsService) {}
 
   @Get('projects/:projectId/labels')
+  @RequireScope('projects:read')
   findAll(
     @CurrentUser() user: AuthUser,
     @Param('projectId') projectId: string,
@@ -27,6 +29,7 @@ export class LabelsController {
   }
 
   @Post('projects/:projectId/labels')
+  @RequireScope('projects:write')
   create(
     @CurrentUser() user: AuthUser,
     @Param('projectId') projectId: string,
@@ -36,6 +39,7 @@ export class LabelsController {
   }
 
   @Patch('labels/:id')
+  @RequireScope('projects:write')
   update(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
@@ -45,11 +49,13 @@ export class LabelsController {
   }
 
   @Delete('labels/:id')
+  @RequireScope('projects:write')
   remove(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.labels.remove(user.id, id);
   }
 
   @Post('issues/:issueId/labels')
+  @RequireScope('issues:write')
   addToIssue(
     @CurrentUser() user: AuthUser,
     @Param('issueId') issueId: string,
@@ -59,6 +65,7 @@ export class LabelsController {
   }
 
   @Delete('issues/:issueId/labels/:labelId')
+  @RequireScope('issues:write')
   removeFromIssue(
     @CurrentUser() user: AuthUser,
     @Param('issueId') issueId: string,

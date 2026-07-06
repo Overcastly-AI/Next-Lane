@@ -2,6 +2,7 @@ import { Controller, Get, Param, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { ReportsService, VELOCITY_TREND_DEFAULT_SPRINTS } from './reports.service';
 import { CurrentUser, AuthUser } from '../auth/current-user.decorator';
+import { RequireScope } from '../auth/require-scope.decorator';
 
 @ApiTags('reports')
 @ApiBearerAuth()
@@ -11,6 +12,7 @@ export class ReportsController {
 
   /** Velocity: committed vs completed story points per completed/active sprint. */
   @Get('projects/:projectId/reports/velocity')
+  @RequireScope('projects:read')
   velocity(
     @CurrentUser() user: AuthUser,
     @Param('projectId') projectId: string,
@@ -25,6 +27,7 @@ export class ReportsController {
    * powers the dashboard VELOCITY_TREND gadget.
    */
   @Get('projects/:projectId/reports/velocity-trend')
+  @RequireScope('projects:read')
   velocityTrend(
     @CurrentUser() user: AuthUser,
     @Param('projectId') projectId: string,
@@ -40,6 +43,7 @@ export class ReportsController {
 
   /** Burndown: daily ideal vs remaining story points for one sprint. */
   @Get('projects/:projectId/sprints/:sprintId/burndown')
+  @RequireScope('projects:read')
   burndown(
     @CurrentUser() user: AuthUser,
     @Param('projectId') projectId: string,
@@ -54,6 +58,7 @@ export class ReportsController {
    * Historical state is reconstructed from ActivityLog status-change entries.
    */
   @Get('projects/:projectId/reports/cfd')
+  @RequireScope('projects:read')
   cfd(
     @CurrentUser() user: AuthUser,
     @Param('projectId') projectId: string,

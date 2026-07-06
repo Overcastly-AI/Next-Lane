@@ -16,6 +16,7 @@ import { CreateAutomationRuleDto } from './dto/create-automation-rule.dto';
 import { UpdateAutomationRuleDto } from './dto/update-automation-rule.dto';
 import { ListRunsQueryDto } from './dto/list-runs-query.dto';
 import { CurrentUser, AuthUser } from '../auth/current-user.decorator';
+import { RequireScope } from '../auth/require-scope.decorator';
 
 @ApiTags('automations')
 @ApiBearerAuth()
@@ -26,6 +27,7 @@ export class AutomationsController {
   // ── Rules ─────────────────────────────────────────────────────────────────
 
   @Get('projects/:projectId/automations')
+  @RequireScope('projects:read')
   findAll(
     @CurrentUser() user: AuthUser,
     @Param('projectId') projectId: string,
@@ -34,6 +36,7 @@ export class AutomationsController {
   }
 
   @Post('projects/:projectId/automations')
+  @RequireScope('projects:write')
   create(
     @CurrentUser() user: AuthUser,
     @Param('projectId') projectId: string,
@@ -43,6 +46,7 @@ export class AutomationsController {
   }
 
   @Get('projects/:projectId/automations/runs')
+  @RequireScope('projects:read')
   findProjectRuns(
     @CurrentUser() user: AuthUser,
     @Param('projectId') projectId: string,
@@ -52,6 +56,7 @@ export class AutomationsController {
   }
 
   @Get('projects/:projectId/automations/:ruleId')
+  @RequireScope('projects:read')
   findOne(
     @CurrentUser() user: AuthUser,
     @Param('ruleId') ruleId: string,
@@ -60,6 +65,7 @@ export class AutomationsController {
   }
 
   @Patch('projects/:projectId/automations/:ruleId')
+  @RequireScope('projects:write')
   update(
     @CurrentUser() user: AuthUser,
     @Param('ruleId') ruleId: string,
@@ -70,6 +76,7 @@ export class AutomationsController {
 
   @Delete('projects/:projectId/automations/:ruleId')
   @HttpCode(HttpStatus.NO_CONTENT)
+  @RequireScope('projects:write')
   remove(
     @CurrentUser() user: AuthUser,
     @Param('ruleId') ruleId: string,
@@ -78,6 +85,7 @@ export class AutomationsController {
   }
 
   @Get('projects/:projectId/automations/:ruleId/runs')
+  @RequireScope('projects:read')
   findRuleRuns(
     @CurrentUser() user: AuthUser,
     @Param('ruleId') ruleId: string,

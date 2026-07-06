@@ -18,6 +18,7 @@ import {
   UpdateChecklistItemDto,
 } from './dto/checklist.dto';
 import { CurrentUser, AuthUser } from '../auth/current-user.decorator';
+import { RequireScope } from '../auth/require-scope.decorator';
 
 @ApiTags('checklist')
 @ApiBearerAuth()
@@ -26,6 +27,7 @@ export class ChecklistController {
   constructor(private readonly checklist: ChecklistService) {}
 
   @Get('issues/:issueId/checklist')
+  @RequireScope('issues:read')
   findAll(
     @CurrentUser() user: AuthUser,
     @Param('issueId') issueId: string,
@@ -34,6 +36,7 @@ export class ChecklistController {
   }
 
   @Post('issues/:issueId/checklist')
+  @RequireScope('issues:write')
   create(
     @CurrentUser() user: AuthUser,
     @Param('issueId') issueId: string,
@@ -43,6 +46,7 @@ export class ChecklistController {
   }
 
   @Put('issues/:issueId/checklist/reorder')
+  @RequireScope('issues:write')
   reorder(
     @CurrentUser() user: AuthUser,
     @Param('issueId') issueId: string,
@@ -52,6 +56,7 @@ export class ChecklistController {
   }
 
   @Patch('checklist/:itemId')
+  @RequireScope('issues:write')
   update(
     @CurrentUser() user: AuthUser,
     @Param('itemId') itemId: string,
@@ -62,6 +67,7 @@ export class ChecklistController {
 
   @Delete('checklist/:itemId')
   @HttpCode(HttpStatus.NO_CONTENT)
+  @RequireScope('issues:write')
   remove(@CurrentUser() user: AuthUser, @Param('itemId') itemId: string) {
     return this.checklist.remove(user.id, itemId);
   }

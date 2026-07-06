@@ -11,6 +11,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { SavedFiltersService } from './saved-filters.service';
 import { CreateSavedFilterDto, UpdateSavedFilterDto } from './dto/saved-filter.dto';
 import { CurrentUser, AuthUser } from '../auth/current-user.decorator';
+import { RequireScope } from '../auth/require-scope.decorator';
 
 @ApiTags('saved-filters')
 @ApiBearerAuth()
@@ -19,6 +20,7 @@ export class SavedFiltersController {
   constructor(private readonly savedFilters: SavedFiltersService) {}
 
   @Get('projects/:projectId/saved-filters')
+  @RequireScope('projects:read')
   findAll(
     @CurrentUser() user: AuthUser,
     @Param('projectId') projectId: string,
@@ -27,6 +29,7 @@ export class SavedFiltersController {
   }
 
   @Post('projects/:projectId/saved-filters')
+  @RequireScope('projects:write')
   create(
     @CurrentUser() user: AuthUser,
     @Param('projectId') projectId: string,
@@ -36,6 +39,7 @@ export class SavedFiltersController {
   }
 
   @Patch('saved-filters/:id')
+  @RequireScope('projects:write')
   update(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
@@ -45,6 +49,7 @@ export class SavedFiltersController {
   }
 
   @Delete('saved-filters/:id')
+  @RequireScope('projects:write')
   remove(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.savedFilters.remove(user.id, id);
   }

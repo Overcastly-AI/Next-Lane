@@ -26,6 +26,7 @@ import {
 } from './dto/workspace.dto';
 import { CurrentUser, AuthUser } from '../auth/current-user.decorator';
 import { Public } from '../auth/public.decorator';
+import { RequireScope } from '../auth/require-scope.decorator';
 
 /** Extract the caller's IP for audit logging (proxy-safe: prefer X-Forwarded-For). */
 function extractIp(req: Request): string | null {
@@ -52,22 +53,26 @@ export class WorkspacesController {
   constructor(private readonly workspaces: WorkspacesService) {}
 
   @Get()
+  @RequireScope('workspaces:read')
   findAll(@CurrentUser() user: AuthUser) {
     return this.workspaces.findAll(user.id);
   }
 
   @Post()
+  @RequireScope('workspaces:write')
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateWorkspaceDto) {
     return this.workspaces.create(user.id, dto);
   }
 
   @Get(':id')
+  @RequireScope('workspaces:read')
   findOne(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.workspaces.findOne(user.id, id);
   }
 
   /** PATCH /workspaces/:id — update name and/or brandColor. Admin-only. */
   @Patch(':id')
+  @RequireScope('workspaces:write')
   update(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
@@ -78,16 +83,19 @@ export class WorkspacesController {
 
   /** DELETE /workspaces/:id — permanently delete a workspace. Admin-only. */
   @Delete(':id')
+  @RequireScope('workspaces:write')
   remove(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.workspaces.remove(user.id, id);
   }
 
   @Get(':id/members')
+  @RequireScope('workspaces:read')
   members(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.workspaces.members(user.id, id);
   }
 
   @Post(':id/members')
+  @RequireScope('workspaces:write')
   addMember(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
@@ -103,6 +111,7 @@ export class WorkspacesController {
    * zero admins.
    */
   @Patch(':id/members/:membershipId')
+  @RequireScope('workspaces:write')
   updateMemberRole(
     @CurrentUser() user: AuthUser,
     @Param('id') workspaceId: string,
@@ -120,6 +129,7 @@ export class WorkspacesController {
   }
 
   @Delete(':id/members/:membershipId')
+  @RequireScope('workspaces:write')
   removeMember(
     @CurrentUser() user: AuthUser,
     @Param('id') workspaceId: string,
@@ -136,6 +146,7 @@ export class WorkspacesController {
    * Accepts multipart/form-data with a `file` field (png/jpeg/webp, max 2 MB).
    */
   @Post(':id/logo')
+  @RequireScope('workspaces:write')
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('file', logoMulterOptions))
   uploadLogo(
@@ -150,6 +161,7 @@ export class WorkspacesController {
    * DELETE /workspaces/:id/logo — remove the workspace logo. Admin-only.
    */
   @Delete(':id/logo')
+  @RequireScope('workspaces:write')
   deleteLogo(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.workspaces.deleteLogo(user.id, id);
   }

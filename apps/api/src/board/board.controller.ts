@@ -12,6 +12,7 @@ import { BoardService } from './board.service';
 import { CreateBoardDto } from './dto/create-board.dto';
 import { UpdateBoardDto } from './dto/update-board.dto';
 import { CurrentUser, AuthUser } from '../auth/current-user.decorator';
+import { RequireScope } from '../auth/require-scope.decorator';
 
 @ApiTags('board')
 @ApiBearerAuth()
@@ -21,6 +22,7 @@ export class BoardController {
 
   /** List all boards for a project (VIEWER+). */
   @Get('projects/:projectId/boards')
+  @RequireScope('projects:read')
   listBoards(
     @CurrentUser() user: AuthUser,
     @Param('projectId') projectId: string,
@@ -30,6 +32,7 @@ export class BoardController {
 
   /** Create a new board in a project (ADMIN/MEMBER). */
   @Post('projects/:projectId/boards')
+  @RequireScope('projects:write')
   createBoard(
     @CurrentUser() user: AuthUser,
     @Param('projectId') projectId: string,
@@ -43,6 +46,7 @@ export class BoardController {
    * Lazily creates a default KANBAN board if none exists.
    */
   @Get('projects/:projectId/board')
+  @RequireScope('projects:read')
   getBoard(
     @CurrentUser() user: AuthUser,
     @Param('projectId') projectId: string,
@@ -52,6 +56,7 @@ export class BoardController {
 
   /** Get a specific board by id (VIEWER+). */
   @Get('boards/:boardId')
+  @RequireScope('projects:read')
   getBoardById(
     @CurrentUser() user: AuthUser,
     @Param('boardId') boardId: string,
@@ -61,6 +66,7 @@ export class BoardController {
 
   /** Update a board's metadata (ADMIN/MEMBER). */
   @Patch('boards/:boardId')
+  @RequireScope('projects:write')
   updateBoard(
     @CurrentUser() user: AuthUser,
     @Param('boardId') boardId: string,
@@ -71,6 +77,7 @@ export class BoardController {
 
   /** Delete a board (ADMIN/MEMBER). Refuses if default or only board. */
   @Delete('boards/:boardId')
+  @RequireScope('projects:write')
   deleteBoard(
     @CurrentUser() user: AuthUser,
     @Param('boardId') boardId: string,

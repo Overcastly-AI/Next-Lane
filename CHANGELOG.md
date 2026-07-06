@@ -14,6 +14,33 @@ This section summarizes the major capabilities delivered in the pre-1.0
 development phase. A versioned release will be tagged once the v1 criteria in
 [`docs/ROADMAP.md`](./docs/ROADMAP.md) are complete.
 
+### Security — 2026-07-06
+
+**PAT-scope rollout completed across every controller ("Hardening Night" item 1):**
+- Personal Access Tokens created with restricted scopes (e.g. `issues:read`
+  only) previously fell through to full owner permissions on roughly 30
+  controllers that carried no `@RequireScope` decorator at all — including
+  `projects`, `workspaces`, and `reports`, so a scoped-down agent token could
+  still create/delete projects, delete workspaces, and remove members. Every
+  one of those controllers is now gated, mirroring the existing
+  `issues.controller.ts` pattern; 6 controllers are legitimately exempt and
+  documented as such in-code (`auth`, `auth/oidc`, `health`, `public` — no
+  bearer principal to check a scope against — plus `me` and the read-only
+  routes of `personal-boards`, which are purely caller-private data).
+- Three new scope pairs added to `PAT_SCOPES`: `workspaces:read`/
+  `workspaces:write`, `admin:read`/`admin:write` (instance SSO/OIDC config),
+  and `tokens:read`/`tokens:write` — the last one closes a genuine
+  self-escalation gap where a scoped-down token could mint itself a fresh
+  *unrestricted* token via `POST /me/tokens`.
+- If you already issued a narrowly-scoped PAT to an agent, it may need
+  `projects:read`/`workspaces:read` added to keep working against MCP tools
+  like `list_workspaces`, `list_projects`, `list_users`, and the report tools
+  — those previously worked with any scope; they now enforce the matching one.
+- New `pat-scope-rollout.integration.spec.ts` proves, against the real app
+  with real HTTP requests, that all 143 newly-gated routes reject a
+  wrong-scope token (403) and accept a correctly-scoped one; full API/shared/
+  MCP test suites and `tsc --noEmit` stay green.
+
 ### Added — 2026-07-03 (2)
 
 **PR-status + auto-transition-on-merge, with a board-card "linked PR" badge:**

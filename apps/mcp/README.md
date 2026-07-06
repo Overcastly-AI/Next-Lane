@@ -68,6 +68,35 @@ Lane's auth guard accepts PATs (tokens prefixed `nlp_`) on the standard
 > The token inherits your account's permissions. Workflow-editing tools require
 > **project ADMIN**; reads require project **VIEWER+**.
 
+### PAT scopes
+
+An **unscoped** token (no boxes checked when creating it) has full owner
+permissions across every tool below. A **scope-restricted** token only works
+for tools whose underlying REST route requires a scope it was granted — a
+403 response with `does not have the required scope: <scope>` means either
+add that scope to the token or switch to an unscoped one. The canonical
+vocabulary lives in `PAT_SCOPES` (`packages/shared/src/types.ts`); by area:
+
+| Scope | Covers |
+|---|---|
+| `issues:read` / `issues:write` | Issue CRUD/move/watch, checklist items, work logs, attachments, notifications, search. |
+| `projects:read` / `projects:write` | Project CRUD plus every project-scoped structure/config tool: boards, statuses, labels, sprints, custom fields, components, versions, workflows, dashboards, automations, planning poker, standups, saved filters, share tokens, roadmap, reports (`get_velocity_report` etc.), project analytics. |
+| `comments:read` / `comments:write` | Issue comments. |
+| `webhooks:read` / `webhooks:write` | Webhook subscriptions + delivery logs. |
+| `github:read` / `github:write` | GitHub integration config, linked PRs, live PR/CI status, auto-transition config. |
+| `gitlab:read` / `gitlab:write` | GitLab integration config, linked MRs, live MR/pipeline status, auto-transition config. |
+| `workspaces:read` / `workspaces:write` | Workspace CRUD/membership and `list_users` (the co-member directory). |
+| `tokens:read` / `tokens:write` | Managing your own PATs — not exposed over MCP (see below). |
+| `admin:read` / `admin:write` | Instance SSO/OIDC config — not exposed over MCP (see below). |
+
+**Hardening note:** prior to this rollout only `issues:*`, `webhooks:*`,
+`comments:*`, `github:*`, and `gitlab:*` were actually enforced end-to-end —
+a token scoped to any one of them could still call `list_workspaces`,
+`list_projects`, `list_users`, every report tool, and most other MCP tools
+regardless of scope. That gap is closed: if you already minted a narrowly
+scoped token for an agent, it may now need `projects:read` and/or
+`workspaces:read` added to keep working against those tools.
+
 ## Install & build
 
 From the monorepo root:

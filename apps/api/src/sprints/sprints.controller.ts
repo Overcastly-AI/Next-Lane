@@ -11,6 +11,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { SprintsService } from './sprints.service';
 import { CreateSprintDto, UpdateSprintDto } from './dto/sprint.dto';
 import { CurrentUser, AuthUser } from '../auth/current-user.decorator';
+import { RequireScope } from '../auth/require-scope.decorator';
 
 @ApiTags('sprints')
 @ApiBearerAuth()
@@ -19,6 +20,7 @@ export class SprintsController {
   constructor(private readonly sprints: SprintsService) {}
 
   @Get('projects/:projectId/sprints')
+  @RequireScope('projects:read')
   findAll(
     @CurrentUser() user: AuthUser,
     @Param('projectId') projectId: string,
@@ -27,6 +29,7 @@ export class SprintsController {
   }
 
   @Post('projects/:projectId/sprints')
+  @RequireScope('projects:write')
   create(
     @CurrentUser() user: AuthUser,
     @Param('projectId') projectId: string,
@@ -36,6 +39,7 @@ export class SprintsController {
   }
 
   @Patch('sprints/:id')
+  @RequireScope('projects:write')
   update(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
@@ -45,6 +49,7 @@ export class SprintsController {
   }
 
   @Delete('sprints/:id')
+  @RequireScope('projects:write')
   remove(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.sprints.remove(user.id, id);
   }

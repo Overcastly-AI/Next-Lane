@@ -1245,10 +1245,27 @@ export interface SavedFilterDto {
  *
  * Design notes:
  * - Format: `<resource>:<action>` — keeps them readable and easily matched.
- * - `issues:read`    — GET endpoints for issues (list, single, activity).
- * - `issues:write`   — POST/PATCH/DELETE on issues (create, update, move, delete).
- * - `projects:read`  — GET project metadata, statuses, labels, sprints.
- * - `projects:write` — POST/PATCH/DELETE on projects, statuses, labels, sprints.
+ * - `issues:read`    — GET endpoints for issues (list, single, activity) and
+ *                       issue substructure that isn't its own scope: checklist
+ *                       items, work logs, attachments (list/download),
+ *                       notifications, and search results.
+ * - `issues:write`   — POST/PATCH/DELETE on issues (create, update, move,
+ *                       delete) and mutations to the same issue substructure:
+ *                       checklist items, work logs, attachments
+ *                       (upload/delete), notification read-state, creating an
+ *                       issue from a template or personal-board card, and
+ *                       issue-scoped label/version assignment
+ *                       (`POST/DELETE /issues/:id/labels*`,
+ *                       `PUT /issues/:id/versions`).
+ * - `projects:read`  — GET project metadata and project-scoped structural /
+ *                       config resources: statuses, labels, sprints, boards,
+ *                       custom fields, components, versions, workflows,
+ *                       dashboards, automations, poker sessions, standups,
+ *                       saved filters, share tokens, roadmap, reports, and
+ *                       project analytics.
+ * - `projects:write` — POST/PATCH/DELETE on projects and the same
+ *                       project-scoped structural/config resources listed
+ *                       under `projects:read`.
  * - `webhooks:read`  — GET webhook subscriptions + delivery logs.
  * - `webhooks:write` — POST/PATCH/DELETE on webhook subscriptions.
  * - `comments:read`  — GET issue comments.
@@ -1261,6 +1278,24 @@ export interface SavedFilterDto {
  *                       + the automation config + live MR/pipeline status.
  * - `gitlab:write`   — PUT/DELETE the GitLab integration config + PATCH the
  *                       auto-transition-on-merge automation config.
+ * - `workspaces:read`  — GET workspace metadata, member lists, the workspace
+ *                         audit log, and the co-member user directory
+ *                         (`GET /users*`).
+ * - `workspaces:write` — POST/PATCH/DELETE on workspaces and workspace
+ *                         membership (add/remove member, change role,
+ *                         logo upload/delete).
+ * - `admin:read`     — GET instance-wide admin settings (currently the
+ *                       SSO/OIDC configuration screen). Distinct from
+ *                       `workspaces:*`/`projects:*` because it is gated on
+ *                       `User.isInstanceAdmin`, an instance-wide flag with no
+ *                       workspace/project scoping.
+ * - `admin:write`    — PATCH instance-wide admin settings.
+ * - `tokens:read`    — GET the caller's own personal API tokens (metadata only).
+ * - `tokens:write`   — POST (create) / DELETE (revoke) the caller's own
+ *                       personal API tokens. Deliberately its own scope
+ *                       rather than folded into an existing one: without it a
+ *                       scoped-down token could mint itself a brand-new
+ *                       *unrestricted* token and escape its own restrictions.
  *
  * An empty `scopes` array on a token means "unrestricted" (same as a browser
  * JWT session — all routes are accessible). Only non-empty scopes arrays are
@@ -1279,6 +1314,12 @@ export const PAT_SCOPES = [
   'github:write',
   'gitlab:read',
   'gitlab:write',
+  'workspaces:read',
+  'workspaces:write',
+  'admin:read',
+  'admin:write',
+  'tokens:read',
+  'tokens:write',
 ] as const;
 
 export type PATScope = (typeof PAT_SCOPES)[number];

@@ -10,6 +10,11 @@ import { PublicService } from './public.service';
  *
  * Rate-limited at a lower threshold than authenticated endpoints to reduce
  * scraping/enumeration risk:  60 requests / 60 seconds per IP.
+ *
+ * Not `@RequireScope`-gated (and cannot be): `ScopeGuard` enforcement is
+ * keyed off `request.user`, which `@Public()` routes never populate — there
+ * is no PAT/JWT principal to check a scope against. Authorization here is
+ * entirely capability-based (possession of the share token itself).
  */
 @ApiTags('public')
 @Controller('public')

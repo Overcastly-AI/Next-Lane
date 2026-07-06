@@ -12,6 +12,13 @@ import { MeService } from './me.service';
 import { CurrentUser, AuthUser } from '../auth/current-user.decorator';
 import { CreateQuickLinkDto, UpdateQuickLinkDto } from './dto/quick-link.dto';
 
+/**
+ * Every route on this controller is intentionally NOT `@RequireScope`-gated.
+ * "My work" and "quick links" are user-private data resolved strictly from
+ * the caller's own identity (`userId` from the JWT/PAT principal) — never a
+ * shared team/project resource a PAT scope model is meant to restrict.
+ * Same exemption rationale as `GET/PATCH /auth/me`.
+ */
 @ApiTags('me')
 @ApiBearerAuth()
 @Controller('me')

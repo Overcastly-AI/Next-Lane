@@ -18,6 +18,7 @@ import {
   SetIssueVersionsDto,
 } from './dto/version.dto';
 import { CurrentUser, AuthUser } from '../auth/current-user.decorator';
+import { RequireScope } from '../auth/require-scope.decorator';
 
 @ApiTags('versions')
 @ApiBearerAuth()
@@ -26,6 +27,7 @@ export class VersionsController {
   constructor(private readonly versions: VersionsService) {}
 
   @Get('projects/:projectId/versions')
+  @RequireScope('projects:read')
   findAll(
     @CurrentUser() user: AuthUser,
     @Param('projectId') projectId: string,
@@ -34,6 +36,7 @@ export class VersionsController {
   }
 
   @Post('projects/:projectId/versions')
+  @RequireScope('projects:write')
   create(
     @CurrentUser() user: AuthUser,
     @Param('projectId') projectId: string,
@@ -43,6 +46,7 @@ export class VersionsController {
   }
 
   @Patch('versions/:id')
+  @RequireScope('projects:write')
   update(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
@@ -53,6 +57,7 @@ export class VersionsController {
 
   @Delete('versions/:id')
   @HttpCode(HttpStatus.NO_CONTENT)
+  @RequireScope('projects:write')
   remove(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.versions.remove(user.id, id);
   }
@@ -67,6 +72,7 @@ export class VersionsController {
    * Returns the updated list of version summaries for the issue.
    */
   @Put('issues/:issueId/versions')
+  @RequireScope('issues:write')
   setIssueVersions(
     @CurrentUser() user: AuthUser,
     @Param('issueId') issueId: string,

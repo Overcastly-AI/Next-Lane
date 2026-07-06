@@ -25,6 +25,16 @@ const SCOPE_LABELS: Record<string, string> = {
   'webhooks:write': 'Webhooks — write',
   'comments:read': 'Comments — read',
   'comments:write': 'Comments — write',
+  'github:read': 'GitHub — read',
+  'github:write': 'GitHub — write',
+  'gitlab:read': 'GitLab — read',
+  'gitlab:write': 'GitLab — write',
+  'workspaces:read': 'Workspaces — read',
+  'workspaces:write': 'Workspaces — write',
+  'admin:read': 'Admin settings — read',
+  'admin:write': 'Admin settings — write',
+  'tokens:read': 'API tokens — read',
+  'tokens:write': 'API tokens — write',
 };
 
 /** Formats an ISO date string for display. */

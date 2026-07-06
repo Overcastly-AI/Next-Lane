@@ -11,6 +11,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CommentsService } from './comments.service';
 import { CreateCommentDto, UpdateCommentDto } from './dto/comment.dto';
 import { CurrentUser, AuthUser } from '../auth/current-user.decorator';
+import { RequireScope } from '../auth/require-scope.decorator';
 
 @ApiTags('comments')
 @ApiBearerAuth()
@@ -19,11 +20,13 @@ export class CommentsController {
   constructor(private readonly comments: CommentsService) {}
 
   @Get('issues/:issueId/comments')
+  @RequireScope('comments:read')
   findAll(@CurrentUser() user: AuthUser, @Param('issueId') issueId: string) {
     return this.comments.findAll(user.id, issueId);
   }
 
   @Post('issues/:issueId/comments')
+  @RequireScope('comments:write')
   create(
     @CurrentUser() user: AuthUser,
     @Param('issueId') issueId: string,
@@ -33,6 +36,7 @@ export class CommentsController {
   }
 
   @Patch('comments/:id')
+  @RequireScope('comments:write')
   update(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
@@ -42,6 +46,7 @@ export class CommentsController {
   }
 
   @Delete('comments/:id')
+  @RequireScope('comments:write')
   remove(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.comments.remove(user.id, id);
   }

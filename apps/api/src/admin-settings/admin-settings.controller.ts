@@ -3,6 +3,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { AdminSettingsService } from './admin-settings.service';
 import { UpdateOidcConfigDto } from './dto/update-oidc-config.dto';
 import { CurrentUser, AuthUser } from '../auth/current-user.decorator';
+import { RequireScope } from '../auth/require-scope.decorator';
 
 /**
  * Instance-level admin settings — currently just the in-app SSO/OIDC
@@ -19,12 +20,14 @@ export class AdminSettingsController {
 
   @ApiBearerAuth()
   @Get('oidc-config')
+  @RequireScope('admin:read')
   getOidcConfig(@CurrentUser() user: AuthUser) {
     return this.service.getOidcConfig(user.id);
   }
 
   @ApiBearerAuth()
   @Patch('oidc-config')
+  @RequireScope('admin:write')
   updateOidcConfig(@CurrentUser() user: AuthUser, @Body() dto: UpdateOidcConfigDto) {
     return this.service.updateOidcConfig(user.id, dto);
   }

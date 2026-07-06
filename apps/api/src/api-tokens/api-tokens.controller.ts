@@ -13,6 +13,7 @@ import type { Request } from 'express';
 import { ApiTokensService } from './api-tokens.service';
 import { CreateApiTokenDto } from './dto/api-token.dto';
 import { CurrentUser, AuthUser } from '../auth/current-user.decorator';
+import { RequireScope } from '../auth/require-scope.decorator';
 
 function extractIp(req: Request): string | null {
   const forwarded = req.headers['x-forwarded-for'];
@@ -34,6 +35,7 @@ export class ApiTokensController {
    * The caller must copy the token immediately; it cannot be retrieved again.
    */
   @Post()
+  @RequireScope('tokens:write')
   create(
     @CurrentUser() user: AuthUser,
     @Body() dto: CreateApiTokenDto,
@@ -49,6 +51,7 @@ export class ApiTokensController {
    * Includes revoked and expired tokens so the user can manage their history.
    */
   @Get()
+  @RequireScope('tokens:read')
   findAll(@CurrentUser() user: AuthUser) {
     return this.apiTokens.findAll(user.id);
   }
@@ -62,6 +65,7 @@ export class ApiTokensController {
    */
   @Delete(':id')
   @HttpCode(200)
+  @RequireScope('tokens:write')
   revoke(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,

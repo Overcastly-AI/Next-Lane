@@ -9,6 +9,7 @@ import {
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { ShareTokensService } from './share-tokens.service';
 import { CurrentUser, AuthUser } from '../auth/current-user.decorator';
+import { RequireScope } from '../auth/require-scope.decorator';
 
 @ApiTags('share-tokens')
 @ApiBearerAuth()
@@ -23,6 +24,7 @@ export class ShareTokensController {
    * Only the SHA-256 hash is persisted.
    */
   @Post()
+  @RequireScope('projects:write')
   create(
     @CurrentUser() user: AuthUser,
     @Param('projectId') projectId: string,
@@ -36,6 +38,7 @@ export class ShareTokensController {
    * Includes revoked tokens so the admin can see what links have been issued.
    */
   @Get()
+  @RequireScope('projects:read')
   findAll(
     @CurrentUser() user: AuthUser,
     @Param('projectId') projectId: string,
@@ -50,6 +53,7 @@ export class ShareTokensController {
    */
   @Delete(':tokenId')
   @HttpCode(200)
+  @RequireScope('projects:write')
   revoke(
     @CurrentUser() user: AuthUser,
     @Param('projectId') projectId: string,

@@ -11,6 +11,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CustomFieldsService } from './custom-fields.service';
 import { CreateCustomFieldDto, UpdateCustomFieldDto } from './dto/custom-field.dto';
 import { CurrentUser, AuthUser } from '../auth/current-user.decorator';
+import { RequireScope } from '../auth/require-scope.decorator';
 
 @ApiTags('custom-fields')
 @ApiBearerAuth()
@@ -19,6 +20,7 @@ export class CustomFieldsController {
   constructor(private readonly customFields: CustomFieldsService) {}
 
   @Get('projects/:projectId/custom-fields')
+  @RequireScope('projects:read')
   findAll(
     @CurrentUser() user: AuthUser,
     @Param('projectId') projectId: string,
@@ -27,6 +29,7 @@ export class CustomFieldsController {
   }
 
   @Post('projects/:projectId/custom-fields')
+  @RequireScope('projects:write')
   create(
     @CurrentUser() user: AuthUser,
     @Param('projectId') projectId: string,
@@ -36,6 +39,7 @@ export class CustomFieldsController {
   }
 
   @Patch('custom-fields/:id')
+  @RequireScope('projects:write')
   update(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
@@ -45,6 +49,7 @@ export class CustomFieldsController {
   }
 
   @Delete('custom-fields/:id')
+  @RequireScope('projects:write')
   remove(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.customFields.remove(user.id, id);
   }

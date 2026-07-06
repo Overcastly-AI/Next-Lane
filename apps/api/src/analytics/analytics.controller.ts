@@ -3,6 +3,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { AnalyticsService } from './analytics.service';
 import { CurrentUser, AuthUser } from '../auth/current-user.decorator';
 import { AnalyticsQueryDto } from './dto/analytics-query.dto';
+import { RequireScope } from '../auth/require-scope.decorator';
 
 @ApiTags('analytics')
 @ApiBearerAuth()
@@ -18,6 +19,7 @@ export class AnalyticsController {
    * global ValidationPipe enforces these bounds and returns 400 on violation.
    */
   @Get('me/analytics')
+  @RequireScope('issues:read')
   personalAnalytics(
     @CurrentUser() user: AuthUser,
     @Query() query: AnalyticsQueryDto,
@@ -33,6 +35,7 @@ export class AnalyticsController {
    * an integer in [1, 366] — the global ValidationPipe returns 400 on violation.
    */
   @Get('projects/:projectId/analytics')
+  @RequireScope('projects:read')
   projectAnalytics(
     @CurrentUser() user: AuthUser,
     @Param('projectId') projectId: string,

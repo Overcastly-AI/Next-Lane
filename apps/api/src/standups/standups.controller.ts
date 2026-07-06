@@ -3,6 +3,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { StandupsService } from './standups.service';
 import { UpsertStandupDto, StandupDateQueryDto } from './dto/standup.dto';
 import { CurrentUser, AuthUser } from '../auth/current-user.decorator';
+import { RequireScope } from '../auth/require-scope.decorator';
 
 @ApiTags('standups')
 @ApiBearerAuth()
@@ -18,6 +19,7 @@ export class StandupsController {
    * `blockerLinks` with resolved issue refs.
    */
   @Get('projects/:projectId/standups')
+  @RequireScope('projects:read')
   findDigest(
     @CurrentUser() user: AuthUser,
     @Param('projectId') projectId: string,
@@ -37,6 +39,7 @@ export class StandupsController {
    * NestJS resolves it by path specificity — `/me` never matches a CUID.
    */
   @Get('projects/:projectId/standups/me')
+  @RequireScope('projects:read')
   findMyEntry(
     @CurrentUser() user: AuthUser,
     @Param('projectId') projectId: string,
@@ -53,6 +56,7 @@ export class StandupsController {
    * issues. Does not persist anything — seeds the standup form.
    */
   @Get('projects/:projectId/standups/prefill')
+  @RequireScope('projects:read')
   prefill(
     @CurrentUser() user: AuthUser,
     @Param('projectId') projectId: string,
@@ -68,6 +72,7 @@ export class StandupsController {
    * Returns the full StandupEntryDto.
    */
   @Post('projects/:projectId/standups')
+  @RequireScope('projects:write')
   upsert(
     @CurrentUser() user: AuthUser,
     @Param('projectId') projectId: string,

@@ -11,6 +11,10 @@
  * unset AND no enabled DB config saved from the admin settings screen) both
  * routes respond 404 — the feature is fully absent, not just hidden, for
  * self-hosters who never set it up.
+ *
+ * Not `@RequireScope`-gated: both routes are `@Public()` browser navigations
+ * with no bearer token at all — there is no PAT/JWT principal for
+ * `ScopeGuard` to check a scope against.
  */
 
 import { BadRequestException, Controller, Get, NotFoundException, Query, Req, Res } from '@nestjs/common';

@@ -17,6 +17,7 @@ import {
   CreateIssueFromTemplateDto,
 } from './dto/issue-template.dto';
 import { CurrentUser, AuthUser } from '../auth/current-user.decorator';
+import { RequireScope } from '../auth/require-scope.decorator';
 
 @ApiTags('issue-templates')
 @ApiBearerAuth()
@@ -25,6 +26,7 @@ export class IssueTemplatesController {
   constructor(private readonly service: IssueTemplatesService) {}
 
   @Get('projects/:projectId/issue-templates')
+  @RequireScope('projects:read')
   findAll(
     @CurrentUser() user: AuthUser,
     @Param('projectId') projectId: string,
@@ -33,6 +35,7 @@ export class IssueTemplatesController {
   }
 
   @Post('projects/:projectId/issue-templates')
+  @RequireScope('projects:write')
   create(
     @CurrentUser() user: AuthUser,
     @Param('projectId') projectId: string,
@@ -42,6 +45,7 @@ export class IssueTemplatesController {
   }
 
   @Patch('issue-templates/:id')
+  @RequireScope('projects:write')
   update(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
@@ -52,11 +56,13 @@ export class IssueTemplatesController {
 
   @Delete('issue-templates/:id')
   @HttpCode(HttpStatus.NO_CONTENT)
+  @RequireScope('projects:write')
   remove(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.service.remove(user.id, id);
   }
 
   @Post('issue-templates/:id/create-issue')
+  @RequireScope('issues:write')
   createFromTemplate(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,

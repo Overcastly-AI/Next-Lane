@@ -17,6 +17,7 @@ import * as crypto from 'crypto';
 import { Response } from 'express';
 import { AttachmentsService, DEFAULT_MAX_BYTES } from './attachments.service';
 import { CurrentUser, AuthUser } from '../auth/current-user.decorator';
+import { RequireScope } from '../auth/require-scope.decorator';
 
 /** Multer configuration: write to OS temp dir under a UUID name.
  * The service moves the file to UPLOADS_DIR once validations pass. */
@@ -40,6 +41,7 @@ export class AttachmentsController {
 
   /** POST /issues/:id/attachments — upload a file to an issue. */
   @Post('issues/:id/attachments')
+  @RequireScope('issues:write')
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('file', multerOptions))
   upload(
@@ -52,6 +54,7 @@ export class AttachmentsController {
 
   /** GET /issues/:id/attachments — list attachment metadata for an issue. */
   @Get('issues/:id/attachments')
+  @RequireScope('issues:read')
   list(
     @CurrentUser() user: AuthUser,
     @Param('id') issueId: string,
@@ -61,6 +64,7 @@ export class AttachmentsController {
 
   /** GET /attachments/:id — stream the file to the client. */
   @Get('attachments/:id')
+  @RequireScope('issues:read')
   async download(
     @CurrentUser() user: AuthUser,
     @Param('id') attachmentId: string,
@@ -112,6 +116,7 @@ export class AttachmentsController {
 
   /** DELETE /attachments/:id — remove an attachment (uploader or project admin). */
   @Delete('attachments/:id')
+  @RequireScope('issues:write')
   remove(
     @CurrentUser() user: AuthUser,
     @Param('id') attachmentId: string,

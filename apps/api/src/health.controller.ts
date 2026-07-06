@@ -46,6 +46,9 @@ const APP_VERSION = resolveVersion();
  *
  * Both endpoints return the `X-Request-Id` header (correlation id) that was
  * attached by pino-http for the request.
+ *
+ * Not `@RequireScope`-gated: both routes are `@Public()` — no bearer auth at
+ * all, so there is no `request.user`/PAT scope for `ScopeGuard` to check.
  */
 @ApiTags('health')
 @Controller('health')

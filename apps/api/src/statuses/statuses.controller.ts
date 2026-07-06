@@ -11,6 +11,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { StatusesService } from './statuses.service';
 import { CreateStatusDto, UpdateStatusDto } from './dto/status.dto';
 import { CurrentUser, AuthUser } from '../auth/current-user.decorator';
+import { RequireScope } from '../auth/require-scope.decorator';
 
 @ApiTags('statuses')
 @ApiBearerAuth()
@@ -19,6 +20,7 @@ export class StatusesController {
   constructor(private readonly statuses: StatusesService) {}
 
   @Get('projects/:projectId/statuses')
+  @RequireScope('projects:read')
   findAll(
     @CurrentUser() user: AuthUser,
     @Param('projectId') projectId: string,
@@ -27,6 +29,7 @@ export class StatusesController {
   }
 
   @Post('projects/:projectId/statuses')
+  @RequireScope('projects:write')
   create(
     @CurrentUser() user: AuthUser,
     @Param('projectId') projectId: string,
@@ -36,6 +39,7 @@ export class StatusesController {
   }
 
   @Patch('statuses/:id')
+  @RequireScope('projects:write')
   update(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
@@ -45,6 +49,7 @@ export class StatusesController {
   }
 
   @Delete('statuses/:id')
+  @RequireScope('projects:write')
   remove(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.statuses.remove(user.id, id);
   }
