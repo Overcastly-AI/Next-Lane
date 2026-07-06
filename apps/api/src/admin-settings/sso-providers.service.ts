@@ -7,8 +7,13 @@
  * Every write here is instance-admin gated by the controller
  * (`assertInstanceAdmin`, same as `AdminSettingsService`).
  */
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import type { SsoProvider } from '@prisma/client';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { Prisma, type SsoProvider } from '@prisma/client';
 import { Role, SsoProviderType, type SsoProviderDto } from '@next-lane/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { encryptOidcClientSecret } from '../auth/oidc/oidc-secret-crypto.util';
@@ -84,7 +89,7 @@ export class SsoProvidersService {
     }
   }
 
-  /** Generates a unique slug from `label` (or uses the admin-supplied one, checked for uniqueness). Retries on collision (P2002-style race), mirroring `WorkspacesService.uniqueSlug`. */
+  /** Optimistic unique slug from `label` (or the admin-supplied one): reads existing rows and appends `-N` on a match. This is only the pre-check — the create() write path catches the P2002 a concurrent create can still cause and retries, mirroring `WorkspacesService`. */
   private async uniqueSlug(candidate: string): Promise<string> {
     const base = candidate || 'provider';
     let slug = base;
@@ -119,30 +124,46 @@ export class SsoProvidersService {
       await this.assertJitWorkspaceExists(dto.jitDefaultWorkspaceId);
     }
 
-    const slug = dto.slug ? await this.uniqueSlug(dto.slug) : await this.uniqueSlug(slugify(dto.label));
+    const baseSlug = dto.slug ? dto.slug : slugify(dto.label);
+    const data = {
+      type: dto.type,
+      label: dto.label,
+      enabled: dto.enabled ?? true,
+      issuerUrl: dto.type === SsoProviderType.OIDC ? (dto.issuerUrl ?? null) : null,
+      clientId: dto.type === SsoProviderType.OIDC ? (dto.clientId ?? null) : null,
+      clientSecretEncrypted:
+        dto.type === SsoProviderType.OIDC && dto.clientSecret
+          ? encryptOidcClientSecret(dto.clientSecret)
+          : null,
+      samlEntryPoint: dto.type === SsoProviderType.SAML ? (dto.samlEntryPoint ?? null) : null,
+      samlIdpIssuer: dto.type === SsoProviderType.SAML ? (dto.samlIdpIssuer ?? null) : null,
+      samlIdpCertificate: dto.type === SsoProviderType.SAML ? (dto.samlIdpCertificate ?? null) : null,
+      samlSpEntityId: dto.type === SsoProviderType.SAML ? (dto.samlSpEntityId ?? null) : null,
+      jitDefaultWorkspaceId: dto.jitDefaultWorkspaceId ?? null,
+      jitDefaultRole: dto.jitDefaultRole ?? Role.VIEWER,
+    };
 
-    const row = await this.prisma.ssoProvider.create({
-      data: {
-        type: dto.type,
-        label: dto.label,
-        slug,
-        enabled: dto.enabled ?? true,
-        issuerUrl: dto.type === SsoProviderType.OIDC ? (dto.issuerUrl ?? null) : null,
-        clientId: dto.type === SsoProviderType.OIDC ? (dto.clientId ?? null) : null,
-        clientSecretEncrypted:
-          dto.type === SsoProviderType.OIDC && dto.clientSecret
-            ? encryptOidcClientSecret(dto.clientSecret)
-            : null,
-        samlEntryPoint: dto.type === SsoProviderType.SAML ? (dto.samlEntryPoint ?? null) : null,
-        samlIdpIssuer: dto.type === SsoProviderType.SAML ? (dto.samlIdpIssuer ?? null) : null,
-        samlIdpCertificate: dto.type === SsoProviderType.SAML ? (dto.samlIdpCertificate ?? null) : null,
-        samlSpEntityId: dto.type === SsoProviderType.SAML ? (dto.samlSpEntityId ?? null) : null,
-        jitDefaultWorkspaceId: dto.jitDefaultWorkspaceId ?? null,
-        jitDefaultRole: dto.jitDefaultRole ?? Role.VIEWER,
-      },
-    });
-
-    return toSsoProviderDto(row);
+    // The uniqueSlug pre-check is optimistic; a concurrent create can still
+    // win the unique index between our read and write. Catch that P2002 and
+    // retry with a freshly-computed slug (mirrors WorkspacesService.create).
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const slug = await this.uniqueSlug(baseSlug);
+      try {
+        const row = await this.prisma.ssoProvider.create({ data: { ...data, slug } });
+        return toSsoProviderDto(row);
+      } catch (err) {
+        if (
+          err instanceof Prisma.PrismaClientKnownRequestError &&
+          err.code === 'P2002' &&
+          attempt < 4
+        ) {
+          continue; // slug raced — recompute and retry
+        }
+        throw err;
+      }
+    }
+    // Unreachable in practice (the loop returns or throws on the last attempt).
+    throw new ConflictException('Could not allocate a unique SSO provider slug.');
   }
 
   async update(id: string, dto: UpdateSsoProviderDto): Promise<SsoProviderDto> {

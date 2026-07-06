@@ -4,6 +4,7 @@
  * `OidcConfigService` singleton, covered separately).
  */
 import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { Role, SsoProviderType } from '@next-lane/shared';
 import { SsoProvidersService, toSsoProviderDto, defaultSpEntityId } from './sso-providers.service';
 import type { PrismaService } from '../prisma/prisma.service';
@@ -151,6 +152,44 @@ describe('SsoProvidersService', () => {
       const data = prisma.ssoProvider.create.mock.calls[0][0].data;
       expect(data.clientSecretEncrypted).toBeDefined();
       expect(data.clientSecretEncrypted).not.toContain('super-secret-raw-value');
+    });
+
+    it('retries the WRITE on a P2002 slug race, then succeeds (review follow-up on 5e0fe6c)', async () => {
+      // The pre-check saw the slug free, but a concurrent create won the
+      // unique index — the first write raises P2002, the retry succeeds.
+      const p2002 = new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: 'test',
+      });
+      prisma.ssoProvider.create
+        .mockRejectedValueOnce(p2002)
+        .mockResolvedValueOnce(baseRow({ slug: 'okta-1' }));
+
+      const dto = await service.create({
+        type: SsoProviderType.OIDC,
+        label: 'Okta',
+        issuerUrl: 'https://idp.example.com',
+        clientId: 'client-1',
+        clientSecret: 'shh',
+      } as never);
+
+      expect(prisma.ssoProvider.create).toHaveBeenCalledTimes(2);
+      expect(dto.slug).toBe('okta-1');
+    });
+
+    it('propagates a non-P2002 create error without retrying', async () => {
+      prisma.ssoProvider.create.mockRejectedValue(new Error('db down'));
+
+      await expect(
+        service.create({
+          type: SsoProviderType.OIDC,
+          label: 'Okta',
+          issuerUrl: 'https://idp.example.com',
+          clientId: 'client-1',
+          clientSecret: 'shh',
+        } as never),
+      ).rejects.toThrow('db down');
+      expect(prisma.ssoProvider.create).toHaveBeenCalledTimes(1);
     });
   });
 
