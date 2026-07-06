@@ -14,6 +14,43 @@ This section summarizes the major capabilities delivered in the pre-1.0
 development phase. A versioned release will be tagged once the v1 criteria in
 [`docs/ROADMAP.md`](./docs/ROADMAP.md) are complete.
 
+### Added — 2026-07-06 (PAT-scope route-coverage guard + GitLab auto-transition e2e parity)
+
+**Two regression-guard hardening items, closing "shipped but never
+structurally regression-tested" gaps on already-shipped features.**
+- **PAT-scope route-coverage test:** new `apps/api/src/pat-scope-
+  coverage.integration.spec.ts` boots the real `AppModule` and walks every
+  registered controller route via Nest's `DiscoveryService`/`MetadataScanner`,
+  asserting each route either carries `@RequireScope` or is on a small,
+  explicit, per-route-reasoned `EXEMPTIONS` allowlist (auth/oidc/health/
+  public/me/personal-boards-private/webhook-receivers). The route↔scope
+  matrix was extracted from `pat-scope-rollout.integration.spec.ts` into a
+  shared `pat-scope-matrix.fixture.ts` (one exported constant, imported by
+  both specs).
+- **Real drift caught and fixed by writing the guard:** `github.controller.ts`
+  and `gitlab.controller.ts` had been `@RequireScope`-gated since before the
+  Hardening Night PAT-scope rollout but were never added to the matrix (12
+  rows added); `GET /projects/:id/activity` was scoped but missing from the
+  matrix (1 row added); `GET /workspaces/:id/logo` (a `@Public()`
+  branding-asset route) had no exemption entry (added). Matrix 143→190 rows;
+  full integration suite 307→393 tests, all green.
+- **Both-ways proof:** temporarily removing `@RequireScope('issues:write')`
+  from `IssuesController#create` made the new spec fail, naming the exact
+  unscoped route; reverting made it pass again.
+- **GitLab auto-transition e2e parity:** new `apps/web/e2e/gitlab-auto-
+  transition.spec.ts` mirrors `pr-auto-transition.spec.ts`'s GitHub depth for
+  GitLab — settings-toggle enable/persist, a locally `X-Gitlab-Token`-tokened
+  `Merge Request Hook` webhook (`state: 'merged'`) driving a real status
+  transition (verified via REST, not just the UI), the shared board-card
+  `issue-pr-badge` flipping open→merged, the MR link visible in the issue
+  drawer, disabled-by-default regression, and mobile no-overflow. 6 new e2e
+  cases, desktop + mobile, zero egress, zero app-code changes (the feature
+  already shipped for both providers).
+- **MCP:** not applicable to either item — test-coverage-only work, no new
+  API/agent surface.
+
+See `docs/BACKLOG.md` § Already Done for full detail.
+
 ### Added — 2026-07-06 (Dashboard sharing — public read-only embed)
 
 **A dashboard can now be published read-only, no-login, to a bookmarkable

@@ -105,6 +105,12 @@ Format: `- [ ] (P1, M) title — description [src]` · P0 critical / P1 now / P2
 > reflected in ✅ Phase 9 entries and § Current focus), so no edit was
 > needed there.
 
+> **Build update (2026-07-06, same day):** Ready items #2 (PAT-scope
+> route-coverage test) and #3 (GitLab auto-transition e2e parity) shipped —
+> see the ticked entries in § Already Done and the matching ROADMAP § Current
+> focus entry. Removed from the Ready queue below; the former items #4/#5
+> renumbered to #2/#3.
+
 ---
 
 ## Ready (top of queue)
@@ -135,40 +141,7 @@ decision-gated items kept visible rather than silently dropped:
    enterprise/agency admin still hits. [product-auditor Pass 9/10/11/12
    admin-controls carryover; VISION.md § Better-than-Jira gaps #2]
 
-2. **Dynamic PAT-scope route-coverage test (Nest `DiscoveryService` walk)**
-   (P2, S/M) — **Scope:** a companion spec to
-   `pat-scope-rollout.integration.spec.ts` that enumerates every registered
-   controller method at runtime via `DiscoveryService`/`Reflector` and
-   asserts each carries `@RequireScope` metadata or is on a small,
-   centrally-documented identity-exemption allowlist (`/me`, `/auth`,
-   `/health`, `/public`). **Acceptance:** the new spec fails if a future
-   route ships with no `@RequireScope` and isn't on the allowlist; green
-   today against the current 143-route matrix; the allowlist is one
-   exported constant, not duplicated across specs. **Territory:** new
-   `apps/api/src/pat-scope-coverage.integration.spec.ts`; read-only
-   introspection, touches no production code. **Rationale:** cheap, fully
-   unblocked, code-reviewer-endorsed — turns "did we forget one" on the
-   freshly-shipped 143-route PAT-scope rollout into structurally impossible
-   to silently drift again. [code-reviewer 2026-07-06; engineering-auditor
-   Pass 13 Ideation #1]
-
-3. **GitLab auto-transition e2e parity** (P2, S — promoted from P3) —
-   **Scope:** mirror `pr-auto-transition.spec.ts`'s GitHub coverage for
-   GitLab: a locally token-verified `merged` MR webhook driven end-to-end
-   through the auto-transition toggle, asserted against the REST issue
-   endpoint, not just the UI. **Acceptance:** new/extended e2e case(s) at the
-   same depth as the existing GitHub case (badge open→merged flip,
-   settings-toggle persists across reload, a real signed-webhook-driven
-   status transition, disabled-by-default regression, mobile no-overflow);
-   desktop + mobile green. **Territory:** `apps/web/e2e/pr-auto-transition.
-   spec.ts` (or a new sibling spec); no app-code change expected — the
-   feature already shipped for both providers, this closes a
-   regression-guard gap only. **Rationale:** cheap, fully unblocked; the
-   same "hand-verified once but never regression-tested" risk class as item
-   2, on the feature that flipped Integrations closest to Better.
-   [qa-tester 2026-07-06 P3, promoted]
-
-4. **Product decision + implementation: distinct "switch workspace" vs.
+2. **Product decision + implementation: distinct "switch workspace" vs.
    "view workspace page" affordance** (P2, S, decision-needed) — since the
    route-derived tenant-context fix shipped, simply viewing (no save
    required) any workspace-scoped page now permanently persists that
@@ -176,10 +149,10 @@ decision-gated items kept visible rather than silently dropped:
    founder/product call** before building either direction: is "wherever
    you last navigated" the intended default-landing behavior, or should
    "switching" be a distinct, explicit action separate from incidental
-   viewing? Filed decision-gated, same pattern as item 5, rather than
+   viewing? Filed decision-gated, same pattern as item 3, rather than
    guessing at intent. [product-auditor Pass-12 rank #8]
 
-5. **Cross-project issue MOVE** (P2, M, decision-needed) — a mis-filed issue
+3. **Cross-project issue MOVE** (P2, M, decision-needed) — a mis-filed issue
    cannot be moved to the correct project today; the only correction path is
    delete+recreate, which loses history/comments/links and the original key
    (measured: 2 calls, real data loss — MCP-QA pass 1 finding 4). Product-wide,
@@ -454,6 +427,10 @@ _Hardening Night close-out ingest (2026-07-06) — P2s:_
 - [x] (P2, S) Docs site Overcastly v2 re-theme (2026-06-28) — `docs-site/.vitepress/theme/custom.css` rewritten: Overcastly v2 token system (canvas `#15161a`/`#1c1d22`/`#25262c`, ink `#f4f4f1`/`#b8b9b6`/`#6f7075`, accent `#4F8BFF`/`#7AA8FF`, success `#7BD389`, hairlines `rgba(255,255,255,0.08/0.16)`); dotted-grid body background (signature element, radial-gradient dots at 32px grid); pill buttons (`999px`); mono-uppercase eyebrows on sidebar group titles, table `<th>`, code-block lang labels, custom-block titles; `h2` accent bar; `appearance:'dark'` in `config.ts`; SVG logos + favicon to `#4F8BFF`; theme-color meta to `#4F8BFF`; WCAG-AA verified; build clean 4.4s. [oss-curator / frontend-design]
 
 ## Already Done (recent shipments — ticked for reference)
+
+- [x] (P2, S/M) **Dynamic PAT-scope route-coverage test (Nest `DiscoveryService` walk)** ✅ shipped 2026-07-06 (Ready queue #2) — a new `apps/api/src/pat-scope-coverage.integration.spec.ts` boots the real `AppModule` and walks every registered controller route via `DiscoveryService`/`MetadataScanner`, asserting each route either carries `@RequireScope` metadata or is on an explicit, reasoned `EXEMPTIONS` allowlist (one entry per route, category ∈ auth/oidc/health/public/me/personal-boards-private/webhook-receivers — mirrors the in-code exemption docs from `4aec12a`); every `EXEMPTIONS` entry and every scoped route is also cross-checked against a real currently-registered route (catches stale entries either direction). The route↔scope matrix was extracted from `pat-scope-rollout.integration.spec.ts` into a shared `pat-scope-matrix.fixture.ts` (one exported `MATRIX` constant + `normalizeRoutePattern` helper, imported by both specs — not duplicated, per the acceptance criteria). Placed as an integration spec (not a DB-free unit spec): booting `AppModule` triggers `PrismaService#onModuleInit`'s `$connect()`, so it needs the same real Postgres the sibling integration specs use, even though it issues zero queries itself — runs in the same `jest.integration.config.js` CI lane. **Writing the guard caught real, pre-existing drift**, fixed in the same commit: `github.controller.ts`/`gitlab.controller.ts` had been `@RequireScope`-gated since before the Hardening Night rollout (`4aec12a`) but were never added to the matrix (12 rows added covering both controllers' get/upsert/remove/automation/links/live-status routes); `GET /projects/:id/activity` (`ProjectsController#activity`) was scoped `projects:read` but missing from the matrix (1 row added); `GET /workspaces/:id/logo` (`WorkspacesController#serveLogo`, a `@Public()` branding-asset stream) had no exemption entry (added, category `public`). Matrix grew 143→190 rows; `pat-scope-rollout.integration.spec.ts`'s DENY/ALLOW behavioral tests now data-drive all 190 (380 assertions, up from 286); full integration suite 307→393 tests, all green; API unit suite unchanged at 1931/90 suites (the new specs are `*.integration.spec.ts`, outside that lane); `tsc --noEmit` clean. **Both-ways proof:** temporarily removed `@RequireScope('issues:write')` from `IssuesController#create` with no exemption — the spec failed, naming the exact route (`POST /issues (IssuesController#create)`) plus the now-orphaned matrix row; reverted, spec green again. Validated in an isolated `git worktree` (checked out at the pre-change commit, private `@prisma/client` + `@next-lane/shared` symlink chain) rather than the shared working tree, since a sibling agent was concurrently mid-edit on `admin-settings`/`auth` files in the same checkout — avoids false-negative/false-positive gate results from someone else's in-flight, not-yet-compiling code. MCP: not agent-appropriate — a CI/test-suite guard with no API surface. [code-reviewer 2026-07-06; engineering-auditor Pass 13 Ideation #1]
+
+- [x] (P2, S) **GitLab auto-transition e2e parity** ✅ shipped 2026-07-06 (Ready queue #3, promoted from P3) — new `apps/web/e2e/gitlab-auto-transition.spec.ts` mirrors `pr-auto-transition.spec.ts`'s GitHub coverage at the same depth, GitLab semantics: enables `gitlab-auto-transition-toggle` targeting "Done" via the Settings UI (persists across reload); POSTs a locally-crafted `Merge Request Hook` webhook carrying the real `X-Gitlab-Token` shared secret the API returned on connect (no HMAC — GitLab's webhook auth model, unlike GitHub's `X-Hub-Signature-256`) with `object_attributes.state: 'opened'` then `'merged'` (GitLab's literal merge signal, vs. GitHub's `merged: true` boolean — see `gitlab.service.ts#handleMergeRequestEvent`); asserts the board card's `issue-pr-badge`/`data-pr-state` badge — shared across both providers via `issue.mapper.ts`'s `prLinkSummary` aggregation, so no new badge testid was needed — flips open→merged; the linked issue's real `statusId` transitions to "Done" via a REST re-fetch (not just a UI observation); the MR link (`!<iid>`, merged state) renders in the issue drawer's `gitlab-links-section`; a disabled-by-default regression case (webhook links the MR but never moves the issue, verified both via the REST `autoTransitionOnMerge: false` default and an unchanged `statusId`); and a mobile (390px) no-horizontal-overflow case for the badge. 6 new e2e cases; zero GitHub/GitLab egress; zero app-code changes (the feature already shipped for both providers in earlier commits — this closes a regression-guard gap only). Verified in an isolated `git worktree` (own Postgres DB, own API :4000 / web-preview :3000 ports, `RATE_LIMIT_DISABLED=true`/`WEBHOOK_ALLOW_PRIVATE=true`) to avoid colliding with a concurrently-running sibling QA instance on other ports: 6/6 green on both the `chromium-desktop` and `mobile-chrome` Playwright projects; re-ran alongside the existing `gitlab-integration.spec.ts` (7 cases) and `pr-auto-transition.spec.ts` (3 cases) for regression — 22/22 green, no interference between the two providers' specs. MCP: not applicable — Playwright e2e coverage only, no new API/MCP surface. [qa-tester 2026-07-06 P3, promoted]
 
 - [x] (P1, S–M) **Config-parity CI smoke test: `docker-compose.yml` vs `.env.example`** ✅ shipped 2026-07-06 — closes the *class* behind the same-day compose env-passthrough fix (`3c22f21`, audit pass 13 Risk 1: SMTP/CORS/etc. never reached the container): a future documented env var that isn't forwarded (or a forwarded var that isn't documented) now fails CI instead of shipping silently broken. New `scripts/smoke-config-parity.sh` (mirrors the `scripts/smoke-web-csp.sh` precedent; bash + docker + jq only, no build/containers — `docker compose config` just parses + interpolates): parses `.env.example` for both active (`VAR=value`) and commented-optional (`# VAR=value`) declarations, anchored at line-start so prose mentions of a var name (`OIDC_ISSUER_URL — the provider's...`) are never mistaken for a declaration; renders `docker compose config --format json` with a **distinct sentinel value per documented var** (not just "is the key present" — proves real `${VAR}` passthrough, not a hardcoded/default value coincidentally matching); asserts every documented var (minus a reviewed, one-reason-each `IGNORE_NOT_FORWARDED` list — `DATABASE_URL`/`REDIS_URL`/`API_PORT` composed or hardcoded inline; `POSTGRES_*`/`REDIS_PORT`/`WEB_PORT` belong to other services' port mappings; `VITE_API_URL` is a web build ARG; `UPLOADS_DIR` intentionally container-internal; `RESET_BASE_URL` a dead fallback superseded by `WEB_BASE_URL`; `OTEL_*` a documented future/stub with no reading code yet) round-trips its sentinel into the rendered `api` service environment. **Reverse direction too:** every `${VAR}` the api service's own compose stanza reads must be documented in `.env.example` (empty `IGNORE_UNDOCUMENTED` list today) — this direction caught FIVE real, live documentation gaps at HEAD (`AUTO_SEED`, `WEB_BASE_URL`, `GITLAB_TOKEN_ENCRYPTION_KEY`, `GITLAB_WEBHOOK_BASE_URL`, `OIDC_CONFIG_ENCRYPTION_KEY` — all genuinely forwarded/consumed by code but absent from `.env.example`), fixed in `.env.example` in the same commit (closing the standalone `GITLAB_TOKEN_ENCRYPTION_KEY` P3 backlog item — Pass 13 Risk 5 — as a side effect) so the check is green, not silenced. Host-port vars (`POSTGRES_PORT`/`REDIS_PORT`/`API_PORT`/`WEB_PORT`) get a valid numeric sentinel instead of an alnum string (compose validates `ports:` values; they're ignore-listed for the forward check anyway). Wired into CI as a new early step in `.github/workflows/ci.yml`'s existing `docker-build` job ("Production image build (compose)" — the docker-compose build guard), before the slower image build so a config-parity break fails fast. Both-ways-proven: green at HEAD (29 non-ignored vars round-tripped, 33 forwarded vars all documented); locally reverting `SMTP_HOST`'s passthrough line in `docker-compose.yml` reproduced the exact original bug class and the script failed with `MISSING: .env.example documents "SMTP_HOST" but it does not appear at all in the rendered api service environment` — reverted after confirming. `shellcheck`-clean. [engineering-auditor Pass 13 Ideation #2]
 
