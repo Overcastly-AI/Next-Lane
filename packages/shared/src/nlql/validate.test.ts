@@ -149,9 +149,33 @@ describe('resolveQueryNames (MCP-QA pass 1, finding 1 residual)', () => {
     expect(resolveQueryNames('reporter = me()')).toEqual({ ok: true });
   });
 
-  it('never flags an opaque-id-shaped operand, even when unresolved (may be a legitimate stale id)', () => {
-    const staleId = 'usr-cljk3n9d80000ab12removedmember';
-    expect(resolveQueryNames(`assignee = "${staleId}"`, { users: [ALICE] })).toEqual({
+  it('never flags a cuid/UUID-shaped operand, even when unresolved (may be a legitimate stale id)', () => {
+    const staleCuid = 'cljk3n9d80000ab12rem0ved'; // realistic Prisma cuid() shape
+    expect(resolveQueryNames(`assignee = "${staleCuid}"`, { users: [ALICE] })).toEqual({
+      ok: true,
+    });
+    const staleUuid = '6f1e0a4c-9b2d-4e3f-8a51-0c9d7e6b5a41';
+    expect(resolveQueryNames(`assignee = "${staleUuid}"`, { users: [ALICE] })).toEqual({
+      ok: true,
+    });
+  });
+
+  it('DOES flag a long single-token unresolved name that is not cuid/UUID-shaped (review follow-up on 169f7c1)', () => {
+    // ≥20 chars, no whitespace — the original "length ≥ 20, no whitespace"
+    // heuristic silently passed this, resurrecting the zero-results bug for
+    // long handles/hyphenated names.
+    const result = resolveQueryNames('assignee = "workflow-migration-bot-2024"', {
+      users: [ALICE],
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).toContain('unknown user "workflow-migration-bot-2024"');
+    }
+  });
+
+  it('resolves a long id-SHAPED display name when it exists (name resolution runs before id-shape leniency)', () => {
+    const bot = { id: 'u-bot', name: 'c0000000000000000000bot', email: 'bot@x.dev' };
+    expect(resolveQueryNames(`assignee = "${bot.name}"`, { users: [bot] })).toEqual({
       ok: true,
     });
   });

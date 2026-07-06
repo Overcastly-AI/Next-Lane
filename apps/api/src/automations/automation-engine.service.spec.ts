@@ -558,7 +558,7 @@ describe('AutomationEngineService', () => {
     });
 
     it('does not fail on an opaque-id-shaped assignee operand even when unresolved', async () => {
-      const staleId = 'usr-cljk3n9d80000ab12removedmember';
+      const staleId = 'cljk3n9d80000ab12rem0ved'; // realistic Prisma cuid() shape
       const rule = makeRule({ condition: `assignee = "${staleId}"` });
       const prisma = makePrisma([rule]);
       prisma.issue.findUnique.mockResolvedValue({ ...ISSUE_ROW, assigneeId: 'u-alex' });

@@ -770,7 +770,7 @@ describe('DashboardsService', () => {
     });
 
     it('does not flag an opaque-id-shaped assignee operand even when unresolved', async () => {
-      const staleId = 'usr-cljk3n9d80000ab12removedmember';
+      const staleId = 'cljk3n9d80000ab12rem0ved'; // realistic Prisma cuid() shape
       prisma.dashboardGadget.findMany.mockResolvedValue([
         makeGadgetRow({ query: `assignee = "${staleId}"` }),
       ]);

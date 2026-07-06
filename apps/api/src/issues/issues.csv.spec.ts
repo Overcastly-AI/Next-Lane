@@ -748,7 +748,7 @@ describe('IssuesService.exportCsv — unresolved user/sprint name → 400', () =
   });
 
   it('does NOT 400 on an opaque-id-shaped assignee operand even when it matches no current member', async () => {
-    const staleId = 'usr-cljk3n9d80000ab12removedmember';
+    const staleId = 'cljk3n9d80000ab12rem0ved'; // realistic Prisma cuid() shape
     const prisma = makePrisma({ issues: [makeIssueRow()], members: [alex] });
     const service = makeService(prisma);
 

@@ -182,14 +182,28 @@ export interface ResolveNamesContext {
 /**
  * Heuristic for "this operand could legitimately be a raw id the caller
  * didn't happen to load into `users`/`sprints`" (e.g. a former workspace
- * member's id still referenced by historical data). Prisma ids (`cuid()`,
- * 25 chars) and UUIDs (36 chars) both clear this bar; real display names and
- * sprint names ("Alex Rivera", "July-B", "Sprint 1 - Checkout Foundations")
- * do not — they either contain whitespace or are short. Only literals that
+ * member's id still referenced by historical data). Matches the ACTUAL id
+ * shapes this system produces — Prisma `cuid()` (leading `c`, ≥20 lowercase
+ * base-36 chars, no separators) and RFC-4122 UUIDs — rather than the looser
+ * original "≥20 chars, no whitespace" (review follow-up on 169f7c1: that
+ * bar also cleared long single-token real names like
+ * `workflow-migration-bot-2024`, silently resurrecting the zero-results bug
+ * for exactly the inputs this feature exists to catch; hyphens/digits-mixed
+ * handles fail the cuid pattern and now flag properly). Only literals that
  * fail this check are eligible to be reported as an unresolved *name*.
  */
 function looksLikeOpaqueId(value: string): boolean {
-  return !/\s/.test(value) && value.length >= 20;
+  // Prisma cuid()/cuid2: leading letter, then lowercase base-36, ≥20 total.
+  if (/^c[a-z0-9]{19,}$/.test(value)) return true;
+  // UUID (any RFC-4122 variant, case-insensitive).
+  if (
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      value,
+    )
+  ) {
+    return true;
+  }
+  return false;
 }
 
 interface ComparisonOperands {
@@ -288,11 +302,14 @@ export function resolveQueryNames(
     for (const value of values) {
       const literal = literalOperandString(value);
       if (literal === null) continue; // me()/number/boolean — never a name
-      if (looksLikeOpaqueId(literal)) continue; // could be a legitimate raw id
 
+      // Try to resolve as a name FIRST; id-shape leniency only applies to
+      // operands that also failed resolution (a resolvable name always
+      // wins, whatever its shape).
       const resolved =
         meta.kind === 'user' ? userResolves(literal, users) : sprintResolves(literal, sprints);
       if (resolved) continue;
+      if (looksLikeOpaqueId(literal)) continue; // could be a legitimate stale raw id
 
       const hint =
         meta.kind === 'user'
