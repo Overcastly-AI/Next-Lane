@@ -24,6 +24,10 @@
     "prettier": "^3.3.3"
   },
   "pnpm": {
-    "neverBuiltDependencies": ["@prisma/engines"]
+    "neverBuiltDependencies": ["@prisma/engines"],
+    "overrides": {
+      "multer": "^2.2.0",
+      "lodash": "^4.18.0"
+    }
   }
 }

@@ -2390,6 +2390,14 @@ function makeCompCreatePrisma(opts: {
         return Promise.resolve(null);
       }),
     },
+    // Default-status resolution now happens on the top-level `prisma`
+    // client BEFORE the create transaction opens (Hardening Night pass 13,
+    // issue #3: trims round-trips off the transaction's held-connection
+    // time) — mirrors `tx.status.findFirst` above for tests that don't pass
+    // an explicit `statusId`.
+    status: {
+      findFirst: jest.fn().mockResolvedValue({ id: 'status-1', category: 'TODO' }),
+    },
     user: {
       findUnique: jest.fn().mockResolvedValue({ name: 'Actor' }),
     },
@@ -2541,7 +2549,7 @@ function makeCrossProjectCreatePrisma(belongsTo: {
 }) {
   const { prisma, tx } = makeCompCreatePrisma();
   const prismaWithRefs = prisma as typeof prisma & {
-    status: { findUnique: jest.Mock };
+    status: { findUnique: jest.Mock; findFirst: jest.Mock };
     sprint: { findUnique: jest.Mock };
     issue: { findUnique: jest.Mock };
   };
@@ -2549,6 +2557,11 @@ function makeCrossProjectCreatePrisma(belongsTo: {
     findUnique: jest.fn().mockResolvedValue(
       belongsTo.statusId ? { projectId: belongsTo.statusId } : null,
     ),
+    // Every test in this describe block passes an explicit statusId, so the
+    // default-status-resolution path (`prisma.status.findFirst`, moved out
+    // of the create transaction — Hardening Night pass 13, issue #3) is
+    // never actually exercised here; stubbed only to satisfy the type.
+    findFirst: jest.fn().mockResolvedValue({ id: 'status-1', category: 'TODO' }),
   };
   prismaWithRefs.sprint = {
     findUnique: jest.fn().mockResolvedValue(
@@ -2816,6 +2829,12 @@ function makeEstimatePrisma(opts: {
         priority: 'MEDIUM',
         ...existingIssue,
       }),
+    },
+    // Default-status resolution now happens on the top-level `prisma`
+    // client BEFORE the create transaction opens (Hardening Night pass 13,
+    // issue #3) — mirrors `tx.status.findFirst` above.
+    status: {
+      findFirst: jest.fn().mockResolvedValue({ id: 'status-1', category: 'TODO' }),
     },
     user: {
       findUnique: jest.fn().mockResolvedValue({ name: 'Actor' }),

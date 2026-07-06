@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { resolveAndCheckBlocked } from '../webhooks/webhooks.service';
+import { ssrfSafeFetch, SsrfBlockedError } from '../common/ssrf-safe-fetch';
 
 export interface GithubRepoInfo {
   fullName: string;
@@ -48,9 +48,10 @@ function normalizeChecksState(state: string | undefined): GithubChecksState {
  * PR/CI status") are the first REAL calls made through this seam. Even
  * though `api.github.com` is a fixed, non-admin-supplied host (unlike
  * GitLab's self-hosted `gitlabBaseUrl`), every outbound call still goes
- * through the shared SSRF pre-flight (`resolveAndCheckBlocked` /
- * `redirect: 'manual'`, the same guard `webhooks.service.ts` uses for
- * outbound webhook delivery) for defense-in-depth and so the two clients
+ * through `ssrfSafeFetch` (`../common/ssrf-safe-fetch.ts` — DNS-resolved,
+ * IP-blocklisted, connection PINNED to the vetted address, `redirect:
+ * 'manual'`; the same guard `webhooks.service.ts` uses for outbound webhook
+ * delivery) for defense-in-depth and so all three outbound-call families
  * share one audited code path rather than diverging.
  */
 @Injectable()
@@ -67,16 +68,14 @@ export class GithubClient {
     token: string,
   ): Promise<GithubRepoInfo | null> {
     const url = `${GITHUB_API_BASE}/repos/${repoFullName}`;
-    if (await this.isBlocked(url)) return null;
     try {
-      const res = await fetch(url, {
+      const res = await ssrfSafeFetch(url, {
         headers: {
           Authorization: `Bearer ${token}`,
           Accept: 'application/vnd.github+json',
           'User-Agent': 'next-lane',
         },
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-        redirect: 'manual',
       });
       if (!res.ok) {
         this.logger.warn(
@@ -95,7 +94,11 @@ export class GithubClient {
         defaultBranch: data.default_branch,
       };
     } catch (err) {
-      this.logger.warn(`GitHub repo lookup for ${repoFullName} failed: ${String(err)}`);
+      if (err instanceof SsrfBlockedError) {
+        this.logger.warn(`GitHub repo lookup for ${repoFullName} blocked: ${err.reason}`);
+      } else {
+        this.logger.warn(`GitHub repo lookup for ${repoFullName} failed: ${String(err)}`);
+      }
       return null;
     }
   }
@@ -113,16 +116,14 @@ export class GithubClient {
     number: number,
   ): Promise<GithubPullRequestStatus | null> {
     const url = `${GITHUB_API_BASE}/repos/${repoFullName}/pulls/${number}`;
-    if (await this.isBlocked(url)) return null;
     try {
-      const res = await fetch(url, {
+      const res = await ssrfSafeFetch(url, {
         headers: {
           Authorization: `Bearer ${token}`,
           Accept: 'application/vnd.github+json',
           'User-Agent': 'next-lane',
         },
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-        redirect: 'manual',
       });
       if (!res.ok) {
         this.logger.warn(`GitHub PR lookup for ${repoFullName}#${number} returned ${res.status}`);
@@ -151,7 +152,11 @@ export class GithubClient {
         url: data.html_url,
       };
     } catch (err) {
-      this.logger.warn(`GitHub PR lookup for ${repoFullName}#${number} failed: ${String(err)}`);
+      if (err instanceof SsrfBlockedError) {
+        this.logger.warn(`GitHub PR lookup for ${repoFullName}#${number} blocked: ${err.reason}`);
+      } else {
+        this.logger.warn(`GitHub PR lookup for ${repoFullName}#${number} failed: ${String(err)}`);
+      }
       return null;
     }
   }
@@ -167,38 +172,25 @@ export class GithubClient {
     sha: string,
   ): Promise<GithubChecksState | null> {
     const url = `${GITHUB_API_BASE}/repos/${repoFullName}/commits/${sha}/status`;
-    if (await this.isBlocked(url)) return null;
     try {
-      const res = await fetch(url, {
+      const res = await ssrfSafeFetch(url, {
         headers: {
           Authorization: `Bearer ${token}`,
           Accept: 'application/vnd.github+json',
           'User-Agent': 'next-lane',
         },
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-        redirect: 'manual',
       });
       if (!res.ok) return null;
       const data = (await res.json()) as { state?: string };
       return normalizeChecksState(data.state);
     } catch (err) {
-      this.logger.warn(`GitHub checks lookup for ${repoFullName}@${sha} failed: ${String(err)}`);
+      if (err instanceof SsrfBlockedError) {
+        this.logger.warn(`GitHub checks lookup for ${repoFullName}@${sha} blocked: ${err.reason}`);
+      } else {
+        this.logger.warn(`GitHub checks lookup for ${repoFullName}@${sha} failed: ${String(err)}`);
+      }
       return null;
     }
-  }
-
-  /**
-   * SSRF pre-flight shared with `webhooks.service.ts`'s outbound webhook
-   * delivery guard (DNS-resolve + private/loopback/link-local IP blocklist).
-   * `api.github.com` is a fixed, non-admin-supplied host, so this is
-   * defense-in-depth rather than the primary risk (see `GitlabClient`, whose
-   * `baseUrl` IS admin-supplied and self-hosted).
-   */
-  private async isBlocked(url: string): Promise<boolean> {
-    const result = await resolveAndCheckBlocked(url);
-    if (result.blocked) {
-      this.logger.warn(`Outbound GitHub call to ${url} blocked: ${result.reason ?? 'blocked by SSRF policy'}`);
-    }
-    return result.blocked;
   }
 }

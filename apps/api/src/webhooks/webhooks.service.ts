@@ -1,6 +1,4 @@
 import { createHmac, randomBytes } from 'node:crypto';
-import * as dns from 'node:dns';
-import * as net from 'node:net';
 import {
   Injectable,
   Logger,
@@ -24,103 +22,16 @@ import {
 } from '../common/membership.util';
 import { CreateWebhookDto, UpdateWebhookDto } from './dto/webhook.dto';
 import { AuditService } from '../audit/audit.service';
+import { ssrfSafeFetch, SsrfBlockedError } from '../common/ssrf-safe-fetch';
 
 // ---- SSRF protection -------------------------------------------------------
-
-/**
- * Returns true if the given IP address (v4 or v6) is in a blocked range.
- *
- * Blocked ranges:
- *   IPv4: loopback 127.0.0.0/8, link-local 169.254.0.0/16,
- *         private 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16,
- *         this-network 0.0.0.0/8
- *   IPv6: loopback ::1, link-local fe80::/10, unique-local fc00::/7
- *
- * Gate: when process.env.WEBHOOK_ALLOW_PRIVATE === 'true' the caller should
- * skip this check entirely (see isBlockedUrl).
- */
-export function isBlockedIp(ip: string): boolean {
-  if (net.isIPv4(ip)) {
-    const parts = ip.split('.').map(Number);
-    const [a, b] = parts;
-    // 0.0.0.0/8 — this-network (also covers 0.0.0.0 as a default-route sentinel)
-    if (a === 0) return true;
-    // 127.0.0.0/8 — loopback
-    if (a === 127) return true;
-    // 10.0.0.0/8 — private class A
-    if (a === 10) return true;
-    // 172.16.0.0/12 — private class B (172.16–172.31)
-    if (a === 172 && b >= 16 && b <= 31) return true;
-    // 192.168.0.0/16 — private class C
-    if (a === 192 && b === 168) return true;
-    // 169.254.0.0/16 — link-local / AWS metadata
-    if (a === 169 && b === 254) return true;
-    return false;
-  }
-
-  if (net.isIPv6(ip)) {
-    // Normalise to lower-case for comparison.
-    const lower = ip.toLowerCase();
-    // ::1 — loopback
-    if (lower === '::1') return true;
-    // fe80::/10 — link-local (fe80 – febf)
-    if (/^fe[89ab][0-9a-f]:/i.test(lower)) return true;
-    // fc00::/7 — unique-local (fc00 – fdff)
-    if (/^f[cd][0-9a-f]{2}:/i.test(lower)) return true;
-    return false;
-  }
-
-  // Unknown address family — block by default (fail-closed).
-  return true;
-}
-
-/**
- * Resolves the hostname in `urlString` to all its IP addresses and returns
- * `true` if any resolved address falls in a blocked range.
- *
- * When `WEBHOOK_ALLOW_PRIVATE=true` the blocklist is entirely skipped so
- * self-hosters can target internal infrastructure they control.
- */
-export async function resolveAndCheckBlocked(urlString: string): Promise<{ blocked: boolean; reason?: string }> {
-  if (process.env.WEBHOOK_ALLOW_PRIVATE === 'true') {
-    return { blocked: false };
-  }
-
-  let hostname: string;
-  try {
-    hostname = new URL(urlString).hostname;
-  } catch {
-    return { blocked: true, reason: 'invalid URL' };
-  }
-
-  // If the hostname is already a raw IP literal, check it directly.
-  if (net.isIP(hostname)) {
-    if (isBlockedIp(hostname)) {
-      return { blocked: true, reason: `IP ${hostname} is in a blocked range` };
-    }
-    return { blocked: false };
-  }
-
-  // Resolve DNS to all addresses and check each one.
-  let addresses: dns.LookupAddress[];
-  try {
-    addresses = await dns.promises.lookup(hostname, { all: true });
-  } catch (err) {
-    // DNS resolution failure — block (fail-closed; the host doesn't exist or
-    // is unreachable; do not attempt to deliver).
-    return { blocked: true, reason: `DNS lookup failed for ${hostname}: ${String(err)}` };
-  }
-
-  for (const { address } of addresses) {
-    if (isBlockedIp(address)) {
-      return {
-        blocked: true,
-        reason: `Hostname ${hostname} resolved to blocked IP ${address}`,
-      };
-    }
-  }
-  return { blocked: false };
-}
+//
+// The DNS-resolve + IP-blocklist + connection-pinning guard now lives in the
+// shared `../common/ssrf-safe-fetch.ts` (Hardening Night pass 13, Risk 3 —
+// closes a DNS-rebinding TOCTOU by pinning the actual connection to the
+// exact address that was vetted, instead of letting `fetch()` re-resolve).
+// Re-exported here so existing imports (`./webhooks.service`) keep working.
+export { isBlockedIp, resolveAndCheckBlocked } from '../common/ssrf-safe-fetch';
 
 // How many recent delivery rows to keep per subscription; older rows are pruned
 // after each delivery to keep the log bounded.
@@ -236,20 +147,13 @@ export async function executeDelivery(
   let error: string | null = null;
   let success = false;
 
-  // SSRF pre-flight: resolve hostname and check against blocked IP ranges.
-  const ssrf = await resolveAndCheckBlocked(sub.url);
-  if (ssrf.blocked) {
-    const reason = ssrf.reason ?? 'blocked by SSRF policy';
-    return {
-      success: false,
-      responseStatus: null,
-      error: `SSRF blocked: ${reason}`,
-    };
-  }
-
   for (let attempt = 1; attempt <= MAX_DELIVERY_ATTEMPTS; attempt++) {
     try {
-      const res = await fetch(sub.url, {
+      // ssrfSafeFetch resolves + vets sub.url and PINS the connection to the
+      // vetted address (see ../common/ssrf-safe-fetch.ts) — re-vetted fresh
+      // on every attempt, each attempt's resolution and connection use the
+      // exact same address, closing the DNS-rebinding TOCTOU per attempt.
+      const res = await ssrfSafeFetch(sub.url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -258,8 +162,6 @@ export async function executeDelivery(
         },
         body: rawBody,
         signal: AbortSignal.timeout(DELIVERY_TIMEOUT_MS),
-        // Prevent a 30x from bouncing to an internal host after the SSRF check.
-        redirect: 'manual',
       });
       responseStatus = res.status;
 
@@ -274,6 +176,11 @@ export async function executeDelivery(
       }
       error = `Receiver responded ${res.status}`;
     } catch (err) {
+      if (err instanceof SsrfBlockedError) {
+        // Blocked targets are never retried — every attempt would resolve
+        // to the same rejection.
+        return { success: false, responseStatus: null, error: err.message };
+      }
       error = err instanceof Error ? err.message : String(err);
       responseStatus = null;
     }

@@ -80,6 +80,41 @@ selection shadow state, and two P2 mobile/loading polish items** (all four
   wrong-scope token (403) and accept a correctly-scoped one; full API/shared/
   MCP test suites and `tsc --noEmit` stay green.
 
+**DNS-rebinding TOCTOU closed in the shared SSRF guard ("Hardening Night"
+wave 2, audit pass 13 Risk 3):**
+- Outbound calls to a user/admin-supplied URL (webhook delivery, GitHub/GitLab
+  live PR/CI status polling) previously resolved DNS once to check the target
+  against a private/loopback/link-local blocklist, then let `fetch()`
+  re-resolve DNS itself for the actual connection — a short-TTL attacker
+  nameserver could answer the check with a public IP and the real connection
+  with an internal one (`169.254.169.254`, `127.0.0.1`, ...), the classic
+  DNS-rebinding SSRF bypass.
+- New shared `apps/api/src/common/ssrf-safe-fetch.ts`: `ssrfSafeFetch()`
+  resolves DNS exactly once and pins the actual TCP/TLS connection to that
+  one vetted address via a custom undici `Agent` connector, closing the
+  re-resolution window structurally. All three outbound-call families
+  (webhook delivery, `GithubClient`, `GitlabClient`) now share this one path.
+  `WEBHOOK_ALLOW_PRIVATE=true` still bypasses the guard entirely for
+  self-hosters targeting internal infrastructure they control.
+
+**`multer` DoS CVEs closed via a root `pnpm.overrides` ("Hardening Night"
+wave 2, audit pass 13 Risk 4):**
+- `@nestjs/platform-express`'s `FileInterceptor` — used by every upload
+  endpoint (workspace logo, CSV import, issue attachments) — bundled its own
+  transitive, unpatched `multer@2.0.2` (3 high + 1 moderate DoS advisories)
+  despite the app's own direct `multer` dependency already being patched.
+  A root `pnpm.overrides` now forces the patched version everywhere;
+  `pnpm audit --prod` dropped from 5 high to 0 high advisories. Uploads
+  verified working end-to-end (real multipart round-trip, byte-identical).
+
+### Fixed — 2026-07-06 (Hardening Night wave 2)
+
+- `POST /issues` intermittently returned 500 ("Transaction already closed...
+  timeout 5000 ms") under concurrent load in resource-constrained
+  environments. The issue-create transaction now does only the minimum work
+  that must commit atomically together, and uses an explicit, longer
+  timeout/max-wait to tolerate database connection-pool contention.
+
 ### Added — 2026-07-03 (2)
 
 **PR-status + auto-transition-on-merge, with a board-card "linked PR" badge:**

@@ -279,77 +279,105 @@ export class IssuesService {
         )
       : undefined;
 
-    const issue = await this.prisma.$transaction(async (tx) => {
-      const project = await tx.project.update({
-        where: { id: dto.projectId },
-        data: { issueSeq: { increment: 1 } },
+    // Resolve the default status BEFORE opening the transaction when the
+    // caller didn't supply one. This is a pure read with no dependency on —
+    // and no side effect inside — the atomic write below (creating the
+    // issue), so it doesn't need to share the transaction's connection; a
+    // status added/removed in the few ms between this read and the commit
+    // below is an already-accepted, vanishingly rare race (the previous
+    // in-transaction version had the same window, just narrower). Moving it
+    // out trims two round-trips off the transaction's held-connection time —
+    // see the timeout/maxWait comment below for why that matters.
+    let statusId = dto.statusId;
+    if (!statusId) {
+      const todo = await this.prisma.status.findFirst({
+        where: { projectId: dto.projectId, category: StatusCategory.TODO },
+        orderBy: { order: 'asc' },
       });
-      const number = project.issueSeq;
-
-      let statusId = dto.statusId;
-      if (!statusId) {
-        const todo = await tx.status.findFirst({
-          where: { projectId: dto.projectId, category: StatusCategory.TODO },
+      const first =
+        todo ??
+        (await this.prisma.status.findFirst({
+          where: { projectId: dto.projectId },
           orderBy: { order: 'asc' },
-        });
-        const first =
-          todo ??
-          (await tx.status.findFirst({
-            where: { projectId: dto.projectId },
-            orderBy: { order: 'asc' },
-          }));
-        if (!first) {
-          throw new NotFoundException('Project has no statuses');
-        }
-        statusId = first.id;
+        }));
+      if (!first) {
+        throw new NotFoundException('Project has no statuses');
       }
+      statusId = first.id;
+    }
+    const resolvedStatusId = statusId;
 
-      const last = await tx.issue.findFirst({
-        where: { statusId },
-        orderBy: { rank: 'desc' },
-      });
-      const rank = rankAfter(last?.rank ?? null);
+    const issue = await this.prisma.$transaction(
+      async (tx) => {
+        const project = await tx.project.update({
+          where: { id: dto.projectId },
+          data: { issueSeq: { increment: 1 } },
+        });
+        const number = project.issueSeq;
 
-      const created = await tx.issue.create({
-        data: {
-          number,
-          projectId: dto.projectId,
-          type: dto.type,
-          title: dto.title,
-          description: dto.description,
-          statusId,
-          assigneeId: effectiveAssigneeId,
-          reporterId: userId,
-          priority: dto.priority,
-          parentId: dto.parentId,
-          sprintId: dto.sprintId,
-          storyPoints: dto.storyPoints,
-          startDate: dto.startDate ? new Date(dto.startDate) : undefined,
-          dueDate: dto.dueDate ? new Date(dto.dueDate) : undefined,
-          rank,
-          componentId: dto.componentId ?? null,
-          ...(dto.originalEstimateMinutes !== undefined
-            ? { originalEstimateMinutes: dto.originalEstimateMinutes }
-            : {}),
-          ...(normalizedCustomFields !== undefined
-            ? { customFields: normalizedCustomFields as Prisma.InputJsonValue }
-            : {}),
-        },
-        include: listInclude,
-      });
+        const last = await tx.issue.findFirst({
+          where: { statusId: resolvedStatusId },
+          orderBy: { rank: 'desc' },
+        });
+        const rank = rankAfter(last?.rank ?? null);
 
-      await tx.activityLog.create({
-        data: {
-          issueId: created.id,
-          actorId: userId,
-          field: 'created',
-          from: null,
-          to: null,
-        },
-      });
+        const created = await tx.issue.create({
+          data: {
+            number,
+            projectId: dto.projectId,
+            type: dto.type,
+            title: dto.title,
+            description: dto.description,
+            statusId: resolvedStatusId,
+            assigneeId: effectiveAssigneeId,
+            reporterId: userId,
+            priority: dto.priority,
+            parentId: dto.parentId,
+            sprintId: dto.sprintId,
+            storyPoints: dto.storyPoints,
+            startDate: dto.startDate ? new Date(dto.startDate) : undefined,
+            dueDate: dto.dueDate ? new Date(dto.dueDate) : undefined,
+            rank,
+            componentId: dto.componentId ?? null,
+            ...(dto.originalEstimateMinutes !== undefined
+              ? { originalEstimateMinutes: dto.originalEstimateMinutes }
+              : {}),
+            ...(normalizedCustomFields !== undefined
+              ? { customFields: normalizedCustomFields as Prisma.InputJsonValue }
+              : {}),
+          },
+          include: listInclude,
+        });
 
-      return created;
-    });
+        await tx.activityLog.create({
+          data: {
+            issueId: created.id,
+            actorId: userId,
+            field: 'created',
+            from: null,
+            to: null,
+          },
+        });
+
+        return created;
+      },
+      // QA (2026-07-06, P3): POST /issues 500'd twice under 2-worker e2e
+      // parallelism in a resource-constrained sandbox with "Transaction
+      // already closed... timeout 5000 ms" — Prisma's defaults (timeout:
+      // 5000ms, maxWait: 2000ms) aren't generous enough once the DB
+      // connection pool is under real contention (several concurrent
+      // requests each holding/awaiting a connection for this same short
+      // transaction). This transaction now does the minimum necessary work
+      // (issueSeq increment, rank lookup, the insert, and its activity-log
+      // row — all of which genuinely need to commit atomically together),
+      // so a longer ceiling here only protects against pool contention, not
+      // a runaway query: `maxWait` (12s) is how long a request may queue for
+      // a free connection before failing; `timeout` (12s) is how long the
+      // transaction body itself may run once it has one. Both comfortably
+      // exceed anything this ~3-query body should take even under load,
+      // while still failing fast rather than hanging forever.
+      { timeout: 12_000, maxWait: 12_000 },
+    );
 
     const dtoOut = toIssueDto(issue);
     this.realtime.emitToProject(

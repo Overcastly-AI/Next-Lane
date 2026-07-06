@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { resolveAndCheckBlocked } from '../webhooks/webhooks.service';
+import { ssrfSafeFetch, SsrfBlockedError } from '../common/ssrf-safe-fetch';
 
 export interface GitlabProjectInfo {
   pathWithNamespace: string;
@@ -45,11 +45,11 @@ function normalizeState(state: string | undefined): GitlabMergeRequestStatus['st
  * Unlike `GithubClient` (hardcoded `api.github.com`), `baseUrl` is a
  * parameter on every call — self-hosted GitLab is a first-class target, not
  * an afterthought, per `GitlabIntegration.gitlabBaseUrl`. Because `baseUrl`
- * is admin-supplied and can point anywhere, EVERY call here goes through the
- * SSRF pre-flight (`resolveAndCheckBlocked`, DNS-resolved + IP-blocklisted,
- * `redirect: 'manual'`) before ever touching `fetch` — this is the primary
- * SSRF risk this module carries (see `webhooks.service.ts` for the shared
- * guard `GithubClient` also reuses).
+ * is admin-supplied and can point anywhere, EVERY call here goes through
+ * `ssrfSafeFetch` (`../common/ssrf-safe-fetch.ts` — DNS-resolved,
+ * IP-blocklisted, connection PINNED to the vetted address, `redirect:
+ * 'manual'`) — this is the primary SSRF risk this module carries (see
+ * `webhooks.service.ts` for the shared guard `GithubClient` also reuses).
  */
 @Injectable()
 export class GitlabClient {
@@ -68,15 +68,13 @@ export class GitlabClient {
     const origin = baseUrl.replace(/\/+$/, '');
     const encodedPath = encodeURIComponent(projectPath);
     const url = `${origin}/api/v4/projects/${encodedPath}`;
-    if (await this.isBlocked(url)) return null;
     try {
-      const res = await fetch(url, {
+      const res = await ssrfSafeFetch(url, {
         headers: {
           'PRIVATE-TOKEN': token,
           'User-Agent': 'next-lane',
         },
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-        redirect: 'manual',
       });
       if (!res.ok) {
         this.logger.warn(
@@ -95,7 +93,11 @@ export class GitlabClient {
         defaultBranch: data.default_branch,
       };
     } catch (err) {
-      this.logger.warn(`GitLab project lookup for ${projectPath} failed: ${String(err)}`);
+      if (err instanceof SsrfBlockedError) {
+        this.logger.warn(`GitLab project lookup for ${projectPath} blocked: ${err.reason}`);
+      } else {
+        this.logger.warn(`GitLab project lookup for ${projectPath} failed: ${String(err)}`);
+      }
       return null;
     }
   }
@@ -116,15 +118,13 @@ export class GitlabClient {
     const origin = baseUrl.replace(/\/+$/, '');
     const encodedPath = encodeURIComponent(projectPath);
     const url = `${origin}/api/v4/projects/${encodedPath}/merge_requests/${iid}`;
-    if (await this.isBlocked(url)) return null;
     try {
-      const res = await fetch(url, {
+      const res = await ssrfSafeFetch(url, {
         headers: {
           'PRIVATE-TOKEN': token,
           'User-Agent': 'next-lane',
         },
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-        redirect: 'manual',
       });
       if (!res.ok) {
         this.logger.warn(`GitLab MR lookup for ${projectPath}!${iid} returned ${res.status}`);
@@ -150,23 +150,12 @@ export class GitlabClient {
         url: data.web_url,
       };
     } catch (err) {
-      this.logger.warn(`GitLab MR lookup for ${projectPath}!${iid} failed: ${String(err)}`);
+      if (err instanceof SsrfBlockedError) {
+        this.logger.warn(`GitLab MR lookup for ${projectPath}!${iid} blocked: ${err.reason}`);
+      } else {
+        this.logger.warn(`GitLab MR lookup for ${projectPath}!${iid} failed: ${String(err)}`);
+      }
       return null;
     }
-  }
-
-  /**
-   * SSRF pre-flight shared with `webhooks.service.ts`'s outbound webhook
-   * delivery guard (DNS-resolve + private/loopback/link-local IP blocklist).
-   * `baseUrl` here is admin-supplied (self-hosted GitLab) — this is the
-   * primary SSRF surface of the two clients, unlike `GithubClient`'s fixed
-   * host.
-   */
-  private async isBlocked(url: string): Promise<boolean> {
-    const result = await resolveAndCheckBlocked(url);
-    if (result.blocked) {
-      this.logger.warn(`Outbound GitLab call to ${url} blocked: ${result.reason ?? 'blocked by SSRF policy'}`);
-    }
-    return result.blocked;
   }
 }
