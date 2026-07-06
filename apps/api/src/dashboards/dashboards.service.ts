@@ -436,19 +436,31 @@ export class DashboardsService {
     const dashboard = await this.getDashboardOr404(dashboardId);
     const project = await this.prisma.project.findUnique({
       where: { id: dashboard.projectId },
-      select: { id: true, key: true, name: true },
+      select: { id: true, key: true, name: true, archived: true },
     });
     // Should not happen (cascade delete removes the dashboard too), but guard
     // defensively rather than let a null-ref 500 leak internals.
     if (!project) {
       throw new Error('Project not found for dashboard');
     }
+    // Archiving hides a project from active work — its still-minted share
+    // tokens must stop serving data too (embed review nit on f72748a; the
+    // public BOARD issue query already filters archived). Same message as an
+    // unknown/revoked token so the response stays oracle-free.
+    if (project.archived) {
+      throw new NotFoundException('Share link not found or has been revoked.');
+    }
 
     const { gadgets, issuesTruncated } = await this.evaluateDashboardGadgets(
       dashboard,
       undefined,
     );
-    return { dashboard, project, gadgets, issuesTruncated };
+    return {
+      dashboard,
+      project: { id: project.id, key: project.key, name: project.name },
+      gadgets,
+      issuesTruncated,
+    };
   }
 
   /**

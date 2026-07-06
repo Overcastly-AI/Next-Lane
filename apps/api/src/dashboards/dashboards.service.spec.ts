@@ -831,6 +831,19 @@ describe('DashboardsService', () => {
       );
     });
 
+    it('404s (oracle-free message) when the project is archived — a share link must stop serving after archive', async () => {
+      prisma.project.findUnique.mockResolvedValue({
+        ...makeProjectRow(),
+        archived: true,
+      });
+
+      await expect(service.getPublicDashboardData(DASHBOARD_ID)).rejects.toThrow(
+        'Share link not found or has been revoked.',
+      );
+      // No gadget evaluation ever ran for the archived project.
+      expect(prisma.issue.findMany).not.toHaveBeenCalled();
+    });
+
     it('a gadget whose query calls me() degrades to an explicit per-gadget error — never a crash or silent "unassigned" leak', async () => {
       prisma.dashboardGadget.findMany.mockResolvedValue([
         makeGadgetRow({ query: 'assignee = me()', visualization: DashboardGadgetVisualization.STAT }),
