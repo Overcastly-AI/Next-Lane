@@ -29,6 +29,8 @@ const SCOPE_LABELS: Record<string, string> = {
   'github:write': 'GitHub — write',
   'gitlab:read': 'GitLab — read',
   'gitlab:write': 'GitLab — write',
+  'gitea:read': 'Gitea — read',
+  'gitea:write': 'Gitea — write',
   'workspaces:read': 'Workspaces — read',
   'workspaces:write': 'Workspaces — write',
   'admin:read': 'Admin settings — read',

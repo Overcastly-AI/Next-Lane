@@ -1150,6 +1150,75 @@ export interface IssueGitlabLinkDto {
   updatedAt: string;
 }
 
+// ── Gitea integration (Phase 9 — Developer Graph, third self-hosted forge) ──
+//
+// Parallel to the GitHub/GitLab types above — same rationale as
+// `IssueGitlabLinkDto`'s header comment. Gitea's webhook scheme is
+// HMAC-SHA256 (`X-Gitea-Signature`, hex-encoded, no "sha256=" prefix), closer
+// to GitHub's verification shape than GitLab's shared-secret-token compare.
+// v1 deliberately has NO automation/live-status types — links only, no
+// `autoTransitionOnMerge`/`autoTransitionStatusId` fields and no
+// `GiteaLiveLinkStatusDto` (see `GiteaIntegration`'s schema comment).
+
+/** The kind of Gitea object an `IssueGiteaLinkDto` points to. Mirrors `GithubLinkKind` — Gitea calls it "pull request" too. */
+export const GITEA_LINK_KINDS = ['PR', 'COMMIT', 'BRANCH'] as const;
+export type GiteaLinkKind = (typeof GITEA_LINK_KINDS)[number];
+
+/**
+ * A project's Gitea repository link configuration.
+ *
+ * `webhookSecret` is included ONLY when the caller is an ADMIN (needed to
+ * paste into Gitea's repo webhook settings); MEMBER/VIEWER callers receive
+ * `webhookSecret: null` and `hasToken` only, never the secret or the token.
+ * The raw access token itself is NEVER returned by any endpoint after it is
+ * saved.
+ */
+export interface GiteaIntegrationDto {
+  id: string;
+  projectId: string;
+  /** The self-hosted Gitea instance origin — always required, no SaaS default. */
+  giteaBaseUrl: string;
+  /** "owner/repo" — mirrors GitHub's flat repo path shape. */
+  repoFullName: string;
+  /** Non-null only for ADMIN callers. */
+  webhookSecret: string | null;
+  /** Convenience field: the full inbound webhook URL to register with Gitea. */
+  webhookUrl: string;
+  /** Always true once configured — a token is required to save the integration. */
+  hasToken: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Body for `PUT /projects/:projectId/gitea`. */
+export interface UpsertGiteaIntegrationInput {
+  giteaBaseUrl: string;
+  repoFullName: string;
+  /** The raw Gitea access token. Write-only — never echoed back. */
+  token: string;
+}
+
+/**
+ * A link between a tracked issue and a Gitea PR, commit, or branch, created
+ * by the inbound webhook handler when a commit message or PR title/branch
+ * name references the issue's key (e.g. "NL-123"). Mirrors
+ * `IssueGithubLinkDto` exactly.
+ */
+export interface IssueGiteaLinkDto {
+  id: string;
+  issueId: string;
+  kind: GiteaLinkKind;
+  /** PR number (string), commit SHA, or branch name — depends on `kind`. */
+  externalId: string;
+  title: string | null;
+  url: string;
+  /** PR: "open" | "closed" | "merged". COMMIT/BRANCH: null. */
+  state: string | null;
+  authorLogin: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ── Workspace Audit Log ──────────────────────────────────────────────────────
 
 /**
@@ -1278,6 +1347,10 @@ export interface SavedFilterDto {
  *                       + the automation config + live MR/pipeline status.
  * - `gitlab:write`   — PUT/DELETE the GitLab integration config + PATCH the
  *                       auto-transition-on-merge automation config.
+ * - `gitea:read`     — GET the Gitea integration config + issue Gitea links.
+ *                       No automation config / live-status scope — v1 has
+ *                       neither (see `GiteaIntegrationDto`'s header comment).
+ * - `gitea:write`    — PUT/DELETE the Gitea integration config.
  * - `workspaces:read`  — GET workspace metadata, member lists, the workspace
  *                         audit log, and the co-member user directory
  *                         (`GET /users*`).
@@ -1314,6 +1387,8 @@ export const PAT_SCOPES = [
   'github:write',
   'gitlab:read',
   'gitlab:write',
+  'gitea:read',
+  'gitea:write',
   'workspaces:read',
   'workspaces:write',
   'admin:read',

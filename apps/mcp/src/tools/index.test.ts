@@ -144,6 +144,8 @@ describe('tool registry', () => {
       'get_gitlab_automation_config',
       'set_github_automation_config',
       'set_gitlab_automation_config',
+      // Gitea integration v1 (2026-07-06)
+      'list_issue_gitea_links',
     ];
     for (const name of expected) expect(names).toContain(name);
     // No duplicate names.
@@ -384,6 +386,15 @@ describe('tool registry', () => {
       'http://localhost:4000/api/issues/i1/gitlab-links',
     );
     expect(res.content[0].text).toContain('gll1');
+  });
+
+  it('list_issue_gitea_links GETs /issues/:id/gitea-links', async () => {
+    const { client, fetchImpl } = clientWith(200, [{ id: 'gtl1', kind: 'PR' }]);
+    const res = await tool('list_issue_gitea_links').handler({ issueId: 'i1' }, client);
+    expect(fetchImpl.mock.calls[0][0]).toBe(
+      'http://localhost:4000/api/issues/i1/gitea-links',
+    );
+    expect(res.content[0].text).toContain('gtl1');
   });
 
   it('get_issue_github_live_status GETs /issues/:id/github-links/live', async () => {

@@ -391,6 +391,9 @@ model Project {
   // GitLab integration (Phase 9 — Developer Graph, v1 two-way link; same shape as GitHub)
   gitlabIntegration      GitlabIntegration?
 
+  // Gitea integration (Phase 9 — Developer Graph, v1 two-way link; HMAC-signed like GitHub)
+  giteaIntegration       GiteaIntegration?
+
   // Configurable dashboards (NLQL-native gadget framework)
   dashboards             Dashboard[]
 
@@ -763,6 +766,9 @@ model Issue {
 
   // GitLab integration — linked MRs / commits / branches (Phase 9)
   gitlabLinks           IssueGitlabLink[]
+
+  // Gitea integration — linked PRs / commits / branches (Phase 9)
+  giteaLinks            IssueGiteaLink[]
 
   @@unique([projectId, number])
   @@index([projectId, statusId])
@@ -1669,6 +1675,97 @@ model IssueGitlabLink {
   authorLogin String?
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
+
+  issue Issue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+
+  @@unique([issueId, kind, externalId])
+  @@index([issueId])
+}
+
+// ---------------------------------------------------------------------------
+// Gitea integration (Phase 9 — Developer Graph, third self-hosted forge)
+//
+// Another PARALLEL table pair (GiteaIntegration/IssueGiteaLink), same
+// rationale as GitlabIntegration/IssueGitlabLink above — additive/zero-risk
+// to the already-shipped GitHub and GitLab rows rather than a provider-tagged
+// generalization (still deferred; three parallel pairs is the point at which
+// the duplication cost starts to outweigh the migration risk, tracked as a
+// future "unify behind ScmIntegration" option, not attempted this pass).
+//
+// Gitea's webhook scheme is HMAC-SHA256 (`X-Gitea-Signature`, hex-encoded,
+// no "sha256=" prefix unlike GitHub) — closer to GithubIntegration's
+// verification shape than GitlabIntegration's shared-secret-token compare.
+// v1 deliberately omits the `autoTransitionOnMerge`/`autoTransitionStatusId`
+// pair GithubIntegration/GitlabIntegration carry (see their PR-status +
+// auto-transition-on-merge follow-up) — links only, no automation, no
+// outbound API client/live-status call in this pass.
+// ---------------------------------------------------------------------------
+
+/// The kind of Gitea object an `IssueGiteaLink` points to. Mirrors
+/// `GithubLinkKind` exactly — Gitea calls it "pull request" too (unlike
+/// GitLab's "merge request").
+enum GiteaLinkKind {
+  PR
+  COMMIT
+  BRANCH
+}
+
+/// Per-project Gitea repository link configuration. ADMIN-managed. One row
+/// per project (unique projectId) — v1 scope is a single repo per project.
+///
+/// `giteaBaseUrl` — the self-hosted Gitea instance origin. REQUIRED (unlike
+///   `GitlabIntegration.gitlabBaseUrl`, which defaults to the gitlab.com SaaS
+///   host, Gitea has no canonical single-tenant SaaS home — every deployment
+///   is a distinct self-hosted instance, so there is no sensible default).
+/// `repoFullName` — "owner/repo", validated at the DTO layer, mirrors
+///   `GithubIntegration.repoFullName`.
+/// `tokenEncrypted` — a Gitea access token, AES-256-GCM encrypted at rest via
+///   the same shared `common/crypto/secret-crypto.util.ts` primitive
+///   GithubIntegration/GitlabIntegration use (see `gitea-crypto.util.ts`).
+///   Reversible (not a one-way hash) so a future outbound `GiteaClient` call
+///   could present it to the Gitea API, though v1 makes no such call — the
+///   inbound webhook payload carries everything v1 needs. Never returned by
+///   any API response.
+/// `webhookSecret` — the HMAC signing secret pasted into Gitea's webhook
+///   settings ("Secret" field); the inbound webhook receiver verifies
+///   `X-Gitea-Signature` against this value before processing any payload.
+///   Generated once at creation; not rotated by a plain PUT (v1).
+model GiteaIntegration {
+  id             String   @id @default(cuid())
+  projectId      String   @unique
+  giteaBaseUrl   String
+  repoFullName   String
+  tokenEncrypted String
+  webhookSecret  String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}
+
+/// A link between a tracked Issue and a Gitea object (pull request, commit,
+/// or branch), created/updated by the inbound webhook handler when a commit
+/// message or PR title/branch name references the issue's key (e.g.
+/// "NL-123"). Mirrors IssueGithubLink exactly.
+///
+/// `externalId` — PR number (as a string), commit SHA, or branch name
+///   depending on `kind`. Combined with `kind` this is the natural
+///   Gitea-side identity, so re-delivered webhook events upsert idempotently
+///   instead of creating duplicate rows.
+/// `state` — PR: "open" | "closed" | "merged". COMMIT/BRANCH: null.
+model IssueGiteaLink {
+  id          String        @id @default(cuid())
+  issueId     String
+  kind        GiteaLinkKind
+  externalId  String
+  title       String?
+  url         String
+  state       String?
+  authorLogin String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
 
   issue Issue @relation(fields: [issueId], references: [id], onDelete: Cascade)
 

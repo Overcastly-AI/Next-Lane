@@ -58,6 +58,8 @@ export const qk = {
   githubLinks: (issueId: string) => ['githubLinks', issueId] as const,
   /** Linked GitLab MRs/commits/branches for an issue (Development section). */
   gitlabLinks: (issueId: string) => ['gitlabLinks', issueId] as const,
+  /** Linked Gitea PRs/commits/branches for an issue (Development section). */
+  giteaLinks: (issueId: string) => ['giteaLinks', issueId] as const,
   /** Live GitHub PR/CI status for an issue's linked PRs — polled on drawer open. */
   githubLiveStatus: (issueId: string) => ['githubLiveStatus', issueId] as const,
   /** Live GitLab MR/pipeline status for an issue's linked MRs — polled on drawer open. */

@@ -951,6 +951,25 @@ const readTools: ToolDef[] = [
         .then((data) => pageResult(paginateOnly(data, args))),
   },
   {
+    name: 'list_issue_gitea_links',
+    group: 'read',
+    description:
+      'List an issue’s linked Gitea pull requests / commits / branches ' +
+      '(populated by the push/PR webhook integration, if configured). Requires ' +
+      'the `gitea:read` PAT scope when the token is scoped. Does not include ' +
+      'the project’s webhook secret — configuring the integration itself is ' +
+      'not exposed over MCP (admin-only, secret-bearing), mirroring the ' +
+      'GitHub/GitLab integrations. v1 has no live-status/automation counterpart ' +
+      '(no `get_issue_gitea_live_status` / `get_gitea_automation_config` tools ' +
+      '— Gitea integration v1 is links-only). Already a minimal shape; ' +
+      '`limit`/`offset` cap an issue with many linked PRs/commits.',
+    inputSchema: { issueId: z.string().describe('Issue id.'), ...pageParams },
+    handler: (args, client) =>
+      client
+        .get<ApiItem[]>(`/issues/${args.issueId}/gitea-links`)
+        .then((data) => pageResult(paginateOnly(data, args))),
+  },
+  {
     name: 'get_issue_gitlab_live_status',
     group: 'read',
     description:

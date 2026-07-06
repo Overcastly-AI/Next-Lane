@@ -114,11 +114,12 @@ export function useBoardRealtime(
           if (id) {
             void qc.invalidateQueries({ queryKey: qk.issue(id) });
             void qc.invalidateQueries({ queryKey: qk.activity(id) });
-            // The GitHub/GitLab webhook handlers re-use IssueUpdated (minimal
-            // { id } payload) to signal new/changed PR-or-MR/commit/branch
-            // links — refresh the Development section's own caches too.
+            // The GitHub/GitLab/Gitea webhook handlers re-use IssueUpdated
+            // (minimal { id } payload) to signal new/changed PR-or-MR/commit/
+            // branch links — refresh the Development section's own caches too.
             void qc.invalidateQueries({ queryKey: qk.githubLinks(id) });
             void qc.invalidateQueries({ queryKey: qk.gitlabLinks(id) });
+            void qc.invalidateQueries({ queryKey: qk.giteaLinks(id) });
           }
         }
         if (event === SocketEvents.SprintUpdated) {

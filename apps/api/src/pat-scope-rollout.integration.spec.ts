@@ -163,6 +163,12 @@ const MATRIX: MatrixRow[] = [
   { controller: 'components', method: 'PATCH', path: `/components/${X}`, scope: 'projects:write' },
   { controller: 'components', method: 'DELETE', path: `/components/${X}`, scope: 'projects:write' },
 
+  // gitea
+  { controller: 'gitea', method: 'GET', path: `/projects/${X}/gitea`, scope: 'gitea:read' },
+  { controller: 'gitea', method: 'PUT', path: `/projects/${X}/gitea`, scope: 'gitea:write' },
+  { controller: 'gitea', method: 'DELETE', path: `/projects/${X}/gitea`, scope: 'gitea:write' },
+  { controller: 'gitea', method: 'GET', path: `/issues/${X}/gitea-links`, scope: 'gitea:read' },
+
   // custom-fields
   { controller: 'custom-fields', method: 'GET', path: `/projects/${X}/custom-fields`, scope: 'projects:read' },
   { controller: 'custom-fields', method: 'POST', path: `/projects/${X}/custom-fields`, scope: 'projects:write' },

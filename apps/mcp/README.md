@@ -2,14 +2,15 @@
 
 A [Model Context Protocol](https://modelcontextprotocol.io) server that lets
 external AI agents — **Claude Desktop**, **Claude Code**, and any other MCP host
-— **read and write** a Next Lane instance end-to-end: **104 tools** covering
+— **read and write** a Next Lane instance end-to-end: **105 tools** covering
 workspaces/projects, workflows / SDLC, issues (incl. links, labels, comments
 with author-or-admin edit/delete, checklists, worklogs), boards, statuses,
 sprints, components, versions, custom fields, saved NLQL filters, automation
 rules, dashboards, per-project role overrides, per-project agent-context
-memory, a unified project activity feed, GitHub/GitLab SCM links (incl. live
-PR/MR status and the auto-transition-on-merge automation toggle), and a
-one-call epic rollup.
+memory, a unified project activity feed, GitHub/GitLab/Gitea SCM links (incl.
+live PR/MR status and the auto-transition-on-merge automation toggle for
+GitHub/GitLab — Gitea v1 is links-only, see below), and a one-call epic
+rollup.
 
 This is Next Lane's **agent-native wedge** (`docs/VISION.md`): an agent can list
 a project's statuses, design a workflow from a template, add/edit/delete
@@ -88,6 +89,7 @@ vocabulary lives in `PAT_SCOPES` (`packages/shared/src/types.ts`); by area:
 | `webhooks:read` / `webhooks:write` | Webhook subscriptions + delivery logs. |
 | `github:read` / `github:write` | GitHub integration config, linked PRs, live PR/CI status, auto-transition config. |
 | `gitlab:read` / `gitlab:write` | GitLab integration config, linked MRs, live MR/pipeline status, auto-transition config. |
+| `gitea:read` / `gitea:write` | Gitea integration config, linked PRs. No live-status/auto-transition scope — v1 has neither. |
 | `workspaces:read` / `workspaces:write` | Workspace CRUD/membership and `list_users` (the co-member directory). |
 | `tokens:read` / `tokens:write` | Managing your own PATs — not exposed over MCP (see below). |
 | `admin:read` / `admin:write` | Instance SSO/OIDC config — not exposed over MCP (see below). |
@@ -210,6 +212,7 @@ minimal, so there is no `verbose` mode.
 | `list_issue_gitlab_links` | List an issue's linked GitLab merge requests/commits/branches (`issueId`). Requires `gitlab:read` scope when the token is scoped. **paged**. |
 | `get_issue_gitlab_live_status` | Live MR/pipeline status for an issue's linked GitLab MRs — a real GitLab API call. Mirrors `get_issue_github_live_status`. Requires `gitlab:read`. |
 | `get_gitlab_automation_config` | Read a project's GitLab auto-transition-on-merge config (`projectId`). Mirrors `get_github_automation_config`. Requires `gitlab:read`. |
+| `list_issue_gitea_links` | List an issue's linked Gitea pull requests/commits/branches (`issueId`). Requires `gitea:read` scope when the token is scoped. **paged**. No live-status/automation counterpart — Gitea integration v1 is links-only. |
 | `list_quick_links`  | List the caller's personal sidebar shortcut links. **compact** `{id, label, url, group}`. |
 | `get_personal_board`| Get the caller's personal (non-project) board: columns + cards.       |
 | `list_issue_templates` | List a project's issue templates (`projectId`). **compact** `{id, name, issueType}`. |
@@ -281,15 +284,15 @@ minimal, so there is no `verbose` mode.
 
 ### Not exposed over MCP (by design)
 
-- **Configuring the GitHub or GitLab integration** (`upsert`/`remove` — sets/
-  rotates the webhook secret, and `GET` returns the plaintext secret to
-  project admins) is admin-only and secret-bearing for both providers; it is
-  deliberately **not** wired as an MCP tool for either. The read-only
-  `list_issue_github_links` / `list_issue_gitlab_links` / live-status /
-  automation-config tools (none ever return the webhook secret or PAT) and
-  the `set_*_automation_config` write tools (config-only, no secret) ARE
-  exposed. Manage the repo/token connection itself from project Settings in
-  the web app.
+- **Configuring the GitHub, GitLab, or Gitea integration** (`upsert`/`remove`
+  — sets/rotates the webhook secret, and `GET` returns the plaintext secret to
+  project admins) is admin-only and secret-bearing for all three providers; it
+  is deliberately **not** wired as an MCP tool for any of them. The read-only
+  `list_issue_github_links` / `list_issue_gitlab_links` / `list_issue_gitea_links`
+  / live-status / automation-config tools (none ever return the webhook secret
+  or PAT) and the `set_*_automation_config` write tools (config-only, no
+  secret; GitHub/GitLab only — Gitea v1 has no automation) ARE exposed. Manage
+  the repo/token connection itself from project Settings in the web app.
 - **Workspace/project deletion** and other irreversible, non-confirmable
   destructive actions are intentionally out of scope for the same reason.
 - **Instance SSO/OIDC configuration** (`GET`/`PATCH /admin/oidc-config` — the

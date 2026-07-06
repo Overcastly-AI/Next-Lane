@@ -14,6 +14,55 @@ This section summarizes the major capabilities delivered in the pre-1.0
 development phase. A versioned release will be tagged once the v1 criteria in
 [`docs/ROADMAP.md`](./docs/ROADMAP.md) are complete.
 
+### Added — 2026-07-06 (Gitea integration v1 — two-way link)
+
+**Third self-hosted forge, after GitHub (HMAC) and GitLab (shared-secret
+token).** Same two-way linking shape as the shipped GitHub/GitLab v1s;
+Gitea's webhook scheme is HMAC-SHA256 like GitHub's (`X-Gitea-Signature`,
+hex-encoded, no "sha256=" prefix), so `GithubModule`'s verification shape is
+the closer template, while the DB tables mirror both providers' parallel-table
+pattern. v1 is deliberately **links-only** — no auto-transition-on-merge, no
+live PR/CI status, no outbound `GiteaClient` call (unlike GitHub/GitLab's
+PR-status follow-up).
+- Additive `GiteaIntegration` (`giteaBaseUrl` REQUIRED — Gitea has no SaaS
+  default, `repoFullName` "owner/repo", AES-256-GCM-encrypted token, generated
+  HMAC webhook secret) / `IssueGiteaLink` (PR/COMMIT/BRANCH, unique on
+  `[issueId, kind, externalId]`) tables, migration
+  `20260706000000_add_gitea_integration` (verified zero-drift via
+  `prisma migrate diff`).
+- `GiteaModule` (`apps/api/src/gitea/`): ADMIN-gated `PUT/GET/DELETE
+  /projects/:projectId/gitea` (GET role-shaped via `getEffectiveProjectRole`)
+  + `GET /issues/:issueId/gitea-links`; public `POST /gitea/webhook/:projectId`
+  verifies `X-Gitea-Signature` HMAC-SHA256 (constant-time compare) against the
+  raw request body before processing `push` (commit + branch-name key scan)
+  and `pull_request` (title + head-branch key scan, state open/closed/merged)
+  events, scoped to the project's own issue-key prefix via the shared
+  `common/issue-key.util.ts`. Two new PAT scopes (`gitea:read`/`gitea:write`),
+  every route `@RequireScope`-gated.
+- **Frontend:** `GiteaSection.tsx` settings card (mirrors
+  Github/GitlabSection — instance URL + owner/repo + token form, webhook
+  URL/secret with copy buttons; MEMBER read-only summary) and
+  `GiteaLinksSection.tsx` in the issue drawer's Development area, rendered
+  alongside GitHub/GitLab links (three-provider layout) — no live-status
+  spinner, since v1 has none.
+- **Tests:** 55 new API unit tests (signature verification, AES round-trip,
+  ADMIN gating, tenant isolation, push/PR event parsing incl. wrong-project-key
+  scoping and idempotent re-delivery) — 1905 total API tests green (85→88
+  suites); 4 new tenant-isolation-matrix rows (all BLOCKED) + 4 new
+  PAT-scope-rollout matrix rows (DENY+ALLOW) — 301 integration tests green;
+  `apps/web/e2e/gitea-integration.spec.ts` (4 scenarios × desktop+mobile, 8/8
+  green) — settings save + webhook URL/secret display, a **locally-HMAC-signed
+  fake Gitea webhook POST** links the issue, invalid signature → 401 + no
+  link, member read-only view; `github-integration`/`gitlab-integration`/
+  `issue-detail`/`issue-drawer-overlay`/`settings-robustness` regression
+  re-verified green (50/50). Live round-trip verified against the running API:
+  valid webhook → `linksUpserted:1`; tampered signature → 401; replay →
+  idempotent (same link id); missing-signature push → 401; PAT without
+  `gitea:read` → 403 with the exact scope message, with it → 200; a
+  cross-project issue key never links.
+- **MCP:** `list_issue_gitea_links` (paged, `gitea:read`-scoped) — 105 tools
+  total (was 104); `apps/mcp/README.md` scope table/tool table/counts updated.
+
 ### Fixed — 2026-07-06 (NLQL unresolved assignee/sprint name)
 
 **A typo'd or nonexistent assignee/sprint name in an NLQL query now 400s

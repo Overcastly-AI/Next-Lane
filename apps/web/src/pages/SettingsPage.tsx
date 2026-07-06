@@ -15,6 +15,7 @@ import { ColumnFormModal } from '@/components/board/ColumnFormModal';
 import { WebhooksSection } from '@/components/settings/WebhooksSection';
 import { GithubSection } from '@/components/settings/GithubSection';
 import { GitlabSection } from '@/components/settings/GitlabSection';
+import { GiteaSection } from '@/components/settings/GiteaSection';
 import { AgentContextSection } from '@/components/settings/AgentContextSection';
 import { ShareSection } from '@/components/settings/ShareSection';
 import { CustomFieldsSection } from '@/components/settings/CustomFieldsSection';
@@ -189,6 +190,8 @@ export function SettingsPage() {
         <GithubSection projectId={projectId} isAdmin={isAdmin} statuses={statusesForWorkflow} />
 
         <GitlabSection projectId={projectId} isAdmin={isAdmin} statuses={statusesForWorkflow} />
+
+        <GiteaSection projectId={projectId} isAdmin={isAdmin} />
 
         <AgentContextSection projectId={projectId} myRole={myRole} />
 

@@ -406,6 +406,13 @@ async function setupTenant(
     token: 'glpat-faketoken1234567890abcdef',
   });
 
+  // ── Gitea integration (project-scoped config; ADMIN-gated) ─────────────────
+  await req(server, 'PUT', `/projects/${projectId}/gitea`, token, {
+    giteaBaseUrl: 'https://git.example.com',
+    repoFullName: `acme/widgets-${suffix.toLowerCase()}`,
+    token: 'gitea_faketoken1234567890abcdef',
+  });
+
   // ── Dashboard + gadget ───────────────────────────────────────────────────
   const dashboardResp = await req(
     server,
@@ -1044,6 +1051,33 @@ function buildMatrix(a: Tenant): Array<MatrixRow & { resolvedPath: string; resol
       label: 'GET live GitLab MR/pipeline status for issue A',
       method: 'GET',
       path: (t) => `/issues/${t.issueId}/gitlab-links/live`,
+    },
+
+    // ── Gitea integration ────────────────────────────────────────────────────
+    {
+      label: 'GET Gitea integration for project A',
+      method: 'GET',
+      path: (t) => `/projects/${t.projectId}/gitea`,
+    },
+    {
+      label: 'PUT Gitea integration for project A',
+      method: 'PUT',
+      path: (t) => `/projects/${t.projectId}/gitea`,
+      body: () => ({
+        giteaBaseUrl: 'https://git.example.com',
+        repoFullName: 'attacker/hijacked-repo',
+        token: 'gitea_hijacktoken1234567890abcdef',
+      }),
+    },
+    {
+      label: 'DELETE Gitea integration for project A',
+      method: 'DELETE',
+      path: (t) => `/projects/${t.projectId}/gitea`,
+    },
+    {
+      label: 'GET Gitea links for issue A',
+      method: 'GET',
+      path: (t) => `/issues/${t.issueId}/gitea-links`,
     },
 
     // ── Agent context ────────────────────────────────────────────────────────────────────
