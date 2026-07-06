@@ -116,6 +116,77 @@ test.describe('Board swimlanes (desktop)', () => {
     await expect(page).not.toHaveURL(/[?&]group=/);
   });
 
+  // ── Swimlanes v2: Epic dimension (regression guard for 503b48d) ─────────
+  //
+  // The board API's issue query originally omitted `issue.parent`, so every
+  // card silently fell into "No epic" even when it had a real epic parent
+  // (Swimlanes v2's epic-lane feature was effectively dead on arrival). Fixed
+  // in 503b48d by adding the IssueRef-shaped `parent` select to the board's
+  // issueInclude. This case seeds a real epic + two children + one orphan
+  // and asserts the lanes/membership a human would actually see.
+
+  test('group by epic renders one lane per epic plus "No epic", with correct membership', async ({
+    page,
+    request,
+  }) => {
+    const ctx = await setupIsolatedProject(page, request, { label: 'swim-epic' });
+
+    const epicRes = await request.post(`${API_URL}/api/issues`, {
+      headers: authHeaders(ctx.token),
+      data: { projectId: ctx.project.id, title: 'Auth revamp epic', type: 'EPIC' },
+    });
+    expect(epicRes.ok(), `create epic failed: ${epicRes.status()}`).toBeTruthy();
+    const epic = (await epicRes.json()) as { id: string; key: string };
+
+    const child1 = await createIssue(request, ctx.token, ctx.project.id, {
+      title: 'Add login form',
+    });
+    await patchIssue(request, ctx.token, child1.id, { parentId: epic.id });
+    const child2Res = await request.post(`${API_URL}/api/issues`, {
+      headers: authHeaders(ctx.token),
+      data: { projectId: ctx.project.id, title: 'Add SSO callback', parentId: epic.id },
+    });
+    expect(child2Res.ok(), `create child issue failed: ${child2Res.status()}`).toBeTruthy();
+
+    // An orphan issue with no parent at all — must land in "No epic" too.
+    await createIssue(request, ctx.token, ctx.project.id, { title: 'Unrelated cleanup' });
+
+    await page.goto(`/projects/${ctx.project.id}/board`);
+    await expect(page.getByText(/to do/i).first()).toBeVisible({ timeout: 15_000 });
+
+    await page.getByTestId('swimlane-groupby').click();
+    await page.getByRole('menuitemradio', { name: /^epic$/i }).click();
+
+    await expect(page).toHaveURL(/[?&]group=epic/, { timeout: 8_000 });
+    // Exactly 2 lanes: the epic's own lane + "No epic" (the epic card itself
+    // has no parent, so it lands in "No epic" alongside the true orphan).
+    const lanes = page.getByTestId('swimlane-lane');
+    await expect(lanes).toHaveCount(2, { timeout: 8_000 });
+
+    const epicLane = page.getByTestId('swimlane-lane').filter({
+      has: page.getByTestId('swimlane-lane-header').filter({ hasText: epic.key }),
+    });
+    await expect(epicLane).toBeVisible();
+    await expect(
+      epicLane.getByTestId('swimlane-lane-header'),
+    ).toContainText('Auth revamp epic');
+    await expect(epicLane.getByTestId('issue-card')).toHaveCount(2);
+    await expect(epicLane.getByTestId('issue-card').filter({ hasText: 'Add login form' })).toBeVisible();
+    await expect(epicLane.getByTestId('issue-card').filter({ hasText: 'Add SSO callback' })).toBeVisible();
+
+    const noEpicLane = page.getByTestId('swimlane-lane').filter({
+      has: page.getByTestId('swimlane-lane-header').filter({ hasText: 'No epic' }),
+    });
+    await expect(noEpicLane).toBeVisible();
+    await expect(noEpicLane.getByTestId('issue-card')).toHaveCount(2);
+    await expect(noEpicLane.getByTestId('issue-card').filter({ hasText: 'Unrelated cleanup' })).toBeVisible();
+    await expect(noEpicLane.getByTestId('issue-card').filter({ hasText: 'Auth revamp epic' })).toBeVisible();
+
+    // Persists across reload.
+    await page.reload();
+    await expect(page.getByTestId('swimlane-lane')).toHaveCount(2, { timeout: 15_000 });
+  });
+
   // ── Swimlanes v2: Component dimension ────────────────────────────────────
 
   test('group by component renders a lane per component plus "No component"', async ({
@@ -247,6 +318,50 @@ test.describe('Board swimlanes (desktop)', () => {
 
 test.describe('Board swimlanes (mobile)', () => {
   test.use({ viewport: { width: 390, height: 844 } });
+
+  test('group by epic renders one lane per epic plus "No epic" on mobile, with correct membership', async ({
+    page,
+    request,
+  }) => {
+    const ctx = await setupIsolatedProject(page, request, { label: 'swim-epic-mob' });
+
+    const epicRes = await request.post(`${API_URL}/api/issues`, {
+      headers: authHeaders(ctx.token),
+      data: { projectId: ctx.project.id, title: 'Mobile epic', type: 'EPIC' },
+    });
+    expect(epicRes.ok(), `create epic failed: ${epicRes.status()}`).toBeTruthy();
+    const epic = (await epicRes.json()) as { id: string; key: string };
+
+    await request.post(`${API_URL}/api/issues`, {
+      headers: authHeaders(ctx.token),
+      data: { projectId: ctx.project.id, title: 'Mobile child', parentId: epic.id },
+    });
+    await createIssue(request, ctx.token, ctx.project.id, { title: 'Mobile orphan' });
+
+    await page.goto(`/projects/${ctx.project.id}/board?group=epic`);
+    await expect(page.getByTestId('swimlane-lane').first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId('swimlane-lane')).toHaveCount(2);
+
+    const epicLane = page.getByTestId('swimlane-lane').filter({
+      has: page.getByTestId('swimlane-lane-header').filter({ hasText: epic.key }),
+    });
+    await expect(epicLane.getByTestId('issue-card')).toHaveCount(1);
+    await expect(epicLane.getByTestId('issue-card').filter({ hasText: 'Mobile child' })).toBeVisible();
+
+    const noEpicLane = page.getByTestId('swimlane-lane').filter({
+      has: page.getByTestId('swimlane-lane-header').filter({ hasText: 'No epic' }),
+    });
+    await expect(noEpicLane.getByTestId('issue-card')).toHaveCount(2);
+    await expect(noEpicLane.getByTestId('issue-card').filter({ hasText: 'Mobile orphan' })).toBeVisible();
+    await expect(noEpicLane.getByTestId('issue-card').filter({ hasText: 'Mobile epic' })).toBeVisible();
+
+    const overflow = await page.evaluate(
+      () =>
+        document.documentElement.scrollWidth -
+        document.documentElement.clientWidth,
+    );
+    expect(overflow).toBeLessThanOrEqual(1);
+  });
 
   test('grouped board has no horizontal page overflow on mobile', async ({
     page,
