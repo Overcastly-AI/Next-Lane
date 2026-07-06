@@ -40,6 +40,15 @@ services:
       redis:
         condition: service_healthy
     # REDIS_URL is set below so the api uses the Redis adapter + BullMQ queue.
+    #
+    # Every operator-facing variable documented in .env.example is forwarded
+    # here — a var that works in `pnpm dev` must work identically in the
+    # stock compose deployment (audit pass 13, finding 1: SMTP_* silently
+    # never reached the container, so password-reset email was dead in every
+    # stock self-hosted deploy). Vars the code reads with a `?? default` get
+    # the SAME default here (an empty string would override `??`); vars
+    # checked for truthiness or parsed with `Number(x) || default` pass
+    # through empty harmlessly when unset.
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-nextlane}:${POSTGRES_PASSWORD:-nextlane}@db:5432/${POSTGRES_DB:-nextlane}?schema=public
       JWT_SECRET: "${JWT_SECRET:?JWT_SECRET must be set - see .env.example}"
@@ -47,9 +56,43 @@ services:
       REDIS_URL: redis://redis:6379
       API_PORT: 4000
       NODE_ENV: production
-      # Seed demo data on first boot of the local/demo stack. Production deployments
-      # should omit this (or set AUTO_SEED=false) to prevent auto-seeding.
-      AUTO_SEED: "true"
+      # Seed demo data on first boot of the local/demo stack. Production
+      # deployments should set AUTO_SEED=false to prevent auto-seeding.
+      AUTO_SEED: ${AUTO_SEED:-true}
+      # Browser-facing origins (CORS allowlist for REST + Socket.io).
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      # Base URL used in password-reset (and other) emails back to the web app.
+      WEB_BASE_URL: ${WEB_BASE_URL:-http://localhost:3000}
+      # SMTP email delivery — unset = dev mode (reset links logged, not sent).
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-}
+      SMTP_SECURE: ${SMTP_SECURE:-}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      MAIL_FROM: ${MAIL_FROM:-Next Lane <no-reply@example.com>}
+      # Integration secrets-at-rest encryption + webhook helper URLs.
+      GITHUB_TOKEN_ENCRYPTION_KEY: ${GITHUB_TOKEN_ENCRYPTION_KEY:-}
+      GITHUB_WEBHOOK_BASE_URL: ${GITHUB_WEBHOOK_BASE_URL:-}
+      GITLAB_TOKEN_ENCRYPTION_KEY: ${GITLAB_TOKEN_ENCRYPTION_KEY:-}
+      GITLAB_WEBHOOK_BASE_URL: ${GITLAB_WEBHOOK_BASE_URL:-}
+      OIDC_CONFIG_ENCRYPTION_KEY: ${OIDC_CONFIG_ENCRYPTION_KEY:-}
+      # Env-based OIDC bootstrap (optional; admin UI config supersedes).
+      OIDC_ISSUER_URL: ${OIDC_ISSUER_URL:-}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      OIDC_REDIRECT_URI: ${OIDC_REDIRECT_URI:-}
+      OIDC_BUTTON_LABEL: ${OIDC_BUTTON_LABEL:-}
+      # Outbound webhook SSRF guard escape hatch for private-network targets.
+      WEBHOOK_ALLOW_PRIVATE: ${WEBHOOK_ALLOW_PRIVATE:-}
+      # Rate limiting (Number(x) || default in code — empty passes through).
+      THROTTLE_TTL: ${THROTTLE_TTL:-}
+      THROTTLE_LIMIT: ${THROTTLE_LIMIT:-}
+      THROTTLE_AUTH_LIMIT: ${THROTTLE_AUTH_LIMIT:-}
+      RATE_LIMIT_DISABLED: ${RATE_LIMIT_DISABLED:-}
+      # Attachment upload cap in bytes (empty = code default).
+      MAX_FILE_BYTES: ${MAX_FILE_BYTES:-}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      RELEASE_VERSION: ${RELEASE_VERSION:-}
     ports:
       - "${API_PORT:-4000}:4000"
     volumes:

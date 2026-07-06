@@ -385,6 +385,18 @@ Pass 9/10/11 that are real but not yet the highest-leverage next step.
 
 ## Already Done (recent shipments — ticked for reference)
 
+- [x] (P1, S) **docker-compose env passthrough fix (2026-07-06, Hardening
+  Night)** — audit pass 13 finding 1: compose forwarded only 7 of ~25
+  documented operator vars; SMTP_* never reached the container so
+  password-reset email was dead in every stock self-hosted deploy;
+  CORS_ORIGINS/encryption keys/OIDC_*/THROTTLE_*/WEBHOOK_ALLOW_PRIVATE/
+  MAX_FILE_BYTES/LOG_LEVEL equally inert; AUTO_SEED hardcoded. All forwarded
+  now with code-matching defaults for `??`-consumed vars (empty string would
+  override `??`; truthiness/`Number()||` vars pass through empty safely —
+  each consumption pattern verified in code before choosing the form).
+  Proven via `docker compose config` resolution. [orchestrator, audit pass 13
+  finding 1]
+
 - [x] (P1, S) **Activity logging for sprint/parent/component/label mutations
   (2026-07-03)** — MCP-QA pass 2's top finding fixed same-day: these
   mutations produced ZERO ActivityLog rows, so `list_project_activity` and

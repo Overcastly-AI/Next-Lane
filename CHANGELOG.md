@@ -16,6 +16,20 @@ development phase. A versioned release will be tagged once the v1 criteria in
 
 ### Security — 2026-07-06
 
+**docker-compose now forwards every documented env var to the API container
+("Hardening Night", audit pass 13 finding 1):**
+- The stock `docker-compose.yml` only passed 7 of the ~25 operator variables
+  `.env.example` documents — `SMTP_*` never reached the container, so
+  password-reset email was silently dead in every stock self-hosted deploy
+  (the API logged "email was NOT delivered" in production mode);
+  `CORS_ORIGINS`, `GITHUB/GITLAB_TOKEN_ENCRYPTION_KEY`,
+  `OIDC_*`, `WEBHOOK_ALLOW_PRIVATE`, `THROTTLE_*`, `MAX_FILE_BYTES`, and
+  `LOG_LEVEL` were equally inert. All are forwarded now; variables the code
+  reads with a `?? default` get the same default in compose (an empty string
+  would override `??`), and `AUTO_SEED` is overridable
+  (`${AUTO_SEED:-true}`) instead of hardcoded. Verified with
+  `docker compose config`.
+
 **PAT-scope rollout completed across every controller ("Hardening Night" item 1):**
 - Personal Access Tokens created with restricted scopes (e.g. `issues:read`
   only) previously fell through to full owner permissions on roughly 30
