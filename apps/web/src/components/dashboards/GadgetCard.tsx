@@ -11,13 +11,63 @@ import {
   VelocityTrendGadget,
 } from './GadgetVisualizations';
 
-const VISUALIZATION_LABELS: Record<DashboardGadgetVisualization, string> = {
+export const VISUALIZATION_LABELS: Record<DashboardGadgetVisualization, string> = {
   [DashboardGadgetVisualization.STAT]: 'Stat',
   [DashboardGadgetVisualization.TABLE]: 'Table',
   [DashboardGadgetVisualization.BREAKDOWN]: 'Breakdown',
   [DashboardGadgetVisualization.BURNDOWN]: 'Burndown',
   [DashboardGadgetVisualization.VELOCITY_TREND]: 'Velocity trend',
 };
+
+/**
+ * The evaluated-result rendering core shared by the authenticated
+ * `GadgetCard` (editable dashboard grid) and the public read-only dashboard
+ * share page (`SharedDashboardPage`) — loading spinner, per-gadget error, or
+ * the visualization switch. Kept as its own component so the public page
+ * reuses the exact same visualization components rather than re-implementing
+ * the switch.
+ */
+export function GadgetResultBody({
+  result,
+  loading,
+}: {
+  result: DashboardGadgetResult | undefined;
+  loading: boolean;
+}) {
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-8">
+        <Spinner />
+      </div>
+    );
+  }
+  if (result?.error) {
+    return (
+      <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">
+        {result.error}
+      </p>
+    );
+  }
+  if (!result?.data) {
+    return (
+      <div className="flex items-center justify-center py-8">
+        <Spinner />
+      </div>
+    );
+  }
+  switch (result.data.kind) {
+    case 'STAT':
+      return <StatGadget data={result.data} />;
+    case 'TABLE':
+      return <TableGadget data={result.data} />;
+    case 'BREAKDOWN':
+      return <BreakdownGadget data={result.data} />;
+    case 'BURNDOWN':
+      return <BurndownGadget data={result.data} />;
+    default:
+      return <VelocityTrendGadget data={result.data} />;
+  }
+}
 
 function IconButton({
   label,
@@ -146,29 +196,7 @@ export function GadgetCard({
       </header>
 
       <div className="flex flex-1 flex-col justify-center">
-        {loading ? (
-          <div className="flex items-center justify-center py-8">
-            <Spinner />
-          </div>
-        ) : result?.error ? (
-          <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">
-            {result.error}
-          </p>
-        ) : !result?.data ? (
-          <div className="flex items-center justify-center py-8">
-            <Spinner />
-          </div>
-        ) : result.data.kind === 'STAT' ? (
-          <StatGadget data={result.data} />
-        ) : result.data.kind === 'TABLE' ? (
-          <TableGadget data={result.data} />
-        ) : result.data.kind === 'BREAKDOWN' ? (
-          <BreakdownGadget data={result.data} />
-        ) : result.data.kind === 'BURNDOWN' ? (
-          <BurndownGadget data={result.data} />
-        ) : (
-          <VelocityTrendGadget data={result.data} />
-        )}
+        <GadgetResultBody result={result} loading={loading} />
       </div>
     </section>
   );

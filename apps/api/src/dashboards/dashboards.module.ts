@@ -8,5 +8,6 @@ import { RealtimeModule } from '../realtime/realtime.module';
   imports: [ReportsModule, RealtimeModule],
   controllers: [DashboardsController],
   providers: [DashboardsService],
+  exports: [DashboardsService],
 })
 export class DashboardsModule {}

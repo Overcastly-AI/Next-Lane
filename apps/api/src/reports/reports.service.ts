@@ -119,13 +119,23 @@ export class ReportsService {
    * slowing down" without paging through the full velocity report. Powers
    * both `GET /projects/:id/reports/velocity-trend` and the dashboard
    * VELOCITY_TREND gadget.
+   *
+   * `options.skipMembershipCheck` is set only by the public (unauthenticated)
+   * dashboard-share-token path — access there is already authorized by
+   * possession of the share token itself (validated by
+   * `DashboardShareTokensService.validateToken` before this is ever called),
+   * and there is no `userId` to check membership for. No HTTP controller may
+   * set this — it is never derived from request input.
    */
   async velocityTrend(
     userId: string,
     projectId: string,
     sprintsParam: number,
+    options: { skipMembershipCheck?: boolean } = {},
   ): Promise<VelocityTrendDto> {
-    await assertProjectMember(this.prisma, userId, projectId);
+    if (!options.skipMembershipCheck) {
+      await assertProjectMember(this.prisma, userId, projectId);
+    }
 
     const doneStatusIds = await this.doneStatusIds(projectId);
     const n = Math.min(
@@ -180,6 +190,9 @@ export class ReportsService {
    * using a lateral subquery to pick the most-recent `to`-DONE transition per
    * issue. Output is bounded by the number of sprint issues (not all logs).
    *
+   * `options.skipMembershipCheck` — see {@link velocityTrend}'s doc; same
+   * public-dashboard-share-token-only contract applies here.
+   *
    * Issues currently in DONE with no logged transition are credited on the
    * final day so the actual line reconciles with the velocity "completed"
    * figure (handled in application layer after the bounded SQL result).
@@ -188,8 +201,11 @@ export class ReportsService {
     userId: string,
     projectId: string,
     sprintId: string,
+    options: { skipMembershipCheck?: boolean } = {},
   ): Promise<BurndownDto> {
-    await assertProjectMember(this.prisma, userId, projectId);
+    if (!options.skipMembershipCheck) {
+      await assertProjectMember(this.prisma, userId, projectId);
+    }
 
     const sprint = await this.prisma.sprint.findFirst({
       where: { id: sprintId, projectId },

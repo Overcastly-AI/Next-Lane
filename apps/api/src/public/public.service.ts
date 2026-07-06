@@ -2,10 +2,12 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ShareTokensService } from '../share-tokens/share-tokens.service';
+import { DashboardShareTokensService } from '../dashboard-share-tokens/dashboard-share-tokens.service';
+import { DashboardsService } from '../dashboards/dashboards.service';
 import { toStatusDto } from '../statuses/statuses.service';
 import { toIssueDto } from '../issues/issue.mapper';
 import { SprintState } from '@next-lane/shared';
-import type { PublicBoardDto } from '@next-lane/shared';
+import type { PublicBoardDto, PublicDashboardDto } from '@next-lane/shared';
 
 /**
  * Maximum number of issues returned in the public board snapshot.
@@ -27,6 +29,8 @@ export class PublicService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly shareTokens: ShareTokensService,
+    private readonly dashboardShareTokens: DashboardShareTokensService,
+    private readonly dashboards: DashboardsService,
   ) {}
 
   /**
@@ -79,6 +83,30 @@ export class PublicService {
       project: { id: project.id, key: project.key, name: project.name },
       statuses: statuses.map(toStatusDto),
       issues: issues.map(toIssueDto),
+    };
+  }
+
+  /**
+   * Return a read-only, fully-evaluated dashboard snapshot for a valid,
+   * non-revoked dashboard share token. Throws NotFoundException (via
+   * `DashboardShareTokensService`) when the token is unknown or revoked — no
+   * information leaks.
+   *
+   * Every gadget is evaluated with no signed-in identity — a gadget whose
+   * NLQL calls `me()` degrades to an explicit per-gadget `error` rather than
+   * crashing or silently resolving to "unassigned"; see
+   * `DashboardsService.evaluateGadget`'s `me()`-degradation contract.
+   */
+  async getPublicDashboard(rawToken: string): Promise<PublicDashboardDto> {
+    const { dashboardId } = await this.dashboardShareTokens.validateToken(rawToken);
+    const { dashboard, project, gadgets, issuesTruncated } =
+      await this.dashboards.getPublicDashboardData(dashboardId);
+
+    return {
+      project: { id: project.id, key: project.key, name: project.name },
+      dashboard: { id: dashboard.id, name: dashboard.name },
+      gadgets,
+      issuesTruncated,
     };
   }
 }

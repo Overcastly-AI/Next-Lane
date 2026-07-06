@@ -156,21 +156,21 @@ enum AutomationRunStatus {
 // ---------------------------------------------------------------------------
 
 model User {
-  id                   String   @id @default(cuid())
-  email                String   @unique
-  name                 String
-  passwordHash         String
-  avatarColor          String   @default("#6366f1")
-  emailNotifications   Boolean  @default(true)
+  id                 String   @id @default(cuid())
+  email              String   @unique
+  name               String
+  passwordHash       String
+  avatarColor        String   @default("#6366f1")
+  emailNotifications Boolean  @default(true)
   /// Instance-level admin flag — gates instance-wide settings (e.g. the
   /// in-app SSO/OIDC configuration screen) that are distinct from
   /// workspace-level `Membership.role: ADMIN`. Defaults to true for the
   /// very first user created on a fresh install (see `AuthService.register`'s
   /// isFirstUser check); already-provisioned installs are backfilled to the
   /// oldest existing user by the migration that adds this column.
-  isInstanceAdmin      Boolean  @default(false)
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  isInstanceAdmin    Boolean  @default(false)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
   memberships    Membership[]
   reportedIssues Issue[]       @relation("reporter")
@@ -180,28 +180,29 @@ model User {
   watching       Watcher[]
 
   // Notifications addressed to this user (recipient) and ones this user caused.
-  notifications       Notification[]       @relation("recipient")
-  actedNotifications  Notification[]       @relation("actor")
-  passwordResetTokens PasswordResetToken[]
-  apiTokens           ApiToken[]
-  attachments         Attachment[]
-  auditEvents         AuditEvent[]
-  shareTokens         ShareToken[]
+  notifications        Notification[]        @relation("recipient")
+  actedNotifications   Notification[]        @relation("actor")
+  passwordResetTokens  PasswordResetToken[]
+  apiTokens            ApiToken[]
+  attachments          Attachment[]
+  auditEvents          AuditEvent[]
+  shareTokens          ShareToken[]
+  dashboardShareTokens DashboardShareToken[]
 
   // Team memberships
-  teamMemberships     TeamMember[]
+  teamMemberships TeamMember[]
 
   // Issue links created by this user
-  issueLinksCreated   IssueLink[]
+  issueLinksCreated IssueLink[]
 
   // Project lead back-relation
-  ledProjects         Project[]            @relation("projectLead")
+  ledProjects Project[] @relation("projectLead")
 
   // Component default assignee back-relation
-  defaultAssigneeComponents Component[]    @relation("componentDefaultAssignee")
+  defaultAssigneeComponents Component[] @relation("componentDefaultAssignee")
 
   // SavedFilter ownership
-  savedFilters        SavedFilter[]
+  savedFilters SavedFilter[]
 
   // Planning poker
   pokerSessionsCreated PokerSession[] @relation("pokerCreator")
@@ -295,22 +296,22 @@ model PasswordResetToken {
 }
 
 model Workspace {
-  id        String   @id @default(cuid())
-  name      String
-  slug      String   @unique
+  id             String   @id @default(cuid())
+  name           String
+  slug           String   @unique
   /// Accent color for workspace branding, stored as a #RRGGBB hex string.
   /// Null = use the product default. Validated in the application layer.
-  brandColor      String?
+  brandColor     String?
   /// On-disk storage key for the uploaded workspace logo image (same scheme as
   /// Attachment.storageKey — a UUID-based path under UPLOADS_DIR set by multer
   /// diskStorage). Null = no custom logo has been uploaded.
-  logoStorageKey  String?
+  logoStorageKey String?
   /// MIME type of the uploaded logo (e.g. "image/png", "image/svg+xml").
   /// Required by the serve endpoint to set the correct Content-Type header.
   /// Null when no logo has been uploaded (always null when logoStorageKey is null).
-  logoMimeType    String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  logoMimeType   String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   memberships Membership[]
   projects    Project[]
@@ -335,30 +336,30 @@ model Membership {
 }
 
 model Project {
-  id          String   @id @default(cuid())
-  key         String // e.g. "NL"; unique within a workspace
-  name        String
-  description String?
-  leadId      String?
-  workspaceId String
-  archived    Boolean  @default(false)
-  issueSeq    Int      @default(0) // last issue number assigned for this project
+  id               String   @id @default(cuid())
+  key              String // e.g. "NL"; unique within a workspace
+  name             String
+  description      String?
+  leadId           String?
+  workspaceId      String
+  archived         Boolean  @default(false)
+  issueSeq         Int      @default(0) // last issue number assigned for this project
   /// When false (default) all status transitions are permitted — existing behavior.
   /// When true, only transitions defined in WorkflowTransition are legal; the
   /// service layer enforces this before updating an issue's statusId.
-  workflowEnforced Boolean @default(false)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  workflowEnforced Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
-  workspace    Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  lead         User?                 @relation("projectLead", fields: [leadId], references: [id], onDelete: SetNull)
-  issues       Issue[]
-  statuses     Status[]
-  sprints      Sprint[]
-  labels       Label[]
-  boards       Board[]
-  webhooks     WebhookSubscription[]
-  shareTokens  ShareToken[]
+  workspace   Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  lead        User?                 @relation("projectLead", fields: [leadId], references: [id], onDelete: SetNull)
+  issues      Issue[]
+  statuses    Status[]
+  sprints     Sprint[]
+  labels      Label[]
+  boards      Board[]
+  webhooks    WebhookSubscription[]
+  shareTokens ShareToken[]
 
   // Phase 5 entities
   customFieldDefinitions CustomFieldDefinition[]
@@ -368,40 +369,40 @@ model Project {
   notifications          Notification[]
 
   // Planning poker
-  pokerSessions          PokerSession[]
+  pokerSessions PokerSession[]
 
   // Async standups
-  standupEntries         StandupEntry[]
+  standupEntries StandupEntry[]
 
   // Automation engine
-  automationRules        AutomationRule[]
+  automationRules AutomationRule[]
 
   // Configurable workflows
-  workflowTransitions    WorkflowTransition[]
+  workflowTransitions WorkflowTransition[]
 
   // Named workflow definitions (per-board workflows)
-  workflows              Workflow[]
+  workflows Workflow[]
 
   // Issue templates
-  issueTemplates         IssueTemplate[]
+  issueTemplates IssueTemplate[]
 
   // GitHub integration (Phase 9 — Developer Graph, v1 two-way link)
-  githubIntegration      GithubIntegration?
+  githubIntegration GithubIntegration?
 
   // GitLab integration (Phase 9 — Developer Graph, v1 two-way link; same shape as GitHub)
-  gitlabIntegration      GitlabIntegration?
+  gitlabIntegration GitlabIntegration?
 
   // Gitea integration (Phase 9 — Developer Graph, v1 two-way link; HMAC-signed like GitHub)
-  giteaIntegration       GiteaIntegration?
+  giteaIntegration GiteaIntegration?
 
   // Configurable dashboards (NLQL-native gadget framework)
-  dashboards             Dashboard[]
+  dashboards Dashboard[]
 
   // Per-project role overrides (sparse — absence means "inherit workspace role")
-  projectMemberships     ProjectMembership[]
+  projectMemberships ProjectMembership[]
 
   // Agent context (per-project agent handoff memory — one row, optional)
-  agentContext           ProjectAgentContext?
+  agentContext ProjectAgentContext?
 
   @@unique([workspaceId, key])
   @@index([workspaceId])
@@ -496,28 +497,28 @@ model TeamMember {
 /// (saved query filtering + conditional card colors) and are dormant until then.
 /// `savedFilterId` optionally links to a persisted SavedFilter (Phase 5).
 model Board {
-  id            String    @id @default(cuid())
-  projectId     String
-  name          String
-  type          BoardType @default(KANBAN)
+  id             String    @id @default(cuid())
+  projectId      String
+  name           String
+  type           BoardType @default(KANBAN)
   /// NLQL query string applied on top of the board's base scope. Null = no filter.
-  filterQuery   String?
+  filterQuery    String?
   /// Ordered list of conditional color rules: [{ id, query, color, label }].
   /// First match wins. Null/empty = no card coloring.
-  colorRules    Json?
-  order         Int       @default(0)
-  isDefault     Boolean   @default(false)
-  savedFilterId String?
+  colorRules     Json?
+  order          Int       @default(0)
+  isDefault      Boolean   @default(false)
+  savedFilterId  String?
   /// Optional named Workflow this board enforces. Null = use the project-level
   /// legacy workflowEnforced + WorkflowTransition path (backward-compat).
-  workflowId    String?
+  workflowId     String?
   /// Default swimlane group-by dimension applied when the board loads without
   /// an explicit ?group= URL param. Core dimension key (assignee/priority/
   /// type/epic/component/label/sprint) or `cf:<CustomFieldDefinition.id>`.
   /// Null = flat board (no default grouping).
   defaultGroupBy String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
   savedFilter SavedFilter? @relation("boardFilter", fields: [savedFilterId], references: [id], onDelete: SetNull)
@@ -542,16 +543,16 @@ model Status {
   createdAt DateTime       @default(now())
   updatedAt DateTime       @updatedAt
 
-  project         Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  issues          Issue[]
+  project               Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  issues                Issue[]
   /// Workflow transitions that originate FROM this status.
-  transitionsFrom WorkflowTransition[] @relation("transitionFromStatus")
+  transitionsFrom       WorkflowTransition[] @relation("transitionFromStatus")
   /// Workflow transitions that lead INTO this status.
-  transitionsInto WorkflowTransition[] @relation("transitionToStatus")
+  transitionsInto       WorkflowTransition[] @relation("transitionToStatus")
   /// GitHub/GitLab integrations that auto-transition a merged PR's/MR's
   /// linked issue(s) to this status. See `GithubIntegration.autoTransitionStatusId`.
-  githubAutoTransitions GithubIntegration[] @relation("githubAutoTransitionStatus")
-  gitlabAutoTransitions GitlabIntegration[] @relation("gitlabAutoTransitionStatus")
+  githubAutoTransitions GithubIntegration[]  @relation("githubAutoTransitionStatus")
+  gitlabAutoTransitions GitlabIntegration[]  @relation("gitlabAutoTransitionStatus")
 
   @@index([projectId])
 }
@@ -691,57 +692,57 @@ model Version {
 // ---------------------------------------------------------------------------
 
 model Issue {
-  id           String    @id @default(cuid())
-  number       Int // per-project sequential number; key = project.key + "-" + number
-  projectId    String
-  type         IssueType @default(TASK)
-  title        String
-  description  String?
-  statusId     String
-  assigneeId   String?
-  reporterId   String?
-  priority     Priority  @default(MEDIUM)
-  storyPoints  Int?
-  parentId     String? // self-relation for epic -> story -> subtask
+  id                      String                   @id @default(cuid())
+  number                  Int // per-project sequential number; key = project.key + "-" + number
+  projectId               String
+  type                    IssueType                @default(TASK)
+  title                   String
+  description             String?
+  statusId                String
+  assigneeId              String?
+  reporterId              String?
+  priority                Priority                 @default(MEDIUM)
+  storyPoints             Int?
+  parentId                String? // self-relation for epic -> story -> subtask
   // Intended hierarchy: EPIC > STORY / TASK > SUBTASK. Enforced in service layer.
-  sprintId     String?
-  startDate    DateTime? // optional start date; null = no start date. When both are set, startDate <= dueDate (enforced in service layer).
-  dueDate      DateTime? // optional due date; null = no due date
-  rank         String // fractional index for board/backlog ordering
+  sprintId                String?
+  startDate               DateTime? // optional start date; null = no start date. When both are set, startDate <= dueDate (enforced in service layer).
+  dueDate                 DateTime? // optional due date; null = no due date
+  rank                    String // fractional index for board/backlog ordering
   // Custom field values as a flat JSONB object keyed by CustomFieldDefinition.id.
   // Queried via jsonb_path_ops GIN index (see baseline migration raw SQL).
   // Example: { "cldefinition_abc": "S1", "cldefinition_xyz": 42 }
-  customFields Json?
-  componentId  String?
+  customFields            Json?
+  componentId             String?
   /// Original time estimate in minutes; null = not estimated.
   originalEstimateMinutes Int?
   // Generated tsvector for full-text search; managed entirely by Postgres
   // (GENERATED ALWAYS AS ... STORED). Prisma cannot read/write this column
   // directly — all FTS queries go through $queryRaw. The GIN index
   // "Issue_searchVector_idx" is created via raw SQL in the baseline migration.
-  searchVector Unsupported("tsvector")?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  searchVector            Unsupported("tsvector")?
+  createdAt               DateTime                 @default(now())
+  updatedAt               DateTime                 @updatedAt
 
-  project    Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  status     Status        @relation(fields: [statusId], references: [id])
-  assignee   User?         @relation("assignee", fields: [assigneeId], references: [id], onDelete: SetNull)
-  reporter   User?         @relation("reporter", fields: [reporterId], references: [id], onDelete: SetNull)
-  parent     Issue?        @relation("subtasks", fields: [parentId], references: [id], onDelete: SetNull)
-  children   Issue[]       @relation("subtasks")
-  sprint     Sprint?       @relation(fields: [sprintId], references: [id], onDelete: SetNull)
-  component  Component?    @relation(fields: [componentId], references: [id], onDelete: SetNull)
-  comments   Comment[]
-  activities ActivityLog[]
-  labels     IssueLabel[]
-  watchers   Watcher[]
+  project       Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  status        Status         @relation(fields: [statusId], references: [id])
+  assignee      User?          @relation("assignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  reporter      User?          @relation("reporter", fields: [reporterId], references: [id], onDelete: SetNull)
+  parent        Issue?         @relation("subtasks", fields: [parentId], references: [id], onDelete: SetNull)
+  children      Issue[]        @relation("subtasks")
+  sprint        Sprint?        @relation(fields: [sprintId], references: [id], onDelete: SetNull)
+  component     Component?     @relation(fields: [componentId], references: [id], onDelete: SetNull)
+  comments      Comment[]
+  activities    ActivityLog[]
+  labels        IssueLabel[]
+  watchers      Watcher[]
   notifications Notification[]
   attachments   Attachment[]
 
   // Phase 5 relations
-  linksFrom  IssueLink[]    @relation("linkSource")
-  linksTo    IssueLink[]    @relation("linkTarget")
-  versions   IssueVersion[]
+  linksFrom IssueLink[]    @relation("linkSource")
+  linksTo   IssueLink[]    @relation("linkTarget")
+  versions  IssueVersion[]
 
   // Planning poker
   pokerItems PokerItem[]
@@ -753,22 +754,22 @@ model Issue {
   promotedPersonalCards PersonalCard[]
 
   // Automation engine — run history for this issue
-  automationRuns        AutomationRun[]
+  automationRuns AutomationRun[]
 
   // Checklist items
-  checklistItems        ChecklistItem[]
+  checklistItems ChecklistItem[]
 
   // Time tracking
-  workLogs              WorkLog[]
+  workLogs WorkLog[]
 
   // GitHub integration — linked PRs / commits / branches (Phase 9)
-  githubLinks           IssueGithubLink[]
+  githubLinks IssueGithubLink[]
 
   // GitLab integration — linked MRs / commits / branches (Phase 9)
-  gitlabLinks           IssueGitlabLink[]
+  gitlabLinks IssueGitlabLink[]
 
   // Gitea integration — linked PRs / commits / branches (Phase 9)
-  giteaLinks            IssueGiteaLink[]
+  giteaLinks IssueGiteaLink[]
 
   @@unique([projectId, number])
   @@index([projectId, statusId])
@@ -849,9 +850,9 @@ model IssueLink {
   createdAt   DateTime      @default(now())
   createdById String? // who created the link
 
-  source    Issue  @relation("linkSource", fields: [sourceId], references: [id], onDelete: Cascade)
-  target    Issue  @relation("linkTarget", fields: [targetId], references: [id], onDelete: Cascade)
-  createdBy User?  @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  source    Issue @relation("linkSource", fields: [sourceId], references: [id], onDelete: Cascade)
+  target    Issue @relation("linkTarget", fields: [targetId], references: [id], onDelete: Cascade)
+  createdBy User? @relation(fields: [createdById], references: [id], onDelete: SetNull)
 
   @@unique([sourceId, targetId, type])
   @@index([sourceId])
@@ -867,7 +868,7 @@ model Comment {
   id        String   @id @default(cuid())
   body      String
   issueId   String
-  authorId  String?  // nullable: author can be deleted (SetNull); display as "Deleted User"
+  authorId  String? // nullable: author can be deleted (SetNull); display as "Deleted User"
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1064,9 +1065,9 @@ model PokerSession {
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
-  project   Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  sprint    Sprint?      @relation(fields: [sprintId], references: [id], onDelete: SetNull)
-  createdBy User?        @relation("pokerCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  project   Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sprint    Sprint?     @relation(fields: [sprintId], references: [id], onDelete: SetNull)
+  createdBy User?       @relation("pokerCreator", fields: [createdById], references: [id], onDelete: SetNull)
   items     PokerItem[]
 
   @@index([projectId])
@@ -1136,17 +1137,17 @@ model PokerVote {
 /// normalise to date-only before writing). Full-precision DateTime is used
 /// because Prisma does not expose a bare Date scalar for Postgres.
 model StandupEntry {
-  id        String    @id @default(cuid())
+  id        String   @id @default(cuid())
   userId    String
-  teamId    String?   // nullable — entry may be project-scoped only
-  projectId String?   // nullable — entry may be team-scoped only
+  teamId    String? // nullable — entry may be project-scoped only
+  projectId String? // nullable — entry may be team-scoped only
   /// The standup calendar day. Store as midnight UTC (YYYY-MM-DDT00:00:00Z).
   date      DateTime
-  yesterday String?   // what the user did yesterday
-  today     String?   // what the user will do today
-  blockers  String?   // free-text description of blockers
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  yesterday String? // what the user did yesterday
+  today     String? // what the user will do today
+  blockers  String? // free-text description of blockers
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   team    Team?    @relation(fields: [teamId], references: [id], onDelete: SetNull)
@@ -1208,23 +1209,23 @@ model PersonalColumn {
 /// within a column. `promotedIssueId` is set (and thereafter immutable by
 /// convention) when the card has been promoted to a real tracked issue.
 model PersonalCard {
-  id               String   @id @default(cuid())
-  userId           String
-  columnId         String
-  title            String
-  notes            String?
+  id              String    @id @default(cuid())
+  userId          String
+  columnId        String
+  title           String
+  notes           String?
   /// Optional hex accent color (e.g. "#2563eb") shown as a left border/dot.
-  color            String?
+  color           String?
   /// Optional due date for the card.
-  dueDate          DateTime?
-  rank             String
-  promotedIssueId  String?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  dueDate         DateTime?
+  rank            String
+  promotedIssueId String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
-  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  column         PersonalColumn  @relation(fields: [columnId], references: [id], onDelete: Cascade)
-  promotedIssue  Issue?          @relation(fields: [promotedIssueId], references: [id], onDelete: SetNull)
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  column        PersonalColumn @relation(fields: [columnId], references: [id], onDelete: Cascade)
+  promotedIssue Issue?         @relation(fields: [promotedIssueId], references: [id], onDelete: SetNull)
 
   @@index([userId])
   @@index([columnId, rank])
@@ -1259,15 +1260,15 @@ model AutomationRule {
   description String?
   enabled     Boolean           @default(true)
   trigger     AutomationTrigger
-  condition   String?           // NLQL expression; null = unconditional
-  actions     Json              // ordered array of {type, ...params}
+  condition   String? // NLQL expression; null = unconditional
+  actions     Json // ordered array of {type, ...params}
   order       Int               @default(0)
   createdById String?
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
 
-  project   Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  createdBy User?            @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  project   Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy User?           @relation(fields: [createdById], references: [id], onDelete: SetNull)
   runs      AutomationRun[]
 
   // Fast lookup when an event fires: filter by project + enabled + trigger.
@@ -1293,15 +1294,15 @@ model AutomationRule {
 ///                    exactly what ran and what failed.
 /// `error`          — human-readable error detail when status = FAILED.
 model AutomationRun {
-  id             String               @id @default(cuid())
+  id             String              @id @default(cuid())
   ruleId         String
-  issueId        String?              // nullable: SetNull when the issue is deleted
+  issueId        String? // nullable: SetNull when the issue is deleted
   trigger        AutomationTrigger
-  matched        Boolean              // did the condition evaluate to true?
+  matched        Boolean // did the condition evaluate to true?
   status         AutomationRunStatus
-  actionsApplied Json                 // [{type, detail, ok}, ...]
-  error          String?              // non-null only when status = FAILED
-  createdAt      DateTime             @default(now())
+  actionsApplied Json // [{type, detail, ok}, ...]
+  error          String? // non-null only when status = FAILED
+  createdAt      DateTime            @default(now())
 
   rule  AutomationRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
   issue Issue?         @relation(fields: [issueId], references: [id], onDelete: SetNull)
@@ -1385,6 +1386,12 @@ model WorkflowTransition {
   /// Named workflow this transition belongs to; null = legacy project-level row.
   workflow   Workflow? @relation(fields: [workflowId], references: [id], onDelete: Cascade)
 
+  /// Prevents exact duplicate legacy transitions (null workflowId path).
+  /// Postgres 16 NULLS NOT DISTINCT ensures NULL rows collide correctly.
+  @@unique([projectId, fromStatusId, toStatusId, issueType])
+  /// Prevents exact duplicate transitions within a named workflow.
+  /// Postgres 16 NULLS NOT DISTINCT applies here too.
+  @@unique([workflowId, fromStatusId, toStatusId, issueType])
   /// Fast "what transitions are legal for this issue type in this project?" query.
   @@index([projectId, issueType])
   /// Fast "what transitions can leave this specific status?" query.
@@ -1393,12 +1400,6 @@ model WorkflowTransition {
   @@index([projectId, toStatusId])
   /// Workflow-scoped transitions index.
   @@index([workflowId])
-  /// Prevents exact duplicate legacy transitions (null workflowId path).
-  /// Postgres 16 NULLS NOT DISTINCT ensures NULL rows collide correctly.
-  @@unique([projectId, fromStatusId, toStatusId, issueType])
-  /// Prevents exact duplicate transitions within a named workflow.
-  /// Postgres 16 NULLS NOT DISTINCT applies here too.
-  @@unique([workflowId, fromStatusId, toStatusId, issueType])
 }
 
 // ---------------------------------------------------------------------------
@@ -1459,19 +1460,19 @@ model WorkLog {
 /// `labelIds` is a JSONB array of Label.id strings (M:N without a join table,
 /// since templates are rarely queried by label — they are write-path helpers).
 model IssueTemplate {
-  id                  String     @id @default(cuid())
+  id                  String    @id @default(cuid())
   projectId           String
   name                String
-  issueType           IssueType  @default(TASK)
+  issueType           IssueType @default(TASK)
   titleTemplate       String?
   descriptionTemplate String?
   priority            Priority?
   defaultAssigneeId   String?
   componentId         String?
   /// JSON array of Label.id strings to apply when creating from this template.
-  labelIds            Json       @default("[]")
-  createdAt           DateTime   @default(now())
-  updatedAt           DateTime   @updatedAt
+  labelIds            Json      @default("[]")
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
   project         Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
   defaultAssignee User?      @relation("templateDefaultAssignee", fields: [defaultAssigneeId], references: [id], onDelete: SetNull)
@@ -1533,27 +1534,27 @@ model OidcConfig {
 }
 
 model GithubIntegration {
-  id             String   @id @default(cuid())
-  projectId      String   @unique
+  id                     String   @id @default(cuid())
+  projectId              String   @unique
   /// "owner/repo" — validated at the DTO layer.
-  repoFullName   String
-  tokenEncrypted String
-  webhookSecret  String
+  repoFullName           String
+  tokenEncrypted         String
+  webhookSecret          String
   /// When true, a `merged` pull_request webhook event auto-moves every
   /// linked issue to `autoTransitionStatusId` via the existing
   /// workflow-transition enforcement path's automation-bypass flag (same
   /// mechanism the automation engine's TRANSITION action uses). Off by
   /// default — this is an opt-in per-project automation, not a default
   /// behavior change.
-  autoTransitionOnMerge  Boolean @default(false)
+  autoTransitionOnMerge  Boolean  @default(false)
   /// The target status applied on merge when `autoTransitionOnMerge` is on.
   /// Null while unconfigured; enabling the toggle requires a status to be
   /// selected (enforced at the service layer, not the DB).
   autoTransitionStatusId String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
 
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project              Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
   /// SetNull (not a hard block) so deleting the target status doesn't corrupt
   /// the integration row — the toggle just stops firing until re-configured.
   autoTransitionStatus Status? @relation("githubAutoTransitionStatus", fields: [autoTransitionStatusId], references: [id], onDelete: SetNull)
@@ -1631,21 +1632,21 @@ enum GitlabLinkKind {
 ///   delivery; the inbound webhook receiver verifies it with a timing-safe
 ///   equality compare. Generated once at creation; not rotated by a plain PUT.
 model GitlabIntegration {
-  id             String   @id @default(cuid())
-  projectId      String   @unique
-  gitlabBaseUrl  String   @default("https://gitlab.com")
-  projectPath    String
-  tokenEncrypted String
-  webhookSecret  String
+  id                     String   @id @default(cuid())
+  projectId              String   @unique
+  gitlabBaseUrl          String   @default("https://gitlab.com")
+  projectPath            String
+  tokenEncrypted         String
+  webhookSecret          String
   /// Mirrors `GithubIntegration.autoTransitionOnMerge` exactly — a `merged`
   /// Merge Request Hook event auto-moves every linked issue to
   /// `autoTransitionStatusId`. Off by default.
-  autoTransitionOnMerge  Boolean @default(false)
+  autoTransitionOnMerge  Boolean  @default(false)
   autoTransitionStatusId String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
 
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project              Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
   autoTransitionStatus Status? @relation("gitlabAutoTransitionStatus", fields: [autoTransitionStatusId], references: [id], onDelete: SetNull)
 
   @@index([projectId])
@@ -1788,8 +1789,9 @@ model Dashboard {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  project Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  gadgets DashboardGadget[]
+  project     Project               @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  gadgets     DashboardGadget[]
+  shareTokens DashboardShareToken[]
 
   @@index([projectId])
 }
@@ -1819,6 +1821,32 @@ model DashboardGadget {
   dashboard Dashboard @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
 
   @@index([dashboardId])
+}
+
+/// A public, read-only share link for a single dashboard — the dashboard
+/// analogue of `ShareToken` (which scopes to a project board). Kept as its
+/// own table rather than widening `ShareToken` with a nullable `dashboardId`:
+/// `ShareToken.projectId` is a required column that every existing read/write
+/// path (`ShareTokensService`, `PublicService`) treats as always-present, and
+/// dashboards and boards are never the same resource — a board link must
+/// never be presentable as a dashboard link or vice versa. A parallel table
+/// keeps both FKs required + `onDelete: Cascade` precise, avoids a discriminator
+/// column / nullable-FK CHECK constraint, and needs zero changes to the
+/// existing, already-tested `ShareToken` surface. See `share-tokens/` for the
+/// board equivalent this mirrors field-for-field.
+model DashboardShareToken {
+  id          String    @id @default(cuid())
+  dashboardId String
+  tokenHash   String    @unique // SHA-256 hex of the raw "nls_..." token
+  createdById String
+  createdAt   DateTime  @default(now())
+  revokedAt   DateTime? // null = active; non-null = revoked
+
+  dashboard Dashboard @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
+  createdBy User      @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([dashboardId])
+  @@index([createdById])
 }
 
 // ---------------------------------------------------------------------------
@@ -1871,29 +1899,28 @@ model ProjectAgentContext {
 /// write) rather than a scheduled job, since a self-hosted single-instance
 /// deployment doesn't need one for a table this small and short-lived.
 model IdempotencyRecord {
-  id             String   @id @default(cuid())
+  id           String   @id @default(cuid())
   /// Client-supplied idempotency key (opaque string, e.g. a UUID the caller
   /// generates once and reuses across retries of the SAME logical request).
-  key            String
-  userId         String
+  key          String
+  userId       String
   /// Logical endpoint identifier, e.g. "POST /issues" or "POST comments" —
   /// scopes the key so the same key string can't collide across unrelated
   /// mutation types for the same user.
-  endpoint       String
+  endpoint     String
   /// The JSON response body that was returned the first time this key was
   /// used for this user+endpoint — replayed verbatim on a retry within the
   /// window. NULL while the first request is still executing: the row is
   /// inserted as a claim BEFORE the mutation runs (claim-first), so a
   /// concurrent duplicate polls for this to fill in rather than re-running
   /// the mutation.
-  responseBody   Json?
+  responseBody Json?
   /// SHA-256 of the logical request payload recorded with the claim. A
   /// replay whose payload hash differs gets a 409 instead of silently
   /// replaying the first response (reused-key caller bug).
-  requestHash    String   @default("")
-  createdAt      DateTime @default(now())
+  requestHash  String   @default("")
+  createdAt    DateTime @default(now())
 
   @@unique([key, userId, endpoint])
   @@index([createdAt])
 }
-

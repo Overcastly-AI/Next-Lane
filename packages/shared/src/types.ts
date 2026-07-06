@@ -1287,6 +1287,56 @@ export interface PublicBoardDto {
   issues: IssueDto[];
 }
 
+// ── Public Dashboard Share Tokens ─────────────────────────────────────────────
+
+/**
+ * Metadata for a dashboard public share link (ADMIN view). Mirrors
+ * `ShareTokenDto` but scoped to a dashboard instead of a project — dashboards
+ * and project boards are separate share surfaces (a dashboard link never
+ * grants board access and vice versa) backed by their own `DashboardShareToken`
+ * table (see schema.prisma for the rationale).
+ */
+export interface DashboardShareTokenDto {
+  id: string;
+  dashboardId: string;
+  createdById: string;
+  createdAt: string;
+  revokedAt: string | null;
+}
+
+/**
+ * Response from POST /dashboards/:id/share-tokens.
+ * Contains the raw share URL token (shown ONCE — caller must copy it).
+ */
+export interface CreateDashboardShareTokenResponse {
+  id: string;
+  dashboardId: string;
+  /** Raw "nls_..." token — shown exactly once and never retrievable again. */
+  rawToken: string;
+  createdAt: string;
+}
+
+/**
+ * Read-only dashboard snapshot returned by the public (unauthenticated)
+ * endpoint — every gadget's evaluated result, same shape as the authenticated
+ * `GET /dashboards/:id/data` response, plus the minimal project/dashboard
+ * metadata needed to render a standalone page (no auth-gated fields like
+ * membership or gadget CRUD affordances).
+ */
+export interface PublicDashboardDto {
+  project: {
+    id: string;
+    key: string;
+    name: string;
+  };
+  dashboard: {
+    id: string;
+    name: string;
+  };
+  gadgets: DashboardGadgetResult[];
+  issuesTruncated: boolean;
+}
+
 // ── Saved Filters ─────────────────────────────────────────────────────────────
 
 /**

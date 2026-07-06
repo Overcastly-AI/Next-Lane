@@ -327,3 +327,31 @@ export function resolveQueryNames(
 
   return { ok: true };
 }
+
+/**
+ * Does this query's WHERE clause call `me()` anywhere (e.g.
+ * `assignee = me()`, `reporter != me()`, `assignee IN (me(), "Bob")`)?
+ *
+ * `me()` resolves to `ctx.currentUserId` in the evaluator (see
+ * `resolveFunction` in `./evaluator`) — there is no such identity for an
+ * anonymous caller. A server surface with no authenticated user (the public
+ * dashboard share endpoint) must check this BEFORE evaluating a gadget's
+ * query: silently falling through to `ctx.currentUserId ?? null` would turn
+ * `assignee = me()` into `assignee = null` (i.e. "unassigned"), a confusing,
+ * silently-wrong result rather than the honest "this gadget needs a signed-in
+ * user" error. Never throws on a parse error — returns `false` (an invalid
+ * query is already reported by `validateQuery`).
+ */
+export function queryReferencesMe(query: string): boolean {
+  let ast: Query;
+  try {
+    ast = parse(query);
+  } catch {
+    return false;
+  }
+  const operands: ComparisonOperands[] = [];
+  if (ast.where) collectComparisonOperands(ast.where, operands);
+  return operands.some(({ values }) =>
+    values.some((v) => v.kind === 'function' && v.name === 'me'),
+  );
+}

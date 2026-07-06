@@ -302,6 +302,15 @@ minimal, so there is no `verbose` mode.
   **not** wired as an MCP tool. Manage SSO from that settings page (or the
   `OIDC_ISSUER_URL`/`OIDC_CLIENT_ID`/`OIDC_CLIENT_SECRET` env vars, which take
   precedence when set) in the web app.
+- **Dashboard sharing (public read-only embed)** — minting/listing/revoking a
+  dashboard share link (`POST/GET /dashboards/:id/share-tokens`,
+  `DELETE .../share-tokens/:tokenId`) and the public `GET /public/dashboard/:token`
+  read itself are **not** wired as MCP tools: this is a public-web surface
+  (a bookmarkable, no-login browser URL for a human stakeholder), not an
+  agent action — there is no agent-appropriate shape for "open this link in
+  a browser." Manage share links from the "Share" button on the project's
+  Dashboards page in the web app; the board-sharing equivalent
+  (`/projects/:id/share-tokens`) makes the same call.
 
 ## Ship your agent with memory
 

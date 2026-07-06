@@ -60,6 +60,7 @@ export {
   validateQuery,
   getReferencedFieldKinds,
   resolveQueryNames,
+  queryReferencesMe,
   NLQL_MAX_LENGTH,
 } from './validate';
 export type {

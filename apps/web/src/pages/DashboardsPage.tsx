@@ -15,7 +15,7 @@ import {
   sortableKeyboardCoordinates,
   useSortable,
 } from '@dnd-kit/sortable';
-import type { DashboardGadgetDto, DashboardGadgetResult, DashboardSummaryDto } from '@next-lane/shared';
+import { Role, type DashboardGadgetDto, type DashboardGadgetResult, type DashboardSummaryDto } from '@next-lane/shared';
 import { useProject } from '@/api/projects';
 import { useMyRole } from '@/api/workspaces';
 import { useBoardRealtime } from '@/api/socket';
@@ -44,6 +44,7 @@ import { ErrorState, LoadingState, EmptyState } from '@/components/ui/States';
 import { cn } from '@/lib/cn';
 import { GadgetCard } from '@/components/dashboards/GadgetCard';
 import { GadgetFormModal } from '@/components/dashboards/GadgetFormModal';
+import { DashboardShareModal } from '@/components/dashboards/DashboardShareModal';
 
 /** Sort gadgets by their config-derived grid position (mirrors the server's `sortGadgets`). */
 function byPosition(a: DashboardGadgetDto, b: DashboardGadgetDto): number {
@@ -185,6 +186,10 @@ export function DashboardsPage() {
   const projectQuery = useProject(projectId);
   const myRole = useMyRole(projectQuery.data?.workspaceId);
   const editable = canEdit(myRole);
+  // Minting/revoking a public dashboard share link is ADMIN-only, mirroring
+  // the project-board ShareSection's gate — the server enforces this too
+  // (assertProjectRole ADMIN), this only controls whether the button shows.
+  const isAdmin = myRole === Role.ADMIN;
 
   const dashboardsQuery = useDashboards(projectId);
   const dashboards = dashboardsQuery.data ?? [];
@@ -244,6 +249,7 @@ export function DashboardsPage() {
   const reorderGadget = useReorderGadget(selectedId ?? '');
 
   const [newDashboardOpen, setNewDashboardOpen] = useState(false);
+  const [shareModalOpen, setShareModalOpen] = useState(false);
   const [gadgetModalOpen, setGadgetModalOpen] = useState(false);
   const [editingGadget, setEditingGadget] = useState<DashboardGadgetDto | undefined>(undefined);
   const [deletingGadgetId, setDeletingGadgetId] = useState<string | undefined>(undefined);
@@ -441,21 +447,33 @@ export function DashboardsPage() {
                       )}
                     </div>
                   )}
-                  {editable && (
-                    <div className="flex items-center gap-2">
-                      <Button size="sm" data-testid="gadget-add" onClick={openCreateGadget}>
-                        + Add gadget
-                      </Button>
+                  <div className="flex items-center gap-2">
+                    {isAdmin && (
                       <Button
                         size="sm"
-                        variant="ghost"
-                        data-testid="dashboard-delete"
-                        onClick={() => setDeletingDashboard(true)}
+                        variant="secondary"
+                        data-testid="dashboard-share"
+                        onClick={() => setShareModalOpen(true)}
                       >
-                        Delete dashboard
+                        Share
                       </Button>
-                    </div>
-                  )}
+                    )}
+                    {editable && (
+                      <>
+                        <Button size="sm" data-testid="gadget-add" onClick={openCreateGadget}>
+                          + Add gadget
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          data-testid="dashboard-delete"
+                          onClick={() => setDeletingDashboard(true)}
+                        >
+                          Delete dashboard
+                        </Button>
+                      </>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -521,6 +539,15 @@ export function DashboardsPage() {
           projectId={projectId}
           dashboardId={selectedId}
           gadget={editingGadget}
+        />
+      )}
+
+      {isAdmin && (
+        <DashboardShareModal
+          open={shareModalOpen}
+          onClose={() => setShareModalOpen(false)}
+          dashboardId={selectedId}
+          dashboardName={activeDashboard?.name ?? ''}
         />
       )}
 

@@ -545,7 +545,7 @@ describe('DashboardsService', () => {
 
       const result = await service.getDashboardData('user-1', DASHBOARD_ID);
 
-      expect(reports.burndown).toHaveBeenCalledWith('user-1', PROJECT_ID, 'sprint-1');
+      expect(reports.burndown).toHaveBeenCalledWith('user-1', PROJECT_ID, 'sprint-1', { skipMembershipCheck: false });
       expect(result.gadgets[0].data).toMatchObject({
         kind: 'BURNDOWN',
         sprintId: 'sprint-1',
@@ -587,7 +587,7 @@ describe('DashboardsService', () => {
 
       const result = await service.getDashboardData('user-1', DASHBOARD_ID);
 
-      expect(reports.velocityTrend).toHaveBeenCalledWith('user-1', PROJECT_ID, 4);
+      expect(reports.velocityTrend).toHaveBeenCalledWith('user-1', PROJECT_ID, 4, { skipMembershipCheck: false });
       expect(result.gadgets[0].data).toEqual({
         kind: 'VELOCITY_TREND',
         sprints: 4,
@@ -608,7 +608,7 @@ describe('DashboardsService', () => {
 
       await service.getDashboardData('user-1', DASHBOARD_ID);
 
-      expect(reports.velocityTrend).toHaveBeenCalledWith('user-1', PROJECT_ID, 6);
+      expect(reports.velocityTrend).toHaveBeenCalledWith('user-1', PROJECT_ID, 6, { skipMembershipCheck: false });
     });
 
     it('returns a per-gadget error when velocityTrend fails, instead of throwing', async () => {
@@ -795,6 +795,112 @@ describe('DashboardsService', () => {
       const result = await service.getDashboardData('user-1', DASHBOARD_ID);
 
       expect(result.gadgets.map((g) => g.gadgetId)).toEqual(['g-1', 'g-2']);
+    });
+  });
+
+  // ── getPublicDashboardData (anonymous share-token viewer) ────────────────
+
+  describe('getPublicDashboardData', () => {
+    beforeEach(() => {
+      prisma.dashboard.findUnique.mockResolvedValue(makeDashboardRow());
+      prisma.project.findUnique.mockResolvedValue(makeProjectRow());
+    });
+
+    it('does NOT require project membership — no auth check for a valid dashboard', async () => {
+      prisma.dashboardGadget.findMany.mockResolvedValue([
+        makeGadgetRow({ query: '', visualization: DashboardGadgetVisualization.STAT }),
+      ]);
+      prisma.issue.findMany.mockResolvedValue([makeIssueRow(1), makeIssueRow(2)]);
+
+      const result = await service.getPublicDashboardData(DASHBOARD_ID);
+
+      expect(membership.assertProjectMember).not.toHaveBeenCalled();
+      expect(membership.assertProjectRole).not.toHaveBeenCalled();
+      expect(result.dashboard.id).toBe(DASHBOARD_ID);
+      expect(result.project).toEqual(
+        expect.objectContaining({ id: PROJECT_ID, key: PROJECT_KEY }),
+      );
+      expect(result.gadgets[0].data).toEqual({ kind: 'STAT', count: 2 });
+    });
+
+    it('throws NotFoundException for a nonexistent dashboard', async () => {
+      prisma.dashboard.findUnique.mockResolvedValue(null);
+
+      await expect(service.getPublicDashboardData('missing')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+
+    it('a gadget whose query calls me() degrades to an explicit per-gadget error — never a crash or silent "unassigned" leak', async () => {
+      prisma.dashboardGadget.findMany.mockResolvedValue([
+        makeGadgetRow({ query: 'assignee = me()', visualization: DashboardGadgetVisualization.STAT }),
+      ]);
+      prisma.issue.findMany.mockResolvedValue([
+        makeIssueRow(1, { assigneeId: null }), // would silently match if me() -> null leaked through
+        makeIssueRow(2, { assigneeId: 'u-someone' }),
+      ]);
+
+      const result = await service.getPublicDashboardData(DASHBOARD_ID);
+
+      expect(result.gadgets[0].data).toBeUndefined();
+      expect(result.gadgets[0].error).toMatch(/me\(\)/);
+      expect(result.gadgets[0].error).toMatch(/signed-in/i);
+    });
+
+    it('a gadget with no me() reference still evaluates normally for an anonymous viewer', async () => {
+      prisma.dashboardGadget.findMany.mockResolvedValue([
+        makeGadgetRow({ query: 'status = "In Progress"' }),
+      ]);
+      prisma.issue.findMany.mockResolvedValue([
+        makeIssueRow(1, { statusName: 'In Progress' }),
+        makeIssueRow(2, { statusName: 'To Do' }),
+      ]);
+
+      const result = await service.getPublicDashboardData(DASHBOARD_ID);
+
+      expect(result.gadgets[0].error).toBeUndefined();
+      expect(result.gadgets[0].data).toEqual({ kind: 'STAT', count: 1 });
+    });
+
+    it('BURNDOWN gadget calls reports.burndown with skipMembershipCheck for an anonymous viewer', async () => {
+      prisma.dashboardGadget.findMany.mockResolvedValue([
+        makeGadgetRow({ query: '', visualization: DashboardGadgetVisualization.BURNDOWN }),
+      ]);
+      prisma.issue.findMany.mockResolvedValue([makeIssueRow(1, { sprintId: 'sprint-1' })]);
+      reports.burndown.mockResolvedValue({
+        sprintId: 'sprint-1',
+        sprintName: 'Sprint 1',
+        state: 'ACTIVE',
+        startDate: null,
+        endDate: null,
+        totalCommitted: 8,
+        series: [{ date: '2026-01-01', ideal: 8, remaining: 8 }],
+      });
+
+      const result = await service.getPublicDashboardData(DASHBOARD_ID);
+
+      expect(reports.burndown).toHaveBeenCalledWith('', PROJECT_ID, 'sprint-1', {
+        skipMembershipCheck: true,
+      });
+      expect(result.gadgets[0].data).toMatchObject({ kind: 'BURNDOWN', sprintId: 'sprint-1' });
+    });
+
+    it('VELOCITY_TREND gadget calls reports.velocityTrend with skipMembershipCheck for an anonymous viewer', async () => {
+      prisma.dashboardGadget.findMany.mockResolvedValue([
+        makeGadgetRow({
+          query: '',
+          visualization: DashboardGadgetVisualization.VELOCITY_TREND,
+          config: { position: 0, sprints: 4 },
+        }),
+      ]);
+      prisma.issue.findMany.mockResolvedValue([]);
+      reports.velocityTrend.mockResolvedValue({ projectId: PROJECT_ID, sprints: 4, points: [] });
+
+      await service.getPublicDashboardData(DASHBOARD_ID);
+
+      expect(reports.velocityTrend).toHaveBeenCalledWith('', PROJECT_ID, 4, {
+        skipMembershipCheck: true,
+      });
     });
   });
 });

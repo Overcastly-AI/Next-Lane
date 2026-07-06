@@ -80,6 +80,7 @@ interface Tenant {
   quickLinkId: string;
   dashboardId: string;
   gadgetId: string;
+  dashboardShareTokenId: string;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -438,6 +439,18 @@ async function setupTenant(
       ? (JSON.parse(gadgetResp.body) as { id: string }).id
       : 'nonexistent-gadget-id';
 
+  // ── Dashboard share token (public read-only link; ADMIN-gated) ────────────
+  const dashboardShareTokenResp = await req(
+    server,
+    'POST',
+    `/dashboards/${dashboardId}/share-tokens`,
+    token,
+  );
+  const dashboardShareTokenId =
+    dashboardShareTokenResp.status === 201
+      ? (JSON.parse(dashboardShareTokenResp.body) as { id: string }).id
+      : 'nonexistent-dashboard-share-token-id';
+
   return {
     token,
     userId,
@@ -460,6 +473,7 @@ async function setupTenant(
     quickLinkId,
     dashboardId,
     gadgetId,
+    dashboardShareTokenId,
   };
 }
 
@@ -1151,6 +1165,23 @@ function buildMatrix(a: Tenant): Array<MatrixRow & { resolvedPath: string; resol
       path: (t) => `/gadgets/${t.gadgetId}`,
     },
 
+    // ── Dashboard share tokens (public read-only link; ADMIN-gated) ─────────
+    {
+      label: "GET dashboard A's share tokens",
+      method: 'GET',
+      path: (t) => `/dashboards/${t.dashboardId}/share-tokens`,
+    },
+    {
+      label: 'POST share token on dashboard A',
+      method: 'POST',
+      path: (t) => `/dashboards/${t.dashboardId}/share-tokens`,
+    },
+    {
+      label: "DELETE (revoke) dashboard A's share token",
+      method: 'DELETE',
+      path: (t) => `/dashboards/${t.dashboardId}/share-tokens/${t.dashboardShareTokenId}`,
+    },
+
     // ── Planning Poker ───────────────────────────────────────────────────────
     {
       label: 'GET poker sessions for project A',
@@ -1222,6 +1253,7 @@ function buildMatrix(a: Tenant): Array<MatrixRow & { resolvedPath: string; resol
         tenantA.apiTokenId,
         tenantA.dashboardId,
         tenantA.gadgetId,
+        tenantA.dashboardShareTokenId,
         tenantA.personalCardId,
         tenantA.quickLinkId,
       ].filter(Boolean);

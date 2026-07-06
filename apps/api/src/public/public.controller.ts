@@ -34,4 +34,20 @@ export class PublicController {
   getBoard(@Param('token') token: string) {
     return this.publicService.getPublicBoard(token);
   }
+
+  /**
+   * Return a read-only, fully-evaluated dashboard snapshot for a valid share
+   * token.
+   *
+   * No authentication required. The token encodes dashboard access; a
+   * dashboard link can never be used to reach a project's board or any other
+   * dashboard (dashboardId is always derived from the stored token row). An
+   * invalid or revoked token returns 404 — no oracle distinguishing the two.
+   */
+  @Public()
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
+  @Get('dashboard/:token')
+  getDashboard(@Param('token') token: string) {
+    return this.publicService.getPublicDashboard(token);
+  }
 }

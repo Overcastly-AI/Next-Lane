@@ -35,6 +35,7 @@ import { TriagePage } from '@/pages/TriagePage';
 import { ProfileSettingsPage } from '@/pages/ProfileSettingsPage';
 import { WorkspaceAuditLogPage } from '@/pages/WorkspaceAuditLogPage';
 import { SharedBoardPage } from '@/pages/SharedBoardPage';
+import { SharedDashboardPage } from '@/pages/SharedDashboardPage';
 import { WorkspaceMembersPage } from '@/pages/WorkspaceMembersPage';
 import { PokerStartPage } from '@/pages/PokerStartPage';
 import { PokerSessionPage } from '@/pages/PokerSessionPage';
@@ -161,7 +162,10 @@ export default function App() {
                 </RequireAuth>
               }
             />
-            {/* Public read-only board — no RequireAuth wrapper */}
+            {/* Public read-only board/dashboard — no RequireAuth wrapper. The
+                dashboard route is registered first (more specific literal
+                "dashboard" segment) so it isn't shadowed by /share/:token. */}
+            <Route path="/share/dashboard/:token" element={<SharedDashboardPage />} />
             <Route path="/share/:token" element={<SharedBoardPage />} />
             <Route
               path="/notifications"

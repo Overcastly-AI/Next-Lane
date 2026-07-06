@@ -300,6 +300,8 @@ audits' evidence implies, ahead of any new pillar or moonshot.
 
 **Gitea integration v1 — two-way link — ✅ shipped 2026-07-06 (Ready queue, third self-hosted forge).** Closes the last open half of the "GitLab/Gitea" Better-than-Jira Integrations gap — GitHub, GitLab, and now Gitea all have two-way issue linking. Links-only in v1 (no auto-transition-on-merge, no live status, mirroring the deliberate GitHub/GitLab v1 kickoff scope before their own PR-status follow-up). See the ticked Phase 9 entry above for full detail.
 
+**Dashboard sharing — public read-only embed — ✅ shipped 2026-07-06 (Ready queue, Configurable dashboards follow-up).** A dashboard can now be published read-only, no-login, to a bookmarkable `/share/dashboard/:token` URL — the same public-share pattern the project board already had, extended to dashboards now that Phase 1/2 proved the gadget framework strong (AUDIT-PRODUCT.md Pass 12, Ideation #1). Schema: a parallel `DashboardShareToken` table (not a widened `ShareToken`) so the already-tested board share-token surface stayed untouched and a dashboard link can never double as a board link. The public read reuses the exact same gadget-evaluation core the authenticated dashboard view uses — no parallel evaluation path — with one deliberate anonymous-caller behavior: a gadget whose NLQL calls `me()` has no signed-in identity to resolve against, so it now fails loud with an explicit per-gadget error (a new shared `queryReferencesMe()` AST check) instead of silently evaluating `me()` as `null` (which would render as "unassigned" — confidently wrong, not merely absent). ADMIN mint/list/revoke endpoints mirror the board equivalent exactly (same scopes, same 404-not-403 cross-tenant contract); the web page reuses the authenticated dashboard's own gadget-visualization components (`GadgetResultBody` extracted from `GadgetCard.tsx`) so there is zero duplicated rendering logic, plus a "Share" button + modal on the Dashboards page toolbar. 24 new API unit tests (1906→1930, 88→90 suites), 6 new tenant-isolation + pat-scope-rollout matrix rows (307 integration tests total), 7 new shared vitest for `queryReferencesMe`, 14 new e2e cases (`dashboard-share-link.spec.ts`, desktop+mobile) covering mint→public-render→`me()`-degrades→revoke→error-page plus the admin UI flow; full regression (board share-link, dashboards Phase 1/2) re-verified green. MCP: not applicable — a public, no-token browser surface, not an agent action; noted explicitly per the DoD convention rather than silently skipped. See the ticked `docs/BACKLOG.md` entry for full detail.
+
 *(Note to backlog-groomer: this is the intended Ready-queue order for the next
 build-loop pass; `docs/BACKLOG.md` itself is unchanged by this vision-steward
 pass — groom the board against this sequencing next.)*
@@ -548,7 +550,9 @@ pass — groom the board against this sequencing next.)*
    parallelized with `Promise.all` (engineering-auditor Pass-12 P2-2).
    Dashboard sharing/public read-only embed (reusing the board share-token
    pattern) was intentionally left for a separate Next(P2) item in
-   `docs/BACKLOG.md` rather than bundled into this slice. See the ticked
+   `docs/BACKLOG.md` rather than bundled into this slice — **shipped
+   2026-07-06, see the narrative paragraph below and the ticked
+   `docs/BACKLOG.md` entry for full detail.** See the ticked
    `docs/BACKLOG.md` entry for full detail. **Realtime coverage ✅ shipped
    2026-07-02 (Pass-12 fix batch):** `SocketEvents.DashboardUpdated` added
    (`packages/shared`), emitted from `DashboardsService` on every

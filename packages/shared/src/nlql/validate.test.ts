@@ -4,6 +4,7 @@ import { filterIssues, type NlqlSprint, type NlqlUser } from './evaluator';
 import {
   NLQL_MAX_LENGTH,
   getReferencedFieldKinds,
+  queryReferencesMe,
   resolveQueryNames,
   validateQuery,
 } from './validate';
@@ -236,6 +237,42 @@ describe('resolveQueryNames (MCP-QA pass 1, finding 1 residual)', () => {
     const r = resolveQueryNames('assignee =');
     expect(r.ok).toBe(false);
     expect(r.error?.message).toMatch(/Expected a value/);
+  });
+});
+
+describe('queryReferencesMe', () => {
+  it('detects a direct comparison', () => {
+    expect(queryReferencesMe('assignee = me()')).toBe(true);
+    expect(queryReferencesMe('reporter != me()')).toBe(true);
+  });
+
+  it('detects me() inside IN(...)', () => {
+    expect(queryReferencesMe('assignee IN (me(), "Bob")')).toBe(true);
+  });
+
+  it('detects me() combined with AND/OR/NOT', () => {
+    expect(queryReferencesMe('priority = HIGH AND assignee = me()')).toBe(true);
+    expect(queryReferencesMe('assignee = me() OR reporter = "Bob"')).toBe(true);
+    expect(queryReferencesMe('NOT assignee = me()')).toBe(true);
+  });
+
+  it('returns false when the query has no me() call', () => {
+    expect(queryReferencesMe('assignee = "Bob"')).toBe(false);
+    expect(queryReferencesMe('status = Done')).toBe(false);
+    expect(queryReferencesMe('')).toBe(false);
+  });
+
+  it('does not false-positive on a string literal that merely contains the text "me()"', () => {
+    expect(queryReferencesMe('"Assignee Text" = "me()"')).toBe(false);
+  });
+
+  it('ignores other zero-arg functions (now/today/startOfWeek/startOfDay)', () => {
+    expect(queryReferencesMe('createdAt > today()')).toBe(false);
+    expect(queryReferencesMe('createdAt > now()')).toBe(false);
+  });
+
+  it('returns false on a parse error (never throws)', () => {
+    expect(queryReferencesMe('assignee =')).toBe(false);
   });
 });
 

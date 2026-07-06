@@ -70,6 +70,9 @@ export const qk = {
   dashboard: (dashboardId: string) => ['dashboard', dashboardId] as const,
   /** A dashboard's evaluated gadget data. */
   dashboardData: (dashboardId: string) => ['dashboardData', dashboardId] as const,
+  /** ADMIN-view list of public share tokens minted for a dashboard. */
+  dashboardShareTokens: (dashboardId: string) =>
+    ['dashboardShareTokens', dashboardId] as const,
   /** Instance-level SSO/OIDC configuration (admin settings screen). */
   oidcConfig: ['oidcConfig'] as const,
   /**

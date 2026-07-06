@@ -17,6 +17,7 @@ import {
   validateQuery,
   getReferencedFieldKinds,
   resolveQueryNames,
+  queryReferencesMe,
   type DashboardDataDto,
   type DashboardDto,
   type DashboardGadgetResult,
@@ -408,6 +409,60 @@ export class DashboardsService {
     const dashboard = await this.getDashboardOr404(dashboardId);
     await assertProjectMember(this.prisma, userId, dashboard.projectId);
 
+    const { gadgets, issuesTruncated } = await this.evaluateDashboardGadgets(
+      dashboard,
+      userId,
+    );
+    return { dashboardId, gadgets, issuesTruncated };
+  }
+
+  /**
+   * Evaluate every gadget on a dashboard for a public (unauthenticated)
+   * share-token viewer. Callers MUST validate the share token — and that it
+   * resolves to `dashboardId` — before calling this; there is no membership
+   * check here (a valid, non-revoked share token IS the authorization).
+   *
+   * `userId` is never available for an anonymous viewer, so every gadget is
+   * evaluated with `currentUserId: undefined` — see `evaluateGadget`'s
+   * `me()`-degradation contract for what that means for a gadget whose query
+   * calls `me()`.
+   */
+  async getPublicDashboardData(dashboardId: string): Promise<{
+    dashboard: DashboardRow;
+    project: { id: string; key: string; name: string };
+    gadgets: DashboardGadgetResult[];
+    issuesTruncated: boolean;
+  }> {
+    const dashboard = await this.getDashboardOr404(dashboardId);
+    const project = await this.prisma.project.findUnique({
+      where: { id: dashboard.projectId },
+      select: { id: true, key: true, name: true },
+    });
+    // Should not happen (cascade delete removes the dashboard too), but guard
+    // defensively rather than let a null-ref 500 leak internals.
+    if (!project) {
+      throw new Error('Project not found for dashboard');
+    }
+
+    const { gadgets, issuesTruncated } = await this.evaluateDashboardGadgets(
+      dashboard,
+      undefined,
+    );
+    return { dashboard, project, gadgets, issuesTruncated };
+  }
+
+  /**
+   * Shared gadget-evaluation core for both the authenticated
+   * (`getDashboardData`) and public (`getPublicDashboardData`) read paths.
+   * `userId` is `undefined` for an anonymous public-share-token viewer —
+   * every per-gadget check downstream treats that as "no signed-in identity",
+   * never as a crash.
+   */
+  private async evaluateDashboardGadgets(
+    dashboard: DashboardRow,
+    userId: string | undefined,
+  ): Promise<{ gadgets: DashboardGadgetResult[]; issuesTruncated: boolean }> {
+    const dashboardId = dashboard.id;
     const gadgetRows = sortGadgets(
       await this.prisma.dashboardGadget.findMany({ where: { dashboardId } }),
     );
@@ -458,13 +513,23 @@ export class DashboardsService {
       ),
     );
 
-    return { dashboardId, gadgets, issuesTruncated };
+    return { gadgets, issuesTruncated };
   }
 
+  /**
+   * Evaluate a single gadget's stored NLQL against the pre-loaded issue set
+   * and shape the result per visualization. `userId` is `undefined` only for
+   * an anonymous public-dashboard-share-token viewer (see
+   * `getPublicDashboardData`) — in that case a query that calls `me()`
+   * degrades to an explicit per-gadget `error` rather than silently
+   * evaluating `me()` as `null` (which would render as "unassigned", a
+   * confusing, silently-wrong result, not a crash but not correct either) or
+   * throwing and taking the rest of the dashboard down with it.
+   */
   private async evaluateGadget(
     row: DashboardGadgetRow,
     projectId: string,
-    userId: string,
+    userId: string | undefined,
     issues: IssueDto[],
     customFieldDefs: ValidateCustomFieldDef[],
     users: NlqlUser[],
@@ -491,6 +556,19 @@ export class DashboardsService {
       return {
         ...base,
         error: nameCheck.error?.message ?? 'Unknown user or sprint reference',
+      };
+    }
+
+    // Anonymous public-dashboard-share-token viewer: a query that calls
+    // me() has no identity to resolve against. Fail loud with a per-gadget
+    // error rather than let the evaluator's documented library-consumer
+    // fallback (`ctx.currentUserId ?? null` — see `resolveFunction` in
+    // `@next-lane/shared`) silently turn `assignee = me()` into "unassigned".
+    if (userId === undefined && queryReferencesMe(row.query)) {
+      return {
+        ...base,
+        error:
+          'This gadget uses me() and needs a signed-in user — not available on a public dashboard link.',
       };
     }
 
@@ -527,9 +605,10 @@ export class DashboardsService {
         }
         try {
           const burndown = await this.reports.burndown(
-            userId,
+            userId ?? '',
             projectId,
             resolved.sprintId,
+            { skipMembershipCheck: userId === undefined },
           );
           return {
             ...base,
@@ -558,7 +637,12 @@ export class DashboardsService {
             ? base.config.sprints
             : VELOCITY_TREND_DEFAULT_SPRINTS;
         try {
-          const trend = await this.reports.velocityTrend(userId, projectId, sprintsCount);
+          const trend = await this.reports.velocityTrend(
+            userId ?? '',
+            projectId,
+            sprintsCount,
+            { skipMembershipCheck: userId === undefined },
+          );
           return {
             ...base,
             data: { kind: 'VELOCITY_TREND', sprints: trend.sprints, points: trend.points },

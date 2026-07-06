@@ -175,6 +175,11 @@ const MATRIX: MatrixRow[] = [
   { controller: 'custom-fields', method: 'PATCH', path: `/custom-fields/${X}`, scope: 'projects:write' },
   { controller: 'custom-fields', method: 'DELETE', path: `/custom-fields/${X}`, scope: 'projects:write' },
 
+  // dashboard-share-tokens (public GET /public/dashboard/:token is @Public — excluded, see below)
+  { controller: 'dashboard-share-tokens', method: 'POST', path: `/dashboards/${X}/share-tokens`, scope: 'projects:write' },
+  { controller: 'dashboard-share-tokens', method: 'GET', path: `/dashboards/${X}/share-tokens`, scope: 'projects:read' },
+  { controller: 'dashboard-share-tokens', method: 'DELETE', path: `/dashboards/${X}/share-tokens/${X}`, scope: 'projects:write' },
+
   // dashboards
   { controller: 'dashboards', method: 'GET', path: `/projects/${X}/dashboards`, scope: 'projects:read' },
   { controller: 'dashboards', method: 'POST', path: `/projects/${X}/dashboards`, scope: 'projects:write' },

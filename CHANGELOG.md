@@ -14,6 +14,49 @@ This section summarizes the major capabilities delivered in the pre-1.0
 development phase. A versioned release will be tagged once the v1 criteria in
 [`docs/ROADMAP.md`](./docs/ROADMAP.md) are complete.
 
+### Added — 2026-07-06 (Dashboard sharing — public read-only embed)
+
+**A dashboard can now be published read-only, no-login, to a bookmarkable
+`/share/dashboard/:token` URL — the project-board public-share pattern,
+extended to dashboards.**
+- **Schema:** additive `DashboardShareToken` table — a parallel model
+  mirroring `ShareToken` field-for-field (not a widened `ShareToken` with a
+  nullable `dashboardId`), so the already-tested board share-token surface
+  needed zero changes and a dashboard link can never double as a board link.
+  Migration `20260706120000_add_dashboard_share_tokens`.
+- **Backend:** `DashboardShareTokensModule` (`apps/api/src/
+  dashboard-share-tokens/`) — ADMIN-gated `POST/GET /dashboards/:id/
+  share-tokens` (mint/list) + `DELETE /dashboards/:id/share-tokens/:tokenId`
+  (revoke), mirroring the board share-token controller/service exactly
+  (same scopes, same 404-not-403 cross-tenant contract). Public
+  `GET /public/dashboard/:token` (new route on the existing
+  `PublicController`, same rate limit as the board equivalent) delegates to
+  `DashboardsService.getPublicDashboardData`, which reuses the exact same
+  gadget-evaluation core the authenticated dashboard view uses — no parallel
+  evaluation path.
+- **`me()` degradation:** an anonymous public viewer has no signed-in
+  identity; a gadget whose NLQL calls `me()` now fails loud with an explicit
+  per-gadget error (new shared `queryReferencesMe()` AST check in
+  `packages/shared/src/nlql/validate.ts`) instead of the evaluator's
+  documented library-consumer fallback (`ctx.currentUserId ?? null`), which
+  would otherwise silently render as "unassigned" — confidently wrong, not
+  merely absent.
+- **Frontend:** `/share/dashboard/:token` (`SharedDashboardPage.tsx`) reuses
+  the authenticated dashboard's own gadget-visualization components
+  (`GadgetResultBody`/`VISUALIZATION_LABELS` extracted from `GadgetCard.tsx`
+  for reuse) with no add/edit/delete/reorder affordance; `DashboardShareModal.tsx`
+  (mint/list/revoke UI, mirrors `ShareSection`) opens from a new ADMIN-only
+  "Share" button on the Dashboards page toolbar.
+- **Tests:** 24 new API unit tests (1906→1930, 88→90 suites); 6 new
+  tenant-isolation + PAT-scope-rollout matrix rows (301→307 integration
+  tests); 7 new shared vitest for `queryReferencesMe` (164→171); 14 new e2e
+  cases (`dashboard-share-link.spec.ts`, desktop+mobile) — mint → public
+  render → `me()`-gadget shows its error → revoke → error page, plus the
+  admin mint/revoke UI flow; full regression (board share-link, dashboards
+  Phase 1/2) re-verified green.
+- **MCP:** not applicable — a public, no-token browser surface, not an
+  agent action.
+
 ### Added — 2026-07-06 (Gitea integration v1 — two-way link)
 
 **Third self-hosted forge, after GitHub (HMAC) and GitLab (shared-secret
