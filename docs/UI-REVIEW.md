@@ -58,6 +58,295 @@ Each item below is redesigned design-skill-led, then ✅ when shipped + verified
 
 ---
 
+## 2026-07-06 — UI review: PR badge, Development section, Dashboards Phase 2, agent-context + confirmed mobile toast defect
+
+**Branch:** `claude/jira-competitor-docker-local-9b7dll` @ `b40fbbf`. **Method:** static
+review of `apps/web/src` (a `backend-builder` had a dirty, uncommitted `apps/api/**`
+tree mid-refactor at review time, so this pass is source + the qa-tester's committed
+screenshots under the scratchpad `shots/` directory, not a fresh manual click-through —
+noted per surface below where a screenshot backs the claim).
+
+**Scope:** `board/IssueCard.tsx` (PR/Merged badge), `issue/GithubLinksSection.tsx` +
+`issue/GitlabLinksSection.tsx` (Development section live status), `dashboards/GadgetCard.tsx`
++ `dashboards/GadgetVisualizations.tsx` + `dashboards/GadgetFormModal.tsx` +
+`pages/DashboardsPage.tsx` (Dashboards Phase 2), `settings/AgentContextSection.tsx`,
+and a full characterization of the qa-tester's 2026-07-06 mobile-toast-over-modal defect
+report, plus quality-floor checks (focus visibility, `prefers-reduced-motion`, contrast)
+across all of the above.
+
+---
+
+### 🔴 P1 — Toasts overlap open-modal header on mobile (confirmed defect, fully characterized)
+
+**Files:** `apps/web/src/components/ui/Toast.tsx:157`, `apps/web/src/components/ui/Modal.tsx:36-52`.
+**Evidence:** `shots/8-gadget-cap-error-toast.png` / `8-gadget-cap-error-toast-desktop.png`
+(390px viewport, `GadgetFormModal` "Add gadget" open, the 30-gadget cap error toast
+completely covers the modal's title bar and `×` close button) and, independently,
+`shots/2-github-auto-transition-on.png` (390px, no modal open at all — two stacked
+success toasts fully cover the page's tab nav / back button for their whole visible
+duration), proving this is a general mobile-toast-position bug, not something specific
+to `GadgetFormModal`.
+
+**Root cause:** `ToastViewport`'s container is
+`fixed inset-x-0 top-0 z-[60] ... p-4 sm:bottom-0 sm:right-0 sm:left-auto sm:top-auto sm:items-end`
+— below the `sm:` breakpoint (640px) it pins to the top-center of the viewport. Every
+`Modal` in the app renders `fixed inset-0 ... flex items-start justify-center p-4 sm:p-8`
+with the panel itself at `mt-8` (`Modal.tsx:36,48-56`) — i.e. on any viewport under 640px
+the modal's header (title text + `×` button) always sits ~48–64px from the top of the
+screen, which is exactly the toast viewport's landing zone. Toast is `z-[60]` vs. Modal's
+`z-50` (correctly on top, since a toast should out-rank modal content), but that also
+means the toast's own `pointer-events-auto` item captures taps in that region — the `×`
+close button is not just visually hidden, it's **unclickable** while a toast is showing
+there.
+
+**Duration makes it worse:** error toasts default to `ERROR_DURATION = 6000` ms
+(`Toast.tsx:42,62-64`), so on mobile, any mutation failure while a modal is open makes
+that modal's header/close affordance unreachable for a full 6 seconds, every time.
+
+**Scope — this is systemic, not a one-off:** `toast.error(...)` fires from inside at
+least 17 modal-hosting components while the modal stays open on failure (confirmed by
+grep — the mutation's `onError` calls `toast.error` and does *not* call the modal's
+`onClose`, e.g. `GadgetFormModal.tsx:160-162`, `DashboardsPage.tsx`'s `NewDashboardModal`
+at :134): `ImportCsvModal`, `BoardSwitcher`, `ColumnFormModal`, `CreateIssueModal`,
+`GadgetFormModal`, `CreateProjectModal`, `ApiTokensSection`, `ComponentsSection`,
+`CustomFieldsSection`, `TemplatesManager`, `VersionsSection`, `WebhookFormModal`,
+`WebhooksSection`, `WorkflowGraph`, `WorkflowSection`, `WorkflowsManager`,
+`CreateWorkspaceModal`. Any validation/cap/permission error surfaced from any of these
+on a phone reproduces the same header occlusion — the gadget-cap error is simply the
+repro the qa-tester happened to hit first.
+
+**Prescribed fix direction:**
+1. **Primary — bottom-anchor toasts on mobile too**, instead of inverting to top below
+   `sm:`. Concretely: drop `top-0`/`sm:top-auto` and make `bottom-0` unconditional (keep
+   `items-center` + full-width centering under `sm:`, keep the existing `sm:items-end
+   sm:right-0` narrow-right-anchor at `sm:` and up). Every `Modal` in this codebase is
+   `items-start` + `mt-8` — headers are always near the TOP, never the bottom — so a
+   bottom-anchored toast structurally can't collide with a modal header again. Add
+   `pb-[env(safe-area-inset-bottom)]` while touching this for notched devices.
+2. **No accessibility cost:** the toast viewport already has `aria-live="polite"` /
+   `role="alert"` for errors (`Toast.tsx:158-160,179`), so screen-reader users are
+   unaffected by a position change — this is a pure visual/hit-testing fix.
+3. **Residual risk to verify after the fix:** a few forms run tall on a 390×844 screen
+   (`GadgetFormModal`, `CreateIssueModal`, `WebhookFormModal`) and could have their
+   Save/Cancel footer near the bottom instead — a bottom-pinned toast could newly
+   overlap *that*. Recommend pairing the reposition with capping `Modal`'s panel at
+   something like `max-h-[calc(100dvh-4rem)]` with a sticky header/footer and scrollable
+   body (worth doing anyway — several settings modals already run long on mobile), and
+   re-screenshotting those three modals at 390px specifically after the change.
+4. **Framing for the dev team:** the layering model is already correct — Modal `z-50` <
+   Toast `z-[60]`, i.e. "system alerts always render above modal content," which is the
+   right call. The bug is purely the shared *inset* value on narrow viewports landing on
+   the one piece of chrome (header + close button) that's always near the top; fixing the
+   inset, not the z-index, is the surgical fix.
+
+---
+
+### 🔴 P1 — "Merged" PR/MR badge uses stock (non-token) Tailwind purple — breaks in dark mode
+
+**Files:** `apps/web/src/components/board/IssueCard.tsx:214`,
+`apps/web/src/components/issue/GithubLinksSection.tsx:54`,
+`apps/web/src/components/issue/GitlabLinksSection.tsx:58`.
+
+`tailwind.config.js`'s `varScale()` re-points `slate/red/amber/emerald/green/blue/gray/orange`
+at CSS custom properties that flip in `.dark` (`index.css:295+`) — the documented
+mechanism by which "every existing `slate-*`/`red-*`/etc. class... gets dark-mode-legible
+values automatically... with ZERO per-component changes" (`tailwind.config.js:96-107`).
+**`purple` is not in that list** — confirmed no `--nl-purple-*` variable exists anywhere in
+`index.css`. So `bg-purple-50 text-purple-700 ring-purple-200` resolves to Tailwind's
+literal stock hex values (`#faf5ff` / `#7e22ce` / `#e9d5ff`) in **both** light and dark
+mode: in dark mode this renders as a bright, near-white, full-opacity chip in the middle
+of an otherwise-adapted dark card — the one badge on the board/drawer that visibly doesn't
+belong to the theme, not merely "low contrast" but actively jarring.
+
+This is the "Merged" state specifically — precisely the surface flagged for dark-mode
+contrast review — and it's a 3-for-3 miss (`IssueCard`'s inline PR badge, and the
+byte-identical `StateBadge` in both `GithubLinksSection` and `GitlabLinksSection` all use
+the same hardcoded classes). The same root cause also explains `WorkspaceAuditLogPage.tsx:49`
+(`WebhookSubscription` audit-log badge) and `WorkspaceMembersPage.tsx:42,330` (ADMIN role
+badge) — not in the requested scope, but worth sweeping in the same commit since it's the
+identical fix.
+
+**Fix direction:** add a `purple` entry to `varScale()` in `tailwind.config.js` plus
+matching `--nl-purple-*` light/dark values in `index.css` (same derivation as the existing
+emerald/red/amber scales) — OR, since "merged" is really one semantic state rather than a
+general-purpose color needed elsewhere, introduce a dedicated `--nl-merged-*` (or reuse
+`signal`) pair instead of adding a 9th stock color family to maintain long-term. Either way,
+fix once at the token layer and let all 5 call sites (3 in scope + the 2 above) inherit it,
+rather than patching each usage site individually.
+
+---
+
+### 🟡 P2 findings
+
+1. **Badge/status-chip pattern duplicated 3× with no shared primitive.**
+   `IssueCard.tsx`'s inline PR-badge JSX (:206-229), `GithubLinksSection.tsx`'s `StateBadge`
+   (:50-68), and `GitlabLinksSection.tsx`'s `StateBadge` (:54-73) are near-identical
+   `bg-X-50 text-X-700 ring-X-200 ring-1 ring-inset rounded px-1.5 py-0.5 text-[10px]
+   font-semibold` recipes, hand-rolled independently — and `ui/Badge.tsx` doesn't support
+   a semantic-variant prop at all, so the blocked-issue badge and overdue-due-date chip in
+   `IssueCard` (:176-192, :236-265) hand-roll the same pattern a 4th and 5th time. **Fix:**
+   extend `ui/Badge` with a `variant?: 'neutral' | 'success' | 'danger' | 'warning' | 'info'
+   | 'accent'` prop that owns this Tailwind recipe once, then migrate all five call sites
+   onto it. This would have made the purple-badge dark-mode bug above a one-line fix
+   instead of a 3-file (5-file, counting the workspace pages) grep-and-replace, and
+   prevents the next one-off badge from drifting the same way.
+
+2. **`GadgetCard` drag handle is far under the mobile tap-target floor.**
+   `apps/web/src/components/dashboards/GadgetCard.tsx:100-118` — the drag-handle `<button>`
+   wraps a 12×12 SVG in `p-0.5` (2px) padding, for a ~16×16px total hit target, roughly 40%
+   of the ~40px minimum this checklist calls for. Reordering gadgets is already a
+   fine-motor drag interaction; asking a thumb to land precisely on a 16px target makes it
+   materially harder than the equivalent mouse interaction. The sibling `IconButton` in the
+   same file (`p-1`, :43-48) is closer but still short. **Fix:** give the drag handle
+   `min-h-10 min-w-10 sm:min-h-0 sm:min-w-0` (or equivalent `p-2.5 sm:p-0.5`) so touch
+   users get a ~40px hit area while the icon itself stays visually small, shrinking back
+   down for precision mouse pointers at `sm:` and up.
+
+3. **Development sections' live-status poll has no loading state.**
+   `GithubLinksSection.tsx`'s `ChecksIndicator` (:77-102) and the identical component in
+   `GitlabLinksSection.tsx` (:82-107) render `null` while `useGithubLiveStatus`/
+   `useGitlabLiveStatus` are in flight (`live` is `undefined` until the query settles) —
+   the PR/MR row shows nothing at all, then a checks dot or a quiet "⋯" appears with no
+   transition once the poll resolves or fails. Every other section in the same drawer that
+   fetches on mount (`AttachmentsPanel.tsx:157,199,288`, `LinkedIssuesSection.tsx:52`) shows
+   the shared `Spinner` from `ui/States` while loading. **Fix:** render a small
+   `<Spinner className="h-3 w-3" />` (or an `animate-pulse` dot matching the checks-dot's
+   visual weight) next to the row while `liveQuery.isLoading`, so this section matches the
+   rest of the drawer's established loading vocabulary instead of being the one silent
+   exception.
+
+4. **Inconsistent section naming when both integrations are configured.**
+   `GithubLinksSection.tsx`'s heading literally reads "Development" (:174) with
+   `aria-label="Development"` (:172); `GitlabLinksSection.tsx`'s heading reads "GitLab"
+   (:164) but its `aria-label` is "GitLab Development" (:162). If a project has *both*
+   integrations configured, a user sees two stacked headers reading "Development" then
+   "GitLab" — not two parallel provider sections. **Fix:** pick one convention for both —
+   either both stay "Development" (rely on the per-row icon to distinguish provider,
+   already present) or both become "GitHub"/"GitLab" — and align the `aria-label`s to
+   match whichever heading text ships.
+
+5. **`Badge`'s custom-color path isn't dark-mode aware.**
+   `ui/Badge.tsx:37-53` — `hexWithAlpha()`/`darken()` are flat, mode-unaware transforms
+   (`darken` is a straight ×0.6 RGB multiply) applied to any hex passed via the `color`
+   prop (labels on `IssueCard`, `BoardPage`, `TriagePage`, `SettingsPage`, `LabelPicker`;
+   type/priority chips in `TemplatesManager`). Compare to `lib/applyBrandColor.ts`, which
+   the app already built to solve exactly this problem for the workspace brand color —
+   it mixes toward a dark canvas/paper endpoint instead of white/black when `.dark` is
+   active, specifically so an arbitrary hue "composes correctly with dark mode." Because
+   `Badge`'s `color` path doesn't reuse that technique, a user-picked label color that
+   looks fine in light mode can render as a muddy, low-contrast chip in dark mode — the
+   one corner of the badge vocabulary that doesn't inherit the "dark mode for free" the
+   rest of the token system provides. **Fix:** extract `applyBrandColor.ts`'s mix-toward-
+   dark-canvas/paper math into a small shared helper and reuse it in `Badge`'s
+   `hexWithAlpha`/`darken`, gated on the same `.dark` class check.
+
+6. **Live-status-unavailable hint fails contrast in both themes.**
+   `GithubLinksSection.tsx:84` / `GitlabLinksSection.tsx:89` — the "⋯" hint (shown when the
+   live PR/CI or MR/pipeline check errors) uses `text-ink-300`, which is `#c4cad6` on white
+   in light mode (~1.6:1 against `#ffffff` — well under the 4.5:1 text floor, or even the
+   3:1 floor for non-text UI) and `#3c4356` on `#141821`/`#0d0f14` in dark mode (similarly
+   low — both dark). `ink-300` is documented in `tailwind.config.js:57-59` as the
+   "disabled text" role, which is the wrong role here: this glyph is signaling a real,
+   actionable failure (the live check call errored) and today it's backed only by a
+   `title` tooltip + `aria-label` for anyone who can't read a near-invisible 10px
+   character. **Fix:** bump to `ink-400` ("muted → secondary text" role) at minimum, or
+   swap the ellipsis for a small icon at the same visual weight as the `ChecksIndicator`
+   success/failure/pending dot so the state is scannable, not tooltip-only.
+
+---
+
+### 🟢 P3 / nits
+
+1. **Starter-gadget first-run has no in-product explanation.**
+   `apps/api/src/dashboards/dashboards.service.ts:70-101` — a project's very first
+   dashboard is silently pre-populated with 3 gadgets (Open issues / Status overview / My
+   open issues), which is a good default, but nothing in `DashboardsPage.tsx` tells a
+   first-time user these are just starter content they can edit/delete — someone could
+   reasonably assume they're fixed/system gadgets. Suggest a one-time dismissible hint
+   under the dashboard tabs the first time the active dashboard is the project's first one
+   and its gadgets still match the starter set verbatim (e.g. "We added a few starter
+   gadgets to get you going — edit or delete any of them.").
+
+2. **Staleness pill's "why" is mouse-hover-only.**
+   `AgentContextSection.tsx:180-188` — the amber staleness pill's explanation ("Project
+   activity has happened since this document was last updated") lives only in a `title`
+   attribute, unlike `IssueCard`'s blocked badge which pairs `title` with an `aria-label`
+   carrying the same text. Low priority since the pill's own visible text ("3 changes
+   since last update") is already fairly self-explanatory without the tooltip.
+
+3. **Positive callout: `VelocityTrendGadget`/`VelocityChart` is the reference
+   implementation, not a finding.** `GadgetVisualizations.tsx:141-153` reuses the exact
+   `VelocityChart` component the full Reports page uses (genuinely "the gadget framework
+   reusing an existing chart," not a bespoke gadget-only one), has a real empty state ("No
+   sprint data yet — needs at least one active or completed sprint"), and `VelocityChart.tsx`
+   already ships `role="img"` + a descriptive `aria-label` plus a per-bar `<title>` tooltip
+   (:42-46,86,96). No action needed — flagged so other chart/gadget work has something to
+   match.
+
+---
+
+### What's already good 🟢
+
+- **`useOverlay.ts`** (`apps/web/src/lib/useOverlay.ts`) is a genuinely solid shared
+  focus-trap/Escape/scroll-lock primitive used by both `Modal` and drawers: it maintains
+  an overlay stack so only the topmost overlay reacts to Escape/Tab (a lightbox over a
+  drawer won't also close the drawer underneath), moves focus in on open, traps Tab, and
+  restores focus to the previously-focused element on close. This is exactly the kind of
+  centralized accessibility primitive the review checklist asks every modal/drawer to
+  have, and it's already correct — no changes requested.
+- **Reduced motion is handled at the token layer and actually covers dnd-kit's inline
+  styles.** `index.css:574-587`'s blanket `@media (prefers-reduced-motion: reduce) { * {
+  transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; } }`
+  overrides the non-`!important` inline `transition` style that `dnd-kit`'s `useSortable`
+  sets on `DashboardsPage.tsx`'s `SortableGadgetCard` wrapper for drag-reorder animation —
+  verified by reading both files together. Good coverage without a dnd-kit-specific carve
+  -out; this is not always the case in apps that add reduced-motion CSS after the fact.
+- **`AgentContextSection.tsx`** is a good reference implementation of the "every
+  interactive surface needs loading/empty/error/disabled states" checklist item: explicit
+  `LoadingState`/`ErrorState` (via `ui/States`), a real empty state
+  ("No agent handoff yet…"), Escape-to-cancel in the edit textarea, an inline `role="alert"`
+  save error that doesn't rely on a toast at all (so it can't collide with the mobile-toast
+  bug above), and a staleness pill built from dark-mode-safe (`amber-*`, token-backed)
+  colors. Worth pointing other settings sections at as the template.
+- **`GadgetCard`/`GadgetVisualizations`** meet the states checklist cleanly: explicit
+  `Spinner` while loading, a `role="alert"` red banner for `result.error`, and every
+  visualization (`TableGadget`, `BreakdownGadget`, `BurndownGadget`, `VelocityTrendGadget`)
+  falls back to the shared `ui/States` `EmptyState` rather than a bespoke "no data" string.
+- **The gadget/dashboard caps are a good engineering guardrail with a well-written error
+  message.** `MAX_GADGETS_PER_DASHBOARD` / `MAX_DASHBOARDS_PER_PROJECT`
+  (`dashboards.service.ts:67-68`) prevent unbounded fan-out from a bad script/agent loop,
+  and the cap error text itself ("This dashboard already has the maximum of 30 gadgets.
+  Delete one before adding another.") is specific and actionable — the *only* problem is
+  where/how it's surfaced on mobile (the P1 toast finding above), not the guardrail or the
+  copy.
+- **Board card badge grid on mobile stays legible** (`shots/board-mobile.png`): labels,
+  the blocked badge, due-date chip, story-points chip, and assignee avatar all render at
+  full readable size with no truncation/overflow at narrow widths — the vertical-stack
+  badge layout scales down cleanly.
+
+---
+
+### Top 5 for the dev team
+
+1. **Fix mobile Toast positioning** (`ui/Toast.tsx:157`) — bottom-anchor on mobile instead
+   of top-anchoring; this is the confirmed, systemic defect blocking the header/close
+   button of any open modal (17+ modal components affected) for the full error-toast
+   duration (6s) on any mutation failure at ≤640px.
+2. **Add a dark-mode-aware `purple`/`merged` token** so the "Merged" PR/MR badge (and the
+   two other call sites in `WorkspaceAuditLogPage`/`WorkspaceMembersPage`) stop being the
+   one visibly broken, non-adapting element in dark mode across board/drawer/settings.
+3. **Extend `ui/Badge` with a semantic `variant` prop** and consolidate the 3 duplicated
+   `StateBadge`/inline-badge implementations (`IssueCard` PR badge, `GithubLinksSection`,
+   `GitlabLinksSection`) onto it — fixes the purple bug at the root and prevents the next
+   one-off status chip from drifting the same way.
+4. **Bump the `GadgetCard` drag-handle hit area to ~40px on mobile** — currently ~16px,
+   well under the tap-target floor, for a drag interaction that's already fiddly on touch.
+5. **Give the Development sections' live-status poll a visible loading state** (reuse
+   `ui/States`' `Spinner`) instead of rendering nothing while in flight, matching every
+   other async section in the issue drawer.
+
+---
+
 ## 2026-06-26 — Design / UX consistency audit
 
 **Scope reviewed:** `apps/web/src/components/ui/*` (primitives), `pages/*` (Login,
