@@ -371,12 +371,14 @@ export class IssuesService {
       // (issueSeq increment, rank lookup, the insert, and its activity-log
       // row — all of which genuinely need to commit atomically together),
       // so a longer ceiling here only protects against pool contention, not
-      // a runaway query: `maxWait` (12s) is how long a request may queue for
-      // a free connection before failing; `timeout` (12s) is how long the
-      // transaction body itself may run once it has one. Both comfortably
-      // exceed anything this ~3-query body should take even under load,
-      // while still failing fast rather than hanging forever.
-      { timeout: 12_000, maxWait: 12_000 },
+      // a runaway query: `timeout` (12s) is how long the transaction body
+      // may run once it has a connection — the value that fixes the observed
+      // flake. `maxWait` (how long a request may QUEUE for a connection) is
+      // kept at a tighter 5s: under genuine sustained pool exhaustion, a
+      // large maxWait makes every request pile up and hold the line instead
+      // of shedding load (security review on 6fd9201, should-fix 5 — the
+      // worst case here is ~17s, inside typical 30s proxy budgets).
+      { timeout: 12_000, maxWait: 5_000 },
     );
 
     const dtoOut = toIssueDto(issue);

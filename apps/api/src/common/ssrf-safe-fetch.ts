@@ -54,17 +54,81 @@ export function isBlockedIp(ip: string): boolean {
   if (net.isIPv6(ip)) {
     // Normalise to lower-case for comparison.
     const lower = ip.toLowerCase();
+    // :: — unspecified (connects to "this host" on most stacks)
+    if (lower === '::') return true;
     // ::1 — loopback
     if (lower === '::1') return true;
     // fe80::/10 — link-local (fe80 – febf)
     if (/^fe[89ab][0-9a-f]:/i.test(lower)) return true;
     // fc00::/7 — unique-local (fc00 – fdff)
     if (/^f[cd][0-9a-f]{2}:/i.test(lower)) return true;
+
+    // IPv4-embedded IPv6 (security review on 6fd9201, must-fix): an AAAA
+    // record of ::ffff:169.254.169.254 previously sailed through this
+    // branch — the pin then faithfully connected to the metadata IP. Cover
+    // IPv4-mapped ::ffff:0:0/96 (both the dotted `::ffff:a.b.c.d` and pure
+    // hex `::ffff:a9fe:a9fe` textual forms), the deprecated IPv4-compatible
+    // ::a.b.c.d/96, and NAT64 64:ff9b::/96 by extracting the embedded IPv4
+    // and re-running the IPv4 blocklist on it.
+    const embedded = extractEmbeddedIpv4(lower);
+    if (embedded !== null) return isBlockedIp(embedded);
+
     return false;
   }
 
   // Unknown address family — block by default (fail-closed).
   return true;
+}
+
+/**
+ * If `lower` (a valid lower-case IPv6 literal) embeds an IPv4 address —
+ * IPv4-mapped `::ffff:0:0/96`, deprecated IPv4-compatible `::/96` (with a
+ * non-zero host part), or NAT64 `64:ff9b::/96` — return that IPv4 in dotted
+ * form; otherwise null. Works on both textual styles (`::ffff:1.2.3.4` and
+ * `::ffff:102:304`) by fully expanding the address first.
+ */
+function extractEmbeddedIpv4(lower: string): string | null {
+  // Trailing dotted-quad form: convert it to two hex groups so the address
+  // can be expanded uniformly.
+  let s = lower;
+  const dotted = s.match(/^(.*:)(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  let dottedQuad: number[] | null = null;
+  if (dotted) {
+    dottedQuad = [dotted[2], dotted[3], dotted[4], dotted[5]].map(Number);
+    const hi = ((dottedQuad[0] << 8) | dottedQuad[1]).toString(16);
+    const lo = ((dottedQuad[2] << 8) | dottedQuad[3]).toString(16);
+    s = `${dotted[1]}${hi}:${lo}`;
+  }
+
+  // Expand `::` to the full 8 groups.
+  let groups: string[];
+  if (s.includes('::')) {
+    const [head, tail] = s.split('::');
+    const headGroups = head ? head.split(':') : [];
+    const tailGroups = tail ? tail.split(':') : [];
+    const missing = 8 - headGroups.length - tailGroups.length;
+    if (missing < 0) return null;
+    groups = [...headGroups, ...Array<string>(missing).fill('0'), ...tailGroups];
+  } else {
+    groups = s.split(':');
+  }
+  if (groups.length !== 8) return null;
+  const g = groups.map((x) => parseInt(x || '0', 16));
+  if (g.some((x) => Number.isNaN(x))) return null;
+
+  const embedsAt = (prefix: number[]): boolean =>
+    prefix.every((p, i) => g[i] === p);
+
+  const isMapped = embedsAt([0, 0, 0, 0, 0, 0xffff]);
+  // IPv4-compatible ::a.b.c.d — only when there IS an embedded IPv4
+  // (i.e. the low 32 bits are non-zero; `::`/`::1` are handled above).
+  const isCompat =
+    embedsAt([0, 0, 0, 0, 0, 0]) && (g[6] !== 0 || g[7] > 1);
+  const isNat64 = embedsAt([0x64, 0xff9b, 0, 0, 0, 0]);
+  if (!isMapped && !isCompat && !isNat64) return null;
+
+  const v4 = [g[6] >> 8, g[6] & 0xff, g[7] >> 8, g[7] & 0xff];
+  return v4.join('.');
 }
 
 /** Thrown by `ssrfSafeFetch` when the target is rejected by the SSRF guard. */
@@ -110,12 +174,19 @@ async function resolveVetted(urlString: string): Promise<VettedOk | VettedBlocke
   }
 
   // If the hostname is already a raw IP literal, no DNS is ever involved —
-  // check it directly and pin to itself.
-  if (net.isIP(hostname)) {
-    if (isBlockedIp(hostname)) {
-      return { blocked: true, reason: `IP ${hostname} is in a blocked range` };
+  // check it directly and pin to itself. WHATWG URL keeps IPv6 literals in
+  // bracketed form (`[2001:db8::1]`) which net.isIP() rejects — strip the
+  // brackets or every legitimate IPv6-literal URL fails closed at the
+  // dns.lookup below (security review on 6fd9201, should-fix 2).
+  const bareHost =
+    hostname.startsWith('[') && hostname.endsWith(']')
+      ? hostname.slice(1, -1)
+      : hostname;
+  if (net.isIP(bareHost)) {
+    if (isBlockedIp(bareHost)) {
+      return { blocked: true, reason: `IP ${bareHost} is in a blocked range` };
     }
-    return { blocked: false, address: hostname, family: net.isIPv6(hostname) ? 6 : 4 };
+    return { blocked: false, address: bareHost, family: net.isIPv6(bareHost) ? 6 : 4 };
   }
 
   // Resolve DNS to all addresses and check each one. This is the ONLY DNS

@@ -78,6 +78,9 @@ export class GithubClient {
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
       if (!res.ok) {
+        // Drain the unread body so the pinned socket is reclaimed promptly
+        // (same pattern as webhooks.service.ts delivery).
+        void res.text().catch(() => {});
         this.logger.warn(
           `GitHub repo lookup for ${repoFullName} returned ${res.status}`,
         );
@@ -126,6 +129,9 @@ export class GithubClient {
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
       if (!res.ok) {
+        // Drain the unread body so the pinned socket is reclaimed promptly
+        // (same pattern as webhooks.service.ts delivery).
+        void res.text().catch(() => {});
         this.logger.warn(`GitHub PR lookup for ${repoFullName}#${number} returned ${res.status}`);
         return null;
       }
@@ -181,7 +187,12 @@ export class GithubClient {
         },
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
-      if (!res.ok) return null;
+      if (!res.ok) {
+        // Drain the unread body so the pinned socket is reclaimed promptly
+        // (same pattern as webhooks.service.ts delivery).
+        void res.text().catch(() => {});
+        return null;
+      }
       const data = (await res.json()) as { state?: string };
       return normalizeChecksState(data.state);
     } catch (err) {

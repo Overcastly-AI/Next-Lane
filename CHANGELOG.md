@@ -41,6 +41,22 @@ selection shadow state, and two P2 mobile/loading polish items** (all four
 
 ### Security — 2026-07-06
 
+**IPv4-embedded IPv6 forms now blocked by the SSRF guard (review follow-up
+on the DNS-pin fix):**
+- `isBlockedIp`'s IPv6 branch only knew `::1`/link-local/unique-local — an
+  AAAA record of `::ffff:169.254.169.254` (IPv4-mapped), `::127.0.0.1`
+  (deprecated IPv4-compatible), or `64:ff9b::a9fe:a9fe` (NAT64) passed
+  vetting, and the connection pin then faithfully connected to the embedded
+  loopback/metadata address. All IPv4-embedded forms (dotted and pure-hex
+  textual styles) now extract the inner IPv4 and re-run the IPv4 blocklist;
+  `::` (unspecified) is blocked too. Bracketed IPv6 literal URLs
+  (`http://[2001:db8::1]/`) are also handled correctly now instead of
+  failing closed on every legitimate IPv6-literal target. GitHub/GitLab
+  clients drain non-OK response bodies (socket-reclaim parity with webhook
+  delivery), and the issue-create transaction's `maxWait` was tightened
+  12s→5s so pool exhaustion sheds load instead of queueing pile-ups.
+  16 new unit tests.
+
 **docker-compose now forwards every documented env var to the API container
 ("Hardening Night", audit pass 13 finding 1):**
 - The stock `docker-compose.yml` only passed 7 of the ~25 operator variables

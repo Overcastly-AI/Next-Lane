@@ -234,3 +234,55 @@ describe('isBlockedIp (re-exported for both webhooks.service.ts and this module)
     expect(isBlockedIp('8.8.8.8')).toBe(false);
   });
 });
+
+/**
+ * IPv4-embedded IPv6 coverage (security review on 6fd9201, must-fix 1): an
+ * AAAA record of ::ffff:169.254.169.254 previously passed the IPv6 branch —
+ * and the pin then faithfully connected to the metadata IP. Every embedded
+ * form must re-run the IPv4 blocklist on the inner address.
+ */
+describe('isBlockedIp — IPv4-embedded IPv6 forms', () => {
+  it.each([
+    ['::ffff:127.0.0.1', 'mapped loopback (dotted)'],
+    ['::ffff:169.254.169.254', 'mapped AWS metadata (dotted)'],
+    ['::ffff:10.0.0.1', 'mapped private class A (dotted)'],
+    ['::ffff:192.168.1.1', 'mapped private class C (dotted)'],
+    ['::ffff:a9fe:a9fe', 'mapped AWS metadata (pure hex form)'],
+    ['::ffff:7f00:1', 'mapped loopback (pure hex form)'],
+    ['::127.0.0.1', 'deprecated IPv4-compatible loopback'],
+    ['64:ff9b::a9fe:a9fe', 'NAT64-embedded AWS metadata'],
+    ['64:ff9b::7f00:1', 'NAT64-embedded loopback'],
+    ['::', 'unspecified address'],
+  ])('blocks %s (%s)', (ip) => {
+    expect(isBlockedIp(ip)).toBe(true);
+  });
+
+  it.each([
+    ['::ffff:93.184.216.34', 'mapped PUBLIC IPv4 stays allowed (dotted)'],
+    ['64:ff9b::5db8:d822', 'NAT64-embedded PUBLIC IPv4 stays allowed'],
+    ['2001:db8::1', 'plain global-unicast IPv6 unaffected'],
+    ['2606:4700:4700::1111', 'public resolver IPv6 unaffected'],
+  ])('allows %s (%s)', (ip) => {
+    expect(isBlockedIp(ip)).toBe(false);
+  });
+});
+
+/**
+ * Bracketed IPv6 literal URLs (security review on 6fd9201, should-fix 2):
+ * WHATWG URL keeps IPv6 hostnames bracketed, which net.isIP() rejects — the
+ * old code fell through to dns.lookup('[::1]') and failed closed even for
+ * legitimate public IPv6 literals.
+ */
+describe('ssrfSafeFetch — bracketed IPv6 literals', () => {
+  it('rejects a bracketed blocked IPv6 literal as a blocked IP (not a DNS error)', async () => {
+    await expect(ssrfSafeFetch('http://[::1]:8080/hook')).rejects.toThrow(
+      /blocked range/,
+    );
+  });
+
+  it('rejects a bracketed IPv4-mapped metadata literal as blocked', async () => {
+    await expect(
+      ssrfSafeFetch('http://[::ffff:169.254.169.254]/latest/meta-data/'),
+    ).rejects.toThrow(/blocked range/);
+  });
+});

@@ -77,6 +77,9 @@ export class GitlabClient {
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
       if (!res.ok) {
+        // Drain the unread body so the pinned socket is reclaimed promptly
+        // (same pattern as webhooks.service.ts delivery).
+        void res.text().catch(() => {});
         this.logger.warn(
           `GitLab project lookup for ${projectPath} returned ${res.status}`,
         );
@@ -127,6 +130,9 @@ export class GitlabClient {
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
       if (!res.ok) {
+        // Drain the unread body so the pinned socket is reclaimed promptly
+        // (same pattern as webhooks.service.ts delivery).
+        void res.text().catch(() => {});
         this.logger.warn(`GitLab MR lookup for ${projectPath}!${iid} returned ${res.status}`);
         return null;
       }
