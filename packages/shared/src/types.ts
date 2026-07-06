@@ -15,6 +15,7 @@ import type {
   WorkflowGateType,
   VersionState,
   DashboardGadgetVisualization,
+  SsoProviderType,
 } from './enums';
 
 /** API DTO shapes shared between server and client. These mirror Prisma models
@@ -939,12 +940,24 @@ export interface OidcConfigDto {
   hasClientSecret: boolean;
   /** ISO timestamp of the last DB save; null when env-managed or never configured. */
   updatedAt: string | null;
+  /**
+   * SSO/OIDC Phase 2 — just-in-time workspace provisioning for a BRAND NEW
+   * user's first login through this (legacy, single) provider. Null = off
+   * (Phase-1 behavior: the account is created with zero memberships).
+   * Always null when `envManaged` — the legacy env-configured provider has
+   * no in-app-editable JIT rule (env vars carry no room for it); set
+   * `SsoProvider` rows instead for env-free multi-provider JIT.
+   */
+  jitDefaultWorkspaceId: string | null;
+  jitDefaultRole: Role;
 }
 
 /**
  * Body for `PATCH /admin/oidc-config`. Every field is optional — a partial
  * save (e.g. just flipping `enabled`) merges onto the existing stored row.
  * `clientSecret` is write-only: omit it to keep the currently-stored secret.
+ * `jitDefaultWorkspaceId: null` clears (disables) JIT; omit to leave
+ * unchanged.
  */
 export interface UpdateOidcConfigInput {
   enabled?: boolean;
@@ -952,6 +965,90 @@ export interface UpdateOidcConfigInput {
   clientId?: string;
   clientSecret?: string;
   label?: string;
+  jitDefaultWorkspaceId?: string | null;
+  jitDefaultRole?: Role;
+}
+
+// ── SSO/OIDC Phase 2 — SAML + N simultaneous providers + JIT provisioning ───
+
+/**
+ * One row of the multi-provider SSO list (`/admin/sso-providers`), alongside
+ * (not replacing) the legacy single `OidcConfigDto` provider. The login page
+ * renders one "Continue with <label>" button per enabled row here, plus the
+ * legacy button when the Phase-1 provider is configured.
+ *
+ * `hasClientSecret`/`hasSamlIdpCertificate` are the only signals ever
+ * returned about their respective secrets — the raw values are write-only
+ * and never echoed back by any GET.
+ */
+export interface SsoProviderDto {
+  id: string;
+  type: SsoProviderType;
+  enabled: boolean;
+  label: string;
+  /** Stable identifier used in the runtime route (`/api/auth/sso/{slug}/login`). Immutable after creation. */
+  slug: string;
+  // OIDC (type === 'OIDC')
+  issuerUrl: string | null;
+  clientId: string | null;
+  hasClientSecret: boolean;
+  // SAML (type === 'SAML')
+  samlEntryPoint: string | null;
+  samlIdpIssuer: string | null;
+  hasSamlIdpCertificate: boolean;
+  /** Our SP Entity ID / expected audience. Never null in the response — falls back to the computed default when unset. */
+  samlSpEntityId: string | null;
+  // JIT provisioning (see `SsoProvider`'s Prisma doc comment for full semantics)
+  jitDefaultWorkspaceId: string | null;
+  jitDefaultRole: Role;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Body for `POST /admin/sso-providers`. Exactly one of the OIDC or SAML
+ * field groups is required, matching `type`; validated server-side
+ * (class-validator can't express "required iff sibling field" cleanly, so
+ * this is enforced in `SsoProvidersService`, mirroring
+ * `AdminSettingsService.updateOidcConfig`'s own manual enable-time checks).
+ */
+export interface CreateSsoProviderInput {
+  type: SsoProviderType;
+  label: string;
+  /** Auto-generated (slugified) from `label` when omitted. */
+  slug?: string;
+  enabled?: boolean;
+  issuerUrl?: string;
+  clientId?: string;
+  clientSecret?: string;
+  samlEntryPoint?: string;
+  samlIdpIssuer?: string;
+  samlIdpCertificate?: string;
+  samlSpEntityId?: string;
+  jitDefaultWorkspaceId?: string | null;
+  jitDefaultRole?: Role;
+}
+
+/** Body for `PATCH /admin/sso-providers/:id`. Every field optional — merges onto the existing row. `type`/`slug` are immutable after creation. */
+export interface UpdateSsoProviderInput {
+  label?: string;
+  enabled?: boolean;
+  issuerUrl?: string;
+  clientId?: string;
+  clientSecret?: string;
+  samlEntryPoint?: string;
+  samlIdpIssuer?: string;
+  samlIdpCertificate?: string;
+  samlSpEntityId?: string;
+  jitDefaultWorkspaceId?: string | null;
+  jitDefaultRole?: Role;
+}
+
+/** Minimal, PUBLIC (unauthenticated) summary of an enabled provider — `GET /auth/providers`. Only what the login page needs to render a button + build the login link. */
+export interface SsoProviderSummaryDto {
+  slug: string;
+  type: SsoProviderType;
+  label: string;
 }
 
 // ── GitHub integration (Phase 9 — Developer Graph, v1 two-way link) ─────────

@@ -1,12 +1,15 @@
 import {
   IsBoolean,
+  IsEnum,
   IsOptional,
   IsString,
   IsUrl,
   MaxLength,
   MinLength,
+  ValidateIf,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
+import { Role } from '@next-lane/shared';
 
 const trim = ({ value }: { value: unknown }) =>
   typeof value === 'string' ? value.trim() : value;
@@ -61,4 +64,22 @@ export class UpdateOidcConfigDto {
   @Transform(trim)
   @MaxLength(100)
   label?: string;
+
+  /**
+   * SSO/OIDC Phase 2 — JIT provisioning for this (legacy) provider. `null`
+   * explicitly clears (disables) it; omit to leave the existing rule
+   * unchanged. `@ValidateIf` lets `null` through class-validator's
+   * `@IsString` check (which otherwise rejects it) while still validating a
+   * real string when one is provided.
+   */
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsString()
+  @Transform(trim)
+  @MaxLength(100)
+  jitDefaultWorkspaceId?: string | null;
+
+  @IsOptional()
+  @IsEnum(Role)
+  jitDefaultRole?: Role;
 }

@@ -75,6 +75,8 @@ export const qk = {
     ['dashboardShareTokens', dashboardId] as const,
   /** Instance-level SSO/OIDC configuration (admin settings screen). */
   oidcConfig: ['oidcConfig'] as const,
+  /** SSO/OIDC Phase 2 — the N-simultaneous-providers list (admin settings screen). */
+  ssoProviders: ['ssoProviders'] as const,
   /**
    * A project's EFFECTIVE members (workspace role + any per-project role
    * override) — the Members section on the project settings page.

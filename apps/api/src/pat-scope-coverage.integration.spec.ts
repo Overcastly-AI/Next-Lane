@@ -170,6 +170,7 @@ async function discoverRoutes(app: INestApplication): Promise<DiscoveredRoute[]>
 type ExemptionCategory =
   | 'auth'
   | 'oidc'
+  | 'sso'
   | 'health'
   | 'public'
   | 'me'
@@ -199,6 +200,14 @@ const EXEMPTIONS: Exemption[] = [
   // unauthenticated at the time they're hit.
   { controllerName: 'OidcController', methodName: 'login', category: 'oidc', reason: '@Public() browser redirect into the IdP — never bearer-authenticated' },
   { controllerName: 'OidcController', methodName: 'callback', category: 'oidc', reason: '@Public() IdP callback — never bearer-authenticated' },
+
+  // auth/sso/sso.controller.ts — SSO/OIDC Phase 2 N-simultaneous-providers
+  // (SAML + additional OIDC rows) browser redirect + callback, same
+  // reasoning as OidcController above: always unauthenticated at the time
+  // they're hit, additive alongside (not replacing) the Phase-1 routes.
+  { controllerName: 'SsoController', methodName: 'login', category: 'sso', reason: '@Public() browser redirect into the IdP (OIDC or SAML) — never bearer-authenticated' },
+  { controllerName: 'SsoController', methodName: 'oidcCallback', category: 'sso', reason: '@Public() OIDC IdP callback — never bearer-authenticated' },
+  { controllerName: 'SsoController', methodName: 'samlCallback', category: 'sso', reason: '@Public() SAML ACS endpoint (form POST from the IdP) — never bearer-authenticated' },
 
   // health.controller.ts — infra probes, no bearer auth at all.
   { controllerName: 'HealthController', methodName: 'check', category: 'health', reason: '@Public() liveness/readiness probe — no auth of any kind' },
@@ -283,6 +292,7 @@ async function bootstrapApp(): Promise<INestApplication> {
     const KNOWN_CATEGORIES: ExemptionCategory[] = [
       'auth',
       'oidc',
+      'sso',
       'health',
       'public',
       'me',

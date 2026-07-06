@@ -14,10 +14,17 @@
  * `OidcService`'s own OIDC-client discovery cache is keyed by a fingerprint
  * derived from this config's issuer/client id/secret — so a save from the UI
  * naturally busts that cache without any restart or manual invalidation.
+ *
+ * SSO/OIDC Phase 2 note: this remains the Phase-1 "legacy" single-provider
+ * config, entirely unmigrated — `SsoProvidersService`/`SsoProvider` is a
+ * SEPARATE, additive table for N additional providers (OIDC and/or SAML).
+ * This service also now carries an optional JIT-provisioning rule
+ * (`jitDefaultWorkspaceId`/`jitDefaultRole`) for THIS provider, mirroring
+ * `SsoProvider`'s own JIT fields exactly.
  */
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import type { OidcConfigDto } from '@next-lane/shared';
+import { Role, type OidcConfigDto } from '@next-lane/shared';
 import { getOidcButtonLabel, getOidcEnvConfig } from '../auth/oidc/oidc.config';
 import {
   decryptOidcClientSecret,
@@ -33,6 +40,9 @@ export interface EffectiveOidcConfig {
   clientSecret: string;
   label: string;
   source: 'env' | 'db';
+  /** SSO/OIDC Phase 2 JIT rule. Always off (`null`/`VIEWER`) for `source: 'env'` — env vars have no room for it. */
+  jitDefaultWorkspaceId: string | null;
+  jitDefaultRole: Role;
 }
 
 export interface OidcConfigWriteInput {
@@ -42,6 +52,9 @@ export interface OidcConfigWriteInput {
   /** Pass `undefined` to keep the existing stored secret unchanged. */
   clientSecret?: string;
   label: string | null;
+  /** SSO/OIDC Phase 2 — JIT provisioning. `null` = off. */
+  jitDefaultWorkspaceId: string | null;
+  jitDefaultRole: Role;
 }
 
 @Injectable()
@@ -71,6 +84,8 @@ export class OidcConfigService {
         clientSecret: env.clientSecret,
         label: getOidcButtonLabel(),
         source: 'env',
+        jitDefaultWorkspaceId: null,
+        jitDefaultRole: Role.VIEWER,
       };
     }
 
@@ -84,6 +99,8 @@ export class OidcConfigService {
       clientSecret: decryptOidcClientSecret(db.clientSecretEncrypted),
       label: db.label?.trim() || 'Single sign-on',
       source: 'db',
+      jitDefaultWorkspaceId: db.jitDefaultWorkspaceId,
+      jitDefaultRole: db.jitDefaultRole as Role,
     };
   }
 
@@ -109,6 +126,8 @@ export class OidcConfigService {
         label: getOidcButtonLabel(),
         hasClientSecret: true,
         updatedAt: null,
+        jitDefaultWorkspaceId: null,
+        jitDefaultRole: Role.VIEWER,
       };
     }
 
@@ -121,6 +140,8 @@ export class OidcConfigService {
       label: db?.label?.trim() || 'Single sign-on',
       hasClientSecret: !!db?.clientSecretEncrypted,
       updatedAt: db?.updatedAt.toISOString() ?? null,
+      jitDefaultWorkspaceId: db?.jitDefaultWorkspaceId ?? null,
+      jitDefaultRole: (db?.jitDefaultRole as Role) ?? Role.VIEWER,
     };
   }
 
@@ -140,6 +161,8 @@ export class OidcConfigService {
           clientId: input.clientId,
           label: input.label,
           clientSecretEncrypted: clientSecretEncrypted ?? null,
+          jitDefaultWorkspaceId: input.jitDefaultWorkspaceId,
+          jitDefaultRole: input.jitDefaultRole,
         },
       });
     }
@@ -151,6 +174,8 @@ export class OidcConfigService {
         issuerUrl: input.issuerUrl,
         clientId: input.clientId,
         label: input.label,
+        jitDefaultWorkspaceId: input.jitDefaultWorkspaceId,
+        jitDefaultRole: input.jitDefaultRole,
         ...(clientSecretEncrypted !== undefined ? { clientSecretEncrypted } : {}),
       },
     });

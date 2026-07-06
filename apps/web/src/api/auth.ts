@@ -1,4 +1,4 @@
-import type { AuthResponse, MeDto, UpdateProfileDto } from '@next-lane/shared';
+import type { AuthResponse, MeDto, SsoProviderSummaryDto, UpdateProfileDto } from '@next-lane/shared';
 import { request, setToken, clearAuth, USER_KEY } from './client';
 
 export interface RegisterInput {
@@ -39,7 +39,10 @@ export async function me(): Promise<MeDto> {
 }
 
 export interface AuthProvidersResponse {
+  /** Phase-1 legacy single-provider config (unchanged shape). */
   oidc: { enabled: boolean; label: string };
+  /** SSO/OIDC Phase 2 — every currently-ENABLED row from the N-simultaneous-providers list, OIDC and/or SAML alike. */
+  providers: SsoProviderSummaryDto[];
 }
 
 /**

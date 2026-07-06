@@ -12,6 +12,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
 import { AuthModule } from './auth/auth.module';
 import { OidcModule } from './auth/oidc/oidc.module';
+import { SsoModule } from './auth/sso/sso.module';
 import { UsersModule } from './users/users.module';
 import { WorkspacesModule } from './workspaces/workspaces.module';
 import { ProjectsModule } from './projects/projects.module';
@@ -145,6 +146,7 @@ const isProd = process.env.NODE_ENV === 'production';
     RealtimeModule,
     AuthModule,
     OidcModule,
+    SsoModule,
     UsersModule,
     WorkspacesModule,
     ProjectsModule,

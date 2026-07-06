@@ -85,6 +85,16 @@ enum Role {
   VIEWER
 }
 
+/// SSO/OIDC Phase 2 — the kind of identity provider a multi-provider
+/// `SsoProvider` row represents. `OIDC` reuses the same discovery/token-
+/// exchange flow as the Phase-1 `OidcConfig` singleton (just parameterized
+/// per-row instead of a single effective config); `SAML` is the new
+/// SP-initiated SAML 2.0 assertion-consumer-service flow (`@node-saml/node-saml`).
+enum SsoProviderType {
+  OIDC
+  SAML
+}
+
 enum NotificationType {
   ASSIGNED
   MENTIONED
@@ -317,6 +327,12 @@ model Workspace {
   projects    Project[]
   auditEvents AuditEvent[]
   teams       Team[]
+
+  /// SSO/OIDC Phase 2 — workspaces referenced as a JIT-provisioning default
+  /// by one or more `SsoProvider` rows (`onDelete: SetNull` on that side —
+  /// deleting a workspace disables JIT auto-provisioning for any provider
+  /// pointed at it rather than blocking the delete or cascading).
+  ssoJitDefaultFor SsoProvider[]
 }
 
 model Membership {
@@ -1529,8 +1545,100 @@ model OidcConfig {
   clientId              String?
   clientSecretEncrypted String?
   label                 String?
+  /// SSO/OIDC Phase 2 (additive, nullable — existing rows keep working
+  /// unmigrated): just-in-time workspace auto-provisioning for a BRAND NEW
+  /// user's first login through this (legacy, always-on-when-configured)
+  /// provider. Null = off (Phase-1 behavior, unchanged): the user account is
+  /// created but no workspace membership is auto-created. Mirrors
+  /// `SsoProvider.jitDefaultWorkspaceId`/`jitDefaultRole` exactly — see that
+  /// model's doc comment for the semantics.
+  jitDefaultWorkspaceId String?
+  jitDefaultRole        Role     @default(VIEWER)
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
+}
+
+/// SSO/OIDC Phase 2 — a single admin-configured identity provider in the
+/// N-simultaneous-providers list surfaced by `/admin/sso`. Deliberately a
+/// SEPARATE table from the Phase-1 `OidcConfig` singleton rather than a
+/// migration of it: `OidcConfig` (env-var-precedence, single generic OIDC
+/// provider) keeps working entirely unmigrated for any existing deployment,
+/// and every row in THIS table is an ADDITIONAL provider layered alongside
+/// it — the login page renders one button per enabled row here, plus the
+/// legacy OIDC button when `OidcConfigService.isConfigured()` is true. There
+/// is no data migration between the two tables; an admin who wants the
+/// legacy provider to appear as a first-class row here can re-enter its
+/// details as a new row (the old one keeps working either way).
+///
+/// Type-specific columns (`issuerUrl`/`clientId`/`clientSecretEncrypted` for
+/// OIDC; `samlEntryPoint`/`samlIdpIssuer`/`samlIdpCertificate`/
+/// `samlSpEntityId`/`samlWantAssertionsSigned` for SAML) are nullable and
+/// mutually exclusive by `type`, enforced at the DTO/service layer (Prisma
+/// has no CHECK-constraint-by-discriminator support worth the complexity
+/// here — mirrors how `GithubIntegration`/`GitlabIntegration`/
+/// `GiteaIntegration` each get their own table rather than one polymorphic
+/// "forge" table).
+///
+/// `slug` is the stable, admin-chosen (or auto-generated from `label`)
+/// identifier used in the runtime route path (`/api/auth/sso/:slug/login`
+/// and `/callback`) and, for OIDC, as part of the client-discovery cache
+/// key — changing `label` never breaks a previously-registered redirect URI
+/// because `slug` is independent of it.
+///
+/// JIT provisioning (`jitDefaultWorkspaceId`/`jitDefaultRole`): when a brand
+/// new SSO identity (no existing `User` row for that email) completes login
+/// through this provider AND `jitDefaultWorkspaceId` is set, a `Membership`
+/// row is auto-created at `jitDefaultRole` (default `VIEWER` — conservative:
+/// an admin must explicitly opt into a higher default) with no pre-existing
+/// invite required. When `jitDefaultWorkspaceId` is null (the default for a
+/// newly-created provider), JIT provisioning is off: the user account is
+/// still created on first SSO login (so they can authenticate), but they
+/// land with zero workspace memberships until an existing member invites
+/// them — the safe, opt-in default. JIT never touches an ALREADY-EXISTING
+/// user's memberships on a later login, by design (see `sso.service.ts`).
+model SsoProvider {
+  id                       String          @id @default(cuid())
+  type                     SsoProviderType
+  enabled                  Boolean         @default(true)
+  label                    String
+  slug                     String          @unique
+
+  // ── OIDC (type = OIDC); null when type = SAML ──────────────────────────
+  issuerUrl                String?
+  clientId                 String?
+  clientSecretEncrypted    String?
+
+  // ── SAML (type = SAML); null when type = OIDC ──────────────────────────
+  /// The IdP's SSO endpoint (HTTP-Redirect binding) the SP-initiated
+  /// AuthnRequest is sent to.
+  samlEntryPoint           String?
+  /// The IdP's Entity ID (`<Issuer>` expected on the assertion).
+  samlIdpIssuer            String?
+  /// One or more PEM-encoded X.509 certificates (concatenated) used to
+  /// verify the IdP's assertion/response signature. Required — SAML
+  /// responses are NEVER accepted unsigned (see `saml.service.ts`).
+  samlIdpCertificate       String?
+  /// Our SP Entity ID / expected `<AudienceRestriction>` value. Defaults to
+  /// `${WEB_BASE_URL}/api/auth/sso/{slug}` when null (computed, never
+  /// stored as null-meaning-"skip the check" — audience is always enforced).
+  samlSpEntityId           String?
+  /// Always true in practice (the admin form has no toggle for this — see
+  /// `dto/create-sso-provider.dto.ts`); persisted so the enforcement is
+  /// explicit and reviewable per-row rather than implied by application code
+  /// alone.
+  samlWantAssertionsSigned Boolean         @default(true)
+
+  // ── JIT provisioning (applies to both types) ───────────────────────────
+  jitDefaultWorkspaceId    String?
+  jitDefaultRole           Role            @default(VIEWER)
+
+  createdAt                DateTime        @default(now())
+  updatedAt                DateTime        @updatedAt
+
+  jitDefaultWorkspace Workspace? @relation(fields: [jitDefaultWorkspaceId], references: [id], onDelete: SetNull)
+
+  @@index([type])
+  @@index([jitDefaultWorkspaceId])
 }
 
 model GithubIntegration {

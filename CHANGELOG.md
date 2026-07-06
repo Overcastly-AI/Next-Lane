@@ -14,6 +14,28 @@ This section summarizes the major capabilities delivered in the pre-1.0
 development phase. A versioned release will be tagged once the v1 criteria in
 [`docs/ROADMAP.md`](./docs/ROADMAP.md) are complete.
 
+### Added — 2026-07-06 (SSO/OIDC Phase 2 — SAML + multi-provider + JIT provisioning)
+
+**Closes the last "Admin controls" Better-than-Jira lever.**
+- **SAML 2.0 login** via `@node-saml/node-saml`, alongside the existing
+  generic-OIDC provider — SP-initiated flow, strict assertion validation
+  (signature required and never admin-configurable off, audience always
+  enforced, single-use replay protection, timestamp checks always active).
+- **N simultaneously-configured providers**: a new, additive `SsoProvider`
+  table + `/admin/sso-providers` REST/UI (OIDC and/or SAML rows) alongside
+  the untouched Phase-1 single-provider `OidcConfig` — every existing
+  single-provider deployment keeps working unmigrated. The login page shows
+  one button per enabled provider.
+- **Just-in-time workspace/role provisioning**: a brand-new SSO identity's
+  first login can auto-join a configured default workspace at a configurable
+  role (defaults to Viewer, off by default) — no pre-existing invite
+  required; an already-existing user's memberships are never touched by a
+  later SSO login.
+- Proven end-to-end against the real `@node-saml/node-saml` library with a
+  locally-generated self-signed certificate (zero network) — signature
+  forgery, tampering, expiry, audience confusion, and replay are all
+  live-tested rejection cases, plus a real HTTP round-trip smoke test.
+
 ### Added — 2026-07-06 (PAT-scope route-coverage guard + GitLab auto-transition e2e parity)
 
 **Two regression-guard hardening items, closing "shipped but never

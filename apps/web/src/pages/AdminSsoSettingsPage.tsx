@@ -22,14 +22,26 @@
  */
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
+import type { SsoProviderDto } from '@next-lane/shared';
+import { Role, SsoProviderType } from '@next-lane/shared';
 import { AppHeader } from '@/components/AppHeader';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { Textarea } from '@/components/ui/Textarea';
+import { Select } from '@/components/ui/Select';
 import { Field } from '@/components/ui/Field';
 import { LoadingState, ErrorState } from '@/components/ui/States';
 import { useToast } from '@/components/ui/Toast';
 import { useAuth } from '@/auth/AuthContext';
-import { useOidcConfig, useUpdateOidcConfig } from '@/api/adminSettings';
+import {
+  useOidcConfig,
+  useUpdateOidcConfig,
+  useSsoProviders,
+  useCreateSsoProvider,
+  useUpdateSsoProvider,
+  useDeleteSsoProvider,
+} from '@/api/adminSettings';
+import { useWorkspaces } from '@/api/workspaces';
 import { errorMessage } from '@/lib/errorMessage';
 import { cn } from '@/lib/cn';
 
@@ -88,11 +100,18 @@ export function AdminSsoSettingsPage() {
   const config = configQuery.data;
   const envManaged = config?.envManaged ?? false;
 
+  const workspacesQuery = useWorkspaces();
+  const workspaces = workspacesQuery.data ?? [];
+
   const [enabled, setEnabled] = useState(false);
   const [issuerUrl, setIssuerUrl] = useState('');
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
   const [label, setLabel] = useState('');
+  // SSO/OIDC Phase 2 — JIT provisioning for this (legacy) provider. Empty
+  // string = "no default workspace" (JIT off), matching the API's `null`.
+  const [jitWorkspaceId, setJitWorkspaceId] = useState('');
+  const [jitRole, setJitRole] = useState<Role>(Role.VIEWER);
   const [initialized, setInitialized] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
 
@@ -105,6 +124,8 @@ export function AdminSsoSettingsPage() {
       setIssuerUrl(config.issuerUrl ?? '');
       setClientId(config.clientId ?? '');
       setLabel(config.label ?? '');
+      setJitWorkspaceId(config.jitDefaultWorkspaceId ?? '');
+      setJitRole(config.jitDefaultRole ?? Role.VIEWER);
       setInitialized(true);
     }
   }, [config, initialized]);
@@ -117,6 +138,8 @@ export function AdminSsoSettingsPage() {
       issuerUrl !== (config.issuerUrl ?? '') ||
       clientId !== (config.clientId ?? '') ||
       label !== (config.label ?? '') ||
+      jitWorkspaceId !== (config.jitDefaultWorkspaceId ?? '') ||
+      jitRole !== config.jitDefaultRole ||
       clientSecret !== '');
 
   // Unsaved-changes guard: warn on tab close/refresh while dirty. (In-app
@@ -156,6 +179,8 @@ export function AdminSsoSettingsPage() {
         ...(trimmedClientId ? { clientId: trimmedClientId } : {}),
         ...(trimmedLabel ? { label: trimmedLabel } : {}),
         ...(trimmedSecret ? { clientSecret: trimmedSecret } : {}),
+        jitDefaultWorkspaceId: jitWorkspaceId || null,
+        jitDefaultRole: jitRole,
       },
       {
         onSuccess: (dto) => {
@@ -164,6 +189,8 @@ export function AdminSsoSettingsPage() {
           setIssuerUrl(dto.issuerUrl ?? '');
           setClientId(dto.clientId ?? '');
           setLabel(dto.label ?? '');
+          setJitWorkspaceId(dto.jitDefaultWorkspaceId ?? '');
+          setJitRole(dto.jitDefaultRole ?? Role.VIEWER);
           setClientSecret('');
         },
         onError: (err) => {
@@ -342,6 +369,47 @@ export function AdminSsoSettingsPage() {
             />
           </Field>
 
+          <div className="border-t border-ink-100 pt-4">
+            <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-400">
+              Just-in-time provisioning
+            </p>
+            <div className="space-y-4">
+              <Field
+                label="Default workspace"
+                htmlFor="admin-sso-jit-workspace"
+                hint="A brand-new SSO identity's first login auto-joins this workspace. Leave blank to require a manual invite (default)."
+              >
+                <Select
+                  id="admin-sso-jit-workspace"
+                  data-testid="admin-sso-jit-workspace"
+                  value={jitWorkspaceId}
+                  onChange={(e) => setJitWorkspaceId(e.target.value)}
+                  disabled={envManaged}
+                >
+                  <option value="">No default (manual invite required)</option>
+                  {workspaces.map((ws) => (
+                    <option key={ws.id} value={ws.id}>
+                      {ws.name}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="Default role" htmlFor="admin-sso-jit-role" hint="Role granted on auto-join. Defaults to the least-privileged Viewer role.">
+                <Select
+                  id="admin-sso-jit-role"
+                  data-testid="admin-sso-jit-role"
+                  value={jitRole}
+                  onChange={(e) => setJitRole(e.target.value as Role)}
+                  disabled={envManaged || !jitWorkspaceId}
+                >
+                  <option value={Role.VIEWER}>Viewer</option>
+                  <option value={Role.MEMBER}>Member</option>
+                  <option value={Role.ADMIN}>Admin</option>
+                </Select>
+              </Field>
+            </div>
+          </div>
+
           {validationError && (
             <p role="alert" data-testid="admin-sso-validation-error" className="text-sm text-red-600">
               {validationError}
@@ -367,8 +435,401 @@ export function AdminSsoSettingsPage() {
             </div>
           )}
         </form>
+
+        <SsoProvidersSection workspaces={workspaces} />
       </div>
     </Shell>
+  );
+}
+
+// ── SSO/OIDC Phase 2 — N-simultaneous-providers list ─────────────────────────
+
+type WorkspaceOption = { id: string; name: string };
+
+function SsoProvidersSection({ workspaces }: { workspaces: WorkspaceOption[] }) {
+  const providersQuery = useSsoProviders();
+  const providers = providersQuery.data ?? [];
+  const [creating, setCreating] = useState(false);
+
+  return (
+    <div className="mt-8">
+      <div className="mb-3 flex items-center justify-between">
+        <div>
+          <h2 className="text-sm font-semibold text-ink-900">Additional providers</h2>
+          <p className="mt-0.5 text-xs text-ink-500">
+            Configure more than one identity provider (e.g. Okta for engineering, SAML for
+            corporate ADFS) — every enabled provider gets its own button on the login page.
+          </p>
+        </div>
+        {!creating && (
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            data-testid="admin-sso-provider-add"
+            onClick={() => setCreating(true)}
+          >
+            Add provider
+          </Button>
+        )}
+      </div>
+
+      {providersQuery.isLoading && <LoadingState label="Loading providers…" />}
+      {providersQuery.isError && (
+        <ErrorState error={providersQuery.error} onRetry={() => void providersQuery.refetch()} />
+      )}
+
+      {!providersQuery.isLoading && !providersQuery.isError && (
+        <div className="space-y-3" data-testid="admin-sso-provider-list">
+          {providers.length === 0 && !creating && (
+            <p className="rounded-lg border border-dashed border-ink-200 p-4 text-center text-xs text-ink-400">
+              No additional providers configured yet.
+            </p>
+          )}
+          {providers.map((provider) => (
+            <SsoProviderCard key={provider.id} provider={provider} workspaces={workspaces} />
+          ))}
+          {creating && (
+            <SsoProviderForm workspaces={workspaces} onDone={() => setCreating(false)} />
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SsoProviderCard({
+  provider,
+  workspaces,
+}: {
+  provider: SsoProviderDto;
+  workspaces: WorkspaceOption[];
+}) {
+  const [editing, setEditing] = useState(false);
+  const update = useUpdateSsoProvider();
+  const remove = useDeleteSsoProvider();
+  const toast = useToast();
+
+  if (editing) {
+    return (
+      <SsoProviderForm
+        workspaces={workspaces}
+        existing={provider}
+        onDone={() => setEditing(false)}
+      />
+    );
+  }
+
+  return (
+    <div
+      className="flex items-center gap-3 rounded-lg border border-ink-200 bg-surface p-3.5 shadow-card"
+      data-testid={`admin-sso-provider-${provider.slug}`}
+    >
+      <Switch
+        checked={provider.enabled}
+        onChange={() =>
+          update.mutate(
+            { id: provider.id, input: { enabled: !provider.enabled } },
+            {
+              onError: (err) => toast.error(errorMessage(err, 'Could not update provider.')),
+            },
+          )
+        }
+        label={provider.enabled ? `${provider.label} enabled — click to disable` : `${provider.label} disabled — click to enable`}
+        testId={`admin-sso-provider-${provider.slug}-toggle`}
+      />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <p className="truncate text-sm font-medium text-ink-800">{provider.label}</p>
+          <span className="shrink-0 rounded-full bg-ink-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-ink-500">
+            {provider.type}
+          </span>
+        </div>
+        <p className="truncate text-xs text-ink-400">/auth/sso/{provider.slug}/login</p>
+      </div>
+      <Button type="button" size="sm" variant="ghost" onClick={() => setEditing(true)} data-testid={`admin-sso-provider-${provider.slug}-edit`}>
+        Edit
+      </Button>
+      <Button
+        type="button"
+        size="sm"
+        variant="danger"
+        data-testid={`admin-sso-provider-${provider.slug}-delete`}
+        onClick={() => {
+          if (!window.confirm(`Delete "${provider.label}"? This cannot be undone.`)) return;
+          remove.mutate(provider.id, {
+            onSuccess: () => toast.success('Provider deleted.'),
+            onError: (err) => toast.error(errorMessage(err, 'Could not delete provider.')),
+          });
+        }}
+      >
+        Delete
+      </Button>
+    </div>
+  );
+}
+
+function SsoProviderForm({
+  workspaces,
+  existing,
+  onDone,
+}: {
+  workspaces: WorkspaceOption[];
+  existing?: SsoProviderDto;
+  onDone: () => void;
+}) {
+  const create = useCreateSsoProvider();
+  const update = useUpdateSsoProvider();
+  const toast = useToast();
+
+  const [type, setType] = useState<SsoProviderType>(existing?.type ?? SsoProviderType.OIDC);
+  const [label, setLabel] = useState(existing?.label ?? '');
+  const [issuerUrl, setIssuerUrl] = useState(existing?.issuerUrl ?? '');
+  const [clientId, setClientId] = useState(existing?.clientId ?? '');
+  const [clientSecret, setClientSecret] = useState('');
+  const [samlEntryPoint, setSamlEntryPoint] = useState(existing?.samlEntryPoint ?? '');
+  const [samlIdpIssuer, setSamlIdpIssuer] = useState(existing?.samlIdpIssuer ?? '');
+  const [samlIdpCertificate, setSamlIdpCertificate] = useState('');
+  const [jitWorkspaceId, setJitWorkspaceId] = useState(existing?.jitDefaultWorkspaceId ?? '');
+  const [jitRole, setJitRole] = useState<Role>(existing?.jitDefaultRole ?? Role.VIEWER);
+  const [validationError, setValidationError] = useState<string | null>(null);
+
+  const isEdit = !!existing;
+  const pending = create.isPending || update.isPending;
+
+  function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    setValidationError(null);
+
+    if (!label.trim()) {
+      setValidationError('A label is required.');
+      return;
+    }
+    if (type === SsoProviderType.OIDC) {
+      if (!issuerUrl.trim() || !clientId.trim() || (!isEdit && !clientSecret.trim())) {
+        setValidationError('Issuer URL, client ID, and a client secret are required for an OIDC provider.');
+        return;
+      }
+    } else {
+      if (!samlEntryPoint.trim() || !samlIdpIssuer.trim() || (!isEdit && !samlIdpCertificate.trim())) {
+        setValidationError('SSO URL, IdP entity ID, and a certificate are required for a SAML provider.');
+        return;
+      }
+    }
+
+    const shared = {
+      label: label.trim(),
+      jitDefaultWorkspaceId: jitWorkspaceId || null,
+      jitDefaultRole: jitRole,
+    };
+    const typed =
+      type === SsoProviderType.OIDC
+        ? {
+            issuerUrl: issuerUrl.trim(),
+            clientId: clientId.trim(),
+            ...(clientSecret.trim() ? { clientSecret: clientSecret.trim() } : {}),
+          }
+        : {
+            samlEntryPoint: samlEntryPoint.trim(),
+            samlIdpIssuer: samlIdpIssuer.trim(),
+            ...(samlIdpCertificate.trim() ? { samlIdpCertificate: samlIdpCertificate.trim() } : {}),
+          };
+
+    if (isEdit) {
+      update.mutate(
+        { id: existing.id, input: { ...shared, ...typed } },
+        {
+          onSuccess: () => {
+            toast.success('Provider updated.');
+            onDone();
+          },
+          onError: (err) => toast.error(errorMessage(err, 'Could not update provider.')),
+        },
+      );
+    } else {
+      create.mutate(
+        { type, ...shared, ...typed },
+        {
+          onSuccess: () => {
+            toast.success('Provider added.');
+            onDone();
+          },
+          onError: (err) => toast.error(errorMessage(err, 'Could not add provider.')),
+        },
+      );
+    }
+  }
+
+  return (
+    <form
+      onSubmit={handleSubmit}
+      className="space-y-4 rounded-lg border border-signal-200 bg-signal-50/30 p-4"
+      data-testid="admin-sso-provider-form"
+    >
+      {!isEdit && (
+        <Field label="Provider type" htmlFor="admin-sso-provider-type">
+          <div className="flex gap-4 text-sm">
+            <label className="flex items-center gap-1.5">
+              <input
+                type="radio"
+                name="sso-provider-type"
+                checked={type === SsoProviderType.OIDC}
+                onChange={() => setType(SsoProviderType.OIDC)}
+                data-testid="admin-sso-provider-type-oidc"
+              />
+              OIDC
+            </label>
+            <label className="flex items-center gap-1.5">
+              <input
+                type="radio"
+                name="sso-provider-type"
+                checked={type === SsoProviderType.SAML}
+                onChange={() => setType(SsoProviderType.SAML)}
+                data-testid="admin-sso-provider-type-saml"
+              />
+              SAML 2.0
+            </label>
+          </div>
+        </Field>
+      )}
+
+      <Field label="Label" htmlFor="admin-sso-provider-label" hint='Shown as "Continue with <label>" on the login page.'>
+        <Input
+          id="admin-sso-provider-label"
+          data-testid="admin-sso-provider-label"
+          value={label}
+          onChange={(e) => setLabel(e.target.value)}
+          placeholder="Okta (Engineering)"
+        />
+      </Field>
+
+      {type === SsoProviderType.OIDC ? (
+        <>
+          <Field label="Issuer URL" htmlFor="admin-sso-provider-issuer">
+            <Input
+              id="admin-sso-provider-issuer"
+              data-testid="admin-sso-provider-issuer"
+              value={issuerUrl}
+              onChange={(e) => setIssuerUrl(e.target.value)}
+              placeholder="https://your-tenant.okta.com"
+            />
+          </Field>
+          <Field label="Client ID" htmlFor="admin-sso-provider-client-id">
+            <Input
+              id="admin-sso-provider-client-id"
+              data-testid="admin-sso-provider-client-id"
+              value={clientId}
+              onChange={(e) => setClientId(e.target.value)}
+            />
+          </Field>
+          <Field
+            label="Client secret"
+            htmlFor="admin-sso-provider-client-secret"
+            hint={existing?.hasClientSecret ? 'Leave blank to keep the current secret.' : undefined}
+          >
+            <Input
+              id="admin-sso-provider-client-secret"
+              data-testid="admin-sso-provider-client-secret"
+              type="password"
+              value={clientSecret}
+              onChange={(e) => setClientSecret(e.target.value)}
+              placeholder={existing?.hasClientSecret ? '••• saved' : ''}
+            />
+          </Field>
+        </>
+      ) : (
+        <>
+          <Field label="IdP SSO URL" htmlFor="admin-sso-provider-entry-point" hint="The IdP's SSO endpoint (HTTP-Redirect binding).">
+            <Input
+              id="admin-sso-provider-entry-point"
+              data-testid="admin-sso-provider-entry-point"
+              value={samlEntryPoint}
+              onChange={(e) => setSamlEntryPoint(e.target.value)}
+              placeholder="https://adfs.corp.example.com/adfs/ls"
+            />
+          </Field>
+          <Field label="IdP entity ID" htmlFor="admin-sso-provider-idp-issuer">
+            <Input
+              id="admin-sso-provider-idp-issuer"
+              data-testid="admin-sso-provider-idp-issuer"
+              value={samlIdpIssuer}
+              onChange={(e) => setSamlIdpIssuer(e.target.value)}
+              placeholder="https://adfs.corp.example.com/adfs/services/trust"
+            />
+          </Field>
+          <Field
+            label="IdP signing certificate"
+            htmlFor="admin-sso-provider-cert"
+            hint={
+              existing?.hasSamlIdpCertificate
+                ? 'Leave blank to keep the current certificate.'
+                : 'PEM-encoded X.509 certificate(s) used to verify signed assertions. Required — unsigned assertions are always rejected.'
+            }
+          >
+            <Textarea
+              id="admin-sso-provider-cert"
+              data-testid="admin-sso-provider-cert"
+              value={samlIdpCertificate}
+              onChange={(e) => setSamlIdpCertificate(e.target.value)}
+              rows={4}
+              placeholder="-----BEGIN CERTIFICATE-----&#10;...&#10;-----END CERTIFICATE-----"
+              className="font-mono text-xs"
+            />
+          </Field>
+        </>
+      )}
+
+      <div className="border-t border-ink-100 pt-3">
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-400">
+          Just-in-time provisioning
+        </p>
+        <div className="space-y-3">
+          <Field label="Default workspace" htmlFor="admin-sso-provider-jit-workspace">
+            <Select
+              id="admin-sso-provider-jit-workspace"
+              data-testid="admin-sso-provider-jit-workspace"
+              value={jitWorkspaceId}
+              onChange={(e) => setJitWorkspaceId(e.target.value)}
+            >
+              <option value="">No default (manual invite required)</option>
+              {workspaces.map((ws) => (
+                <option key={ws.id} value={ws.id}>
+                  {ws.name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Default role" htmlFor="admin-sso-provider-jit-role">
+            <Select
+              id="admin-sso-provider-jit-role"
+              data-testid="admin-sso-provider-jit-role"
+              value={jitRole}
+              onChange={(e) => setJitRole(e.target.value as Role)}
+              disabled={!jitWorkspaceId}
+            >
+              <option value={Role.VIEWER}>Viewer</option>
+              <option value={Role.MEMBER}>Member</option>
+              <option value={Role.ADMIN}>Admin</option>
+            </Select>
+          </Field>
+        </div>
+      </div>
+
+      {validationError && (
+        <p role="alert" data-testid="admin-sso-provider-form-error" className="text-sm text-red-600">
+          {validationError}
+        </p>
+      )}
+
+      <div className="flex items-center gap-2">
+        <Button type="submit" size="sm" loading={pending} disabled={pending} data-testid="admin-sso-provider-form-save">
+          {isEdit ? 'Save changes' : 'Add provider'}
+        </Button>
+        <Button type="button" size="sm" variant="ghost" onClick={onDone} disabled={pending}>
+          Cancel
+        </Button>
+      </div>
+    </form>
   );
 }
 

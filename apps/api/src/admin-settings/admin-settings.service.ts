@@ -1,16 +1,20 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
-import type { OidcConfigDto } from '@next-lane/shared';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { Role, type OidcConfigDto, type SsoProviderDto } from '@next-lane/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { assertInstanceAdmin } from '../common/membership.util';
 import { OidcConfigService } from './oidc-config.service';
+import { SsoProvidersService } from './sso-providers.service';
 import { getOidcEnvConfig } from '../auth/oidc/oidc.config';
 import type { UpdateOidcConfigDto } from './dto/update-oidc-config.dto';
+import type { CreateSsoProviderDto } from './dto/create-sso-provider.dto';
+import type { UpdateSsoProviderDto } from './dto/update-sso-provider.dto';
 
 @Injectable()
 export class AdminSettingsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly oidcConfig: OidcConfigService,
+    private readonly ssoProviders: SsoProvidersService,
   ) {}
 
   /** GET /admin/oidc-config — instance-admin only. Never returns the client secret. */
@@ -50,14 +54,67 @@ export class AdminSettingsService {
       );
     }
 
+    // SSO/OIDC Phase 2 — JIT provisioning for this (legacy) provider.
+    // `null` explicitly clears it; omitted leaves the existing rule alone.
+    const jitDefaultWorkspaceId =
+      dto.jitDefaultWorkspaceId !== undefined
+        ? dto.jitDefaultWorkspaceId
+        : (existing?.jitDefaultWorkspaceId ?? null);
+    const jitDefaultRole = dto.jitDefaultRole ?? (existing?.jitDefaultRole as Role | undefined) ?? Role.VIEWER;
+
+    if (jitDefaultWorkspaceId) {
+      const workspace = await this.prisma.workspace.findUnique({
+        where: { id: jitDefaultWorkspaceId },
+        select: { id: true },
+      });
+      if (!workspace) {
+        throw new NotFoundException('The selected JIT default workspace does not exist.');
+      }
+    }
+
     await this.oidcConfig.upsert({
       enabled,
       issuerUrl,
       clientId,
       label,
       clientSecret: dto.clientSecret,
+      jitDefaultWorkspaceId,
+      jitDefaultRole,
     });
 
     return this.oidcConfig.toDto();
+  }
+
+  // ---------------------------------------------------------------------------
+  // SSO/OIDC Phase 2 — N-simultaneous-providers list (SsoProvider), additive
+  // alongside the legacy singleton above. Every route instance-admin gated.
+  // ---------------------------------------------------------------------------
+
+  /** GET /admin/sso-providers — instance-admin only. */
+  async listSsoProviders(userId: string): Promise<SsoProviderDto[]> {
+    await assertInstanceAdmin(this.prisma, userId);
+    return this.ssoProviders.findAll();
+  }
+
+  /** POST /admin/sso-providers — instance-admin only. */
+  async createSsoProvider(userId: string, dto: CreateSsoProviderDto): Promise<SsoProviderDto> {
+    await assertInstanceAdmin(this.prisma, userId);
+    return this.ssoProviders.create(dto);
+  }
+
+  /** PATCH /admin/sso-providers/:id — instance-admin only. */
+  async updateSsoProvider(
+    userId: string,
+    id: string,
+    dto: UpdateSsoProviderDto,
+  ): Promise<SsoProviderDto> {
+    await assertInstanceAdmin(this.prisma, userId);
+    return this.ssoProviders.update(id, dto);
+  }
+
+  /** DELETE /admin/sso-providers/:id — instance-admin only. */
+  async removeSsoProvider(userId: string, id: string): Promise<void> {
+    await assertInstanceAdmin(this.prisma, userId);
+    return this.ssoProviders.remove(id);
   }
 }

@@ -32,6 +32,10 @@ export function LoginPage() {
   });
   const ssoEnabled = providersQuery.data?.oidc.enabled ?? false;
   const ssoLabel = providersQuery.data?.oidc.label ?? 'Single sign-on';
+  // SSO/OIDC Phase 2 — every currently-enabled row from the N-simultaneous
+  // -providers list, alongside (not replacing) the legacy button above.
+  const multiProviders = providersQuery.data?.providers ?? [];
+  const anySsoAvailable = ssoEnabled || multiProviders.length > 0;
 
   // A failed SSO callback redirects back here with ?ssoError=<message>.
   const ssoError = new URLSearchParams(location.search).get('ssoError');
@@ -110,20 +114,34 @@ export function LoginPage() {
           Sign in
         </Button>
       </form>
-      {ssoEnabled && (
+      {anySsoAvailable && (
         <>
           <div className="my-5 flex items-center gap-3" role="separator" aria-orientation="horizontal">
             <div className="h-px flex-1 bg-ink-200" />
             <span className="text-xs font-medium uppercase tracking-wide text-ink-400">or</span>
             <div className="h-px flex-1 bg-ink-200" />
           </div>
-          <a
-            href={`${API_URL}/api/auth/oidc/login`}
-            data-testid="sso-login-button"
-            className="flex w-full items-center justify-center rounded-md border border-ink-200 bg-surface px-4 py-2 text-sm font-medium text-ink-700 shadow-sm transition-colors duration-[120ms] hover:bg-ink-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal-500"
-          >
-            Continue with {ssoLabel}
-          </a>
+          <div className="space-y-2">
+            {ssoEnabled && (
+              <a
+                href={`${API_URL}/api/auth/oidc/login`}
+                data-testid="sso-login-button"
+                className="flex w-full items-center justify-center rounded-md border border-ink-200 bg-surface px-4 py-2 text-sm font-medium text-ink-700 shadow-sm transition-colors duration-[120ms] hover:bg-ink-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal-500"
+              >
+                Continue with {ssoLabel}
+              </a>
+            )}
+            {multiProviders.map((provider) => (
+              <a
+                key={provider.slug}
+                href={`${API_URL}/api/auth/sso/${provider.slug}/login`}
+                data-testid={`sso-login-button-${provider.slug}`}
+                className="flex w-full items-center justify-center rounded-md border border-ink-200 bg-surface px-4 py-2 text-sm font-medium text-ink-700 shadow-sm transition-colors duration-[120ms] hover:bg-ink-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal-500"
+              >
+                Continue with {provider.label}
+              </a>
+            ))}
+          </div>
         </>
       )}
     </AuthShell>

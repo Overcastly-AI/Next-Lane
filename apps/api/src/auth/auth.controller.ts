@@ -9,6 +9,8 @@ import { CurrentUser, AuthUser } from './current-user.decorator';
 import { PrismaService } from '../prisma/prisma.service';
 import { PasswordResetService } from './password-reset.service';
 import { OidcConfigService } from '../admin-settings/oidc-config.service';
+import { SsoProvidersService } from '../admin-settings/sso-providers.service';
+import type { SsoProviderSummaryDto } from '@next-lane/shared';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -27,6 +29,7 @@ export class AuthController {
     private readonly prisma: PrismaService,
     private readonly passwordReset: PasswordResetService,
     private readonly oidcConfig: OidcConfigService,
+    private readonly ssoProviders: SsoProvidersService,
   ) {}
 
   @Public()
@@ -43,20 +46,32 @@ export class AuthController {
 
   /**
    * Public, unauthenticated capability probe for login-surface features.
-   * The frontend uses this to decide whether to render the "Continue with
-   * SSO" button on LoginPage — never assume a provider is configured.
+   * The frontend uses this to decide which SSO buttons to render on
+   * LoginPage — never assume a provider is configured.
    * Reflects the LIVE effective config (env vars, or an enabled in-app-admin-
    * configured DB config) — no API restart needed after a settings-screen save.
+   *
+   * `oidc` is the Phase-1 legacy single-provider config (unchanged shape,
+   * for backward compat with anything reading this field). `providers` is
+   * the SSO/OIDC Phase 2 addition — every currently-ENABLED row from the
+   * N-simultaneous-providers list (`SsoProvider`), OIDC and/or SAML alike.
    */
   @Public()
   @Get('providers')
-  async providers(): Promise<{ oidc: { enabled: boolean; label: string } }> {
-    const config = await this.oidcConfig.getEffectiveConfig();
+  async providers(): Promise<{
+    oidc: { enabled: boolean; label: string };
+    providers: SsoProviderSummaryDto[];
+  }> {
+    const [config, providers] = await Promise.all([
+      this.oidcConfig.getEffectiveConfig(),
+      this.ssoProviders.findEnabledSummaries(),
+    ]);
     return {
       oidc: {
         enabled: config !== null,
         label: config?.label ?? 'Single sign-on',
       },
+      providers,
     };
   }
 

@@ -301,7 +301,15 @@ minimal, so there is no `verbose` mode.
   shape of risk as the GitHub/GitLab integrations above; it is deliberately
   **not** wired as an MCP tool. Manage SSO from that settings page (or the
   `OIDC_ISSUER_URL`/`OIDC_CLIENT_ID`/`OIDC_CLIENT_SECRET` env vars, which take
-  precedence when set) in the web app.
+  precedence when set) in the web app. **SSO/OIDC Phase 2** (`GET`/`POST/PATCH/
+  DELETE /admin/sso-providers` — the N-simultaneous-providers list, SAML +
+  additional OIDC rows) is the same risk shape one level up: every write
+  carries an OIDC client secret or a SAML IdP signing certificate, and the
+  runtime `/auth/sso/:slug/login`/`callback` routes are unauthenticated
+  browser redirects with no agent-appropriate shape at all (an agent can't
+  "click through" an IdP's own login form). None of it is wired as an MCP
+  tool, for the same reason as Phase 1 — manage every provider (OIDC and
+  SAML alike) from the `/admin/sso` settings page.
 - **Dashboard sharing (public read-only embed)** — minting/listing/revoking a
   dashboard share link (`POST/GET /dashboards/:id/share-tokens`,
   `DELETE .../share-tokens/:tokenId`) and the public `GET /public/dashboard/:token`

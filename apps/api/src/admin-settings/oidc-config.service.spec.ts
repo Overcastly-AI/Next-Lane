@@ -10,6 +10,7 @@
  *     `toDto()` — only `hasClientSecret`
  *   - `envManaged` correctly reflects which source is in effect
  */
+import { Role } from '@next-lane/shared';
 import { OidcConfigService, OIDC_CONFIG_SINGLETON_ID } from './oidc-config.service';
 import type { PrismaService } from '../prisma/prisma.service';
 import { encryptOidcClientSecret } from '../auth/oidc/oidc-secret-crypto.util';
@@ -165,6 +166,8 @@ describe('OidcConfigService', () => {
         label: 'Continue with Env IdP',
         hasClientSecret: true,
         updatedAt: null,
+        jitDefaultWorkspaceId: null,
+        jitDefaultRole: Role.VIEWER,
       });
       expect(JSON.stringify(dto)).not.toContain('env-secret');
     });
@@ -190,6 +193,8 @@ describe('OidcConfigService', () => {
         label: 'Okta',
         hasClientSecret: true,
         updatedAt: updatedAt.toISOString(),
+        jitDefaultWorkspaceId: null,
+        jitDefaultRole: Role.VIEWER,
       });
       expect(JSON.stringify(dto)).not.toContain('super-secret-value');
     });
@@ -205,6 +210,8 @@ describe('OidcConfigService', () => {
         label: 'Single sign-on',
         hasClientSecret: false,
         updatedAt: null,
+        jitDefaultWorkspaceId: null,
+        jitDefaultRole: Role.VIEWER,
       });
     });
   });
@@ -220,6 +227,8 @@ describe('OidcConfigService', () => {
         clientId: 'client-1',
         clientSecret: 'brand-new-secret',
         label: 'Okta',
+        jitDefaultWorkspaceId: null,
+        jitDefaultRole: Role.VIEWER,
       });
 
       expect(prisma.oidcConfig.create).toHaveBeenCalledTimes(1);
@@ -246,6 +255,8 @@ describe('OidcConfigService', () => {
         issuerUrl: 'https://idp.example.com',
         clientId: 'client-1',
         label: 'Okta',
+        jitDefaultWorkspaceId: null,
+        jitDefaultRole: Role.VIEWER,
         // clientSecret intentionally omitted
       });
 
@@ -253,6 +264,77 @@ describe('OidcConfigService', () => {
       const data = prisma.oidcConfig.update.mock.calls[0][0].data;
       expect(data.clientSecretEncrypted).toBeUndefined();
       expect(data.enabled).toBe(false);
+    });
+
+    it('persists JIT provisioning fields', async () => {
+      prisma.oidcConfig.findUnique.mockResolvedValue(null);
+      prisma.oidcConfig.create.mockResolvedValue({});
+
+      await service.upsert({
+        enabled: true,
+        issuerUrl: 'https://idp.example.com',
+        clientId: 'client-1',
+        clientSecret: 'brand-new-secret',
+        label: 'Okta',
+        jitDefaultWorkspaceId: 'ws-1',
+        jitDefaultRole: Role.MEMBER,
+      });
+
+      const data = prisma.oidcConfig.create.mock.calls[0][0].data;
+      expect(data.jitDefaultWorkspaceId).toBe('ws-1');
+      expect(data.jitDefaultRole).toBe(Role.MEMBER);
+    });
+  });
+
+  describe('JIT provisioning surfaced by getEffectiveConfig/toDto', () => {
+    it('surfaces the DB row jitDefaultWorkspaceId/jitDefaultRole in getEffectiveConfig', async () => {
+      prisma.oidcConfig.findUnique.mockResolvedValue({
+        id: OIDC_CONFIG_SINGLETON_ID,
+        enabled: true,
+        issuerUrl: 'https://idp.example.com',
+        clientId: 'db-client',
+        clientSecretEncrypted: encryptOidcClientSecret('db-secret'),
+        label: 'Okta (DB)',
+        jitDefaultWorkspaceId: 'ws-1',
+        jitDefaultRole: Role.MEMBER,
+        updatedAt: new Date(),
+      });
+
+      const config = await service.getEffectiveConfig();
+      expect(config?.jitDefaultWorkspaceId).toBe('ws-1');
+      expect(config?.jitDefaultRole).toBe(Role.MEMBER);
+    });
+
+    it('env-managed config always reports JIT off (null/VIEWER) — env vars have no room for it', async () => {
+      process.env.OIDC_ISSUER_URL = 'https://env-idp.example.com';
+      process.env.OIDC_CLIENT_ID = 'env-client';
+      process.env.OIDC_CLIENT_SECRET = 'env-secret';
+
+      const config = await service.getEffectiveConfig();
+      expect(config?.jitDefaultWorkspaceId).toBeNull();
+      expect(config?.jitDefaultRole).toBe(Role.VIEWER);
+
+      const dto = await service.toDto();
+      expect(dto.jitDefaultWorkspaceId).toBeNull();
+      expect(dto.jitDefaultRole).toBe(Role.VIEWER);
+    });
+
+    it('toDto surfaces the DB row JIT rule when not env-managed', async () => {
+      prisma.oidcConfig.findUnique.mockResolvedValue({
+        id: OIDC_CONFIG_SINGLETON_ID,
+        enabled: true,
+        issuerUrl: 'https://idp.example.com',
+        clientId: 'db-client',
+        clientSecretEncrypted: encryptOidcClientSecret('db-secret'),
+        label: 'Okta',
+        jitDefaultWorkspaceId: 'ws-1',
+        jitDefaultRole: Role.MEMBER,
+        updatedAt: new Date(),
+      });
+
+      const dto = await service.toDto();
+      expect(dto.jitDefaultWorkspaceId).toBe('ws-1');
+      expect(dto.jitDefaultRole).toBe(Role.MEMBER);
     });
   });
 });

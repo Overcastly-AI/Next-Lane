@@ -35,7 +35,7 @@ work for a local Docker Compose install.
 
 ---
 
-## SSO / OIDC login (Phase 1 — single generic provider)
+## SSO / OIDC login
 
 Adds a "Continue with `<label>`" button to the login page, backed by any
 standards-compliant OIDC provider (Okta, Auth0, Keycloak, Authentik, Google
@@ -69,8 +69,27 @@ take precedence; the screen is useful for updating provider credentials without
 restarting the API. The first user on a fresh install (or the oldest user on an
 existing install) is automatically marked as instance-admin.
 
-SAML, multiple simultaneously-configured providers, and per-workspace/role
-JIT provisioning are a tracked Phase 2 follow-up (see `docs/BACKLOG.md`).
+### Multiple providers + SAML
+
+The same `/admin/sso` screen also manages an **additional-providers list** —
+any number of extra OIDC and/or SAML providers, layered alongside the single
+provider above (which keeps working unchanged; no migration needed). Each
+additional provider gets its own login button (`/api/auth/sso/<slug>/login`)
+and its own optional just-in-time (JIT) provisioning rule: a default
+workspace + role a brand-new SSO identity is auto-joined to on first login
+(off by default — the account is created but lands with no workspace
+membership until an existing member invites it; when set, defaults to the
+least-privileged Viewer role unless a higher one is explicitly chosen).
+
+SAML 2.0 providers use the standard SP-initiated flow: register the
+identity provider's SSO URL, its entity ID, and its signing certificate (a
+PEM-encoded X.509 cert) from the admin screen — no environment variables
+required, everything is configured in-app. SAML assertions are always
+required to carry a valid signature (never optional); an assertion signed
+for a different application, expired, or replayed is rejected.
+
+There is no environment-variable path for additional providers or SAML —
+manage them entirely from `/admin/sso`.
 
 ---
 

@@ -36,6 +36,11 @@ export const MATRIX: MatrixRow[] = [
   // admin-settings
   { controller: 'admin-settings', method: 'GET', path: '/admin/oidc-config', scope: 'admin:read' },
   { controller: 'admin-settings', method: 'PATCH', path: '/admin/oidc-config', scope: 'admin:write' },
+  // admin-settings — SSO/OIDC Phase 2: N-simultaneous-providers list (SAML + additional OIDC rows)
+  { controller: 'admin-settings', method: 'GET', path: '/admin/sso-providers', scope: 'admin:read' },
+  { controller: 'admin-settings', method: 'POST', path: '/admin/sso-providers', scope: 'admin:write' },
+  { controller: 'admin-settings', method: 'PATCH', path: `/admin/sso-providers/${X}`, scope: 'admin:write' },
+  { controller: 'admin-settings', method: 'DELETE', path: `/admin/sso-providers/${X}`, scope: 'admin:write' },
 
   // analytics
   { controller: 'analytics', method: 'GET', path: '/me/analytics', scope: 'issues:read' },

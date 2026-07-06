@@ -33,6 +33,7 @@ import { AuthService, randomColor } from '../auth.service';
 import type { AuthResponse } from '@next-lane/shared';
 import { getOidcRedirectUriOverride } from './oidc.config';
 import { OidcConfigService, type EffectiveOidcConfig } from '../../admin-settings/oidc-config.service';
+import { provisionJitMembership } from '../sso-jit-provisioning.util';
 
 interface OidcStatePayload {
   typ: 'oidc_state';
@@ -153,7 +154,21 @@ export class OidcService {
 
     const name = (typeof claims.name === 'string' && claims.name.trim()) || email.split('@')[0];
 
-    const user = await this.findOrProvisionUser(email, name);
+    const { user, isNewUser } = await this.findOrProvisionUser(email, name);
+
+    // JIT workspace/role provisioning — only for a BRAND NEW user's first
+    // login (see sso-jit-provisioning.util.ts's header comment for the full
+    // rule). Reads the effective config fresh (cheap — a single indexed PK
+    // lookup) rather than threading it through from `getClient()`.
+    if (isNewUser) {
+      const config = await this.oidcConfig.getEffectiveConfig();
+      if (config) {
+        await provisionJitMembership(this.prisma, user.id, {
+          jitDefaultWorkspaceId: config.jitDefaultWorkspaceId,
+          jitDefaultRole: config.jitDefaultRole,
+        });
+      }
+    }
 
     return this.authService.issueSession(user);
   }
@@ -209,10 +224,13 @@ export class OidcService {
     return client;
   }
 
-  /** Find-by-email or JIT-create a user for a successful SSO login. */
-  private async findOrProvisionUser(email: string, name: string) {
+  /** Find-by-email or JIT-create a user for a successful SSO login. `isNewUser` gates workspace JIT provisioning (see `handleCallback`). */
+  private async findOrProvisionUser(
+    email: string,
+    name: string,
+  ): Promise<{ user: Awaited<ReturnType<PrismaService['user']['create']>>; isNewUser: boolean }> {
     const existing = await this.prisma.user.findUnique({ where: { email } });
-    if (existing) return existing;
+    if (existing) return { user: existing, isNewUser: false };
 
     // The very first user ever created on a fresh install becomes the
     // instance admin, same rule as password registration (AuthService.register).
@@ -223,7 +241,7 @@ export class OidcService {
     const unusablePassword = randomBytes(32).toString('hex');
     const passwordHash = await argon2.hash(unusablePassword);
 
-    return this.prisma.user.create({
+    const user = await this.prisma.user.create({
       data: {
         email,
         name,
@@ -232,5 +250,6 @@ export class OidcService {
         isInstanceAdmin: isFirstUser,
       },
     });
+    return { user, isNewUser: true };
   }
 }

@@ -34,6 +34,12 @@ export enum Role {
   VIEWER = 'VIEWER',
 }
 
+/** SSO/OIDC Phase 2 — the kind of identity provider a multi-provider `SsoProviderDto` row represents. */
+export enum SsoProviderType {
+  OIDC = 'OIDC',
+  SAML = 'SAML',
+}
+
 /** Board view type. KANBAN = continuous flow; SCRUM = active-sprint focus. */
 export enum BoardType {
   KANBAN = 'KANBAN',

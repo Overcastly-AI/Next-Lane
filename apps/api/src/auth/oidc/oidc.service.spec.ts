@@ -13,6 +13,7 @@
  */
 
 import { BadRequestException, ServiceUnavailableException } from '@nestjs/common';
+import { Role } from '@next-lane/shared';
 import { Issuer, generators } from 'openid-client';
 import { OidcService } from './oidc.service';
 import type { PrismaService } from '../../prisma/prisma.service';
@@ -45,6 +46,12 @@ interface MockPrisma {
     create: jest.Mock;
     count: jest.Mock;
   };
+  workspace: {
+    findUnique: jest.Mock;
+  };
+  membership: {
+    upsert: jest.Mock;
+  };
 }
 
 function makePrisma(): MockPrisma {
@@ -56,6 +63,16 @@ function makePrisma(): MockPrisma {
       // JIT-provisioned test users are NOT accidentally instance-admin'd;
       // individual tests override this when they care.
       count: jest.fn().mockResolvedValue(1),
+    },
+    // SSO/OIDC Phase 2 — JIT workspace/role provisioning
+    // (sso-jit-provisioning.util.ts). Unused by tests that don't configure
+    // `jitDefaultWorkspaceId` — `provisionJitMembership` no-ops before ever
+    // touching these when it's null.
+    workspace: {
+      findUnique: jest.fn(),
+    },
+    membership: {
+      upsert: jest.fn(),
     },
   };
 }
@@ -72,7 +89,13 @@ function makeOidcConfigService(): jest.Mocked<Pick<OidcConfigService, 'getEffect
     getEffectiveConfig: jest.fn(async () => {
       const env = getOidcEnvConfig();
       if (!env) return null;
-      return { ...env, label: getOidcButtonLabel(), source: 'env' as const };
+      return {
+        ...env,
+        label: getOidcButtonLabel(),
+        source: 'env' as const,
+        jitDefaultWorkspaceId: null,
+        jitDefaultRole: Role.VIEWER,
+      };
     }),
     isConfigured: jest.fn(async () => getOidcEnvConfig() !== null),
   };
@@ -427,6 +450,120 @@ describe('OidcService', () => {
 
       const created = prisma.user.create.mock.calls[0][0].data as { name: string };
       expect(created.name).toBe('no.name');
+    });
+
+    // -------------------------------------------------------------------------
+    // SSO/OIDC Phase 2 — JIT workspace/role provisioning for THIS (legacy)
+    // provider (sso-jit-provisioning.util.ts).
+    // -------------------------------------------------------------------------
+
+    it('auto-provisions a workspace membership at the configured JIT role for a brand-new user', async () => {
+      oidcConfigService.getEffectiveConfig.mockResolvedValue({
+        issuerUrl: 'https://idp.example.com',
+        clientId: 'client-1',
+        clientSecret: 'shh',
+        label: 'Single sign-on',
+        source: 'env',
+        jitDefaultWorkspaceId: 'ws-1',
+        jitDefaultRole: Role.MEMBER,
+      });
+      CLIENT_MOCK.callback.mockResolvedValue({
+        claims: () => ({
+          sub: 'idp-user-jit',
+          email: 'jit.new@example.com',
+          email_verified: true,
+          name: 'Jit New',
+        }),
+      });
+      prisma.user.findUnique.mockResolvedValue(null);
+      const createdUser = {
+        id: 'u-jit',
+        email: 'jit.new@example.com',
+        name: 'Jit New',
+        avatarColor: '#eab308',
+        emailNotifications: true,
+        isInstanceAdmin: false,
+        createdAt: new Date(),
+      };
+      prisma.user.create.mockResolvedValue(createdUser);
+      prisma.workspace.findUnique.mockResolvedValue({ id: 'ws-1' });
+      authService.issueSession.mockReturnValue({ accessToken: 'jwt', user: {} as never });
+
+      await service.handleCallback({ state: 'state-123', code: 'abc' }, 'token', 'https://api.example.com/cb');
+
+      expect(prisma.workspace.findUnique).toHaveBeenCalledWith({
+        where: { id: 'ws-1' },
+        select: { id: true },
+      });
+      expect(prisma.membership.upsert).toHaveBeenCalledWith({
+        where: { userId_workspaceId: { userId: 'u-jit', workspaceId: 'ws-1' } },
+        update: {},
+        create: { userId: 'u-jit', workspaceId: 'ws-1', role: Role.MEMBER },
+      });
+    });
+
+    it('never auto-provisions a membership for an ALREADY-EXISTING user, even when JIT is configured', async () => {
+      oidcConfigService.getEffectiveConfig.mockResolvedValue({
+        issuerUrl: 'https://idp.example.com',
+        clientId: 'client-1',
+        clientSecret: 'shh',
+        label: 'Single sign-on',
+        source: 'env',
+        jitDefaultWorkspaceId: 'ws-1',
+        jitDefaultRole: Role.MEMBER,
+      });
+      CLIENT_MOCK.callback.mockResolvedValue({
+        claims: () => ({
+          sub: 'idp-user-existing',
+          email: 'existing@example.com',
+          email_verified: true,
+          name: 'Existing',
+        }),
+      });
+      const existingUser = {
+        id: 'u-existing',
+        email: 'existing@example.com',
+        name: 'Existing',
+        avatarColor: '#6366f1',
+        emailNotifications: true,
+        isInstanceAdmin: false,
+        createdAt: new Date(),
+      };
+      prisma.user.findUnique.mockResolvedValue(existingUser);
+      authService.issueSession.mockReturnValue({ accessToken: 'jwt', user: {} as never });
+
+      await service.handleCallback({ state: 'state-123', code: 'abc' }, 'token', 'https://api.example.com/cb');
+
+      expect(prisma.membership.upsert).not.toHaveBeenCalled();
+      expect(prisma.workspace.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('skips membership provisioning when jitDefaultWorkspaceId is null (default, Phase-1-compatible behavior)', async () => {
+      // The default mock (see makeOidcConfigService) already returns
+      // jitDefaultWorkspaceId: null for the env-configured path.
+      CLIENT_MOCK.callback.mockResolvedValue({
+        claims: () => ({
+          sub: 'idp-user-nojit',
+          email: 'nojit@example.com',
+          email_verified: true,
+          name: 'No Jit',
+        }),
+      });
+      prisma.user.findUnique.mockResolvedValue(null);
+      prisma.user.create.mockResolvedValue({
+        id: 'u-nojit',
+        email: 'nojit@example.com',
+        name: 'No Jit',
+        avatarColor: '#6366f1',
+        emailNotifications: true,
+        isInstanceAdmin: false,
+        createdAt: new Date(),
+      });
+      authService.issueSession.mockReturnValue({ accessToken: 'jwt', user: {} as never });
+
+      await service.handleCallback({ state: 'state-123', code: 'abc' }, 'token', 'https://api.example.com/cb');
+
+      expect(prisma.membership.upsert).not.toHaveBeenCalled();
     });
   });
 

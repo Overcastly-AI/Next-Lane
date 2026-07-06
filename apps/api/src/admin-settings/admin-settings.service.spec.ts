@@ -2,13 +2,16 @@
  * Unit tests for AdminSettingsService — the instance-admin gate and the
  * PATCH /admin/oidc-config validation/merge rules.
  */
-import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { Role } from '@next-lane/shared';
 import { AdminSettingsService } from './admin-settings.service';
 import type { PrismaService } from '../prisma/prisma.service';
 import type { OidcConfigService } from './oidc-config.service';
+import type { SsoProvidersService } from './sso-providers.service';
 
 interface MockPrisma {
   user: { findUnique: jest.Mock };
+  workspace: { findUnique: jest.Mock };
 }
 
 function makePrisma(isInstanceAdmin: boolean): MockPrisma {
@@ -16,6 +19,21 @@ function makePrisma(isInstanceAdmin: boolean): MockPrisma {
     user: {
       findUnique: jest.fn().mockResolvedValue({ isInstanceAdmin }),
     },
+    // SSO/OIDC Phase 2 — JIT default-workspace existence check.
+    workspace: {
+      findUnique: jest.fn().mockResolvedValue({ id: 'ws-1' }),
+    },
+  };
+}
+
+function makeSsoProviders(): jest.Mocked<
+  Pick<SsoProvidersService, 'findAll' | 'create' | 'update' | 'remove'>
+> {
+  return {
+    findAll: jest.fn().mockResolvedValue([]),
+    create: jest.fn(),
+    update: jest.fn(),
+    remove: jest.fn(),
   };
 }
 
@@ -31,6 +49,8 @@ function makeOidcConfig(): jest.Mocked<
       label: 'Single sign-on',
       hasClientSecret: false,
       updatedAt: null,
+      jitDefaultWorkspaceId: null,
+      jitDefaultRole: Role.VIEWER,
     }),
     getRawDbConfig: jest.fn().mockResolvedValue(null),
     upsert: jest.fn().mockResolvedValue({}),
@@ -63,6 +83,7 @@ describe('AdminSettingsService', () => {
       const service = new AdminSettingsService(
         prisma as unknown as PrismaService,
         oidcConfig as unknown as OidcConfigService,
+        makeSsoProviders() as unknown as SsoProvidersService,
       );
 
       await expect(service.getOidcConfig('user-1')).rejects.toBeInstanceOf(ForbiddenException);
@@ -75,6 +96,7 @@ describe('AdminSettingsService', () => {
       const service = new AdminSettingsService(
         prisma as unknown as PrismaService,
         oidcConfig as unknown as OidcConfigService,
+        makeSsoProviders() as unknown as SsoProvidersService,
       );
 
       await expect(service.updateOidcConfig('user-1', { enabled: true })).rejects.toBeInstanceOf(
@@ -89,6 +111,7 @@ describe('AdminSettingsService', () => {
       const service = new AdminSettingsService(
         prisma as unknown as PrismaService,
         oidcConfig as unknown as OidcConfigService,
+        makeSsoProviders() as unknown as SsoProvidersService,
       );
 
       await expect(service.getOidcConfig('user-1')).resolves.toEqual(
@@ -108,6 +131,7 @@ describe('AdminSettingsService', () => {
       const service = new AdminSettingsService(
         prisma as unknown as PrismaService,
         oidcConfig as unknown as OidcConfigService,
+        makeSsoProviders() as unknown as SsoProvidersService,
       );
 
       await expect(service.updateOidcConfig('user-1', { enabled: true })).rejects.toBeInstanceOf(
@@ -124,6 +148,7 @@ describe('AdminSettingsService', () => {
       const service = new AdminSettingsService(
         prisma as unknown as PrismaService,
         oidcConfig as unknown as OidcConfigService,
+        makeSsoProviders() as unknown as SsoProvidersService,
       );
 
       await expect(service.updateOidcConfig('user-1', { enabled: true })).rejects.toBeInstanceOf(
@@ -138,6 +163,7 @@ describe('AdminSettingsService', () => {
       const service = new AdminSettingsService(
         prisma as unknown as PrismaService,
         oidcConfig as unknown as OidcConfigService,
+        makeSsoProviders() as unknown as SsoProvidersService,
       );
 
       await service.updateOidcConfig('user-1', {
@@ -167,12 +193,15 @@ describe('AdminSettingsService', () => {
         clientId: 'client-1',
         clientSecretEncrypted: 'already-encrypted-value',
         label: null,
+        jitDefaultWorkspaceId: null,
+        jitDefaultRole: Role.VIEWER,
         createdAt: new Date(),
         updatedAt: new Date(),
       });
       const service = new AdminSettingsService(
         prisma as unknown as PrismaService,
         oidcConfig as unknown as OidcConfigService,
+        makeSsoProviders() as unknown as SsoProvidersService,
       );
 
       // Just flipping `enabled` — no clientSecret in this call.
@@ -189,6 +218,7 @@ describe('AdminSettingsService', () => {
       const service = new AdminSettingsService(
         prisma as unknown as PrismaService,
         oidcConfig as unknown as OidcConfigService,
+        makeSsoProviders() as unknown as SsoProvidersService,
       );
 
       await service.updateOidcConfig('user-1', {
@@ -199,6 +229,120 @@ describe('AdminSettingsService', () => {
 
       expect(oidcConfig.upsert).toHaveBeenCalledWith(
         expect.objectContaining({ enabled: false }),
+      );
+    });
+  });
+
+  describe('updateOidcConfig — JIT provisioning (Phase 2)', () => {
+    it('rejects a jitDefaultWorkspaceId that does not exist', async () => {
+      const prisma = makePrisma(true);
+      prisma.workspace.findUnique.mockResolvedValue(null);
+      const oidcConfig = makeOidcConfig();
+      const service = new AdminSettingsService(
+        prisma as unknown as PrismaService,
+        oidcConfig as unknown as OidcConfigService,
+        makeSsoProviders() as unknown as SsoProvidersService,
+      );
+
+      await expect(
+        service.updateOidcConfig('user-1', { jitDefaultWorkspaceId: 'nonexistent-ws' }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(oidcConfig.upsert).not.toHaveBeenCalled();
+    });
+
+    it('accepts a jitDefaultWorkspaceId that exists and defaults the role to VIEWER when omitted', async () => {
+      const prisma = makePrisma(true);
+      const oidcConfig = makeOidcConfig();
+      const service = new AdminSettingsService(
+        prisma as unknown as PrismaService,
+        oidcConfig as unknown as OidcConfigService,
+        makeSsoProviders() as unknown as SsoProvidersService,
+      );
+
+      await service.updateOidcConfig('user-1', { jitDefaultWorkspaceId: 'ws-1' });
+
+      expect(prisma.workspace.findUnique).toHaveBeenCalledWith({
+        where: { id: 'ws-1' },
+        select: { id: true },
+      });
+      expect(oidcConfig.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({ jitDefaultWorkspaceId: 'ws-1', jitDefaultRole: Role.VIEWER }),
+      );
+    });
+
+    it('respects an explicit jitDefaultRole', async () => {
+      const prisma = makePrisma(true);
+      const oidcConfig = makeOidcConfig();
+      const service = new AdminSettingsService(
+        prisma as unknown as PrismaService,
+        oidcConfig as unknown as OidcConfigService,
+        makeSsoProviders() as unknown as SsoProvidersService,
+      );
+
+      await service.updateOidcConfig('user-1', {
+        jitDefaultWorkspaceId: 'ws-1',
+        jitDefaultRole: Role.MEMBER,
+      });
+
+      expect(oidcConfig.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({ jitDefaultWorkspaceId: 'ws-1', jitDefaultRole: Role.MEMBER }),
+      );
+    });
+
+    it('clears JIT provisioning when jitDefaultWorkspaceId is explicitly null', async () => {
+      const prisma = makePrisma(true);
+      const oidcConfig = makeOidcConfig();
+      oidcConfig.getRawDbConfig.mockResolvedValue({
+        id: 'singleton',
+        enabled: false,
+        issuerUrl: null,
+        clientId: null,
+        clientSecretEncrypted: null,
+        label: null,
+        jitDefaultWorkspaceId: 'ws-1',
+        jitDefaultRole: Role.MEMBER,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      const service = new AdminSettingsService(
+        prisma as unknown as PrismaService,
+        oidcConfig as unknown as OidcConfigService,
+        makeSsoProviders() as unknown as SsoProvidersService,
+      );
+
+      await service.updateOidcConfig('user-1', { jitDefaultWorkspaceId: null });
+
+      expect(prisma.workspace.findUnique).not.toHaveBeenCalled();
+      expect(oidcConfig.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({ jitDefaultWorkspaceId: null }),
+      );
+    });
+
+    it('leaves an existing JIT rule unchanged when jitDefaultWorkspaceId is omitted', async () => {
+      const prisma = makePrisma(true);
+      const oidcConfig = makeOidcConfig();
+      oidcConfig.getRawDbConfig.mockResolvedValue({
+        id: 'singleton',
+        enabled: false,
+        issuerUrl: null,
+        clientId: null,
+        clientSecretEncrypted: null,
+        label: null,
+        jitDefaultWorkspaceId: 'ws-1',
+        jitDefaultRole: Role.MEMBER,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      const service = new AdminSettingsService(
+        prisma as unknown as PrismaService,
+        oidcConfig as unknown as OidcConfigService,
+        makeSsoProviders() as unknown as SsoProvidersService,
+      );
+
+      await service.updateOidcConfig('user-1', { label: 'New label' });
+
+      expect(oidcConfig.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({ jitDefaultWorkspaceId: 'ws-1', jitDefaultRole: Role.MEMBER }),
       );
     });
   });

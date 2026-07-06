@@ -373,13 +373,16 @@ anyone with the URL a read-only view of the project board at
 
 - **Email/password** login with JWT sessions; password reset via SMTP email
   (in dev, the reset link is printed to the API log instead).
-- **SSO / OIDC** — a "Continue with …" button backed by any
-  standards-compliant OIDC provider (Okta, Auth0, Keycloak, Authentik, Google
-  Workspace, …) with PKCE, CSRF protection, and just-in-time user
-  provisioning. Configure via
-  [environment variables](./configuration#sso--oidc-login-phase-1--single-generic-provider)
-  or in-app at **`/admin/sso`** (instance-admin only; env vars take
-  precedence).
+- **SSO / OIDC + SAML** — a "Continue with …" button per configured
+  provider, backed by any standards-compliant OIDC provider (Okta, Auth0,
+  Keycloak, Authentik, Google Workspace, …) with PKCE, CSRF protection, and
+  just-in-time user provisioning, **plus SAML 2.0** and any number of
+  **additional simultaneously-configured providers** (each with its own
+  optional default workspace/role for a brand-new identity's first login).
+  Configure the primary provider via
+  [environment variables](./configuration#sso--oidc-login) or in-app at
+  **`/admin/sso`** (instance-admin only; env vars take precedence); every
+  additional provider (OIDC or SAML) is configured entirely in-app.
 - **Personal API tokens (PATs)** — long-lived `nlp_...` tokens for scripts and
   agents (Profile Settings → API Tokens), optionally restricted to scopes
   (`issues:read`, `projects:write`, `gitlab:read`, …). Used by the
