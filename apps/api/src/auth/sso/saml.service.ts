@@ -140,7 +140,19 @@ export class SamlService {
       // the actual trust boundary here.
       wantAuthnResponseSigned: false,
       audience,
-      validateInResponseTo: ValidateInResponseTo.ifPresent,
+      // ALWAYS require InResponseTo, not `ifPresent` (security review on
+      // 5e0fe6c, must-fix): the checked `InResponseTo` attribute lives on the
+      // OUTER `<Response>` envelope, which we deliberately don't require to be
+      // signed (above). Under `ifPresent`, node-saml skips BOTH the top-level
+      // cache lookup AND the assertion-internal SubjectConfirmationData check
+      // whenever that unsigned attribute is simply absent — so an attacker
+      // could strip it from a replayed (but still validly assertion-signed)
+      // response and bypass single-use replay protection entirely, and slip
+      // an unsolicited IdP-initiated response past our SP-initiated-only
+      // contract (login-CSRF). This SP always sends an AuthnRequest, so every
+      // legitimate response carries InResponseTo; `always` makes a missing one
+      // a hard rejection, closing the hole with the library's own logic.
+      validateInResponseTo: ValidateInResponseTo.always,
       requestIdExpirationPeriodMs: SAML_REQUEST_TTL_MS,
       acceptedClockSkewMs: 5000,
       cacheProvider: this.cacheProviderFactory.create(),

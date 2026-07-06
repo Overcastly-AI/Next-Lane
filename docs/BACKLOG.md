@@ -686,6 +686,11 @@ _Hardening Night close-out ingest (2026-07-06) — P2s:_
 
 ## Later (P3)
 
+_SSO Phase 2 security-review follow-ups (2026-07-06, from the 5e0fe6c review; the must-fix InResponseTo replay bypass + the cheap hardening items were fixed same-day — these are the deferred deeper ones):_
+- [ ] (P2, M) **SAML existing-user account-linking needs a verification signal** — `SsoService.findOrProvisionUser` logs an existing user in on bare `email` match with no linkage/consent check; the OIDC path at least rejects `email_verified === false`, SAML has no analogue. A compromised/misconfigured admin-added IdP asserting an arbitrary email could take over a matching local/OIDC account. Options: require a matching IdP verified-email attribute where available, an explicit admin "trust this IdP for account linking" flag, or a first-link confirmation step. Document the tradeoff prominently in `AdminSsoSettingsPage` regardless. [security-review 5e0fe6c should-fix #2]
+- [ ] (P3, S) **`jitDefaultRole: ADMIN` UI confirmation** — an instance admin can configure a provider so every brand-new SSO identity is auto-promoted to workspace ADMIN with no invite (by design, single admin action, but silent). Add a confirmation step in the admin UI when ADMIN is selected as the JIT default. [security-review 5e0fe6c nit #7]
+- [ ] (P3, XS) **`SsoProvider.samlWantAssertionsSigned` is dead code** — the column is persisted (doc-commented "explicit and reviewable per-row") but never read; the real invariant is hardcoded `wantAssertionsSigned: true`. Either wire it into `SamlProviderConfig`/`SamlService` as a defensive read or drop the column so a "looks configurable" security boolean doesn't get carelessly wired to a weakenable value later. [security-review 5e0fe6c nit #4]
+
 _Hardening Night close-out ingest (2026-07-06):_
 
 **Promoted to Ready 2026-07-06** (this pass — see § Ready item 3): GitLab auto-transition e2e parity, bumped P3→P2 to reflect that it's now the top of this queue's fast-follow work, not deferred hardening. Kept out of this list to avoid duplication.

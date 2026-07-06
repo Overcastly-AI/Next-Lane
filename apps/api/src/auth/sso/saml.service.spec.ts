@@ -263,4 +263,34 @@ describe('SamlService (real @node-saml/node-saml, self-signed fixture, zero netw
       service.validateResponseAndExtractIdentity(config, CALLBACK_URL, encoded),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
+
+  it('REJECTS a validly-signed response with NO InResponseTo at all (security review on 5e0fe6c: no replay/IdP-initiated bypass)', async () => {
+    // A correctly assertion-signed response, but with the InResponseTo
+    // attribute omitted entirely (IdP-initiated / stripped-envelope shape).
+    // Under the old `ifPresent` setting this SAILED THROUGH — skipping the
+    // single-use replay cache and the SP-initiated contract, enabling
+    // unlimited replay + login-CSRF. With `always`, a missing InResponseTo
+    // is a hard rejection.
+    const xml = buildSignedSamlResponse(
+      {
+        idpIssuer: IDP_ISSUER,
+        audience: AUDIENCE,
+        recipient: CALLBACK_URL,
+        // inResponseTo deliberately omitted
+        email: 'mallory@corp.example.com',
+        name: 'Mallory',
+      },
+      idpKey,
+      idpCert,
+    );
+
+    await expect(
+      service.validateResponseAndExtractIdentity(config, CALLBACK_URL, toBase64(xml)),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    // And it stays rejected on replay — never silently accepted.
+    await expect(
+      service.validateResponseAndExtractIdentity(config, CALLBACK_URL, toBase64(xml)),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
 });

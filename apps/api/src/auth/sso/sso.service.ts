@@ -71,7 +71,18 @@ export class SsoService {
   }
 
   resolveCallbackUrl(req: RedirectUriRequest, slug: string): string {
-    return `${req.protocol}://${req.get('host')}/api/auth/sso/${slug}/callback`;
+    // Prefer the operator-configured public origin over the request's Host
+    // header (security review on 5e0fe6c): the callback is baked into the
+    // SAML AuthnRequest's AssertionConsumerServiceURL and the OIDC
+    // redirect_uri, so a permissive/misconfigured reverse proxy that lets a
+    // spoofed Host through must not be able to steer it. Falls back to the
+    // request origin only when no base URL is configured (zero-config dev).
+    const base = (process.env.WEB_BASE_URL ?? process.env.RESET_BASE_URL)?.replace(
+      /\/+$/,
+      '',
+    );
+    const origin = base ?? `${req.protocol}://${req.get('host')}`;
+    return `${origin}/api/auth/sso/${slug}/callback`;
   }
 
   // ---------------------------------------------------------------------------
