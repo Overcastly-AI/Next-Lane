@@ -14,6 +14,31 @@ This section summarizes the major capabilities delivered in the pre-1.0
 development phase. A versioned release will be tagged once the v1 criteria in
 [`docs/ROADMAP.md`](./docs/ROADMAP.md) are complete.
 
+### Fixed — 2026-07-06 (Hardening Night frontend batch)
+
+**Mobile toast/modal overlap, "Merged" badge dark-mode break, dashboard
+selection shadow state, and two P2 mobile/loading polish items** (all four
+`docs/UI-REVIEW.md` 2026-07-06 findings):
+- Toasts now bottom-anchor at every breakpoint (`ui/Toast.tsx`) instead of
+  pinning to the top below `sm:`, where they covered every `Modal`'s
+  header/close button for the full error-toast duration on any mutation
+  failure at ≤640px (17+ modal-hosting components affected); `ui/Modal.tsx`'s
+  panel is now also capped at `max-h-[calc(100dvh-4rem)]` with a sticky
+  header/footer and scrollable body so a tall form's footer can't collide
+  with the bottom-pinned toast either.
+- `purple` joined `tailwind.config.js`'s CSS-var-backed `varScale()` palette
+  (with matching `:root`/`.dark` values in `index.css`), fixing the "Merged"
+  PR/MR badge — and the identical-root-cause `WorkspaceAuditLogPage`/
+  `WorkspaceMembersPage` badges — rendering as a jarring, non-adapting
+  stock-hex chip in dark mode; zero per-component changes needed.
+- `DashboardsPage`'s active-dashboard selection moved from local `useState`
+  to the `?dashboard=<id>` URL search param (mirroring `BoardPage`'s
+  URL-as-source-of-truth filter pattern), so reload/deep-link/share now land
+  on the same dashboard instead of always resetting to the first one.
+- `GadgetCard`'s drag handle grew a ~40px touch target on mobile (was ~16px);
+  the GitHub/GitLab Development sections' live PR/CI and MR/pipeline status
+  polls now show a small spinner while loading instead of rendering nothing.
+
 ### Security — 2026-07-06
 
 **docker-compose now forwards every documented env var to the API container

@@ -209,6 +209,18 @@
   --nl-orange-800: #9a3412;
   --nl-orange-900: #7c2d12;
 
+  /* Purple — "Merged" PR/MR state + ADMIN role / webhook audit-log badges */
+  --nl-purple-50:  #faf5ff;
+  --nl-purple-100: #f3e8ff;
+  --nl-purple-200: #e9d5ff;
+  --nl-purple-300: #d8b4fe;
+  --nl-purple-400: #c084fc;
+  --nl-purple-500: #a855f7;
+  --nl-purple-600: #9333ea;
+  --nl-purple-700: #7e22ce;
+  --nl-purple-800: #6b21a8;
+  --nl-purple-900: #581c87;
+
   /* Canvas — cool graphite-ink paper, faint blue undertone */
   --nl-canvas:         #f4f6f9; /* graphite-50: slightly cooler than slate-50 */
   --nl-surface:        #ffffff;
@@ -405,6 +417,20 @@
   --nl-orange-700: #ea824d;
   --nl-orange-800: #eba685;
   --nl-orange-900: #ebc7b8;
+
+  /* Purple — derived from the #9333ea anchor via applyBrandColor.ts's
+   * mix-toward-canvas (below 600) / mix-toward-paper (above 600) method,
+   * same as every other dark scale above. */
+  --nl-purple-50:  #1a1329;
+  --nl-purple-100: #25153b;
+  --nl-purple-200: #381b58;
+  --nl-purple-300: #50217f;
+  --nl-purple-400: #6d29ae;
+  --nl-purple-500: #8830d9;
+  --nl-purple-600: #9333ea;
+  --nl-purple-700: #ac67ed;
+  --nl-purple-800: #c194ef;
+  --nl-purple-900: #d4bdf1;
 
   /* Signal accent aliases follow the dark signal scale automatically */
   --nl-accent:         var(--nl-signal-600);

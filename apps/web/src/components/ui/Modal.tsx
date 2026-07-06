@@ -44,18 +44,22 @@ export function Modal({
         onClick={onClose}
         aria-hidden="true"
       />
-      {/* Panel */}
+      {/* Panel — capped at viewport height with a scrollable body so a tall
+          form's header stays reachable and its footer action row never runs
+          off-screen (see docs/UI-REVIEW.md 2026-07-06 mobile-toast fix's
+          noted residual risk: a bottom-pinned toast could otherwise land on
+          top of a footer that's pushed below the fold on a long form). */}
       <div
         ref={panelRef}
         tabIndex={-1}
         className={cn(
-          'nl-modal-animate relative z-10 mt-8 w-full rounded-xl bg-surface shadow-modal outline-none',
+          'nl-modal-animate relative z-10 mt-8 flex max-h-[calc(100dvh-4rem)] w-full flex-col rounded-xl bg-surface shadow-modal outline-none',
           'border border-ink-200',
           size,
         )}
       >
         {title !== undefined && (
-          <div className="flex items-center justify-between border-b border-ink-100 px-5 py-3.5">
+          <div className="flex shrink-0 items-center justify-between border-b border-ink-100 px-5 py-3.5">
             <h2
               id={titleId}
               className="font-display text-sm font-semibold tracking-[-0.01em] text-ink-900"
@@ -73,9 +77,9 @@ export function Modal({
             </button>
           </div>
         )}
-        <div className="px-5 py-4">{children}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">{children}</div>
         {footer && (
-          <div className="flex justify-end gap-2 border-t border-ink-100 px-5 py-3.5">
+          <div className="flex shrink-0 justify-end gap-2 border-t border-ink-100 px-5 py-3.5">
             {footer}
           </div>
         )}

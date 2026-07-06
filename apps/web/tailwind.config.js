@@ -101,12 +101,15 @@ export default {
         /*
          * Neutral/semantic Tailwind-default scales, re-pointed at CSS vars so
          * every existing `slate-*` / `red-*` / `amber-*` / `emerald-*` /
-         * `green-*` / `blue-*` / `gray-*` / `orange-*` usage across the app
-         * (badges, chips, status text, form validation, chart colors) gets
-         * dark-mode-legible values automatically — the "handful of stragglers
-         * that bypass tokens" fixed once at the token layer instead of
-         * hundreds of per-component edits. Light-mode values are byte-
-         * identical to Tailwind's stock palette (see index.css `:root`).
+         * `green-*` / `blue-*` / `gray-*` / `orange-*` / `purple-*` usage
+         * across the app (badges, chips, status text, form validation, chart
+         * colors) gets dark-mode-legible values automatically — the "handful
+         * of stragglers that bypass tokens" fixed once at the token layer
+         * instead of hundreds of per-component edits. Light-mode values are
+         * byte-identical to Tailwind's stock palette (see index.css `:root`).
+         * `purple` added 2026-07-06 to fix the "Merged" PR/MR badge (and the
+         * webhook/ADMIN-role badges) rendering as a jarring, non-adapting
+         * stock-hex chip in dark mode — see docs/UI-REVIEW.md.
          */
         slate:   varScale('slate'),
         red:     varScale('red'),
@@ -116,6 +119,7 @@ export default {
         blue:    varScale('blue'),
         gray:    varScale('gray'),
         orange:  varScale('orange'),
+        purple:  varScale('purple'),
 
         /*
          * Surface — replaces the many hardcoded `bg-white` card/input/modal

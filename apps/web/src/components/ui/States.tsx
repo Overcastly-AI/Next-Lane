@@ -1,7 +1,10 @@
-import type { ReactNode } from 'react';
+import type { HTMLAttributes, ReactNode } from 'react';
 import { cn } from '@/lib/cn';
 
-export function Spinner({ className }: { className?: string }) {
+export function Spinner({
+  className,
+  ...rest
+}: { className?: string } & HTMLAttributes<HTMLSpanElement>) {
   return (
     <span
       className={cn(
@@ -10,6 +13,7 @@ export function Spinner({ className }: { className?: string }) {
       )}
       role="status"
       aria-label="Loading"
+      {...rest}
     />
   );
 }

@@ -385,6 +385,116 @@ Pass 9/10/11 that are real but not yet the highest-leverage next step.
 
 ## Already Done (recent shipments — ticked for reference)
 
+- [x] (P1, S) **Hardening Night frontend batch (2026-07-06)** — closed the
+  four `docs/UI-REVIEW.md` 2026-07-06-dated findings: **(1) mobile toast/modal
+  overlap** — `ui/Toast.tsx`'s viewport now bottom-anchors at every
+  breakpoint (was `top-0` below `sm:`, landing squarely on every `Modal`'s
+  `items-start`/`mt-8` header+close button — 17+ modal-hosting components
+  affected on any mutation error) plus `pb-[calc(1rem+env(safe-area-inset-
+  bottom))]` for notched-phone safe area; paired with capping `ui/Modal.tsx`'s
+  panel at `max-h-[calc(100dvh-4rem)]` with a sticky header/footer + scrollable
+  body so a tall form's footer action row can't newly collide with the
+  bottom-pinned toast either (the review's flagged residual risk). **(2)
+  "Merged" PR/MR badge dark-mode break** — `purple` added to
+  `tailwind.config.js`'s CSS-var-backed `varScale()` pipeline (mirroring
+  emerald/red/amber/etc.) with `:root`/`.dark` values in `index.css` derived
+  via the same `applyBrandColor.ts` mix-toward-canvas/mix-toward-paper method
+  as every other scale — the existing `bg-purple-50 text-purple-700
+  ring-purple-200` classes in `IssueCard.tsx`, `GithubLinksSection.tsx`,
+  `GitlabLinksSection.tsx`, `WorkspaceAuditLogPage.tsx`, and
+  `WorkspaceMembersPage.tsx` all inherit dark-mode-legible values with ZERO
+  per-component changes (fix-once-at-the-token-layer, per the review's
+  prescription); contrast verified ≥4.5:1 in both modes (light 6.5:1/5.9:1,
+  dark 5.1:1/4.7:1 for the 50/700 and 100/700 pairs respectively).
+  **(3) Dashboard selection was shadow state** — `DashboardsPage.tsx`'s
+  `selectedId` moved from local `useState` to the `?dashboard=<id>` URL
+  search param, mirroring `BoardPage`'s existing URL-as-source-of-truth
+  filter pattern; reload/deep-link/share now land on the same dashboard,
+  with the 6447e76 synchronous-append create fix (new dashboard stays
+  selected) preserved. **(4) P2 quick wins** — `GadgetCard`'s drag handle
+  grew a `min-h-10 min-w-10` (≈40px) touch target on mobile (icon stays
+  visually small, resets at `sm:`+ for pointer precision); `GithubLinksSection`
+  /`GitlabLinksSection`'s live PR/CI and MR/pipeline status polls now render a
+  small `Spinner` while `liveQuery.isLoading` instead of nothing, matching the
+  drawer's established loading vocabulary (`ui/States`' `Spinner` extended to
+  forward arbitrary HTML attributes for the new `data-testid` hooks). Gates:
+  `tsc --noEmit` + web build clean; 142 targeted e2e green desktop+mobile
+  (`dashboards.spec.ts`, `dashboards-phase2.spec.ts`, `pr-auto-transition.spec.ts`,
+  `board.spec.ts`, `toast.spec.ts`, `personal-board.spec.ts`,
+  `pulse-dashboard.spec.ts`, `webhooks-ui.spec.ts`, `components.spec.ts`,
+  `csv-import.spec.ts`, `issue-templates.spec.ts`, `github-integration.spec.ts`,
+  `gitlab-integration.spec.ts`, `issue-detail.spec.ts`, `issue-links.spec.ts`);
+  all `data-testid`/`role`/`aria-label` hooks preserved (no e2e selector
+  changes needed). [frontend-qa 2026-07-06 UI review, Hardening Night task #93]
+
+- [x] (P2, M) **DNS-rebinding TOCTOU closed in the shared SSRF guard
+  (2026-07-06, Hardening Night, audit pass 13 Risk 3)** — the old
+  `resolveAndCheckBlocked` + raw `fetch()` pattern resolved DNS once to vet a
+  target then let `fetch()` re-resolve DNS itself; a short-TTL attacker
+  nameserver could answer the vetting query with a public IP and the real
+  connection query with `169.254.169.254`/`127.0.0.1`/an internal host.
+  New shared `apps/api/src/common/ssrf-safe-fetch.ts`: `ssrfSafeFetch()`
+  resolves DNS exactly once and PINS the actual TCP/TLS connection to that
+  one vetted address via a custom undici `Agent` `connect.lookup` (added
+  `undici` as a direct `apps/api` dependency) that ignores whatever hostname
+  it's asked to resolve — there is no second real DNS query left for a
+  rebinding nameserver to answer differently; Host/SNI still use the real
+  hostname so TLS cert validation is unaffected. All three outbound-call
+  families now share this one path: webhook delivery (`webhooks.service.ts`,
+  re-vetted fresh per retry attempt), `GithubClient`, `GitlabClient`
+  (self-hosted GitLab's admin-supplied `baseUrl` was the primary risk).
+  `redirect: 'manual'` semantics preserved; `WEBHOOK_ALLOW_PRIVATE=true`
+  still bypasses the guard entirely for self-hosters. 15 new unit tests
+  including a real-socket rebind simulation (mocked `dns.promises.lookup`
+  answers public-then-private; the pinned request still hits the
+  first-vetted address and `dns.promises.lookup` is proven called exactly
+  once) plus direct `buildPinnedLookup` unit tests. All 71 pre-existing
+  webhook/GitHub/GitLab SSRF tests pass unmodified. API unit 1823/1823,
+  integration 293/293, `tsc --noEmit` clean. [orchestrator, audit pass 13
+  Risk 3]
+
+- [x] (P2, S) **`multer` DoS CVEs closed via root `pnpm.overrides`
+  (2026-07-06, Hardening Night, audit pass 13 Risk 4)** — `apps/api`'s own
+  direct `multer: "^2.2.0"` dependency was already patched, but
+  `@nestjs/platform-express`'s `FileInterceptor` (used by every real upload
+  endpoint — workspace logo, CSV import, issue attachments) bundled its own
+  transitive `multer@2.0.2`, carrying 3 high + 1 moderate DoS advisories.
+  Root `package.json` `pnpm.overrides` now forces `multer: "^2.2.0"` (and,
+  since it was cheap and still major-version-4, `lodash: "^4.18.0"` for the
+  one other HIGH — code injection via `_.template` — transitively pulled in
+  by `@nestjs/swagger`). `pnpm audit --prod`: 5 high → **0 high** (10 → 7
+  moderate; the remaining moderates — `js-yaml`, `qs`, `@nestjs/core`,
+  `file-type` — are documented as deferred, not silently dropped: `qs`/
+  `js-yaml` are minor-version-safe candidates for a follow-up pass,
+  `@nestjs/core`'s fix needs a Nest v10→v11 major bump, and `file-type`'s
+  fix needs v20+ (ESM-only) which the audit already flagged as its own
+  ticket — none blindly bumped). Verified `pnpm why multer`/`pnpm why
+  lodash` resolve every path to the patched version; live-verified with a
+  REAL multipart `curl` round-trip against a running API instance (isolated
+  port, so as not to disturb the concurrent QA agent's server on :4000) —
+  workspace logo upload/download and issue attachment upload/download both
+  byte-for-byte matched the uploaded file through the patched
+  `FileInterceptor`/multer/`file-type`-sniff path. Attachment/workspace
+  upload unit suites (241 tests) unaffected. [orchestrator, audit pass 13
+  Risk 4]
+
+- [x] (P3, S) **Issue-create `$transaction` timeout hardened against pool
+  contention (2026-07-06, Hardening Night, qa-tester 2026-07-06 P3)** —
+  `POST /issues` 500'd twice under 2-worker e2e parallelism in a
+  resource-constrained sandbox ("Transaction already closed... timeout 5000
+  ms" — Prisma's defaults). `IssuesService.createInner`'s default-status
+  resolution (`status.findFirst` ×≤2, only when the caller omits `statusId`)
+  moved OUT of the transaction onto the plain `prisma` client — a pure read
+  with no dependency on the atomic write, trimming round-trips off the
+  transaction's held-connection time — and the transaction now passes
+  explicit `{ timeout: 12_000, maxWait: 12_000 }` (vs. Prisma's 5000ms/2000ms
+  defaults), justified in a code comment tied to the QA finding. No
+  correctness change: issueSeq increment, rank lookup, the insert, and its
+  activity-log row still commit atomically together. 351/351 issue unit
+  tests pass (2 test-double fixtures updated to mock `prisma.status.findFirst`
+  at the top level, matching the moved call site). [orchestrator, qa-tester
+  P3 2026-07-06]
+
 - [x] (P1, S) **docker-compose env passthrough fix (2026-07-06, Hardening
   Night)** — audit pass 13 finding 1: compose forwarded only 7 of ~25
   documented operator vars; SMTP_* never reached the container so

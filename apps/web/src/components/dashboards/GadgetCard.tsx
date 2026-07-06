@@ -104,7 +104,12 @@ export function GadgetCard({
               aria-label={`Reorder gadget ${gadget.title}`}
               data-testid="gadget-drag-handle"
               className={cn(
-                'mt-0.5 shrink-0 cursor-grab touch-none rounded p-0.5 text-ink-300',
+                // ~40px touch target (mobile tap-target floor) while the icon
+                // itself stays visually small; shrinks back to a tight
+                // pointer-precision hit area at `sm:` and up.
+                'mt-0.5 flex min-h-10 min-w-10 shrink-0 items-center justify-center',
+                'sm:min-h-0 sm:min-w-0',
+                'cursor-grab touch-none rounded p-0.5 text-ink-300',
                 'transition-colors duration-[120ms] hover:bg-ink-100 hover:text-ink-600',
                 'focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-300',
                 'active:cursor-grabbing',

@@ -154,7 +154,18 @@ function ToastViewport({
   if (typeof document === 'undefined') return null;
   return createPortal(
     <div
-      className="pointer-events-none fixed inset-x-0 top-0 z-[60] flex flex-col items-center gap-2 p-4 sm:bottom-0 sm:right-0 sm:left-auto sm:top-auto sm:items-end"
+      className={cn(
+        // Bottom-anchored at EVERY breakpoint (not just `sm:` and up): every
+        // `Modal` in the app is `items-start` + `mt-8`, so its header/close
+        // button always sits near the TOP of the viewport — a bottom-pinned
+        // toast viewport structurally can't collide with it. `pb-[..]` clears
+        // the home-indicator safe area on notched phones on top of the
+        // regular `p-4` gutter (see docs/UI-REVIEW.md 2026-07-06 mobile-toast
+        // -over-modal fix).
+        'pointer-events-none fixed inset-x-0 bottom-0 z-[60] flex flex-col items-center gap-2',
+        'p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]',
+        'sm:right-0 sm:left-auto sm:items-end',
+      )}
       aria-live="polite"
       aria-atomic="false"
     >

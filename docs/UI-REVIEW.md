@@ -60,6 +60,16 @@ Each item below is redesigned design-skill-led, then ✅ when shipped + verified
 
 ## 2026-07-06 — UI review: PR badge, Development section, Dashboards Phase 2, agent-context + confirmed mobile toast defect
 
+> **✅ FIXED 2026-07-06 (Hardening Night frontend batch, task #93).** Both P1s
+> (mobile toast/modal overlap; "Merged" badge dark-mode break) and the
+> dashboard-selection shadow-state item (audit pass 13 #5) and two P2 quick
+> wins (`GadgetCard` drag-handle tap target; Development-section live-status
+> loading indicator) below are shipped — see `docs/BACKLOG.md` "Already Done"
+> for the full per-item writeup and `docs/CHANGELOG.md`'s matching entry.
+> Remaining open P2s (Badge `variant` prop consolidation, section-naming
+> inconsistency, `Badge`'s custom-color dark-mode path, live-status-error hint
+> contrast) are unchanged and still tracked below.
+
 **Branch:** `claude/jira-competitor-docker-local-9b7dll` @ `b40fbbf`. **Method:** static
 review of `apps/web/src` (a `backend-builder` had a dirty, uncommitted `apps/api/**`
 tree mid-refactor at review time, so this pass is source + the qa-tester's committed
@@ -76,7 +86,7 @@ across all of the above.
 
 ---
 
-### 🔴 P1 — Toasts overlap open-modal header on mobile (confirmed defect, fully characterized)
+### 🔴 P1 — Toasts overlap open-modal header on mobile (confirmed defect, fully characterized) ✅ FIXED 2026-07-06
 
 **Files:** `apps/web/src/components/ui/Toast.tsx:157`, `apps/web/src/components/ui/Modal.tsx:36-52`.
 **Evidence:** `shots/8-gadget-cap-error-toast.png` / `8-gadget-cap-error-toast-desktop.png`
@@ -141,7 +151,7 @@ repro the qa-tester happened to hit first.
 
 ---
 
-### 🔴 P1 — "Merged" PR/MR badge uses stock (non-token) Tailwind purple — breaks in dark mode
+### 🔴 P1 — "Merged" PR/MR badge uses stock (non-token) Tailwind purple — breaks in dark mode ✅ FIXED 2026-07-06
 
 **Files:** `apps/web/src/components/board/IssueCard.tsx:214`,
 `apps/web/src/components/issue/GithubLinksSection.tsx:54`,
@@ -191,7 +201,7 @@ rather than patching each usage site individually.
    instead of a 3-file (5-file, counting the workspace pages) grep-and-replace, and
    prevents the next one-off badge from drifting the same way.
 
-2. **`GadgetCard` drag handle is far under the mobile tap-target floor.**
+2. **`GadgetCard` drag handle is far under the mobile tap-target floor.** ✅ FIXED 2026-07-06
    `apps/web/src/components/dashboards/GadgetCard.tsx:100-118` — the drag-handle `<button>`
    wraps a 12×12 SVG in `p-0.5` (2px) padding, for a ~16×16px total hit target, roughly 40%
    of the ~40px minimum this checklist calls for. Reordering gadgets is already a
@@ -202,7 +212,7 @@ rather than patching each usage site individually.
    users get a ~40px hit area while the icon itself stays visually small, shrinking back
    down for precision mouse pointers at `sm:` and up.
 
-3. **Development sections' live-status poll has no loading state.**
+3. **Development sections' live-status poll has no loading state.** ✅ FIXED 2026-07-06
    `GithubLinksSection.tsx`'s `ChecksIndicator` (:77-102) and the identical component in
    `GitlabLinksSection.tsx` (:82-107) render `null` while `useGithubLiveStatus`/
    `useGitlabLiveStatus` are in flight (`live` is `undefined` until the query settles) —
@@ -331,19 +341,24 @@ rather than patching each usage site individually.
 1. **Fix mobile Toast positioning** (`ui/Toast.tsx:157`) — bottom-anchor on mobile instead
    of top-anchoring; this is the confirmed, systemic defect blocking the header/close
    button of any open modal (17+ modal components affected) for the full error-toast
-   duration (6s) on any mutation failure at ≤640px.
+   duration (6s) on any mutation failure at ≤640px. ✅ FIXED 2026-07-06
 2. **Add a dark-mode-aware `purple`/`merged` token** so the "Merged" PR/MR badge (and the
    two other call sites in `WorkspaceAuditLogPage`/`WorkspaceMembersPage`) stop being the
    one visibly broken, non-adapting element in dark mode across board/drawer/settings.
+   ✅ FIXED 2026-07-06
 3. **Extend `ui/Badge` with a semantic `variant` prop** and consolidate the 3 duplicated
    `StateBadge`/inline-badge implementations (`IssueCard` PR badge, `GithubLinksSection`,
    `GitlabLinksSection`) onto it — fixes the purple bug at the root and prevents the next
-   one-off status chip from drifting the same way.
+   one-off status chip from drifting the same way. *Still open* — the 2026-07-06 fix took
+   the token-layer route (item 2) instead, which closed the dark-mode break without this
+   consolidation; the duplication itself (and the two extra hand-rolled badges on
+   `IssueCard`) remains a valid follow-up, tracked in `docs/BACKLOG.md`.
 4. **Bump the `GadgetCard` drag-handle hit area to ~40px on mobile** — currently ~16px,
    well under the tap-target floor, for a drag interaction that's already fiddly on touch.
+   ✅ FIXED 2026-07-06
 5. **Give the Development sections' live-status poll a visible loading state** (reuse
    `ui/States`' `Spinner`) instead of rendering nothing while in flight, matching every
-   other async section in the issue drawer.
+   other async section in the issue drawer. ✅ FIXED 2026-07-06
 
 ---
 

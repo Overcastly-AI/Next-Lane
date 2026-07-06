@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import {
   DndContext,
   PointerSensor,
@@ -195,17 +195,46 @@ export function DashboardsPage() {
   // subscribing here is what actually turns that on for this page.
   useBoardRealtime(projectId);
 
-  const [selectedId, setSelectedId] = useState<string | undefined>(undefined);
+  // ── Selection — URL as single source of truth ────────────────────────────
+  //
+  // The active dashboard lives in the `?dashboard=<id>` search param (not
+  // local React state) so reload, deep-link, and share all land on the same
+  // dashboard the user was looking at — mirrors BoardPage's URL-as-source-
+  // of-truth filter pattern. `replace: true` is used for the "pick a
+  // sensible default" effects below so they don't spam browser history;
+  // `replace: false` is used for user-initiated tab clicks / creation so the
+  // back button can step through dashboard switches.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const selectedId = searchParams.get('dashboard') ?? undefined;
+
+  function selectDashboard(id: string | undefined, opts: { replace?: boolean } = {}) {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (id) next.set('dashboard', id);
+        else next.delete('dashboard');
+        return next;
+      },
+      { replace: opts.replace ?? false },
+    );
+  }
+
+  // Default to the first dashboard when none is selected yet, and reset
+  // selection if the currently-selected dashboard doesn't exist (deleted,
+  // stale deep link, or a bad id typed into the URL) — but only once the
+  // list has actually loaded, so an in-flight fetch doesn't momentarily look
+  // like "not found" and bounce a valid deep-linked id back to dashboard #1.
   useEffect(() => {
-    if (selectedId || dashboards.length === 0) return;
-    setSelectedId(dashboards[0].id);
-  }, [dashboards, selectedId]);
-  // Reset selection if the currently-selected dashboard was deleted.
-  useEffect(() => {
-    if (selectedId && dashboards.length > 0 && !dashboards.some((d) => d.id === selectedId)) {
-      setSelectedId(dashboards[0].id);
+    if (dashboardsQuery.isLoading) return;
+    if (dashboards.length === 0) {
+      if (selectedId) selectDashboard(undefined, { replace: true });
+      return;
     }
-  }, [dashboards, selectedId]);
+    if (!selectedId || !dashboards.some((d) => d.id === selectedId)) {
+      selectDashboard(dashboards[0].id, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dashboards, selectedId, dashboardsQuery.isLoading]);
 
   const dashboardQuery = useDashboard(selectedId);
   const dataQuery = useDashboardData(selectedId);
@@ -291,7 +320,7 @@ export function DashboardsPage() {
     try {
       await deleteDashboard.mutateAsync(selectedId);
       toast.success('Dashboard deleted.');
-      setSelectedId(undefined);
+      selectDashboard(undefined, { replace: true });
     } catch (err) {
       toast.error(errorMessage(err, 'Could not delete dashboard.'));
     } finally {
@@ -359,7 +388,7 @@ export function DashboardsPage() {
                     type="button"
                     data-testid="dashboard-tab"
                     aria-current={d.id === selectedId ? 'page' : undefined}
-                    onClick={() => setSelectedId(d.id)}
+                    onClick={() => selectDashboard(d.id)}
                     className={cn(
                       'rounded-md px-3 py-1.5 text-sm font-medium transition-colors duration-[120ms]',
                       'focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-300',
@@ -482,7 +511,7 @@ export function DashboardsPage() {
         open={newDashboardOpen}
         onClose={() => setNewDashboardOpen(false)}
         projectId={projectId}
-        onCreated={(d) => setSelectedId(d.id)}
+        onCreated={(d) => selectDashboard(d.id)}
       />
 
       {selectedId && (

@@ -21,6 +21,7 @@
 import type { IssueGitlabLinkDto, GitlabLinkKind, GitlabLiveLinkStatusDto } from '@next-lane/shared';
 import { useIssueGitlabLinks, useGitlabLiveStatus } from '@/api/gitlab';
 import { cn } from '@/lib/cn';
+import { Spinner } from '@/components/ui/States';
 
 const KIND_LABEL: Record<GitlabLinkKind, string> = {
   MR: 'Merge request',
@@ -79,7 +80,21 @@ const CHECKS_ICON: Record<'success' | 'failure' | 'pending', string> = {
 };
 
 /** Small pipeline-status dot rendered next to a live-refreshed MR's state badge. */
-function ChecksIndicator({ live }: { live: GitlabLiveLinkStatusDto | undefined }) {
+function ChecksIndicator({
+  live,
+  loading,
+}: {
+  live: GitlabLiveLinkStatusDto | undefined;
+  loading: boolean;
+}) {
+  if (loading) {
+    return (
+      <Spinner
+        className="h-2.5 w-2.5 border-[1.5px]"
+        data-testid="gitlab-live-status-loading"
+      />
+    );
+  }
   if (!live) return null;
   if (live.error) {
     return (
@@ -109,9 +124,11 @@ function ChecksIndicator({ live }: { live: GitlabLiveLinkStatusDto | undefined }
 function LinkRow({
   link,
   live,
+  liveLoading,
 }: {
   link: IssueGitlabLinkDto;
   live?: GitlabLiveLinkStatusDto;
+  liveLoading: boolean;
 }) {
   const label =
     link.kind === 'MR'
@@ -140,7 +157,7 @@ function LinkRow({
         <span className="font-mono text-xs text-ink-500">{label}</span>{' '}
         {link.title && <span>{link.title}</span>}
       </a>
-      {link.kind === 'MR' && <ChecksIndicator live={live} />}
+      {link.kind === 'MR' && <ChecksIndicator live={live} loading={liveLoading} />}
       <StateBadge state={displayState} />
     </li>
   );
@@ -165,7 +182,12 @@ export function GitlabLinksSection({ issueId }: { issueId: string }) {
       </p>
       <ul className="divide-y divide-ink-100">
         {links.map((link) => (
-          <LinkRow key={link.id} link={link} live={liveByLinkId.get(link.id)} />
+          <LinkRow
+            key={link.id}
+            link={link}
+            live={liveByLinkId.get(link.id)}
+            liveLoading={liveQuery.isLoading}
+          />
         ))}
       </ul>
     </section>
