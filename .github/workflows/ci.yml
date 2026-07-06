@@ -61,6 +61,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Cheap (no build, no containers — just `docker compose config`)
+      # regression guard for the env-passthrough bug class (2026-07-06,
+      # commit 3c22f21): every variable .env.example documents must actually
+      # reach the api service's rendered environment, and every ${VAR} the
+      # api service reads must be documented. Runs first so a config-parity
+      # break fails fast, before the slower image build below.
+      - name: Config-parity check (docker-compose.yml vs .env.example)
+        run: ./scripts/smoke-config-parity.sh
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 

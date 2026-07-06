@@ -71,6 +71,27 @@ on the DNS-pin fix):**
   (`${AUTO_SEED:-true}`) instead of hardcoded. Verified with
   `docker compose config`.
 
+**Config-parity CI smoke test closes the bug CLASS, not just the instance
+above (engineering-auditor Pass 13 Ideation #2):** new
+`scripts/smoke-config-parity.sh`, wired into CI as an early step of the
+existing `docker-build` job, renders `docker compose config` with a distinct
+sentinel value per `.env.example`-documented variable and asserts each one
+round-trips into the rendered `api` service environment — a future variable
+that's documented but never forwarded (exactly how the bug above shipped) now
+fails CI immediately instead of silently doing nothing in production. The
+reverse direction is checked too — every `${VAR}` the api service actually
+reads must be documented — which caught (and this same change fixed) five
+real, live documentation gaps: `AUTO_SEED`, `WEB_BASE_URL`,
+`GITLAB_TOKEN_ENCRYPTION_KEY`, `GITLAB_WEBHOOK_BASE_URL`, and
+`OIDC_CONFIG_ENCRYPTION_KEY` were all genuinely forwarded and read by code
+but absent from `.env.example`. A small, explicit, reviewed ignore-list
+(one reason per entry) covers variables that are legitimately not a 1:1
+passthrough (`DATABASE_URL`/`REDIS_URL` composed inline, `API_PORT`/
+`POSTGRES_PORT`/`REDIS_PORT`/`WEB_PORT` host-port mappings, `VITE_API_URL` a
+web build arg, `UPLOADS_DIR` intentionally container-internal,
+`RESET_BASE_URL` a dead fallback superseded by `WEB_BASE_URL`, and the
+documented-but-not-yet-implemented `OTEL_*` stub vars).
+
 **PAT-scope rollout completed across every controller ("Hardening Night" item 1):**
 - Personal Access Tokens created with restricted scopes (e.g. `issues:read`
   only) previously fell through to full owner permissions on roughly 30
