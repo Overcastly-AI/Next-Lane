@@ -379,3 +379,76 @@ side-effect; grouped/dynamic toolsets remain the fix shape.
   project-key 409 could name the key (nit).
 - **Still open from pass 1:** one-call "what's blocked" (P2), cross-project
   issue move (P2).
+
+---
+
+## Spot-check 2026-07-06 — finding 1 residual (pass-2 finding 7): NLQL fail-loud
+
+**Scope.** Independent verification of the closure note above (`169f7c1` +
+heuristic tightening `e7dfb20`): unresolved NLQL `assignee`/`sprint` name →
+400 instead of silent-empty, with documented leniency for real-shaped stale
+ids. Driven through the MCP surface only (`list_issues` query mode + the
+dashboard-gadget path), agent's-seat measurements throughout.
+
+**Method.** Built `packages/shared` + `apps/api` + `apps/mcp` from committed
+HEAD `e7dfb20` in a detached worktree, API on `:4010` against the isolated
+`nextlane_mcpqa` DB (demo seed: project **NL**, 12 issues, 3 users, 1 sprint),
+MCP server over stdio, PAT auth as `demo@nextlane.dev`. 25 tool calls, every
+response byte-counted. Zero REST fallbacks (one labeled REST call to
+`/api/auth/me` for auth plumbing only, before the pass).
+
+### Probe results
+
+| # | Probe (`list_issues` `query`) | Result | Verdict |
+| - | --- | --- | --- |
+| 1 | `assignee = "Nonexistent Person"` | **400, 133 B**: `Invalid NLQL query: unknown user "Nonexistent Person" — use an exact display name, an id, or me(); see list_users [HTTP 400]` | **PASS** — names the value AND the exact recovery tool. Recovery is genuinely one call: `list_users q:"nonexist"` → 81 B empty (proves no such user); full 3-user roster 431 B. |
+| 2 | `sprint = "Typo-Sprint"` | **400, 122 B**: `unknown sprint "Typo-Sprint" — use an exact sprint name or an id; see list_sprints` | **PASS** — `list_sprints` answers in 1 call / 187 B. |
+| 3 | `assignee = "workflow-migration-bot-2024"` (long single-token handle, the `e7dfb20` regression case) | **400, 142 B**, same actionable shape | **PASS** — the tightened cuid/UUID-only heuristic holds; no silent-empty resurrection. |
+| 4 | Stale-but-real-shaped ids: cuid-shaped assignee, cuid-shaped sprint, UUID-shaped assignee (none exist) | all **200, 81 B, `total: 0`** | **PASS** — documented leniency intact. Distinction feels right from an agent's seat: names are recalled/typed (fail-loud is correct), ids are copy-pasted from prior tool output (a 0 there means "resolved entity has nothing / is gone", and a fabricated id is not a realistic agent mistake). |
+| 5 | No false positives: `assignee = <Alex's id>` (truth: 2 items) vs `"Alex Rivera"` → 2, `"ALEX rivera"` → 2, `"Alex@NextLane.dev"` → 2; `sprint = "sprint 1"` (name is "Sprint 1") → full sprint, 1,746 B | all match truth, case-insensitive on name AND email | **PASS** |
+| 5b | `assignee IN ("Alex Rivera", "Nonexistent Person")` | **400, 133 B** flagging only the unknown member | **PASS** — IN-list operands are checked individually. |
+| 6 | Regression: `assignee = me() AND status = "In Progress"` | **1 call, 300 B**, envelope `{items,total,limit,offset,hasMore}` intact | **PASS** — query-mode economics unchanged. |
+
+**Bonus — dashboard per-gadget path (closure note's second call site),
+verified live via MCP:** dashboard with one good gadget
+(`assignee = "Alex Rivera"`, STAT) + one bad (`"Nonexistent Person"`) →
+`get_dashboard_data` returns the good gadget's correct `count: 2` and the bad
+gadget carries a per-gadget `error` with the identical actionable message;
+the whole-dashboard read does not fail (2,067 B). The automation-FAILED-run
+path was not independently re-driven (unit-tested in `169f7c1` + fixer's
+live check); the two agent-facing read paths were.
+
+### Verdict: **CONFIRMED CLOSED.**
+
+The pass-2 closure note is accurate as written. Pass-1 finding 1 and its
+residual (pass-2 finding 7) are fully resolved: a typo'd person/sprint name
+can no longer produce a confident wrong answer through `list_issues` query
+mode or a dashboard read, valid names (any case, name or email) still resolve
+with zero false positives, and every 400 measured (122–142 B) is
+self-correctable in exactly one follow-up call that the error itself names.
+This is the error-quality bar the rest of the surface should be held to.
+
+### Incidental observations (not blocking closure)
+
+- **P3 nit:** `create_dashboard_gadget` accepts an unresolvable name at
+  create time (200); the error only surfaces on the next
+  `get_dashboard_data`. Defensible (the name may come to exist; per-gadget
+  read-time flagging is the designed containment), but a create-time warning
+  would catch the typo at the moment the agent can cheapest fix it.
+- **Toolset footprint tracker (pass-1 finding 8):** now **104 tools /
+  89,111 B** `tools/list` (pass 2: 97 / 82.2 KB; +8.4%). Trend unchanged.
+- Two zod input errors I caused myself (`create_dashboard_gadget` with a
+  pass-2-era `config.query` shape; `delete_dashboard` with `dashboardId`
+  instead of `id`) were both one-retry self-correctable — the zod envelope
+  named the missing paths and the enum of valid `visualization` values.
+  Worth noting the id-param naming inconsistency (`dashboardId` on
+  `get_dashboard_data` vs `id` on `delete_dashboard`) as a P3 polish item.
+
+### For the groomer
+
+- Close the NLQL fail-loud backlog entry with this spot-check as independent
+  verification (pass-1 finding 1 + pass-2 finding 7: **verified closed**).
+- **P3 (new):** create-time warning (or validation) for unresolvable
+  names in `create_dashboard_gadget`/saved-filter queries.
+- **P3 (new):** normalize id-param naming across dashboard tools
+  (`dashboardId` vs `id`).
