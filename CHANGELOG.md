@@ -14,6 +14,27 @@ This section summarizes the major capabilities delivered in the pre-1.0
 development phase. A versioned release will be tagged once the v1 criteria in
 [`docs/ROADMAP.md`](./docs/ROADMAP.md) are complete.
 
+### Added — 2026-07-09 (Pages MCP tools — agents read, write, AND traverse the knowledge graph)
+
+**The crown jewel of the Pages pillar: an agent can now do over MCP what
+neither Confluence (no graph/agent API) nor Obsidian (local-only) allow.**
+12 new `@next-lane/mcp` tools (105 → 117):
+- **CRUD** — `list_pages` (project-scoped, compact refs, `verbose: true`
+  hydrates full content), `get_page`, `create_page`, `move_page`,
+  `update_page`, `delete_page`.
+- **Version history** — `list_page_versions`, `get_page_version`,
+  `restore_page_version`.
+- **Graph & backlink traversal** — `get_page_graph` (a project's whole
+  page↔page link graph in one call, `truncated`-flagged), `get_page_backlinks`
+  ("what links here"), `get_page_links` (this page's own outgoing
+  `[[wiki-links]]`, split into resolved pages and referenced-but-not-yet-
+  written titles). `get_page` also inlines outgoing-links + backlink-count
+  orientation by default, so "open a page, see what it connects to" is one
+  call. Tool descriptions are written to actively teach the traversal
+  pattern, not just describe the shape.
+- Gated by the `pages:read`/`pages:write` PAT scopes introduced alongside the
+  Pages backend module (below).
+
 ### Added — 2026-07-09 (Pages — schema + backend module: Confluence × Obsidian-hybrid knowledge base)
 
 **Kicks off the new Pages pillar (`docs/ROADMAP.md` Phase 11) — a team wiki

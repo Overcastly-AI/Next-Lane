@@ -126,9 +126,10 @@ by dependency: schema (incl. the `PageLink` graph-edge table) → backend CRUD
 panel → graph view → MCP CRUD tools → MCP graph/backlink traversal tools
 (the crown jewel) → issue-linking → search. Per the explicit founder
 directive to "start building." This is deliberately sequenced *ahead* of the
-two pre-existing decision-gated items (now #8/#9, unchanged, still awaiting a
-founder/product call) rather than displacing them — they remain visible, not
-dropped. Framing: `docs/VISION.md` § The pillars item 7 + § Better-than-Jira
+two pre-existing decision-gated items (now #6/#7 — see the 2026-07-09 build
+updates below for the renumbering trail — still awaiting a founder/product
+call) rather than displacing them — they remain visible, not dropped.
+Framing: `docs/VISION.md` § The pillars item 7 + § Better-than-Jira
 scorecard "Knowledge / Docs" row (new, target: beyond both reference points);
 full phase detail in `docs/ROADMAP.md` Phase 11.
 
@@ -139,6 +140,13 @@ coherent backend slice) — are done; see the ticked entries in § Already Done.
 Removed from the Ready queue below; the former items #5-#11 renumbered to
 #1-#7, with their `depends on #2/#3/#4` references updated to point at the
 now-shipped backend module instead of a queue position.
+
+**Build update (2026-07-09, later same day):** the MCP tools — CRUD +
+version history (former #4) and graph/backlink traversal, the crown jewel
+(former #5) — are also done; see the ticked entries in § Already Done.
+Removed from the Ready queue below; the former items #6/#7 (issue↔page
+cross-linking, full-text search) renumbered to #4/#5, and the two
+pre-existing decision-gated items renumber from #8/#9 to #6/#7 accordingly.
 
 1. **Pages — frontend (tree nav + markdown editor + version history +
    `[[link]]` autocomplete)** (P1, L, depends on the shipped Pages backend
@@ -202,7 +210,7 @@ now-shipped backend module instead of a queue position.
    opens that page; zoom/pan; surface the `truncated` flag when a wiki
    exceeds the node cap, and an unresolved-link count or indicator so gaps
    in the graph are visible, not just missing. Once issue cross-linking
-   (item #6 below) ships, issue nodes/edges render in the same graph
+   (item #4 below) ships, issue nodes/edges render in the same graph
    (distinguishable styling, e.g. a different node shape/color for issues
    vs. pages) rather than shipping a second, disconnected graph view later.
    Built with the `frontend-design` skill — this is a genuinely new,
@@ -215,48 +223,7 @@ now-shipped backend module instead of a queue position.
    state. **Territory:** `apps/web/src/components/pages/**` (new graph
    component), `apps/web/e2e/pages-graph.spec.ts`. **Size:** L.
 
-4. **Pages — MCP tools: CRUD + version history** (P1, M; the backend
-   module already shipped) — agents read AND write the knowledge base, not
-   just the tracker. **Scope:** `list_pages`, `get_page` (verbose includes
-   full content), `create_page`, `update_page` (content/title — triggers a
-   new version, matching the shipped backend's contract), `move_page`
-   (reparent/reorder via the shipped `POST /pages/:id/move`),
-   `delete_page` (surfaces the shipped "has children" 400 rejection —
-   no cascade), `list_page_versions`, `get_page_version`,
-   `restore_page_version`. Follow the existing compact/verbose +
-   `{items, total, limit, offset, hasMore}` pagination envelope convention
-   from the Agent Experience batch (`docs/BACKLOG.md` § Already Done) — a
-   compact field set by default (no full-content dumps on `list_pages`),
-   `verbose: true` for full content. Update `apps/mcp/README.md` tool/scope
-   tables + counts. **Acceptance criteria:** full CRUD + version-history +
-   restore reachable and live-verified over a real stdio round-trip against
-   a running API; token counts stay sane on a many-page wiki (compact
-   envelope proven, not just documented). **Territory:** `apps/mcp/src/**`,
-   `apps/mcp/README.md`. **Size:** M.
-
-5. **Pages — MCP tools: graph & backlink traversal (crown jewel)** (P1, M,
-   depends on item #4 above; the backend graph/backlinks endpoints already
-   shipped) — the differentiator the whole pillar leads with, per the
-   founder's explicit framing: the graph isn't just a pretty view, it's a
-   knowledge graph an agent traverses. **Scope:** `get_page_graph` (the
-   project's full node/edge set, same shape as the shipped
-   `GET /projects/:id/pages/graph` REST endpoint, including the
-   `truncated` cap flag), `get_page_backlinks` (pages linking to a given
-   page — the MCP-callable form of the shipped `GET /pages/:id/backlinks`,
-   also item #2's panel), `get_page_links` (a given page's outgoing
-   `[[links]]`, resolved and unresolved). Update the MCP server's
-   protocol-level `instructions` and relevant tool descriptions so an
-   agent is nudged to traverse connected pages when answering "what's
-   connected to this spec?"/"walk the backlinks from this page" — the
-   same "read-first, hand-off-last" framing already used for per-project
-   agent-context memory (`skills/project-context`). **Acceptance
-   criteria:** live-verified stdio round-trip — given a real multi-page
-   fixture, an agent can answer "what links to Page X" and "what does
-   Page X link to" in one tool call each, and reconstruct the full project
-   graph in one call via `get_page_graph`. **Territory:**
-   `apps/mcp/src/**`, `apps/mcp/README.md`. **Size:** M.
-
-6. **Pages — issue ↔ page cross-linking** (P2, M; depends on the shipped
+4. **Pages — issue ↔ page cross-linking** (P2, M; depends on the shipped
    Pages backend module + the shipped graph endpoint) — the tight
    tracker↔docs integration the incumbent splits across two
    separately-priced products, and (once shipped) a second edge type in
@@ -289,7 +256,7 @@ now-shipped backend module instead of a queue position.
    module), `apps/web/src/components/issues/**` (drawer section),
    `apps/mcp/src/**`. **Size:** M.
 
-7. **Pages — full-text search** (P2, S; the schema already shipped) — Pages
+5. **Pages — full-text search** (P2, S; the schema already shipped) — Pages
    join the search surface issues already have, rather than being a
    second-class silo. **Scope:** extend the existing Postgres
    `tsvector`/GIN full-text-search infrastructure (shipped for `Issue`
@@ -311,7 +278,7 @@ epic's full shape):** page comments, page templates, workspace-level
 share links (reuse `ShareToken`, mirroring the dashboard/board share-link
 pattern already shipped).
 
-8. **Product decision + implementation: distinct "switch workspace" vs.
+6. **Product decision + implementation: distinct "switch workspace" vs.
    "view workspace page" affordance** (P2, S, decision-needed) — since the
    route-derived tenant-context fix shipped, simply viewing (no save
    required) any workspace-scoped page now permanently persists that
@@ -319,10 +286,10 @@ pattern already shipped).
    founder/product call** before building either direction: is "wherever
    you last navigated" the intended default-landing behavior, or should
    "switching" be a distinct, explicit action separate from incidental
-   viewing? Filed decision-gated, same pattern as item 9, rather than
+   viewing? Filed decision-gated, same pattern as item 7, rather than
    guessing at intent. [product-auditor Pass-12 rank #8]
 
-9. **Cross-project issue MOVE** (P2, M, decision-needed) — a mis-filed issue
+7. **Cross-project issue MOVE** (P2, M, decision-needed) — a mis-filed issue
    cannot be moved to the correct project today; the only correction path is
    delete+recreate, which loses history/comments/links and the original key
    (measured: 2 calls, real data loss — MCP-QA pass 1 finding 4). Product-wide,
@@ -597,6 +564,8 @@ _Hardening Night close-out ingest (2026-07-06) — P2s:_
 - [x] (P2, S) Docs site Overcastly v2 re-theme (2026-06-28) — `docs-site/.vitepress/theme/custom.css` rewritten: Overcastly v2 token system (canvas `#15161a`/`#1c1d22`/`#25262c`, ink `#f4f4f1`/`#b8b9b6`/`#6f7075`, accent `#4F8BFF`/`#7AA8FF`, success `#7BD389`, hairlines `rgba(255,255,255,0.08/0.16)`); dotted-grid body background (signature element, radial-gradient dots at 32px grid); pill buttons (`999px`); mono-uppercase eyebrows on sidebar group titles, table `<th>`, code-block lang labels, custom-block titles; `h2` accent bar; `appearance:'dark'` in `config.ts`; SVG logos + favicon to `#4F8BFF`; theme-color meta to `#4F8BFF`; WCAG-AA verified; build clean 4.4s. [oss-curator / frontend-design]
 
 ## Already Done (recent shipments — ticked for reference)
+
+- [x] (P1, M+M) **Pages — MCP tools: CRUD + version history, and graph/backlink traversal (crown jewel)** ✅ shipped 2026-07-09 (former Ready queue #4/#5) — agents read AND write the knowledge base, and — uniquely, per the founder framing — *traverse* it, over the same PAT-authenticated stdio server every other Next Lane MCP tool uses. **Territory:** `apps/mcp/src/tools/index.ts` (+`apps/mcp/src/tools/index.test.ts`, `apps/mcp/README.md`) only — the shipped backend (`092793c`/this-slice's prior commit) needed zero changes. **12 new tools, 105→117:** `list_pages` (project-scoped, compact `{id, title, parentId, archived}` refs), `get_page`, `create_page`, `move_page`, `update_page`, `delete_page` (CRUD); `list_page_versions`/`get_page_version`/`restore_page_version` (history); `get_page_graph`/`get_page_backlinks`/`get_page_links` (the traversal trio). **`list_pages` design note (a deliberate deviation from the Ready item's literal field list):** the REST surface has no flat, paginated "list pages" route — only a nested `GET .../pages/tree` (sidebar shape, no `updatedAt`) and a whole-project `GET .../pages/graph`. `list_pages` flattens the tree client-side (pre-order, `parentId` filled in from tree position) and paginates over it locally (`paginateOnly`, matching the existing `list_labels`/`list_comments` "fetch-all-then-slice" convention already used elsewhere in this file for REST routes with no native pagination) rather than adding new REST surface (out of this task's territory). Compact refs therefore omit `updatedAt` (not cheaply available); `verbose: true` hydrates every page in the **returned slice only** (bounded by `limit`, one extra `GET /pages/:id` per item — the same bounded-extra-round-trips posture `fetchNlqlFilteredIssues` already established for `list_issues` query mode) with the full object including content/timestamps/authors, rather than silently multiplying every page in the project. **`get_page` composes its own one-call orientation:** defaults to also fetching backlink count (`GET /pages/:id/backlinks`, count only) and resolving outgoing `[[wiki-links]]` (see below) into a `links: {backlinkCount, outgoing}` field, so "open a page, understand what it connects to" costs one tool call, not four; `includeLinks: false` opts out for a bare-content read. **Outgoing-link resolution (`get_page`/`get_page_links` shared `resolveOutgoingLinks` helper):** parses `page.content` for `[[Title]]`/`[[Title|Alias]]` via a **local, minimal mirror of `packages/shared/src/wikilink.ts#parseWikiLinks`** (title-extraction only) rather than importing the canonical shared parser — `@next-lane/mcp` deliberately ships with zero `workspace:*` runtime deps (see the README's "Run without cloning" `npx`-installable claim) and `@next-lane/shared` is `private: true`/unpublished, so importing it would break that guarantee; the duplication is documented in-code with an explicit "keep in sync" note. Resolves each title against the project's page titles (fetched via the cheap `/pages/tree`, not `/pages/graph`) case-insensitively, self-title excluded, first-in-tree-order wins a duplicate title (a documented approximation of the API's own oldest-page-wins tie-break, since the tree payload carries no `createdAt`) — split into `resolved: {pageId, title}[]` and `unresolvedTitles: string[]` (referenced but not yet written; explicitly documented as NOT retroactively resolving when the missing page is later created — only the next save of the LINKING page re-syncs, matching the shipped backend's actual `syncWikiLinks` semantics exactly, not an idealized one). **`get_page_graph`/`get_page_backlinks`/`get_page_links` tool descriptions were written to actively teach the traversal pattern**, not just describe the shape — `get_page_graph`: "load the graph to understand how the project's knowledge connects," flagged "CROWN-JEWEL traversal call," explains the `truncated` cap semantics (nodes AND edges both cut, always internally consistent) and points back to the per-page tools as the exact-neighbors fallback; `get_page_backlinks`: "Walk backlinks to find everything referencing this page," suggests chaining backlink walks to map a whole subject area; `get_page_links` explicitly cross-references `get_page_backlinks` (reverse direction) and `get_page_graph` (whole-project, wider than page-by-page) so an agent discovers the trio as a set, not three unrelated tools — a dedicated registry test (`'... descriptions teach the traversal pattern'`) asserts this language survives future edits, not just today's diff. **`move_page` added beyond the Ready item's exact tool enumeration for CRUD completeness** (drag-and-drop-style reorder/reparent via the already-shipped `POST /pages/:id/move`, fractional-rank computed server-side) — cheap, in-territory, and closes the gap between "MCP can create/edit/delete pages" and "MCP can also organize them," the same capability `move_issue` gives issues. **`create_page`/`update_page`/`delete_page`/`restore_page_version` (write group, `pages:write`-scoped):** partial-update semantics mirror `update_issue` (undefined fields dropped by `JSON.stringify`, explicit `null` kept — e.g. `parentId: null` detaches to top-level); `delete_page` and `move_page` descriptions surface the shipped API's precise rejection messages (400 child-count / 400 cycle) rather than a generic error. **Tests:** 19 new vitest (112→131) — registry presence, `list_pages` flatten/paginate/verbose-hydration-bounded-to-slice, `get_page` default-orientation + `includeLinks:false` skip, cursor-forwarding for `list_page_versions`, `get_page_graph` pass-through, `get_page_backlinks` pagination, `get_page_links` resolved/unresolved/self-exclusion + the zero-links-skips-the-tree-call fast path, full CRUD + `move_page` request-shape assertions, 400-message-passthrough for both `delete_page` and `move_page`, and the traversal-language assertion above. `tsc --noEmit` clean; `pnpm --filter @next-lane/mcp build` clean (fresh `dist/`, no stale `.tsbuildinfo`). `apps/mcp/README.md` tool table (all 12), scope table (`pages:read`/`pages:write` row), tool count (105→117), and a new "Read AND write the knowledge base — and traverse its graph" prose section (mirrors the existing "Ship your agent with memory" section's structure) all updated in the same commit. **Live-verified against a running API:** deferred to the next MCP-QA pass per this task's scope (no `:4000` claimed — a sibling frontend-builder and code-reviewer were active in the same worktree); unit-level request-shape/response-shape coverage above is the gate for this commit. [founder directive 2026-07-06 "How can we add a confluence type section?" + "Could it be hybrid of confluence and obsidian md? I really like the graph feature of obsidian."; VISION.md § The pillars item 7; ROADMAP Phase 11 slices 8-9]
 
 - [x] (P0/P1, S+M) **Pages — schema + backend module (CRUD, tree-move, version history, `[[wiki-link]]` parsing + `PageLink` sync, backlinks + graph endpoints)** ✅ shipped 2026-07-09 (former Ready queue #1-#4) — the Confluence×Obsidian-hybrid knowledge base's foundation + full backend slice, landed as two commits (schema in `092793c`, backend module this commit). **Schema** (`092793c`, unchanged by this pass): `Page` (project-scoped nestable tree via a self-relation `parentId`, `onDelete: Restrict` — deliberately, see below; live `content`; fractional `rank` scoped to `(projectId, parentId)`, reusing `packages/shared/src/rank.ts` verbatim, no second ranking scheme), `PageVersion` (immutable per-save snapshot, service-assigned monotonic `versionNumber`), `PageIssueLink` (reserved for a later slice — issue cross-linking, item #6 in the Ready queue — deliberately untouched by this backend module), `PageLink` (directed page↔page wiki-link edge, unique `[sourcePageId, targetPageId]`, `onDelete: Cascade` both sides); `pages:read`/`pages:write` `PAT_SCOPES` reserved. **Backend module** (`apps/api/src/pages/**`, new `PagesModule`/`Controller`/`Service`, mirroring the `components`/`dashboards`/`agent-context` module shape): 11 routes, every one `@RequireScope`-gated (`pages:read` GETs / `pages:write` mutations) + `assertProjectRole` (VIEWER read / MEMBER+ write, the existing `getEffectiveProjectRole` chokepoint, no parallel authz path) — `POST /projects/:id/pages` (create, content capped ~256 KiB via a `Buffer.byteLength` UTF-8 `IsMaxByteLength` DTO validator mirroring `agent-context`'s), `GET /projects/:id/pages/tree` (nested `PageTreeNode[]`, ordered by rank), `GET /projects/:id/pages/graph` (below), `GET/PATCH/DELETE /pages/:id`, `POST /pages/:id/move`, `GET /pages/:id/versions` (paginated, newest-first, compact — no `content` field, cursor = base64 `versionNumber` since it's already a unique monotonic per-page key), `GET /pages/:id/versions/:n` (one full snapshot), `POST /pages/:id/versions/:n/restore`, `GET /pages/:id/backlinks`. **Two deliberate design decisions, both documented in code:** (1) **delete-with-children → explicit 400**, not a cascade-subtree-delete — `Page.parentId`'s `onDelete: Restrict` (schema-architect's own posture, see the model-level comment in `schema.prisma`) already forces this at the DB layer; the service surfaces it as a clear `BadRequestException` naming the child count rather than silently cascading or building a separate "delete subtree" endpoint — the conservative choice for a v1 document tree where losing a whole branch should never be an implicit side effect. (2) **an unresolved `[[wiki-link]]` is silently skipped for `PageLink` edges, not persisted as a "phantom" row** — the shipped `PageLink` schema has two required, non-nullable FK columns (`sourcePageId`/`targetPageId`), so there is no schema-level slot to persist a title-only unresolved reference; `packages/shared/src/wikilink.ts#parseWikiLinks` is exposed to BOTH the backend sync logic and (for the not-yet-built frontend, item #1 in the Ready queue) an editor that re-parses content client-side against the known page-title list to render the "not yet created" affordance — one parser, two consumers, no backend "phantom row" needed. **`[[wiki-link]]` parsing + sync** (`packages/shared/src/wikilink.ts`, new, exported from the package root): `parseWikiLinks(md)` extracts `[[Title]]`/`[[Title|Alias]]` references (trims whitespace, skips empty titles, resolves the innermost pair on malformed nesting); `PagesService.syncWikiLinks` (private, runs inside the SAME transaction as every content-changing create/update/restore) resolves each unique title to a page in the SAME project via a case-insensitive `OR`-of-`equals` query (self excluded from the candidate set, so a page linking its own title never creates a self-edge), diffs against the page's current outgoing `PageLink` rows, and adds/removes only the delta (`createMany`/`deleteMany`, not delete-then-recreate) — idempotent, re-saving identical content is a zero-row diff. **Version history contract** (matches the `UpdatePageDto`/`PageVersion` doc comments already shipped in `092793c`): a new version is written on CREATE always and on UPDATE only when `title` and/or `content` is part of the change — a `parentId`/`rank`-only move or an `archived` toggle does NOT write a version, keeping tree-reorganization and content-history orthogonal; `restoreVersion` always writes a NEW version copying the target's content forward, never mutates or truncates history. **Tree move** (`POST /pages/:id/move`, `MovePageDto {parentId?, beforeId?, afterId?}`): computes the new rank via `rankBetween` inside a transaction (falls back to a one-time sibling rebalance, mirroring `IssuesService.rebalanceAndPlace`, only when neighbor ranks are exhausted — never renumbers on the normal path); cycle rejection (`assertNoCycle`, walks the `parentId` chain from the proposed new parent up to the root, 400s if it ever reaches the page being moved, including the trivial "become your own parent" case) runs inside the SAME transaction as the write, matching the TOCTOU-safety posture `IssuesService.move`'s neighbor-rank read+write already uses in this codebase (documented as a deliberate scope call, not a `SELECT ... FOR UPDATE` guarantee). **`PATCH /pages/:id`** additionally accepts a direct `parentId`/`rank` assignment (cycle-checked the same way) for a caller that already computed its own fractional rank — the move endpoint is for the neighbor-relative drag-and-drop UX, the PATCH field is for a caller (agent or already-rank-aware UI) that wants to set an exact value. **Graph endpoint** (`GET /projects/:id/pages/graph` → `PageGraphDto {nodes, edges, truncated}`, `truncated` a new field added to the already-shipped shared type): capped at `MAX_GRAPH_NODES` = 1000 (fetch-one-extra-to-detect-truncation, the same pattern as `ROADMAP_EPICS_CAP`/`PUBLIC_BOARD_ISSUES_CAP`), edges filtered to only those between two retained nodes so a truncated graph is never internally inconsistent (no dangling edge to a cut node); strictly project-scoped (never crosses projects, both endpoints of every edge independently verified). **Tests:** 32 new API unit tests (`pages.service.spec.ts`, backed by a small in-memory fake Prisma client rather than per-call jest mocks — the tree/version/wiki-link reconciliation logic needed a working little "database" to exercise realistically) covering CRUD, tree-move + cycle rejection (self-parent + grandparent-under-own-descendant), version-write-on-content-change vs. no-write-on-parentId/rank/archived-only change, restore-writes-new-version-never-mutates-history, wiki-link parse+sync add/remove edges + self-link exclusion + unresolved-link-no-error, backlinks, and graph shape + the `MAX_GRAPH_NODES` truncation case (2002→2034 tests, 95→96 suites); 13 new shared vitest for `parseWikiLinks` (171→184); 11 new `pat-scope-matrix.fixture.ts` rows (all 11 routes) — `pat-scope-coverage.integration.spec.ts` (the drift guard) and `pat-scope-rollout.integration.spec.ts` (401→423, 22 new DENY/ALLOW assertions) both green; 11 new tenant-isolation-matrix rows (real cross-tenant HTTP attempts against a live second project's page/version, all BLOCKED — 401→423 in the same integration count, `tenant-isolation.integration.spec.ts`'s own "126 endpoints, 0 issues" summary line covers them). `tsc --noEmit` clean api/shared; `pnpm --filter @next-lane/api build` clean. **Live end-to-end verification** (real running API + Postgres, not just unit tests): created two pages, saved one with `[[link]] to the other, `GET /projects/:id/pages/graph` showed the resulting edge; restored an old version and confirmed a brand-new version number was written (history untouched); a childful page's DELETE returned the documented 400. **MCP: deliberately NOT exposed in this slice** — `docs/BACKLOG.md`'s own Ready queue sequences MCP CRUD tools (item #4) and MCP graph/backlink traversal tools (item #5, "the crown jewel") as separate, later items depending on this backend module; exposing them here would pre-empt that explicitly-planned slice rather than skip it. **Frontend, MCP tools, and issue↔page cross-linking are separate, not-yet-built Ready-queue items** (see the renumbered #1-#7 above) — this entry covers the backend module only. [founder directive 2026-07-06 "How can we add a confluence type section?" + "Could it be hybrid of confluence and obsidian md? I really like the graph feature of obsidian."; VISION.md § The pillars item 7; ROADMAP Phase 11]
 

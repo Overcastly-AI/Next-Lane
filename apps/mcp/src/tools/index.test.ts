@@ -146,6 +146,19 @@ describe('tool registry', () => {
       'set_gitlab_automation_config',
       // Gitea integration v1 (2026-07-06)
       'list_issue_gitea_links',
+      // Pages (knowledge base) MCP tools — CRUD, version history, graph/backlink traversal (2026-07-09)
+      'list_pages',
+      'get_page',
+      'list_page_versions',
+      'get_page_version',
+      'get_page_graph',
+      'get_page_backlinks',
+      'get_page_links',
+      'create_page',
+      'move_page',
+      'update_page',
+      'delete_page',
+      'restore_page_version',
     ];
     for (const name of expected) expect(names).toContain(name);
     // No duplicate names.
@@ -1479,5 +1492,291 @@ describe('project agent context tools', () => {
     expect(tool('get_project_context').description).toMatch(/staleness/);
     expect(tool('update_project_context').description).toMatch(/before ending|end of/i);
     expect(tool('update_project_context').description).toMatch(/replace/i);
+  });
+});
+
+describe('pages (knowledge base) tools', () => {
+  /** A fetch stub that returns a different canned response per successive call (see AX batch above). */
+  function sequencedClient(
+    responses: { status: number; body: unknown; contentType?: string }[],
+  ) {
+    let i = 0;
+    const fetchImpl = vi.fn(async () => {
+      const r = responses[Math.min(i, responses.length - 1)];
+      i++;
+      return new Response(typeof r.body === 'string' ? r.body : JSON.stringify(r.body), {
+        status: r.status,
+        headers: { 'Content-Type': r.contentType ?? 'application/json' },
+      });
+    });
+    return { client: new NextLaneClient(config, fetchImpl as unknown as typeof fetch), fetchImpl };
+  }
+
+  const sampleTree = [
+    {
+      id: 'pg-1',
+      title: 'Onboarding Guide',
+      archived: false,
+      rank: 'a0',
+      children: [
+        { id: 'pg-2', title: 'Setup Steps', archived: false, rank: 'a1', children: [] },
+      ],
+    },
+    { id: 'pg-3', title: 'Runbook', archived: true, rank: 'a2', children: [] },
+  ];
+
+  it('list_pages GETs the project tree and flattens it into compact refs with parentId filled in', async () => {
+    const { client, fetchImpl } = clientWith(200, sampleTree);
+    const res = await tool('list_pages').handler({ projectId: 'p1' }, client);
+    expect(fetchImpl.mock.calls[0][0]).toBe(
+      'http://localhost:4000/api/projects/p1/pages/tree',
+    );
+    const body = JSON.parse(res.content[0].text);
+    expect(body.items).toEqual([
+      { id: 'pg-1', title: 'Onboarding Guide', parentId: null, archived: false },
+      { id: 'pg-2', title: 'Setup Steps', parentId: 'pg-1', archived: false },
+      { id: 'pg-3', title: 'Runbook', parentId: null, archived: true },
+    ]);
+    expect(body.total).toBe(3);
+    expect(body.hasMore).toBe(false);
+    // Only the single tree call was made — no per-page hydration by default.
+    expect(fetchImpl.mock.calls).toHaveLength(1);
+  });
+
+  it('list_pages applies limit/offset over the flattened tree', async () => {
+    const { client } = clientWith(200, sampleTree);
+    const res = await tool('list_pages').handler({ projectId: 'p1', limit: 1, offset: 1 }, client);
+    const body = JSON.parse(res.content[0].text);
+    expect(body.items).toEqual([{ id: 'pg-2', title: 'Setup Steps', parentId: 'pg-1', archived: false }]);
+    expect(body.total).toBe(3);
+    expect(body.hasMore).toBe(true);
+  });
+
+  it('list_pages verbose:true hydrates each returned page with a GET /pages/:id, bounded to the page slice', async () => {
+    const { client, fetchImpl } = sequencedClient([
+      { status: 200, body: sampleTree },
+      { status: 200, body: { id: 'pg-1', title: 'Onboarding Guide', content: 'full body', updatedAt: '2026-07-01T00:00:00.000Z' } },
+    ]);
+    const res = await tool('list_pages').handler(
+      { projectId: 'p1', limit: 1, verbose: true },
+      client,
+    );
+    // Tree call + exactly one hydration call for the single item in the page.
+    expect(fetchImpl.mock.calls).toHaveLength(2);
+    expect(fetchImpl.mock.calls[1][0]).toBe('http://localhost:4000/api/pages/pg-1');
+    const body = JSON.parse(res.content[0].text);
+    expect(body.items[0]).toMatchObject({ id: 'pg-1', content: 'full body', updatedAt: '2026-07-01T00:00:00.000Z' });
+  });
+
+  it('get_page GETs the page and by default also fetches backlinks + resolves outgoing links', async () => {
+    const { client, fetchImpl } = sequencedClient([
+      {
+        status: 200,
+        body: {
+          id: 'pg-1',
+          projectId: 'p1',
+          title: 'Onboarding Guide',
+          content: 'See [[Setup Steps]] and [[Not Written Yet]].',
+        },
+      },
+      { status: 200, body: [{ id: 'lk1', sourcePageId: 'pg-3', sourcePageTitle: 'Runbook', createdAt: 'x' }] },
+      { status: 200, body: sampleTree },
+    ]);
+    const res = await tool('get_page').handler({ id: 'pg-1' }, client);
+    expect(fetchImpl.mock.calls[0][0]).toBe('http://localhost:4000/api/pages/pg-1');
+    expect(fetchImpl.mock.calls[1][0]).toBe('http://localhost:4000/api/pages/pg-1/backlinks');
+    expect(fetchImpl.mock.calls[2][0]).toBe('http://localhost:4000/api/projects/p1/pages/tree');
+    const body = JSON.parse(res.content[0].text);
+    expect(body.title).toBe('Onboarding Guide');
+    expect(body.links.backlinkCount).toBe(1);
+    expect(body.links.outgoing.resolved).toEqual([{ pageId: 'pg-2', title: 'Setup Steps' }]);
+    expect(body.links.outgoing.unresolvedTitles).toEqual(['Not Written Yet']);
+  });
+
+  it('get_page includeLinks:false skips the backlinks/graph calls entirely', async () => {
+    const { client, fetchImpl } = clientWith(200, { id: 'pg-1', title: 'Onboarding Guide', content: '' });
+    const res = await tool('get_page').handler({ id: 'pg-1', includeLinks: false }, client);
+    expect(fetchImpl.mock.calls).toHaveLength(1);
+    const body = JSON.parse(res.content[0].text);
+    expect(body.links).toBeUndefined();
+  });
+
+  it('list_page_versions GETs /pages/:id/versions with cursor/limit and reports hasMore/nextCursor', async () => {
+    const { client, fetchImpl } = clientWith(200, {
+      items: [{ id: 'v2', versionNumber: 2, title: 'Onboarding Guide' }],
+      nextCursor: 'cur-1',
+    });
+    const res = await tool('list_page_versions').handler(
+      { pageId: 'pg-1', cursor: 'cur-0', limit: 5 },
+      client,
+    );
+    const url = fetchImpl.mock.calls[0][0] as string;
+    expect(url).toBe('http://localhost:4000/api/pages/pg-1/versions?cursor=cur-0&limit=5');
+    const body = JSON.parse(res.content[0].text);
+    expect(body.items).toHaveLength(1);
+    expect(body.hasMore).toBe(true);
+    expect(body.nextCursor).toBe('cur-1');
+  });
+
+  it('get_page_version GETs /pages/:id/versions/:n', async () => {
+    const { client, fetchImpl } = clientWith(200, {
+      id: 'v3', versionNumber: 3, title: 'Onboarding Guide', content: 'old content',
+    });
+    const res = await tool('get_page_version').handler({ pageId: 'pg-1', versionNumber: 3 }, client);
+    expect(fetchImpl.mock.calls[0][0]).toBe(
+      'http://localhost:4000/api/pages/pg-1/versions/3',
+    );
+    expect(JSON.parse(res.content[0].text).content).toBe('old content');
+  });
+
+  it('get_page_graph GETs /projects/:id/pages/graph and passes the payload through untouched', async () => {
+    const { client, fetchImpl } = clientWith(200, {
+      nodes: [{ id: 'pg-1', title: 'Onboarding Guide' }],
+      edges: [{ sourceId: 'pg-1', targetId: 'pg-2' }],
+      truncated: false,
+    });
+    const res = await tool('get_page_graph').handler({ projectId: 'p1' }, client);
+    expect(fetchImpl.mock.calls[0][0]).toBe(
+      'http://localhost:4000/api/projects/p1/pages/graph',
+    );
+    const body = JSON.parse(res.content[0].text);
+    expect(body.truncated).toBe(false);
+    expect(body.nodes).toEqual([{ id: 'pg-1', title: 'Onboarding Guide' }]);
+  });
+
+  it('get_page_backlinks GETs /pages/:id/backlinks and paginates the result', async () => {
+    const { client, fetchImpl } = clientWith(200, [
+      { id: 'lk1', sourcePageId: 'pg-2', sourcePageTitle: 'Setup Steps', createdAt: 'x' },
+      { id: 'lk2', sourcePageId: 'pg-3', sourcePageTitle: 'Runbook', createdAt: 'y' },
+    ]);
+    const res = await tool('get_page_backlinks').handler({ pageId: 'pg-1', limit: 1 }, client);
+    expect(fetchImpl.mock.calls[0][0]).toBe(
+      'http://localhost:4000/api/pages/pg-1/backlinks',
+    );
+    const body = JSON.parse(res.content[0].text);
+    expect(body.items).toEqual([
+      { id: 'lk1', sourcePageId: 'pg-2', sourcePageTitle: 'Setup Steps', createdAt: 'x' },
+    ]);
+    expect(body.total).toBe(2);
+    expect(body.hasMore).toBe(true);
+  });
+
+  it('get_page_links resolves [[wiki-links]] against the project tree, excluding self-links', async () => {
+    const { client, fetchImpl } = sequencedClient([
+      {
+        status: 200,
+        body: {
+          id: 'pg-1',
+          projectId: 'p1',
+          title: 'Onboarding Guide',
+          content: 'Links to [[Setup Steps]], [[Onboarding Guide]] (self), and [[Missing Page]].',
+        },
+      },
+      { status: 200, body: sampleTree },
+    ]);
+    const res = await tool('get_page_links').handler({ pageId: 'pg-1' }, client);
+    expect(fetchImpl.mock.calls[0][0]).toBe('http://localhost:4000/api/pages/pg-1');
+    expect(fetchImpl.mock.calls[1][0]).toBe('http://localhost:4000/api/projects/p1/pages/tree');
+    const body = JSON.parse(res.content[0].text);
+    expect(body.pageId).toBe('pg-1');
+    expect(body.resolved).toEqual([{ pageId: 'pg-2', title: 'Setup Steps' }]);
+    expect(body.unresolvedTitles).toEqual(['Missing Page']);
+  });
+
+  it('get_page_links returns empty arrays for a page with no wiki-links, without fetching the tree', async () => {
+    const { client, fetchImpl } = clientWith(200, {
+      id: 'pg-1', projectId: 'p1', title: 'Onboarding Guide', content: 'No links here.',
+    });
+    const res = await tool('get_page_links').handler({ pageId: 'pg-1' }, client);
+    const body = JSON.parse(res.content[0].text);
+    expect(body.resolved).toEqual([]);
+    expect(body.unresolvedTitles).toEqual([]);
+    // No tree call needed when there are no [[links]] to resolve.
+    expect(fetchImpl.mock.calls).toHaveLength(1);
+  });
+
+  it('create_page POSTs title/content/parentId to /projects/:id/pages', async () => {
+    const { client, fetchImpl } = clientWith(201, { id: 'pg-9', title: 'New Page' });
+    await tool('create_page').handler(
+      { projectId: 'p1', title: 'New Page', content: 'body', parentId: 'pg-1' },
+      client,
+    );
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toBe('http://localhost:4000/api/projects/p1/pages');
+    expect((init as RequestInit).method).toBe('POST');
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({
+      title: 'New Page',
+      content: 'body',
+      parentId: 'pg-1',
+    });
+  });
+
+  it('move_page POSTs parentId/beforeId/afterId to /pages/:id/move', async () => {
+    const { client, fetchImpl } = clientWith(200, { id: 'pg-2', parentId: 'pg-1' });
+    await tool('move_page').handler(
+      { id: 'pg-2', parentId: 'pg-1', afterId: 'pg-4' },
+      client,
+    );
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toBe('http://localhost:4000/api/pages/pg-2/move');
+    expect((init as RequestInit).method).toBe('POST');
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({
+      parentId: 'pg-1',
+      afterId: 'pg-4',
+    });
+  });
+
+  it('move_page surfaces the API\'s cycle-rejection message verbatim on 400', async () => {
+    const { client } = clientWith(400, {
+      message: 'This move would make the page an ancestor of itself (a cycle)',
+    });
+    await expect(
+      tool('move_page').handler({ id: 'pg-1', parentId: 'pg-2' }, client),
+    ).rejects.toThrow(/ancestor of itself.*\[HTTP 400\]/);
+  });
+
+  it('update_page PATCHes only the provided fields, keeping explicit null parentId', async () => {
+    const { client, fetchImpl } = clientWith(200, { id: 'pg-1', parentId: null });
+    await tool('update_page').handler({ id: 'pg-1', parentId: null, archived: true }, client);
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toBe('http://localhost:4000/api/pages/pg-1');
+    expect((init as RequestInit).method).toBe('PATCH');
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({
+      parentId: null,
+      archived: true,
+    });
+  });
+
+  it('delete_page DELETEs /pages/:id', async () => {
+    const { client, fetchImpl } = clientWith(200, { id: 'pg-1' });
+    await tool('delete_page').handler({ id: 'pg-1' }, client);
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toBe('http://localhost:4000/api/pages/pg-1');
+    expect((init as RequestInit).method).toBe('DELETE');
+  });
+
+  it('delete_page surfaces the API\'s child-pages rejection message verbatim on 400', async () => {
+    const { client } = clientWith(400, {
+      message: 'This page has 2 child pages — move or delete them first before deleting this page.',
+    });
+    await expect(
+      tool('delete_page').handler({ id: 'pg-1' }, client),
+    ).rejects.toThrow(/2 child pages.*\[HTTP 400\]/);
+  });
+
+  it('restore_page_version POSTs /pages/:id/versions/:n/restore', async () => {
+    const { client, fetchImpl } = clientWith(200, { id: 'pg-1', title: 'Onboarding Guide' });
+    await tool('restore_page_version').handler({ pageId: 'pg-1', versionNumber: 3 }, client);
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toBe('http://localhost:4000/api/pages/pg-1/versions/3/restore');
+    expect((init as RequestInit).method).toBe('POST');
+  });
+
+  it('get_page_graph, get_page_backlinks, and get_page_links descriptions teach the traversal pattern', () => {
+    expect(tool('get_page_graph').description).toMatch(/CROWN-JEWEL/);
+    expect(tool('get_page_graph').description).toMatch(/how the project's knowledge connects/i);
+    expect(tool('get_page_backlinks').description).toMatch(/Walk backlinks/i);
+    expect(tool('get_page_links').description).toMatch(/get_page_backlinks/);
+    expect(tool('get_page_backlinks').description).toMatch(/get_page_links/);
   });
 });

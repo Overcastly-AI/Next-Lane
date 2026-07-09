@@ -2,15 +2,16 @@
 
 A [Model Context Protocol](https://modelcontextprotocol.io) server that lets
 external AI agents — **Claude Desktop**, **Claude Code**, and any other MCP host
-— **read and write** a Next Lane instance end-to-end: **105 tools** covering
+— **read and write** a Next Lane instance end-to-end: **117 tools** covering
 workspaces/projects, workflows / SDLC, issues (incl. links, labels, comments
 with author-or-admin edit/delete, checklists, worklogs), boards, statuses,
 sprints, components, versions, custom fields, saved NLQL filters, automation
 rules, dashboards, per-project role overrides, per-project agent-context
 memory, a unified project activity feed, GitHub/GitLab/Gitea SCM links (incl.
 live PR/MR status and the auto-transition-on-merge automation toggle for
-GitHub/GitLab — Gitea v1 is links-only, see below), and a one-call epic
-rollup.
+GitHub/GitLab — Gitea v1 is links-only, see below), a one-call epic
+rollup, and the **Pages knowledge base** — CRUD, version history, and
+graph/backlink traversal (see below).
 
 This is Next Lane's **agent-native wedge** (`docs/VISION.md`): an agent can list
 a project's statuses, design a workflow from a template, add/edit/delete
@@ -91,6 +92,7 @@ vocabulary lives in `PAT_SCOPES` (`packages/shared/src/types.ts`); by area:
 | `gitlab:read` / `gitlab:write` | GitLab integration config, linked MRs, live MR/pipeline status, auto-transition config. |
 | `gitea:read` / `gitea:write` | Gitea integration config, linked PRs. No live-status/auto-transition scope — v1 has neither. |
 | `workspaces:read` / `workspaces:write` | Workspace CRUD/membership and `list_users` (the co-member directory). |
+| `pages:read` / `pages:write` | Knowledge-base pages: CRUD, tree/list, version history, backlinks, and the project link graph. |
 | `tokens:read` / `tokens:write` | Managing your own PATs — not exposed over MCP (see below). |
 | `admin:read` / `admin:write` | Instance SSO/OIDC config — not exposed over MCP (see below). |
 
@@ -232,6 +234,13 @@ minimal, so there is no `verbose` mode.
 | `get_epic_overview` | One call for "what's in this epic and where does it stand": epic `{id, key, title, type, status}`, compact children `{id, key, title, type, status}`, a per-status `statusBreakdown`, and `progress: {done, total, fraction}` (`epicId`; works on any issue with children, not only EPIC-typed ones). |
 | `get_project_context` | The project's persistent agent handoff document + `staleness` (`changesSinceUpdate`, `lastProjectActivityAt` — now also counts comments + work logs, not just field changes) + `contentBytes` (`projectId`). **Call this first when starting work on a project.** Never 404s — empty string before the first write. |
 | `list_project_activity` | Unified "what changed" feed for a project: issue field changes, comments, and work logs, chronologically merged. `since` (ISO timestamp) or `cursor` (from a prior `nextCursor`) to page forward; omit both to start from the beginning. Cheaper than polling `list_issues`/`get_issue` blind. **compact**, ascending order. |
+| `list_pages` | List a project's knowledge-base pages (`projectId`), flattened from the page tree into sidebar/rank order. **compact** `{id, title, parentId, archived}` (no `updatedAt` — the tree call doesn't carry it; `verbose: true` hydrates each page in the returned slice with its full object via one extra call per item). Requires `pages:read`. |
+| `get_page` | Get one page by id: title, markdown content, hierarchy, author/editor, timestamps. Defaults to also including `links.outgoing` (this page's resolved/unresolved `[[wiki-links]]`) and `links.backlinkCount` in the same call — pass `includeLinks: false` to skip. Requires `pages:read`. |
+| `list_page_versions` | A page's version history, newest first, cursor-paginated (`pageId`, `cursor?`, `limit?`). Compact summaries, no content. Requires `pages:read`. |
+| `get_page_version` | Get one historical version's title + content (`pageId`, `versionNumber`). Requires `pages:read`. |
+| `get_page_graph` | **Crown-jewel traversal:** the whole project's knowledge graph in one call — every page as a node, every resolved `[[wiki-link]]` as a directed edge (`projectId`). Capped at 1000 nodes; `truncated: true` flags a cut-off graph. Requires `pages:read`. |
+| `get_page_backlinks` | "What links here" — pages that link TO this one (`pageId`), paginated. **paged**. Requires `pages:read`. |
+| `get_page_links` | This page's own OUTGOING `[[wiki-links]]` (`pageId`), split into `resolved` (existing target pages) and `unresolvedTitles` (referenced but not yet written). Requires `pages:read`. |
 
 ### Write (SDLC)
 
@@ -278,6 +287,11 @@ minimal, so there is no `verbose` mode.
 | `create_dashboard_gadget` / `update_dashboard_gadget` / `delete_dashboard_gadget` | Add / edit / remove a gadget — an NLQL `query` + `visualization` (STAT/TABLE/BREAKDOWN/BURNDOWN/VELOCITY_TREND) + `config`. Update merges `config` rather than replacing it. VELOCITY_TREND ignores `query` (project-wide); capped at 20 dashboards/project and 30 gadgets/dashboard — a 400 at the cap names the limit. |
 | `set_project_role_override` / `remove_project_role_override` | Elevate/restrict (or revert) a workspace member's role scoped to one project. Requires effective project ADMIN; refuses to override a workspace admin. |
 | `update_project_context` | Full-content replace of the project's agent handoff document (`projectId`, `content` markdown, 64 KB cap). **Call before ending every work session** — and at milestones — so the next run starts with your context. Requires project MEMBER+. |
+| `create_page` | Create a knowledge-base page (`projectId`, `title`, `content?`, `parentId?`). Reference other pages with `[[Page Title]]` in `content` — resolved into the link graph on save. Requires `pages:write`. |
+| `move_page` | Drag-and-drop-style reorder/reparent (`id`, `parentId?`, `beforeId?`, `afterId?`) — computes the fractional-index rank server-side. Requires `pages:write`. |
+| `update_page` | Partial-update a page: `title`/`content` (writes a new version + re-syncs links), `parentId` (re-parent; null = top-level), `archived`. Requires `pages:write`. |
+| `delete_page` | Delete a page (`id`). Rejected with a 400 if it still has child pages — move or delete them first. Irreversible. Requires `pages:write`. |
+| `restore_page_version` | Roll a page back to an earlier version's content (`pageId`, `versionNumber`) — writes a NEW version, never rewrites history. Requires `pages:write`. |
 | `set_github_automation_config` / `set_gitlab_automation_config` | Turn a project's auto-transition-on-merge automation on/off and/or set its target status (`projectId`, `enabled`, `statusId?`) — a `merged` PR/MR webhook then moves every linked issue to that status via the existing workflow-transition automation-bypass path. Requires the integration to already be connected (repo/token setup stays web-UI-only); requires project ADMIN. |
 
 `create_issue` / `update_issue` also accept `originalEstimateMinutes` (time-tracking estimate) and `customFields` (partial, keyed by field id).
@@ -339,6 +353,30 @@ cp -r skills/project-context ~/.claude/skills/
 The read tool returns a `staleness` signal (`changesSinceUpdate` — project
 activity newer than the handoff) so an agent knows when to re-verify a stale
 handoff instead of trusting it blindly.
+
+## Read AND write the knowledge base — and traverse its graph
+
+Neither Confluence (no graph/agent API) nor Obsidian (local-only, no API at
+all) lets an agent do this: twelve tools give full read/write access to a
+project's **Pages** knowledge base — `list_pages`/`get_page`/`create_page`/
+`move_page`/`update_page`/`delete_page` for CRUD, `list_page_versions`/
+`get_page_version`/`restore_page_version` for history — plus three tools
+purpose-built for **graph traversal**, the differentiated part:
+
+- **`get_page_graph`** loads a project's entire wiki as `{nodes, edges}` in
+  one call — every page, every resolved `[[wiki-link]]` — so an agent can spot
+  hub pages, orphaned docs, and how the knowledge actually connects before
+  reading a single page.
+- **`get_page_backlinks`** walks "what links here" for one page — the
+  incoming edges — useful before editing/archiving a doc, or to find the most
+  load-bearing page on a topic.
+- **`get_page_links`** is the reverse: a page's own outgoing links, split
+  into pages that exist (`resolved`) and titles referenced but not yet
+  written (`unresolvedTitles` — a literal to-do list of missing docs).
+
+`get_page` composes `get_page_graph`-equivalent orientation (outgoing links +
+backlink count) into its own response by default, so the common case — open a
+page, understand what it connects to — is one call, not four.
 
 ## Development
 

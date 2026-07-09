@@ -514,6 +514,132 @@ async function fetchNlqlFilteredIssues(
 }
 
 // ---------------------------------------------------------------------------
+// Pages knowledge base — flatten/link helpers
+//
+// The Pages REST surface (`apps/api/src/pages/pages.controller.ts`) has no
+// flat, paginated "list pages" route — only a nested `GET .../pages/tree`
+// (sidebar shape, no timestamps) and a whole-project `GET .../pages/graph`
+// (nodes + resolved-link edges, capped at 1000 nodes). `list_pages` and the
+// graph-traversal tools below are built on those two calls plus per-page
+// `GET /pages/:id`, rather than adding new REST surface — this package's
+// territory is `apps/mcp/**` only, mirroring the NLQL-hydration composition
+// above for `list_issues` query mode.
+// ---------------------------------------------------------------------------
+
+/** A page as flattened from a project's `GET .../pages/tree` response. */
+interface FlatPageRef {
+  id: string;
+  title: string;
+  /** Filled in from the node's position in the tree — the tree payload itself omits it (implicit in nesting). */
+  parentId: string | null;
+  archived: boolean;
+  rank: string;
+}
+
+/**
+ * Flatten the nested `PageTreeNode[]` into a pre-order (rank-ordered) list —
+ * the same order the sidebar renders in, and the order `list_pages` returns.
+ */
+function flattenPageTree(nodes: ApiItem[], parentId: string | null = null): FlatPageRef[] {
+  const out: FlatPageRef[] = [];
+  for (const node of nodes) {
+    out.push({
+      id: node.id as string,
+      title: node.title as string,
+      parentId,
+      archived: Boolean(node.archived),
+      rank: node.rank as string,
+    });
+    const children = (node.children as ApiItem[] | undefined) ?? [];
+    if (children.length > 0) out.push(...flattenPageTree(children, node.id as string));
+  }
+  return out;
+}
+
+/**
+ * Compact `list_pages` default shape. Deliberately omits `updatedAt`/content
+ * — the underlying `/pages/tree` call doesn't carry them cheaply; pass
+ * `verbose: true` to hydrate the returned slice with the full page object,
+ * or get_page for a single page's full detail including timestamps.
+ */
+const compactPageRef = (p: FlatPageRef) => ({
+  id: p.id,
+  title: p.title,
+  parentId: p.parentId,
+  archived: p.archived,
+});
+
+/**
+ * Minimal mirror of `parseWikiLinks` (`packages/shared/src/wikilink.ts`,
+ * title-extraction only — alias is unused here). Duplicated rather than
+ * imported: `@next-lane/mcp` ships with zero `workspace:*` runtime deps (see
+ * README "Run without cloning") precisely so `npx @next-lane/mcp` works
+ * standalone, and `@next-lane/shared` is a private, unpublished workspace
+ * package. Keep this in sync with the canonical parser if `[[wiki-link]]`
+ * syntax ever changes.
+ */
+const WIKI_LINK_RE = /\[\[([^[\]|]+)(?:\|([^[\]]+))?\]\]/g;
+
+function parseWikiLinkTitles(markdown: string): string[] {
+  if (!markdown) return [];
+  const titles: string[] = [];
+  WIKI_LINK_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = WIKI_LINK_RE.exec(markdown)) !== null) {
+    const title = match[1].trim();
+    if (title) titles.push(title);
+  }
+  return titles;
+}
+
+/** `get_page_links` / `get_page`'s inline-orientation result shape. */
+interface OutgoingPageLinks {
+  resolved: { pageId: string; title: string }[];
+  unresolvedTitles: string[];
+}
+
+/**
+ * Resolve `page.content`'s `[[wiki-link]]` titles against the project's page
+ * titles (via the cheap `/pages/tree`, not the full `/pages/graph`) —
+ * `resolved` are titles matching an existing page (case-insensitive,
+ * self-title excluded, first-in-tree-order wins a duplicate title — an
+ * approximation of the API's own oldest-page-wins tie-break, since the tree
+ * payload doesn't carry `createdAt`); `unresolvedTitles` are
+ * referenced-but-not-yet-created titles, the same "link first, write later"
+ * flow Obsidian/Notion support. Mirrors (client-side, read-only) the same
+ * resolution `PagesService.syncWikiLinks` performs server-side on save.
+ */
+async function resolveOutgoingLinks(
+  client: NextLaneClient,
+  page: ApiItem,
+): Promise<OutgoingPageLinks> {
+  const content = typeof page.content === 'string' ? page.content : '';
+  const titles = parseWikiLinkTitles(content);
+  if (titles.length === 0) return { resolved: [], unresolvedTitles: [] };
+
+  const tree = await client.get<ApiItem[]>(`/projects/${page.projectId}/pages/tree`);
+  const byTitle = new Map<string, string>();
+  for (const ref of flattenPageTree(tree)) {
+    const key = ref.title.toLowerCase();
+    if (!byTitle.has(key)) byTitle.set(key, ref.id);
+  }
+
+  const selfTitle = typeof page.title === 'string' ? page.title.toLowerCase() : null;
+  const seen = new Set<string>();
+  const resolved: { pageId: string; title: string }[] = [];
+  const unresolvedTitles: string[] = [];
+  for (const title of titles) {
+    const key = title.toLowerCase();
+    if (seen.has(key) || key === selfTitle) continue;
+    seen.add(key);
+    const targetId = byTitle.get(key);
+    if (targetId) resolved.push({ pageId: targetId, title });
+    else unresolvedTitles.push(title);
+  }
+  return { resolved, unresolvedTitles };
+}
+
+// ---------------------------------------------------------------------------
 // Read tools
 // ---------------------------------------------------------------------------
 
@@ -1419,6 +1545,191 @@ const readTools: ToolDef[] = [
         hasMore: data.nextCursor !== null,
         nextCursor: data.nextCursor,
       });
+    },
+  },
+
+  // ── Pages (knowledge base) — CRUD, version history, graph traversal ──────
+
+  {
+    name: 'list_pages',
+    group: 'read',
+    description:
+      "List a project's knowledge-base pages, flattened from its page tree " +
+      'into sidebar (rank) order. Use this to discover pageId values and ' +
+      'see the doc hierarchy before drilling into a specific page. Compact ' +
+      'refs by default: `{id, title, parentId, archived}` — `parentId: ' +
+      'null` means a top-level page. The underlying tree call carries no ' +
+      "timestamps/content, so compact refs omit `updatedAt`; pass " +
+      '`verbose: true` to hydrate every page in the RETURNED SLICE with its ' +
+      'full object (content, author, lastEditedBy, timestamps) — this ' +
+      'issues one extra API call per item (bounded by `limit`, so prefer a ' +
+      'small limit, or get_page directly for a single page) rather than ' +
+      'multiplying every page in the project. For the wiki-link graph ' +
+      "instead of the folder hierarchy, use get_page_graph.",
+    inputSchema: { projectId: z.string().describe('Project id.'), ...compactPageParams },
+    handler: async (args, client) => {
+      const tree = await client.get<ApiItem[]>(`/projects/${args.projectId}/pages/tree`);
+      const flat = flattenPageTree(tree);
+      const page = paginateOnly(flat, args);
+      if (!args.verbose) {
+        return pageResult({ ...page, items: page.items.map(compactPageRef) });
+      }
+      const items: ApiItem[] = [];
+      for (const ref of page.items) {
+        items.push(await client.get<ApiItem>(`/pages/${ref.id}`));
+      }
+      return pageResult({ ...page, items });
+    },
+  },
+  {
+    name: 'get_page',
+    group: 'read',
+    description:
+      'Get a knowledge-base page by id: title, full markdown content, ' +
+      'hierarchy (`parentId`), author/last-editor, and timestamps. ' +
+      'Defaults to ALSO orienting you in the knowledge graph in this same ' +
+      'call — pass `includeLinks: false` to skip that and save two extra ' +
+      'API calls when you only need the raw content. When included, ' +
+      "`links.outgoing` is this page's own [[wiki-links]] split into " +
+      '`resolved` (pages that exist — follow `pageId` with another ' +
+      'get_page/get_page_links to keep traversing) and `unresolvedTitles` ' +
+      '(referenced but not yet written — candidates for create_page), and ' +
+      '`links.backlinkCount` is how many OTHER pages link here (call ' +
+      'get_page_backlinks for the full "what links here" list).',
+    inputSchema: {
+      id: z.string().describe('Page id.'),
+      includeLinks: z
+        .boolean()
+        .optional()
+        .describe(
+          'Include outgoing-link + backlink-count orientation in the response (default true).',
+        ),
+    },
+    handler: async (args, client) => {
+      const page = await client.get<ApiItem>(`/pages/${args.id}`);
+      if (args.includeLinks === false) return jsonResult(page);
+      const [backlinks, outgoing] = await Promise.all([
+        client.get<ApiItem[]>(`/pages/${args.id}/backlinks`),
+        resolveOutgoingLinks(client, page),
+      ]);
+      return jsonResult({
+        ...page,
+        links: { backlinkCount: backlinks.length, outgoing },
+      });
+    },
+  },
+  {
+    name: 'list_page_versions',
+    group: 'read',
+    description:
+      "A page's version history, newest first, cursor-paginated via " +
+      '`cursor` + `limit`. Each item is a compact summary (no content — ' +
+      "call get_page_version for a specific version's full title+content). " +
+      'Use restore_page_version to roll a page back to an earlier version ' +
+      '(writes a NEW version with the old content — history is never ' +
+      'rewritten or truncated).',
+    inputSchema: {
+      pageId: z.string().describe('Page id.'),
+      cursor: z.string().optional().describe('Pagination cursor from a prior call\'s nextCursor.'),
+      limit: limitParam,
+    },
+    handler: async (args, client) => {
+      const data = await client.get<{ items: ApiItem[]; nextCursor: string | null }>(
+        `/pages/${args.pageId}/versions`,
+        {
+          cursor: args.cursor as string | undefined,
+          limit: args.limit as number | undefined,
+        },
+      );
+      return jsonResult({
+        items: data.items,
+        limit: (args.limit as number | undefined) ?? DEFAULT_LIST_LIMIT,
+        hasMore: data.nextCursor !== null,
+        nextCursor: data.nextCursor,
+      });
+    },
+  },
+  {
+    name: 'get_page_version',
+    group: 'read',
+    description:
+      "Get one historical version of a page: its title + content exactly " +
+      'as of that snapshot (`pageId`, `versionNumber` — from ' +
+      'list_page_versions). Compare against the current get_page result to ' +
+      'see what changed, or hand the content to restore_page_version to ' +
+      'roll back.',
+    inputSchema: {
+      pageId: z.string().describe('Page id.'),
+      versionNumber: z
+        .number()
+        .int()
+        .min(1)
+        .describe('Version number (from list_page_versions).'),
+    },
+    handler: (args, client) =>
+      client.get(`/pages/${args.pageId}/versions/${args.versionNumber}`).then(jsonResult),
+  },
+  {
+    name: 'get_page_graph',
+    group: 'read',
+    description:
+      "CROWN-JEWEL traversal call: load a project's ENTIRE knowledge graph " +
+      'in one shot — every page as a node (`{id, title}`) and every ' +
+      'resolved `[[wiki-link]]` as a directed edge (`{sourceId, ' +
+      'targetId}`). Load the graph to understand how the project\'s ' +
+      'knowledge connects: spot hub pages (many edges — the docs everything ' +
+      'depends on), orphaned pages (no edges either way — candidates to ' +
+      'link up or archive), and navigable paths between two docs, all ' +
+      "before drilling into any single page. Capped at 1000 nodes; " +
+      '`truncated: true` means the project has more pages than that and ' +
+      'BOTH the node and edge sets were cut off (an edge touching a ' +
+      'dropped node is dropped too, so the graph returned is always ' +
+      'internally consistent) — treat it as a large sample, not the full ' +
+      "picture, and fall back to get_page_links/get_page_backlinks for a " +
+      "specific page's exact neighbors.",
+    inputSchema: { projectId: z.string().describe('Project id.') },
+    handler: (args, client) =>
+      client.get(`/projects/${args.projectId}/pages/graph`).then(jsonResult),
+  },
+  {
+    name: 'get_page_backlinks',
+    group: 'read',
+    description:
+      'Walk backlinks to find everything referencing this page — "what ' +
+      'links here", the INCOMING edge of the knowledge graph. Each item is ' +
+      'the linking page as a compact ref (`sourcePageId`/`sourcePageTitle`) ' +
+      'plus when the link was created. Check this before editing or ' +
+      'archiving a page to see what would be left dangling, or to find the ' +
+      'pages most central to a topic (many backlinks = load-bearing doc — ' +
+      "keep walking backlinks from those to map a whole subject area). " +
+      'Pairs with get_page_links (the reverse direction — this page\'s own ' +
+      'outgoing links) and get_page_graph (the whole project at once).',
+    inputSchema: { pageId: z.string().describe('Page id.'), ...pageParams },
+    handler: async (args, client) => {
+      const data = await client.get<ApiItem[]>(`/pages/${args.pageId}/backlinks`);
+      return pageResult(paginateOnly(data, args));
+    },
+  },
+  {
+    name: 'get_page_links',
+    group: 'read',
+    description:
+      "This page's own OUTGOING [[wiki-links]] — the links it makes, split " +
+      'into `resolved` (target pages that already exist, `{pageId, ' +
+      'title}` — follow `pageId` into another get_page/get_page_links call ' +
+      'to keep traversing the graph outward) and `unresolvedTitles` ' +
+      '(titles referenced in the text with no matching page yet — the ' +
+      'classic "link first, write later" flow; creating a page with that ' +
+      'exact title does NOT retroactively resolve this edge — it only ' +
+      'resolves the next time THIS page itself is saved). Pairs with ' +
+      'get_page_backlinks (the reverse direction: who links TO this page) ' +
+      "and get_page_graph (the whole project's graph in one call, for a " +
+      'wider traversal than walking page-by-page).',
+    inputSchema: { pageId: z.string().describe('Page id.') },
+    handler: async (args, client) => {
+      const page = await client.get<ApiItem>(`/pages/${args.pageId}`);
+      const outgoing = await resolveOutgoingLinks(client, page);
+      return jsonResult({ pageId: args.pageId, ...outgoing });
     },
   },
 ];
@@ -2846,6 +3157,159 @@ const writeTools: ToolDef[] = [
       const content = typeof data.content === 'string' ? data.content : '';
       return jsonResult({ ...data, contentBytes: Buffer.byteLength(content, 'utf8') });
     },
+  },
+
+  // ── Pages (knowledge base) — CRUD + version restore ───────────────────────
+
+  {
+    name: 'create_page',
+    group: 'write',
+    description:
+      'Create a knowledge-base page in a project. Reference other pages ' +
+      'with `[[Page Title]]` (or `[[Page Title|display text]]`) anywhere ' +
+      'in `content` — resolved automatically (case-insensitive, exact ' +
+      'title match within the project, self-links excluded) into the link ' +
+      'graph on save; a title with no matching page just renders as-is ' +
+      'until a page with that exact title exists AND this page is saved ' +
+      'again (see get_page_links). Omit `parentId` (or pass null) for a ' +
+      "top-level page; pass an existing page's id to nest it as that " +
+      "page's child (appended at the end of its children). Requires " +
+      '`pages:write` scope when the token is scoped.',
+    inputSchema: {
+      projectId: z.string().describe('Project id.'),
+      title: z.string().min(1).max(300).describe('Page title.'),
+      content: z
+        .string()
+        .optional()
+        .describe('Markdown body (default empty string). Capped at 256 KB (UTF-8 bytes).'),
+      parentId: z
+        .string()
+        .nullable()
+        .optional()
+        .describe('Parent page id, or null/omit for a top-level page.'),
+    },
+    handler: (args, client) =>
+      client
+        .post(`/projects/${args.projectId}/pages`, {
+          title: args.title,
+          content: args.content,
+          parentId: args.parentId,
+        })
+        .then(jsonResult),
+  },
+  {
+    name: 'move_page',
+    group: 'write',
+    description:
+      'Reorder and/or reparent a page among siblings — the drag-and-drop ' +
+      'move, computing a fractional-index rank server-side so you never ' +
+      'need to know the rank encoding. Pass `beforeId`/`afterId` (an ' +
+      'existing SIBLING of the destination parent) to place it precisely; ' +
+      'omit both to append to the end of the destination sibling list. ' +
+      '`parentId` omitted = keep the current parent (pure reorder); ' +
+      '`parentId: null` = move to top-level; `parentId: <id>` = reparent ' +
+      'under that page. Rejected with a 400 if the move would make the ' +
+      "page its own ancestor (a cycle). For just changing a page's parent " +
+      'without caring about sibling position, update_page\'s `parentId` ' +
+      'is simpler. Requires `pages:write` scope when the token is scoped.',
+    inputSchema: {
+      id: z.string().describe('Page id to move.'),
+      parentId: z
+        .string()
+        .nullable()
+        .optional()
+        .describe('New parent page id, null for top-level, or omit to keep the current parent.'),
+      beforeId: z
+        .string()
+        .optional()
+        .describe('Place immediately before this sibling id (in the destination parent).'),
+      afterId: z
+        .string()
+        .optional()
+        .describe('Place immediately after this sibling id (in the destination parent).'),
+    },
+    handler: (args, client) =>
+      client
+        .post(`/pages/${args.id}/move`, {
+          parentId: args.parentId,
+          beforeId: args.beforeId,
+          afterId: args.afterId,
+        })
+        .then(jsonResult),
+  },
+  {
+    name: 'update_page',
+    group: 'write',
+    description:
+      'Update a page. Only the fields you pass are changed (partial ' +
+      'update). Changing `title` and/or `content` writes a new version ' +
+      'snapshot (list_page_versions/restore_page_version) and re-syncs ' +
+      "this page's outgoing [[wiki-links]] to match the new content. " +
+      '`parentId` re-parents the page within the project tree (null = ' +
+      'move to top-level; omit to leave unchanged) — rejected with a 400 ' +
+      'if it would create a cycle or the new parent is in a different ' +
+      'project; use move_page instead if you also care about sibling ' +
+      'position. `archived: true` hides it from the default sidebar view ' +
+      'without deleting it (`archived: false` unhides it). Requires ' +
+      '`pages:write` scope when the token is scoped.',
+    inputSchema: {
+      id: z.string().describe('Page id.'),
+      title: z.string().min(1).max(300).optional().describe('New title.'),
+      content: z
+        .string()
+        .optional()
+        .describe('New markdown body. Capped at 256 KB (UTF-8 bytes).'),
+      parentId: z
+        .string()
+        .nullable()
+        .optional()
+        .describe('New parent page id, or null to move to top-level. Omit to leave unchanged.'),
+      archived: z.boolean().optional().describe('Archive (true) or unarchive (false) the page.'),
+    },
+    handler: (args, client) =>
+      client
+        .patch(`/pages/${args.id}`, {
+          title: args.title,
+          content: args.content,
+          parentId: args.parentId,
+          archived: args.archived,
+        })
+        .then(jsonResult),
+  },
+  {
+    name: 'delete_page',
+    group: 'write',
+    description:
+      'Delete a page. Rejected with a 400 if it still has child pages — ' +
+      'move them elsewhere (update_page with a new parentId) or delete ' +
+      'them first; this keeps a whole subtree from disappearing as a side ' +
+      'effect of deleting one parent page. Irreversible — there is no undo ' +
+      'and no cascade-delete-subtree option in this API. Requires ' +
+      '`pages:write` scope when the token is scoped.',
+    inputSchema: { id: z.string().describe('Page id.') },
+    handler: (args, client) => client.delete(`/pages/${args.id}`).then(jsonResult),
+  },
+  {
+    name: 'restore_page_version',
+    group: 'write',
+    description:
+      "Roll a page back to an earlier version's title/content. This does " +
+      'NOT rewrite or delete history — it writes a brand-new version whose ' +
+      "content equals the target version's (e.g. restoring version 3 on a " +
+      'page currently at version 8 creates version 9; versions 1-8 stay ' +
+      "untouched). Re-syncs the page's outgoing [[wiki-links]] to match " +
+      'the restored content. Requires `pages:write` scope when the token ' +
+      'is scoped.',
+    inputSchema: {
+      pageId: z.string().describe('Page id.'),
+      versionNumber: z
+        .number()
+        .int()
+        .min(1)
+        .describe('Version number to restore (from list_page_versions).'),
+    },
+    handler: (args, client) =>
+      client.post(`/pages/${args.pageId}/versions/${args.versionNumber}/restore`).then(jsonResult),
   },
 ];
 

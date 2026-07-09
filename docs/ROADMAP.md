@@ -267,7 +267,7 @@ live.
 - ✅ **Personal & team analytics backend** — `AnalyticsModule` (`apps/api/src/analytics/`): `GET /me/analytics?days=N` → `PersonalAnalyticsDto` (open/completed/overdue assigned issues, per-day throughput flow series, avg cycle time, byType/byPriority CategoryCountDto groups, personal board stats); `GET /projects/:projectId/analytics?days=N` → `ProjectAnalyticsDto` (per-day flow series, createdTotal/completedTotal, avg cycle time, all-5-bucket CycleTimeBucketDto distribution with en-dash labels, WorkloadRowDto by assignee busiest-first + Unassigned row); both endpoints use ActivityLog completion-date reconstruction identical to reports.service; `days` defaults to 30, clamped to [1, 366]; 25 unit tests (analytics.service.spec.ts); build + typecheck clean; registered in AppModule. (2026-06-28)
 - ✅ **Personal & team analytics frontend** (2026-06-28) — `PersonalAnalyticsPage` at `/me/analytics` (14/30/90-day window selector, headline stat cards, hand-rolled SVG throughput chart, type/priority horizontal bar breakdowns, personal board mini-stats); `ProjectAnalyticsPage` at `/projects/:projectId/analytics` (window selector, headline stats, flow chart, cycle-time distribution, workload bars by assignee); "Analytics" tab in `ProjectNav`; "Insights" link in `AppHeader`; WCAG-AA, accessible charts with visually-hidden summaries; full data-testid coverage; Playwright e2e (desktop + mobile); build green.
 
-## Phase 11 — Pages: a Confluence × Obsidian hybrid, agent-traversable 🚧 (schema + backend module shipped 2026-07-09 — founder directive 2026-07-06, scope sharpened 2026-07-09)
+## Phase 11 — Pages: a Confluence × Obsidian hybrid, agent-traversable 🚧 (schema + backend module + MCP tools shipped 2026-07-09 — founder directive 2026-07-06, scope sharpened 2026-07-09)
 
 **Founder directive, verbatim (2026-07-06): "How can we add a confluence type
 section?"** **Sharpened same-week (2026-07-09): "Could it be hybrid of
@@ -352,20 +352,29 @@ each lives in `docs/BACKLOG.md` § Ready):**
    reachable from the Pages nav; nodes open the corresponding page on
    click. Once issue cross-linking (slice 8) ships, issue nodes/edges layer
    into the same graph rather than shipping a second, disconnected view.
-8. ⬜ **MCP tools — Pages CRUD + version history.** `list_pages`/`get_page`/
-   `create_page`/`update_page`/`move_page`/`delete_page`/
-   `list_page_versions`/`get_page_version`/`restore_page_version`,
-   compact/verbose + paginated envelope matching the existing MCP
-   conventions.
-9. ⬜ **MCP tools — graph & backlink traversal (crown jewel).**
-   `get_page_graph`/`get_page_backlinks`/`get_page_links` (outgoing) —
-   this is the differentiator that neither incumbent can follow us into:
-   an agent traverses a team's knowledge graph the same way it reads/writes
-   issues, not a local-only Obsidian vault with no server API and not a
-   Confluence with no graph to traverse in the first place. Framed in the
-   server's protocol-level `instructions` and tool descriptions the same
-   way per-project agent-context memory is — an agent should treat Pages
-   as living, connected documentation to keep current, not a one-off note.
+8. ✅ **MCP tools — Pages CRUD + version history** (shipped 2026-07-09) —
+   `list_pages`/`get_page`/`create_page`/`update_page`/`move_page`/
+   `delete_page`/`list_page_versions`/`get_page_version`/
+   `restore_page_version`, compact/verbose + paginated envelope matching
+   the existing MCP conventions (`list_pages` flattens the tree endpoint
+   client-side into `{id, title, parentId, archived}` refs, since there is
+   no flat paginated list REST route; `verbose: true` hydrates the
+   returned page slice with full content/timestamps, bounded by `limit`).
+9. ✅ **MCP tools — graph & backlink traversal (crown jewel)** (shipped
+   2026-07-09) — `get_page_graph`/`get_page_backlinks`/`get_page_links`
+   (outgoing, resolved vs. referenced-but-not-yet-written) — this is the
+   differentiator that neither incumbent can follow us into: an agent
+   traverses a team's knowledge graph the same way it reads/writes issues,
+   not a local-only Obsidian vault with no server API and not a Confluence
+   with no graph to traverse in the first place. `get_page` also inlines
+   outgoing-links + backlink-count orientation by default (`includeLinks`)
+   so "open a page, see what it connects to" is one call, not four. Tool
+   descriptions explicitly teach the traversal pattern (walk backlinks to
+   find everything referencing a page; load the graph to understand how a
+   project's knowledge connects) the same way per-project agent-context
+   memory's protocol-level `instructions` do. `apps/mcp/src/tools/index.ts`
+   +12 tools (105→117), `apps/mcp/README.md` tool/scope tables updated,
+   19 new vitest (112→131 MCP tests), tsc + build clean.
 10. ⬜ **Issue ↔ page cross-linking** — a page referencing `NL-123`
     auto-links; the issue drawer gains a "Linked pages" section (mirrors
     the GitHub/GitLab/Gitea Development-section link pattern); the same
@@ -380,6 +389,93 @@ each lives in `docs/BACKLOG.md` § Ready):**
     "spaces" (grouping projects' page trees under a workspace), and public
     page share links (reuse `ShareToken`, mirroring the dashboard/board
     share-link pattern).
+
+## Phase 12 — Systems Map: lightweight, agent-native architecture & dependency mapping 🔭 (future pillar — GATED, not current work)
+
+**Founder directive, verbatim (2026-07-09): "Enterprise architecture is an
+interesting thing to tackle... I've worked in many companies without a good
+solution to map out architecture/dependencies and integrations. Does it make
+sense to have this in this app?"** The orchestrator recommended a
+**lightweight** version of this, explicitly not a LeanIX/Ardoq clone; founder
+approved: **"Lite weight is good by me."** See `docs/VISION.md` § The
+pillars, item 8, and § Better-than-Jira scorecard, the new "Architecture /
+Systems mapping" row.
+
+**Sequencing — an explicit gate, per `CLAUDE.md`'s converge-don't-sprawl
+mandate ("drive toward the v1 release criteria... then polish — don't
+generate endless backlog without finishing").** This phase is filed as a
+future pillar, not queued work. The backlog-groomer must NOT promote its
+`docs/BACKLOG.md` § Future entry into § Ready until **BOTH** hold:
+1. The v1.0 release criteria (bottom of this file) are met, and
+2. Phase 11 (Pages) has shipped its v1 slices — specifically the frontend
+   force-directed graph view (Phase 11 item #7) — since this phase is a
+   **second consumer** of that graph engine, not a parallel build.
+
+**Reuses the Pages graph engine — the key framing, not a new pillar built
+from scratch.** This is the same force-directed graph rendering + MCP
+graph-traversal primitive Phase 11 builds for Pages (`get_page_graph`/
+`get_page_backlinks` and their frontend counterpart), pointed at a different
+node type (`System` instead of `Page`). **Design note for whoever builds
+Phase 11's remaining frontend graph-view slice (item #7):** keep the graph
+component (`apps/web/src/components/pages/**`, force-directed layout) and
+the MCP graph-traversal tool shape generic — a graph of `{nodes, typed
+edges}` — rather than baking Page-specific fields into the rendering/
+traversal layer, so a `System` node type can reuse both without a rewrite
+when this phase starts.
+
+**The wedge — why this is genuinely ours, and why the founder has never seen
+a good solution for it:** existing EA tools are heavyweight enterprise-sales
+SaaS (LeanIX/Ardoq-class) or static offsite-whiteboard diagrams that are
+stale the moment everyone's back at their desks — nobody maintains them
+because nothing forces them to stay true. Next Lane's version stays current
+for reasons no incumbent can structurally copy: (1) **the developer graph is
+already real** — GitHub/GitLab/Gitea two-way links (Phase 9, shipped) give
+code-level dependency signal, not hand-drawn boxes; (2) **an agent keeps the
+map current over MCP** — the living-docs thesis Phase 11 establishes for
+Pages, applied to systems; (3) **uniquely, an agent can traverse systems →
+dependencies → linked issues → repos** to answer the question every EA tool
+fails at: "what breaks if we deprecate service X?"; (4) architecture/
+dependency maps are exactly the sensitive internal-topology data that
+belongs on "your data, your compute" (VISION.md advantage 2), not handed to
+a third-party SaaS. All four structural advantages apply directly here —
+free/unlimited (no per-seat EA-tool tax), your-data (sensitive topology
+stays self-hosted), open/extensible (MIT, no marketplace), agent-native
+(traversal, not the picture, is the differentiator) — and it opens an
+entirely new scorecard category (Enterprise Architecture / systems mapping)
+the per-seat incumbent doesn't bundle at any price.
+
+**v1 scope — explicitly lightweight, NOT a full EA suite (sketch only; break
+into buildable slices with acceptance criteria/territory/size when the gate
+above is actually met, mirroring how Phase 11 was sequenced):**
+1. 🔭 **Schema** — a `System` node type (name, owner team, tier/criticality,
+   description, links to its repo(s) — reusing the existing GitHub/GitLab/
+   Gitea integration-link shape — docs page(s) — a Pages cross-link, Phase
+   11 item #10's pattern — and owning project/issues). A typed directed
+   dependency-edge table (`depends-on` / `calls` / `integrates-with`),
+   mirroring `PageLink`'s shape.
+2. 🔭 **Backend — CRUD + graph endpoint** — mirrors the Pages backend
+   module's shape (`apps/api/src/pages/**` as the template): system CRUD,
+   edge CRUD, a graph endpoint returning the full node/edge set (reusing the
+   same capped-node/capped-edge truncation pattern `GET /projects/:id/pages/
+   graph` established).
+3. 🔭 **Frontend — force-directed graph view** — reuses the Pages graph-view
+   component (see the reuse note above) rather than a second implementation;
+   systems as nodes, typed edges color/label-coded by relationship kind.
+4. 🔭 **MCP tools — systems CRUD + graph/dependency traversal (crown jewel,
+   same framing as Pages)** — mirrors Pages' `get_page_graph`/
+   `get_page_backlinks` shape: `get_system_graph`, `get_system_dependents`
+   (what depends on this system — the "what breaks if I deprecate X" query),
+   `get_system_dependencies` (what this system depends on), plus CRUD. The
+   traversal is the differentiator, not the picture — an agent answering
+   "what breaks if we deprecate service X?" in one or two calls is the
+   whole point of this pillar.
+5. 🔭 **Explicitly NOT v1 — scope discipline, call these out so this never
+   creeps into a LeanIX/Ardoq clone:** capability models, TIME (Tolerate/
+   Invest/Migrate/Eliminate) lifecycle scoring, compliance/GRC workflows,
+   and diagram-authoring tools (freeform canvas/whiteboarding). Pulling any
+   of these forward is a founder scope decision, not a default.
+
+See `docs/BACKLOG.md` § Future for the filed (not-yet-Ready) epic entry.
 
 ---
 
@@ -427,6 +523,24 @@ on delete-with-children, and unresolved-`[[link]]`-is-not-an-error). Next up:
 the frontend (tree nav + markdown editor + version history + `[[link]]`
 autocomplete, `docs/BACKLOG.md` § Ready item #1) is the critical path for
 everything downstream (backlinks panel, graph view) to become human-visible.
+
+**Build update (2026-07-09, same day): MCP tools shipped — Pages CRUD,
+version history, and the crown-jewel graph/backlink traversal.** Slices 8-9
+above (`docs/BACKLOG.md` § Ready former items #4/#5) are done, ahead of the
+frontend slices they don't depend on: `list_pages`/`get_page`/`create_page`/
+`move_page`/`update_page`/`delete_page` (CRUD), `list_page_versions`/
+`get_page_version`/`restore_page_version` (history), and
+`get_page_graph`/`get_page_backlinks`/`get_page_links` (the traversal trio —
+neither Confluence nor Obsidian exposes any of this over an agent-callable
+API). `get_page`'s default `includeLinks` inlines outgoing-links +
+backlink-count so "open a page, see what it connects to" costs one call.
+12 new tools (`apps/mcp/src/tools/index.ts`, 105→117), `apps/mcp/README.md`
+tool/scope tables + prose updated, 19 new vitest (112→131 MCP tests), tsc +
+build clean. `list_pages` composes the tree endpoint client-side (no flat
+paginated list REST route exists) rather than adding new REST surface — see
+the ticked `docs/BACKLOG.md` § Already Done entry for the full writeup. Next
+up: the frontend slice (item #1 above) remains the critical path for the
+graph/backlinks becoming human-visible in the web app.
 
 **Founder directive (2026-07-03, shipped same day): per-project agent context memory over MCP** — every project carries a persistent agent handoff document (read-first/hand-off-last, prompted at the protocol layer via MCP server instructions + tool descriptions, distributable `skills/project-context` Agent Skill, measured staleness signal). The agent-native pillar now includes cross-session memory. **Web-UI panel follow-up — ✅ shipped 2026-07-03**: a new "Agent context" section on project Settings (`AgentContextSection.tsx`, after Members/GitLab) renders the shared handoff document as markdown (empty-state copy, updatedAt/updatedBy metadata, amber "N changes since last update" staleness pill), edit-in-place (Edit → textarea → Save/Cancel, toast on save, inline error on the 64 KB cap) for effective project MEMBER+, read-only for VIEWER; realtime via the existing `useBoardRealtime` project-socket hook (new `project-agent-context.updated` + issue-activity invalidation of `qk.projectAgentContext`). 12 new e2e cases in `agent-context.spec.ts` (desktop 1280 + mobile 393): empty state, write→render→survives reload, a second live session sees the save with no reload, the staleness pill appearing live after another session changes an issue, VIEWER read-only, and the 64 KB inline-error path — all green, plus `settings-robustness.spec.ts` (15) + `gitlab-integration.spec.ts` (5) + `project-members.spec.ts` (4) regression re-verified green.
 
