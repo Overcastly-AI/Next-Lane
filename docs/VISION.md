@@ -98,8 +98,10 @@ materially changes.
 | Mobile | Behind | Stays Behind, reinforced with fresh negative evidence. This pass's own flagship feature, Swimlanes v2, shipped a P1 regression: the board's "Group by" and filter-chip dropdown menus are functionally clickable but render **completely invisible** on a real 393px phone (`overflow-x-clip` suppresses the paint of an absolutely-positioned menu that extends past the viewport) — the pre-existing quick-filter chip row also regressed to silently clipping "Recently updated" off-canvas with no scroll cue (AUDIT-PRODUCT.md Pass 12). Mobile went from "missing a native app" (a static, known gap) to actively regressing on web-mobile usability of a brand-new feature; the fix is queued as the top-priority item. |
 | Reliability / coherence-of-state | **Parity** | Elevated from Behind this pass. Pass-11's headline defect — the workspace/tenant context lying to the header chip on up to 7 of 15 routes — is genuinely and fully fixed via the recommended structural pattern: `useSyncActiveWorkspace` hoisted into route-level `WorkspaceScopedLayout`/`ProjectScopedLayout` wrappers so every scoped route derives truth from the URL instead of opt-in context sync, "CONFIRMED FIXED — structurally" by engineering and independently re-verified by product with a fresh two-workspace deep-link matrix covering every previously-broken page (both AUDIT-PRODUCT.md and AUDIT-ENGINEERING.md, Pass 12). Not yet Better: the same wave shipped a fresh P1 in the same "green tests, broken shipped artifact" failure class that already burned this project once — the dark-mode no-flash bootstrap script is silently blocked by the production CSP's `script-src` (no hash/nonce/`unsafe-inline`), so every reload with a dark preference flashes light first and logs a CSP violation in real deployments (AUDIT-ENGINEERING.md Pass 12, P1). A fix (CSP hash allowlist + a Docker-artifact Playwright gate) is in flight. |
 | Admin controls | Behind | Stays Behind. SSO/OIDC Phase 1 shipped and is correctly gated (no broken UI when unconfigured) and the workspace-switcher search/recents closed a second admin-adjacent gap — but two blockers an evaluating enterprise/agency admin checks first remain unaddressed: SSO configuration is env-var/redeploy-only with no in-app admin settings screen, and per-project role override is still schema-confirmed absent, unchanged since Pass 9 (AUDIT-PRODUCT.md Pass 12). |
+| Knowledge / Docs | Behind | **New row (2026-07-09, vision-steward, founder directive; scope sharpened same day to a Confluence × Obsidian hybrid).** Absent today — a whole category the incumbent wins by default because their paired wiki product exists and ours doesn't yet. Not a re-score of shipped work; a newly-tracked dimension so this gap can't hide. **Target once Phase 11 v1 ships: not Parity, not even "Better" in the usual sense — genuinely BEYOND both reference points.** The incumbent's own wiki product has no knowledge graph and no agent API at all; Obsidian has the graph but is local-only with no team backbone and structurally no server-side agent API. Next Lane v1 ships a team wiki (Confluence's backbone: RBAC, version history, self-hosted) **+** a `[[wiki-link]]`-driven knowledge graph with a backlinks panel and a force-directed graph view (Obsidian's signature) **+** an agent that can traverse and author that graph over MCP (`get_page_graph`, `get_page_backlinks`, read/write pages) — a combination neither incumbent offers today, at any price. Tracked in `docs/ROADMAP.md` Phase 11 and `docs/BACKLOG.md` Ready queue. |
 
-**Tally as of 2026-07-02 (Pass-12 re-score): 4 better / 3 parity / 3 behind.**
+**Tally as of 2026-07-09 (vision-steward pass — new "Knowledge / Docs" row
+added, no re-score of the other ten): 4 better / 3 parity / 4 behind.**
 This is the honest current state, not a target. The backlog-groomer sequences
 work to flip "behind" rows first — see the "Better-than-Jira gaps" note in
 `docs/BACKLOG.md`, and `docs/ROADMAP.md` § Current focus for this pass's
@@ -163,6 +165,46 @@ prioritized; it is no longer open work.
 6. **Team rituals & personal workspace** *(Phase 10 — shipped)* — async
    standups, private personal boards/scratchpads, and personal + team analytics.
    Make it the place people start their day, not just where tickets live.
+7. **Pages — a Confluence × Obsidian hybrid, agent-traversable** *(Phase 11 —
+   new, kickoff 2026-07-09, founder directive, scope sharpened 2026-07-09:
+   "Could it be hybrid of confluence and obsidian md? I really like the graph
+   feature of obsidian.")* — bundled free into the same self-hosted app:
+   Confluence's team backbone (project-scoped nestable page trees,
+   fractional-rank sibling ordering reusing the board's own scheme, **version
+   history on every save** — Confluence's own signature differentiator, not
+   an afterthought — RBAC, audit) **fused with** Obsidian's linked-thought
+   substance (Markdown-native pages, typed `[[wiki-links]]` between pages, a
+   **backlinks panel** on every page — "what links here," Obsidian's
+   most-loved feature after the graph — and a **knowledge graph view**: a
+   force-directed node graph of a project's pages and their `[[links]]`,
+   Obsidian's signature visual). Issue↔page cross-linking (a page mentioning
+   `NL-123` auto-links; the issue drawer surfaces its linked pages) folds
+   issues into the same graph as another edge type — the tight tracker↔docs
+   integration the incumbent splits across two separately-priced products,
+   neither of which has a graph at all. **Crown-jewel differentiator: the
+   graph is agent-traversable over MCP** — not just a pretty view. An agent
+   reads and writes pages, follows `[[wiki-links]]`, and walks backlinks the
+   same way it reads and writes issues today ("what's connected to this
+   spec?", "walk the backlinks from this page"). **Neither incumbent can
+   follow us here**: Confluence has team/RBAC/history but no graph and no
+   agent API into its docs; Obsidian has the graph and the linked-thought UX
+   but is local-only — no team backbone, no self-hosted multi-user server,
+   and structurally no agent-traversable API since there's no server to call.
+   Next Lane is the only one with all three at once: Confluence's team
+   backbone + Obsidian's linked-thought graph + an agent that can traverse
+   and author it — self-hosted, free, MIT. One-line thesis: *the incumbent
+   charges per-seat for the tracker AND, separately, for a wiki with no
+   graph and no agent access — Next Lane bundles a team wiki, a knowledge
+   graph, and agent read/write access to both, free, self-hosted, in one
+   app.* Reuses nearly all existing infrastructure rather than a parallel
+   stack: tenant isolation, per-project RBAC, PAT scopes, fractional
+   ranking, full-text search (Postgres `tsvector`/GIN), and `ShareToken`
+   (for the later public share-link slice) — the graph and backlinks are new
+   surface area (a `PageLink` edge table, a graph endpoint, a force-directed
+   UI, and MCP graph-traversal tools), not a rebuild. See `docs/ROADMAP.md`
+   Phase 11 for the sequenced v1 slices; the former one-line "Docs / wiki"
+   stub under Phase 8 (The Unbundle) is promoted here rather than
+   duplicated.
 
 ## Operating principles
 

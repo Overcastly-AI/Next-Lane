@@ -239,7 +239,7 @@ Everything the incumbents meter or lock away, given freely because it's self-hos
 Bundle, for free, what the incumbents sell as *separate paid products*. One
 self-hosted app replaces a tracker + a wiki + a whiteboard + a feedback tool.
 
-- ⬜ **Docs / wiki** — markdown knowledge base scoped to workspace & projects, cross-linked with issues (`#NL-123` ↔ page back-references); reuses the existing sanitized markdown renderer.
+- 🚧 **Docs / wiki ("Pages")** — promoted to its own pillar and phase given the crown-jewel MCP + knowledge-graph angle: see **Phase 11 — Pages: a Confluence × Obsidian hybrid, agent-traversable**, below, and `docs/VISION.md` § The pillars, item 7. (Kept as a Phase-8 bullet for continuity with the original Unbundle framing — not duplicated content, just cross-referenced.)
 - ⬜ **Whiteboard / story-mapping canvas** — infinite canvas for planning, story maps, and retros; cards can promote to real issues; realtime multi-cursor via the existing Socket.io layer.
 - ⬜ **Public roadmap + feature-voting portal** — publish a project as a customer-facing roadmap with upvotes and status; built on the existing share-token mechanism. A whole separate SaaS, free, for OSS maintainers & product teams.
 - ⬜ **Intake forms** — public, brandable submission forms that create pre-triaged issues (support/bug/feature intake); self-serve helpdesk-lite.
@@ -267,6 +267,108 @@ live.
 - ✅ **Personal & team analytics backend** — `AnalyticsModule` (`apps/api/src/analytics/`): `GET /me/analytics?days=N` → `PersonalAnalyticsDto` (open/completed/overdue assigned issues, per-day throughput flow series, avg cycle time, byType/byPriority CategoryCountDto groups, personal board stats); `GET /projects/:projectId/analytics?days=N` → `ProjectAnalyticsDto` (per-day flow series, createdTotal/completedTotal, avg cycle time, all-5-bucket CycleTimeBucketDto distribution with en-dash labels, WorkloadRowDto by assignee busiest-first + Unassigned row); both endpoints use ActivityLog completion-date reconstruction identical to reports.service; `days` defaults to 30, clamped to [1, 366]; 25 unit tests (analytics.service.spec.ts); build + typecheck clean; registered in AppModule. (2026-06-28)
 - ✅ **Personal & team analytics frontend** (2026-06-28) — `PersonalAnalyticsPage` at `/me/analytics` (14/30/90-day window selector, headline stat cards, hand-rolled SVG throughput chart, type/priority horizontal bar breakdowns, personal board mini-stats); `ProjectAnalyticsPage` at `/projects/:projectId/analytics` (window selector, headline stats, flow chart, cycle-time distribution, workload bars by assignee); "Analytics" tab in `ProjectNav`; "Insights" link in `AppHeader`; WCAG-AA, accessible charts with visually-hidden summaries; full data-testid coverage; Playwright e2e (desktop + mobile); build green.
 
+## Phase 11 — Pages: a Confluence × Obsidian hybrid, agent-traversable 🚧 (kickoff — founder directive 2026-07-06, scope sharpened 2026-07-09)
+
+**Founder directive, verbatim (2026-07-06): "How can we add a confluence type
+section?"** **Sharpened same-week (2026-07-09): "Could it be hybrid of
+confluence and obsidian md? I really like the graph feature of obsidian."**
+The dominant incumbent's wiki is a *second, separately-priced* product for
+the exact same audience Next Lane already serves — and it has no knowledge
+graph at all. Obsidian has the graph and the linked-thought UX but is
+local-only: no team backbone, no self-hosted multi-user server, no agent API.
+Next Lane Pages is the hybrid neither offers: Confluence's team/RBAC/version-
+history backbone **+** Obsidian's `[[wiki-link]]`-driven knowledge graph
+**+** an agent that can traverse and author that graph over MCP. See
+`docs/VISION.md` § Better-than-Jira scorecard, the new "Knowledge / Docs" row
+(target: **beyond** both reference points, not just Parity), and § The
+pillars, item 7. **Leads with the crown-jewel framing: the graph is
+agent-traversable, not just a pretty view** — "what's connected to this
+spec?", "walk the backlinks from this page," answered over MCP the same way
+an agent reads/writes issues today. Deliberately sequenced to reuse nearly
+all of Next Lane's existing infrastructure — tenant isolation, per-project
+RBAC, PAT scopes, fractional ranking (the board's own scheme), full-text
+search (Postgres `tsvector`/GIN), and `ShareToken` — with the graph, backlinks,
+and `[[wiki-link]]` parsing as the genuinely new surface area.
+
+**v1 slices (sequenced; full scope/acceptance-criteria/territory/size for
+each lives in `docs/BACKLOG.md` § Ready — schema is at the top of that
+queue and already in flight):**
+
+1. 🚧 **Schema + migration** — `Page` (project-scoped, nestable via a
+   `parentId` self-relation, fractional `rank` for sibling ordering — reuses
+   the board's ranking scheme rather than inventing a second one — markdown
+   `content`, `createdById`/`updatedById`), `PageVersion` (an immutable
+   snapshot on every save: author, timestamp, full content — Confluence's
+   own signature differentiator, not an afterthought), and **`PageLink`**
+   (a directed edge table, `sourcePageId` → `targetPageId`, one row per
+   resolved `[[wiki-link]]` — the backing store for the backlinks panel and
+   the graph view, added to this same schema pass per the founder's
+   Obsidian-hybrid directive). Additive only.
+   **In progress now, concurrently with this roadmap pass — schema-architect.**
+2. ⬜ **Backend module — CRUD/tree-move/version history** — `PagesModule`:
+   CRUD, tree-move (reparent + resibling by rank, mirrors board
+   drag-and-drop semantics), version history (list/get/restore-as-new-
+   version, never destructive), VIEWER read / MEMBER+ write via the
+   existing `assertProjectMember`/`assertProjectRole` chokepoint, new
+   `pages:read`/`pages:write` PAT scopes gated from day one (no
+   Hardening-Night-style retrofit needed).
+3. ⬜ **Backend — `[[wiki-link]]` parsing + `PageLink` sync on save** —
+   Obsidian's substance: every save parses `[[Page Title]]` tokens out of
+   the markdown content, resolves them to a target page by title within the
+   project, and upserts/prunes `PageLink` rows to match exactly (idempotent
+   — re-saving unchanged content is a no-op diff). Unresolved links (no
+   matching page title) are tracked, Obsidian-style, rather than silently
+   dropped — surfaced in the editor and excluded from graph edges until
+   resolved.
+4. ⬜ **Backend — graph endpoint** — `GET /projects/:id/pages/graph` returns
+   the project's full node/edge set (pages as nodes, `PageLink` rows as
+   edges; issue cross-links from slice 8 layered in as a second edge type
+   once that slice ships) for the force-directed graph UI to render.
+5. ⬜ **Frontend — tree nav + markdown editor + version history** —
+   nestable tree-nav (drag-to-reorder/reparent via dnd-kit, reusing the
+   board's rank-based DnD pattern), markdown editor reusing the existing
+   sanitized `MarkdownRenderer`/edit-view-toggle pattern from issue
+   descriptions and comments (not a parallel renderer) with `[[`-triggered
+   page-title autocomplete, version-history panel (view a past version,
+   restore with a `ConfirmDialog` guard). Built with the `frontend-design`
+   skill per the standing design-elevation directive; VIEWER read-only.
+6. ⬜ **Frontend — backlinks panel** — every page shows "what links here":
+   the reverse `PageLink` query rendered as a panel beneath/beside the
+   editor — Obsidian's most-loved feature after the graph itself.
+7. ⬜ **Frontend — knowledge graph view** — a force-directed node graph of a
+   project's pages and their `[[links]]` (Obsidian's signature visual),
+   reachable from the Pages nav; nodes open the corresponding page on
+   click. Once issue cross-linking (slice 8) ships, issue nodes/edges layer
+   into the same graph rather than shipping a second, disconnected view.
+8. ⬜ **MCP tools — Pages CRUD + version history.** `list_pages`/`get_page`/
+   `create_page`/`update_page`/`move_page`/`delete_page`/
+   `list_page_versions`/`get_page_version`/`restore_page_version`,
+   compact/verbose + paginated envelope matching the existing MCP
+   conventions.
+9. ⬜ **MCP tools — graph & backlink traversal (crown jewel).**
+   `get_page_graph`/`get_page_backlinks`/`get_page_links` (outgoing) —
+   this is the differentiator that neither incumbent can follow us into:
+   an agent traverses a team's knowledge graph the same way it reads/writes
+   issues, not a local-only Obsidian vault with no server API and not a
+   Confluence with no graph to traverse in the first place. Framed in the
+   server's protocol-level `instructions` and tool descriptions the same
+   way per-project agent-context memory is — an agent should treat Pages
+   as living, connected documentation to keep current, not a one-off note.
+10. ⬜ **Issue ↔ page cross-linking** — a page referencing `NL-123`
+    auto-links; the issue drawer gains a "Linked pages" section (mirrors
+    the GitHub/GitLab/Gitea Development-section link pattern); the same
+    link becomes a graph edge (slices 4/7/9). Cross-project key references
+    stay out of scope for v1, matching the existing issue-key-extraction
+    scoping convention.
+11. ⬜ **Full-text search** — Pages join the existing Postgres
+    `tsvector`/GIN search infrastructure (issues today); surfaced in the
+    command palette and cross-project search, visually distinguished from
+    issue results.
+12. 🔭 **Later (not v1)** — page comments, page templates, workspace-level
+    "spaces" (grouping projects' page trees under a workspace), and public
+    page share links (reuse `ShareToken`, mirroring the dashboard/board
+    share-link pattern).
+
 ---
 
 ### Current focus
@@ -285,6 +387,22 @@ parity, 3 behind** (up from 3/2/5) — Reporting and Reliability/coherence-of-st
 both flipped Behind → Parity, and Search & query power flipped Parity → Better.
 Work is sequenced below to close what's left, in the order the two Pass-12
 audits' evidence implies, ahead of any new pillar or moonshot.
+
+**New current focus (2026-07-09): Pages — a Confluence × Obsidian hybrid,
+agent-traversable knowledge base (founder directive 2026-07-06, "How can we
+add a confluence type section?"; sharpened 2026-07-09, "Could it be hybrid
+of confluence and obsidian md? I really like the graph feature of
+obsidian.").** This is the one exception to "no new pillar ahead of closing
+Behind rows" above — it doesn't compete with that work, it opens a category
+Next Lane doesn't play in at all yet (the new "Knowledge / Docs" scorecard
+row, `docs/VISION.md`, targeted at *beyond* both Confluence and Obsidian, not
+mere parity with either). See **Phase 11**, above, for the pillar framing and
+sequenced v1 slices — schema (incl. the `PageLink` graph-edge table) →
+backend CRUD → `[[wiki-link]]` parsing → graph endpoint → frontend
+tree/editor → backlinks panel → graph view → MCP CRUD tools → MCP graph/
+backlink traversal tools (the crown jewel) → issue-linking → search — and
+`docs/BACKLOG.md` § Ready for the buildable queue (schema is already in
+flight, concurrent with this doc pass).
 
 **Founder directive (2026-07-03, shipped same day): per-project agent context memory over MCP** — every project carries a persistent agent handoff document (read-first/hand-off-last, prompted at the protocol layer via MCP server instructions + tool descriptions, distributable `skills/project-context` Agent Skill, measured staleness signal). The agent-native pillar now includes cross-session memory. **Web-UI panel follow-up — ✅ shipped 2026-07-03**: a new "Agent context" section on project Settings (`AgentContextSection.tsx`, after Members/GitLab) renders the shared handoff document as markdown (empty-state copy, updatedAt/updatedBy metadata, amber "N changes since last update" staleness pill), edit-in-place (Edit → textarea → Save/Cancel, toast on save, inline error on the 64 KB cap) for effective project MEMBER+, read-only for VIEWER; realtime via the existing `useBoardRealtime` project-socket hook (new `project-agent-context.updated` + issue-activity invalidation of `qk.projectAgentContext`). 12 new e2e cases in `agent-context.spec.ts` (desktop 1280 + mobile 393): empty state, write→render→survives reload, a second live session sees the save with no reload, the staleness pill appearing live after another session changes an issue, VIEWER read-only, and the 64 KB inline-error path — all green, plus `settings-robustness.spec.ts` (15) + `gitlab-integration.spec.ts` (5) + `project-members.spec.ts` (4) regression re-verified green.
 
