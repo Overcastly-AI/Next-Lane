@@ -2,6 +2,12 @@
  * KnowledgeGraphView — the Obsidian-style force-directed graph of a
  * project's pages (nodes) and `[[wiki-link]]` references (edges).
  *
+ * Visual language (founder directive: match Obsidian's graph feel): nodes are
+ * filled DOTS sized by degree (hubs read as bigger circles) with the title in
+ * small quiet text underneath — not bordered pills; edges are whisper-thin
+ * and undirected-looking; hovering a node lights up its neighborhood and
+ * hard-fades everything else (the "constellation" effect).
+ *
  * Deliberately hand-rolled on plain SVG (`createForceSimulation`,
  * `src/lib/forceLayout.ts`) instead of a graph library (d3-force/cytoscape/
  * sigma/...) — self-hosted-friendly, zero extra runtime dependency, and the
@@ -38,11 +44,21 @@ const MIN_SCALE = 0.35;
 const MAX_SCALE = 3;
 const TOTAL_ITERATIONS = 220;
 const ANIMATE_NODE_CAP = 150; // above this, skip incremental frames even with motion allowed
-// Rendered node "pill" box. The layout is given these half-extents as padding
-// so a node clamped at a canvas edge still renders fully on-screen (its box is
-// centered on the layout point) instead of clipping its label — QA defect.
-const NODE_W = 132;
-const NODE_H = 40;
+// Obsidian-style node geometry: a filled DOT centered exactly on the layout
+// point (so edges terminate at dot centers), with the page title in small,
+// quiet text UNDERNEATH the dot — not a bordered pill. The dot's diameter
+// scales with the node's degree (link count), so hub pages read instantly as
+// bigger circles, exactly like Obsidian's graph. The hit-target/label box is
+// wider than the dot; the layout is given these extents as padding so a node
+// clamped at a canvas edge still renders fully on-screen (QA defect guard).
+const NODE_W = 108;
+/** Vertical slot the dot is centered in (box top → dot center = half this). */
+const NODE_DOT_SLOT = 26;
+/** Full box height: dot slot + label line(s). */
+const NODE_H = 54;
+/** Dot diameter range — min for orphans, max for the densest hubs. */
+const DOT_MIN = 9;
+const DOT_MAX = 26;
 
 export interface KnowledgeGraphViewProps {
   projectId: string;
@@ -110,6 +126,17 @@ export function KnowledgeGraphView({ projectId, onOpenPage }: KnowledgeGraphView
     return map;
   }, [edges]);
 
+  // Obsidian-style degree→size: hubs render as visibly bigger dots. Square
+  // root so the first few links grow the dot fast and dense hubs saturate
+  // instead of dwarfing the canvas.
+  const dotSize = useCallback(
+    (id: string) => {
+      const degree = neighbors.get(id)?.size ?? 0;
+      return DOT_MIN + (DOT_MAX - DOT_MIN) * Math.sqrt(Math.min(degree, 12) / 12);
+    },
+    [neighbors],
+  );
+
   // Compute (and, when motion is allowed, animate) the force layout whenever
   // the graph data or the available canvas size changes. The simulation runs
   // in per-frame chunks off a single stateful stepper so a large graph's
@@ -127,9 +154,10 @@ export function KnowledgeGraphView({ projectId, onOpenPage }: KnowledgeGraphView
       width,
       height,
       iterations: TOTAL_ITERATIONS,
-      // Keep node centers inset by the box half-extents (+2px breathing room)
-      // so labels never clip at the canvas edge.
-      padding: { x: NODE_W / 2 + 2, y: NODE_H / 2 + 2 },
+      // Keep node centers inset so the full dot+label box never clips at a
+      // canvas edge: horizontally half the label width, vertically the taller
+      // of (dot slot above the point) and (label hanging below it).
+      padding: { x: NODE_W / 2 + 2, y: NODE_H - NODE_DOT_SLOT / 2 + 4 },
     });
     const animate = !reducedMotion && nodes.length <= ANIMATE_NODE_CAP;
     // Small graphs animate in fine steps; large/reduced-motion graphs take
@@ -292,17 +320,10 @@ export function KnowledgeGraphView({ projectId, onOpenPage }: KnowledgeGraphView
             onWheel={onWheel}
             onKeyDown={onCanvasKeyDown}
           >
-            <defs>
-              <marker id="pg-arrow" markerWidth={7} markerHeight={7} refX={6} refY={3.5} orient="auto" markerUnits="strokeWidth">
-                <path d="M0,0 L7,3.5 L0,7 z" className="fill-ink-300" />
-              </marker>
-              <marker id="pg-arrow-active" markerWidth={7} markerHeight={7} refX={6} refY={3.5} orient="auto" markerUnits="strokeWidth">
-                <path d="M0,0 L7,3.5 L0,7 z" className="fill-signal-500" />
-              </marker>
-            </defs>
-
             <g transform={groupTransform}>
-              {/* Edges */}
+              {/* Edges — whisper-thin, undirected-looking (Obsidian style: no
+                  arrowheads); the hovered node's edges light up while every
+                  other edge fades almost out. */}
               {edges.map((e, i) => {
                 const a = positions.get(e.sourceId);
                 const b = positions.get(e.targetId);
@@ -316,32 +337,39 @@ export function KnowledgeGraphView({ projectId, onOpenPage }: KnowledgeGraphView
                     y1={a.y}
                     x2={b.x}
                     y2={b.y}
-                    strokeWidth={isActive ? 2 : 1.25}
-                    className={isActive ? 'stroke-signal-500' : 'stroke-ink-300'}
-                    style={{ opacity: isDimmed ? 0.15 : 1 }}
-                    markerEnd={`url(#${isActive ? 'pg-arrow-active' : 'pg-arrow'})`}
+                    strokeWidth={isActive ? 1.75 : 1}
+                    strokeLinecap="round"
+                    className={cn(
+                      isActive ? 'stroke-signal-400' : 'stroke-ink-300',
+                      'transition-opacity duration-[160ms] motion-reduce:transition-none',
+                    )}
+                    style={{ opacity: isDimmed ? 0.07 : isActive ? 0.95 : 0.55 }}
                   />
                 );
               })}
 
-              {/* Nodes */}
+              {/* Nodes — a filled dot centered ON the layout point (edges
+                  terminate at dot centers), sized by degree so hub pages read
+                  as bigger circles, with the title in small quiet text
+                  underneath. Hovering hard-fades everything outside the
+                  node's neighborhood — the Obsidian "constellation" effect. */}
               {nodes.map((n) => {
                 const p = positions.get(n.id);
                 if (!p) return null;
                 const isHovered = hoveredId === n.id;
                 const isNeighbor = hoveredId !== null && (neighbors.get(hoveredId)?.has(n.id) ?? false);
                 const isDimmed = hoveredId !== null && !isHovered && !isNeighbor;
-                const w = NODE_W;
-                const h = NODE_H;
+                const size = dotSize(n.id);
                 return (
                   <foreignObject
                     key={n.id}
-                    x={p.x - w / 2}
-                    y={p.y - h / 2}
-                    width={w}
-                    height={h}
+                    x={p.x - NODE_W / 2}
+                    y={p.y - NODE_DOT_SLOT / 2}
+                    width={NODE_W}
+                    height={NODE_H}
                     overflow="visible"
-                    style={{ opacity: isDimmed ? 0.25 : 1 }}
+                    className="transition-opacity duration-[160ms] motion-reduce:transition-none"
+                    style={{ opacity: isDimmed ? 0.12 : 1 }}
                   >
                     <button
                       type="button"
@@ -352,20 +380,34 @@ export function KnowledgeGraphView({ projectId, onOpenPage }: KnowledgeGraphView
                       onMouseLeave={() => setHoveredId((h2) => (h2 === n.id ? null : h2))}
                       onFocus={() => setHoveredId(n.id)}
                       onBlur={() => setHoveredId((h2) => (h2 === n.id ? null : h2))}
-                      className={cn(
-                        'flex h-full w-full items-center gap-1.5 rounded-full border px-3 py-1.5 text-left shadow-xs',
-                        'transition-colors duration-[120ms] motion-reduce:transition-none',
-                        'focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-400',
-                        isHovered
-                          ? 'border-signal-400 bg-signal-50 text-signal-800'
-                          : 'border-ink-200 bg-surface text-ink-700 hover:border-signal-300 hover:bg-signal-50/60',
-                      )}
+                      className="group flex h-full w-full flex-col items-center text-center focus:outline-none"
                     >
+                      {/* Fixed-height slot keeps the dot's center pinned to the
+                          layout point regardless of dot size. */}
                       <span
+                        className="flex shrink-0 items-center justify-center"
+                        style={{ height: NODE_DOT_SLOT }}
                         aria-hidden="true"
-                        className={cn('h-1.5 w-1.5 shrink-0 rounded-full', isHovered ? 'bg-signal-500' : 'bg-ink-300')}
-                      />
-                      <span className="min-w-0 truncate text-xs font-medium leading-tight">{n.title}</span>
+                      >
+                        <span
+                          className={cn(
+                            'rounded-full transition-[background-color,box-shadow] duration-[120ms] motion-reduce:transition-none',
+                            'group-focus-visible:ring-2 group-focus-visible:ring-signal-400 group-focus-visible:ring-offset-2',
+                            isHovered || isNeighbor
+                              ? 'bg-signal-500 ring-4 ring-signal-500/15'
+                              : 'bg-ink-400 group-hover:bg-signal-400',
+                          )}
+                          style={{ width: size, height: size }}
+                        />
+                      </span>
+                      <span
+                        className={cn(
+                          'mt-0.5 w-full truncate px-1 text-[10.5px] font-medium leading-tight',
+                          isHovered ? 'text-signal-700' : 'text-ink-500',
+                        )}
+                      >
+                        {n.title}
+                      </span>
                     </button>
                   </foreignObject>
                 );

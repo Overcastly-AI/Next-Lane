@@ -14,6 +14,19 @@ This section summarizes the major capabilities delivered in the pre-1.0
 development phase. A versioned release will be tagged once the v1 criteria in
 [`docs/ROADMAP.md`](./docs/ROADMAP.md) are complete.
 
+### Changed — 2026-07-09 (Knowledge graph: Obsidian-style visual redesign — founder directive)
+
+The graph view now speaks Obsidian's visual language instead of bordered
+pills: every page is a **filled dot sized by its link count** (hub pages read
+instantly as bigger circles) with the title in small quiet text underneath;
+edges are whisper-thin and undirected-looking (arrowheads dropped); hovering
+a node lights up its whole neighborhood in the signal color while everything
+else hard-fades — the "constellation" effect. Dots stay centered on the
+layout points so edges terminate at dot centers; hover/focus states use
+brandable design tokens (no hardcoded colors); all test hooks, keyboard
+focus, reduced-motion behavior, and the edge-clipping guard preserved — all
+24 Pages e2e green desktop+mobile after the redesign.
+
 ### Added — 2026-07-09 (Pages full-text search + issue↔page cross-linking)
 
 - **Full-text search over pages** — `Page` gains a Postgres `searchVector`
