@@ -206,6 +206,26 @@ and the two pre-existing decision-gated items renumber from #6/#7 to
    `apps/api/src/search/**`, `apps/web/src/components/CommandPalette*` /
    cross-project search UI. **Size:** S.
 
+8. **Pages — delete-time backlink impact signal** (P2, S; MCP-QA pass 3
+   finding, `docs/MCP-QA.md`) — deleting a page today succeeds silently even
+   when OTHER pages link to it. The graph stays consistent (the `PageLink`
+   rows cascade-delete), but the *source* pages' content keeps a now-dangling
+   `[[Title]]` that renders as an unresolved/create-it link with no warning at
+   delete time — unlike the existing tree-children guard, which blocks and
+   explains. An agent (or user) gets no "N pages link here" signal before
+   destroying an inbound-linked hub. **Scope:** surface the inbound backlink
+   count on delete — the web delete `ConfirmDialog` warns "N pages link here
+   (their links will become unresolved)"; `delete_page` (MCP) + the REST
+   response report the count so an agent isn't blind. Do NOT block the delete
+   (deleting a linked page is legitimate, Obsidian-style) — this is an
+   informed-consent affordance, mirroring the backlinks panel the editor
+   already shows. **Acceptance criteria:** deleting a page with ≥1 backlink
+   surfaces the count in both the web confirm dialog and the delete API/MCP
+   response; deleting an unlinked page is unchanged; the graph/backlinks of
+   surviving pages remain consistent. **Territory:** `apps/api/src/pages/**`,
+   `apps/web/src/components/pages/PageTree.tsx`, `apps/mcp/src/tools/**`.
+   **Size:** S.
+
 **Later (not v1 — filed in § Later (P3) below, referenced here for the
 epic's full shape):** page comments, page templates, workspace-level
 "spaces" (grouping projects' page trees under a workspace), public page
