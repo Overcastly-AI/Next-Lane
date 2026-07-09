@@ -1,4 +1,4 @@
-import { IsOptional, IsString, MaxLength, MinLength, ValidateIf } from 'class-validator';
+import { IsOptional, IsString, Matches, MaxLength, MinLength, ValidateIf } from 'class-validator';
 import { IsMaxByteLength } from './is-max-byte-length.decorator';
 
 /**
@@ -8,11 +8,24 @@ import { IsMaxByteLength } from './is-max-byte-length.decorator';
  */
 export const PAGE_CONTENT_MAX_BYTES = 256 * 1024;
 
+/**
+ * Characters forbidden in a page title. `[`, `]`, and `|` are the delimiters
+ * of the `[[title|alias]]` wiki-link grammar (see `packages/shared/wikilink`)
+ * — a title containing any of them can't be encoded as a link target, so a
+ * `[[...]]` reference to it would silently fail to parse (no `PageLink` edge,
+ * no rendered link). Forbidding them at write time keeps every title
+ * linkable, the same constraint Obsidian enforces on note names.
+ */
+export const PAGE_TITLE_FORBIDDEN_RE = /^[^[\]|]+$/;
+export const PAGE_TITLE_FORBIDDEN_MESSAGE =
+  'title must not contain the characters [ ] | (they are reserved for [[wiki-links]])';
+
 /** Body for `POST /projects/:projectId/pages`. */
 export class CreatePageDto {
   @IsString()
   @MinLength(1)
   @MaxLength(300)
+  @Matches(PAGE_TITLE_FORBIDDEN_RE, { message: PAGE_TITLE_FORBIDDEN_MESSAGE })
   title!: string;
 
   /** Markdown body. Omitted defaults to `""`. */

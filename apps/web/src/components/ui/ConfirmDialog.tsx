@@ -12,6 +12,8 @@ export interface ConfirmDialogProps {
   /** 'danger' styles the confirm button as destructive. */
   variant?: 'primary' | 'danger';
   loading?: boolean;
+  /** Disable the confirm action (e.g. a precondition isn't met). */
+  confirmDisabled?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -29,6 +31,7 @@ export function ConfirmDialog({
   cancelLabel = 'Cancel',
   variant = 'primary',
   loading = false,
+  confirmDisabled = false,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
@@ -48,6 +51,7 @@ export function ConfirmDialog({
             variant={variant}
             type="button"
             loading={loading}
+            disabled={confirmDisabled}
             onClick={onConfirm}
           >
             {confirmLabel}

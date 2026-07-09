@@ -11,6 +11,7 @@ import type {
 } from '@next-lane/shared';
 import { request } from './client';
 import { qk, invalidatePagesFamily } from './keys';
+import { optimisticallyReorderTree } from './pages.reorder';
 
 // ---------------------------------------------------------------------------
 // Reads
@@ -173,38 +174,6 @@ export function useMovePage(projectId: string) {
       invalidatePagesFamily(qc, projectId);
     },
   });
-}
-
-/** Best-effort client-side reorder of the tree cache for instant feedback. */
-function optimisticallyReorderTree(
-  tree: PageTreeNode[],
-  { id, beforeId, afterId }: MovePageVars,
-): PageTreeNode[] {
-  // Only handle the simple, common case here: a same-level swap with an
-  // adjacent sibling (what the up/down affordance produces). Reparenting or
-  // cross-branch drops just fall through unchanged until the server settles
-  // (still correct, just a one-frame delay instead of instant).
-  function reorderSiblings(nodes: PageTreeNode[]): PageTreeNode[] {
-    const idx = nodes.findIndex((n) => n.id === id);
-    if (idx === -1) {
-      return nodes.map((n) =>
-        n.children.length ? { ...n, children: reorderSiblings(n.children) } : n,
-      );
-    }
-    const next = nodes.slice();
-    const [moved] = next.splice(idx, 1);
-    if (afterId) {
-      const afterIdx = next.findIndex((n) => n.id === afterId);
-      next.splice(afterIdx === -1 ? next.length : afterIdx + 1, 0, moved);
-    } else if (beforeId) {
-      const beforeIdx = next.findIndex((n) => n.id === beforeId);
-      next.splice(beforeIdx === -1 ? 0 : beforeIdx, 0, moved);
-    } else {
-      next.push(moved);
-    }
-    return next;
-  }
-  return reorderSiblings(tree);
 }
 
 export function useRestorePageVersion(projectId: string) {

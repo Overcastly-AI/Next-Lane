@@ -1,6 +1,6 @@
 import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Role, initialRanks } from '@next-lane/shared';
-import { PagesService, MAX_GRAPH_NODES, MAX_GRAPH_EDGES } from './pages.service';
+import { PagesService, MAX_GRAPH_NODES, MAX_GRAPH_EDGES, MAX_OUTGOING_LINKS } from './pages.service';
 import type { PrismaService } from '../prisma/prisma.service';
 import type { RealtimeService } from '../realtime/realtime.service';
 
@@ -296,7 +296,7 @@ class Harness {
           take,
         }: {
           where?: Record<string, unknown>;
-          include?: { sourcePage?: unknown };
+          include?: { sourcePage?: unknown; targetPage?: unknown };
           orderBy?: Record<string, 'asc' | 'desc'>;
           take?: number;
         }) => {
@@ -306,11 +306,12 @@ class Harness {
           sortRows(rows, orderBy);
           if (typeof take === 'number') rows = rows.slice(0, take);
           return Promise.resolve(
-            rows.map((r) =>
-              include?.sourcePage
-                ? { ...r, sourcePage: self.pages.get(r.sourcePageId) ?? null }
-                : r,
-            ),
+            rows.map((r) => {
+              let out: Record<string, unknown> = { ...r };
+              if (include?.sourcePage) out = { ...out, sourcePage: self.pages.get(r.sourcePageId) ?? null };
+              if (include?.targetPage) out = { ...out, targetPage: self.pages.get(r.targetPageId) ?? null };
+              return out;
+            }),
           );
         },
         createMany: ({ data }: { data: Array<{ sourcePageId: string; targetPageId: string }> }) => {
@@ -781,6 +782,55 @@ describe('PagesService.backlinks', () => {
     const service = makeService(h);
     const backlinks = await service.backlinks(VIEWER, page.id);
     expect(backlinks).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// links (outgoing)
+// ---------------------------------------------------------------------------
+describe('PagesService.links', () => {
+  it('resolves outgoing links from stored PageLink rows (authoritative), not re-derived from titles', async () => {
+    const h = new Harness();
+    h.setRole(VIEWER, Role.VIEWER);
+    const target = h.addPage({ title: 'Target', createdAt: new Date('2026-01-01') });
+    // A DUPLICATE title created later — proves the resolver trusts the stored
+    // edge (oldest-page-wins tie-break already applied on save), not a
+    // client-side guess that might pick the wrong same-titled page.
+    h.addPage({ title: 'Target', createdAt: new Date('2026-02-01') });
+    const source = h.addPage({ title: 'Source', content: 'see [[Target]] and [[Ghost]]' });
+    h.links.set('l1', { id: 'l1', sourcePageId: source.id, targetPageId: target.id, createdAt: new Date() });
+    const service = makeService(h);
+
+    const result = await service.links(VIEWER, source.id);
+
+    expect(result.resolved).toEqual([{ targetPageId: target.id, targetPageTitle: 'Target' }]);
+    expect(result.unresolvedTitles).toEqual(['Ghost']);
+    expect(result.truncated).toBe(false);
+  });
+
+  it('returns empty resolved + unresolved for a page with no links', async () => {
+    const h = new Harness();
+    h.setRole(VIEWER, Role.VIEWER);
+    const page = h.addPage({ title: 'Plain', content: 'no links here' });
+    const service = makeService(h);
+    const result = await service.links(VIEWER, page.id);
+    expect(result).toEqual({ resolved: [], unresolvedTitles: [], truncated: false });
+  });
+
+  it('caps resolved at MAX_OUTGOING_LINKS and sets truncated: true', async () => {
+    const h = new Harness();
+    h.setRole(VIEWER, Role.VIEWER);
+    const source = h.addPage({ title: 'Hub' });
+    for (let i = 0; i < MAX_OUTGOING_LINKS + 5; i += 1) {
+      const t = h.addPage({ title: `T${i}` });
+      h.links.set(`l${i}`, { id: `l${i}`, sourcePageId: source.id, targetPageId: t.id, createdAt: new Date(2026, 0, 1, 0, 0, i) });
+    }
+    const service = makeService(h);
+
+    const result = await service.links(VIEWER, source.id);
+
+    expect(result.resolved).toHaveLength(MAX_OUTGOING_LINKS);
+    expect(result.truncated).toBe(true);
   });
 });
 

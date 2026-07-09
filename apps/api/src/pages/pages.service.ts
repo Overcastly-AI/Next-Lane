@@ -19,6 +19,7 @@ import type {
   PageDto,
   PageBacklinkDto,
   PageGraphDto,
+  PageOutgoingLinksDto,
   PageTreeNode,
   PageVersionDto,
   PaginatedPageVersionsDto,
@@ -54,6 +55,14 @@ export const MAX_GRAPH_NODES = 1000;
  * wiki while keeping the payload sane.
  */
 export const MAX_GRAPH_EDGES = 5000;
+
+/**
+ * Hard ceiling on outgoing links returned by `GET /pages/:id/links`. A single
+ * page linking to more than this is pathological; the cap keeps the response
+ * (which `get_page` fetches by default) bounded regardless of content size.
+ * `truncated` flags when it's hit, same as the graph endpoint.
+ */
+export const MAX_OUTGOING_LINKS = 500;
 
 /** Default/max page size for `GET /pages/:id/versions`. */
 const VERSIONS_DEFAULT_LIMIT = 50;
@@ -608,6 +617,52 @@ export class PagesService {
       sourcePageTitle: row.sourcePage.title,
       createdAt: row.createdAt.toISOString(),
     }));
+  }
+
+  /**
+   * This page's outgoing `[[wiki-link]]` edges. `resolved` is read straight
+   * from the stored `PageLink` rows (the same source `graph`/`backlinks` use),
+   * so the target ids are authoritative — never a client-side re-derivation
+   * that could diverge from real link-sync when two pages share a title.
+   * `unresolvedTitles` are `[[titles]]` in the content with no matching page
+   * yet (the "link first, create later" flow); computed by diffing the parsed
+   * titles against the resolved targets' titles.
+   */
+  async links(userId: string, id: string): Promise<PageOutgoingLinksDto> {
+    const page = await this.prisma.page.findUnique({
+      where: { id },
+      select: { id: true, projectId: true, title: true, content: true },
+    });
+    if (!page) throw new NotFoundException('Page not found');
+    await assertProjectRole(this.prisma, userId, page.projectId, Role.VIEWER);
+
+    const rows = await this.prisma.pageLink.findMany({
+      where: { sourcePageId: id },
+      include: { targetPage: { select: { id: true, title: true } } },
+      orderBy: { createdAt: 'asc' },
+      take: MAX_OUTGOING_LINKS + 1,
+    });
+    const truncated = rows.length > MAX_OUTGOING_LINKS;
+    const resolved = (truncated ? rows.slice(0, MAX_OUTGOING_LINKS) : rows).map((row) => ({
+      targetPageId: row.targetPage.id,
+      targetPageTitle: row.targetPage.title,
+    }));
+
+    // Unresolved = parsed [[titles]] (self excluded) whose lowercase doesn't
+    // match any resolved target's title. Matches the resolution rule
+    // syncWikiLinks applied on the write that produced these rows.
+    const resolvedLower = new Set(resolved.map((r) => r.targetPageTitle.toLowerCase()));
+    const selfLower = page.title.toLowerCase();
+    const seen = new Set<string>();
+    const unresolvedTitles: string[] = [];
+    for (const link of parseWikiLinks(page.content)) {
+      const lower = link.title.toLowerCase();
+      if (lower === selfLower || resolvedLower.has(lower) || seen.has(lower)) continue;
+      seen.add(lower);
+      unresolvedTitles.push(link.title);
+    }
+
+    return { resolved, unresolvedTitles, truncated };
   }
 
   async graph(userId: string, projectId: string): Promise<PageGraphDto> {

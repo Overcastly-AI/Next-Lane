@@ -29,9 +29,15 @@ export function CreatePageModal({
     if (open) setTitle(initialTitle);
   }, [open, initialTitle]);
 
+  // `[ ] |` are reserved for the [[wiki-link]] grammar; a title containing
+  // them can't be linked to, so the API rejects it. Flag it inline instead of
+  // letting the user hit a round-trip 400.
+  const hasReservedChar = /[[\]|]/.test(title);
+  const canSubmit = title.trim().length > 0 && !hasReservedChar;
+
   function submit() {
     const trimmed = title.trim();
-    if (!trimmed) return;
+    if (!trimmed || hasReservedChar) return;
     onCreate(trimmed);
   }
 
@@ -46,7 +52,7 @@ export function CreatePageModal({
           <Button variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button onClick={submit} loading={loading} disabled={!title.trim()} data-testid="create-page-submit">
+          <Button onClick={submit} loading={loading} disabled={!canSubmit} data-testid="create-page-submit">
             Create
           </Button>
         </>
@@ -58,13 +64,18 @@ export function CreatePageModal({
           submit();
         }}
       >
-        <Field label="Title" htmlFor="new-page-title">
+        <Field
+          label="Title"
+          htmlFor="new-page-title"
+          error={hasReservedChar ? 'Titles can’t contain [ ] or | — they’re reserved for [[wiki-links]].' : undefined}
+        >
           <Input
             id="new-page-title"
             autoFocus
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="Page title"
+            aria-invalid={hasReservedChar}
             data-testid="create-page-title-input"
           />
         </Field>

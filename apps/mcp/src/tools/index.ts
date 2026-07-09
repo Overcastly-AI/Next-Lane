@@ -537,6 +537,41 @@ interface FlatPageRef {
 }
 
 /**
+ * Max items `list_pages` hydrates in `verbose` mode. Each hydrated item is a
+ * separate `GET /pages/:id`; the API's global throttle is ~100 req/60s, so an
+ * unclamped verbose call at `limit: 200` would issue 200 round-trips in one
+ * shot and self-trip the limiter. Clamp the hydrated slice and let the agent
+ * page through via `offset` for more.
+ */
+const VERBOSE_HYDRATE_MAX = 25;
+
+/** Concurrency for verbose hydration — fast without flooding the API. */
+const HYDRATE_CONCURRENCY = 5;
+
+/**
+ * Map `fn` over `items` with a bounded number of in-flight promises, so a
+ * large slice doesn't fire every request at once. Preserves input order.
+ */
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    while (next < items.length) {
+      const idx = next++;
+      results[idx] = await fn(items[idx]);
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, items.length) }, () => worker()),
+  );
+  return results;
+}
+
+/**
  * Flatten the nested `PageTreeNode[]` into a pre-order (rank-ordered) list —
  * the same order the sidebar renders in, and the order `list_pages` returns.
  */
@@ -569,74 +604,38 @@ const compactPageRef = (p: FlatPageRef) => ({
   archived: p.archived,
 });
 
-/**
- * Minimal mirror of `parseWikiLinks` (`packages/shared/src/wikilink.ts`,
- * title-extraction only — alias is unused here). Duplicated rather than
- * imported: `@next-lane/mcp` ships with zero `workspace:*` runtime deps (see
- * README "Run without cloning") precisely so `npx @next-lane/mcp` works
- * standalone, and `@next-lane/shared` is a private, unpublished workspace
- * package. Keep this in sync with the canonical parser if `[[wiki-link]]`
- * syntax ever changes.
- */
-const WIKI_LINK_RE = /\[\[([^[\]|]+)(?:\|([^[\]]+))?\]\]/g;
-
-function parseWikiLinkTitles(markdown: string): string[] {
-  if (!markdown) return [];
-  const titles: string[] = [];
-  WIKI_LINK_RE.lastIndex = 0;
-  let match: RegExpExecArray | null;
-  while ((match = WIKI_LINK_RE.exec(markdown)) !== null) {
-    const title = match[1].trim();
-    if (title) titles.push(title);
-  }
-  return titles;
-}
-
 /** `get_page_links` / `get_page`'s inline-orientation result shape. */
 interface OutgoingPageLinks {
   resolved: { pageId: string; title: string }[];
   unresolvedTitles: string[];
+  truncated: boolean;
+}
+
+/** Server shape of `GET /pages/:id/links` (see `PageOutgoingLinksDto`). */
+interface ApiOutgoingLinks {
+  resolved: { targetPageId: string; targetPageTitle: string }[];
+  unresolvedTitles: string[];
+  truncated: boolean;
 }
 
 /**
- * Resolve `page.content`'s `[[wiki-link]]` titles against the project's page
- * titles (via the cheap `/pages/tree`, not the full `/pages/graph`) —
- * `resolved` are titles matching an existing page (case-insensitive,
- * self-title excluded, first-in-tree-order wins a duplicate title — an
- * approximation of the API's own oldest-page-wins tie-break, since the tree
- * payload doesn't carry `createdAt`); `unresolvedTitles` are
- * referenced-but-not-yet-created titles, the same "link first, write later"
- * flow Obsidian/Notion support. Mirrors (client-side, read-only) the same
- * resolution `PagesService.syncWikiLinks` performs server-side on save.
+ * This page's outgoing `[[wiki-link]]` edges, fetched authoritatively from
+ * `GET /pages/:id/links` (backed by the stored `PageLink` rows — the same
+ * source of truth as get_page_graph/get_page_backlinks), so a resolved
+ * `pageId` is exactly what link-sync recorded, never a client-side
+ * re-derivation that could diverge when two pages share a title.
+ * `unresolvedTitles` are `[[titles]]` with no matching page yet.
  */
-async function resolveOutgoingLinks(
+async function fetchOutgoingLinks(
   client: NextLaneClient,
-  page: ApiItem,
+  pageId: string,
 ): Promise<OutgoingPageLinks> {
-  const content = typeof page.content === 'string' ? page.content : '';
-  const titles = parseWikiLinkTitles(content);
-  if (titles.length === 0) return { resolved: [], unresolvedTitles: [] };
-
-  const tree = await client.get<ApiItem[]>(`/projects/${page.projectId}/pages/tree`);
-  const byTitle = new Map<string, string>();
-  for (const ref of flattenPageTree(tree)) {
-    const key = ref.title.toLowerCase();
-    if (!byTitle.has(key)) byTitle.set(key, ref.id);
-  }
-
-  const selfTitle = typeof page.title === 'string' ? page.title.toLowerCase() : null;
-  const seen = new Set<string>();
-  const resolved: { pageId: string; title: string }[] = [];
-  const unresolvedTitles: string[] = [];
-  for (const title of titles) {
-    const key = title.toLowerCase();
-    if (seen.has(key) || key === selfTitle) continue;
-    seen.add(key);
-    const targetId = byTitle.get(key);
-    if (targetId) resolved.push({ pageId: targetId, title });
-    else unresolvedTitles.push(title);
-  }
-  return { resolved, unresolvedTitles };
+  const data = await client.get<ApiOutgoingLinks>(`/pages/${pageId}/links`);
+  return {
+    resolved: data.resolved.map((r) => ({ pageId: r.targetPageId, title: r.targetPageTitle })),
+    unresolvedTitles: data.unresolvedTitles,
+    truncated: data.truncated,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -1562,22 +1561,30 @@ const readTools: ToolDef[] = [
       "timestamps/content, so compact refs omit `updatedAt`; pass " +
       '`verbose: true` to hydrate every page in the RETURNED SLICE with its ' +
       'full object (content, author, lastEditedBy, timestamps) — this ' +
-      'issues one extra API call per item (bounded by `limit`, so prefer a ' +
-      'small limit, or get_page directly for a single page) rather than ' +
-      'multiplying every page in the project. For the wiki-link graph ' +
+      'issues one extra API call per item, fetched concurrently and capped ' +
+      'at 25 hydrated pages per call (page through the rest with `offset`), ' +
+      'or use get_page directly for a single page. For the wiki-link graph ' +
       "instead of the folder hierarchy, use get_page_graph.",
     inputSchema: { projectId: z.string().describe('Project id.'), ...compactPageParams },
     handler: async (args, client) => {
       const tree = await client.get<ApiItem[]>(`/projects/${args.projectId}/pages/tree`);
       const flat = flattenPageTree(tree);
-      const page = paginateOnly(flat, args);
       if (!args.verbose) {
+        const page = paginateOnly(flat, args);
         return pageResult({ ...page, items: page.items.map(compactPageRef) });
       }
-      const items: ApiItem[] = [];
-      for (const ref of page.items) {
-        items.push(await client.get<ApiItem>(`/pages/${ref.id}`));
-      }
+      // Verbose hydrates each returned page with a full GET; clamp the slice
+      // so one call can't fan out into hundreds of round-trips (rate-limit
+      // trip + all-or-nothing failure), and fetch concurrently for speed.
+      const rawLimit = Number(args.limit ?? DEFAULT_LIST_LIMIT);
+      const verboseLimit = Math.min(
+        Number.isFinite(rawLimit) && rawLimit > 0 ? rawLimit : DEFAULT_LIST_LIMIT,
+        VERBOSE_HYDRATE_MAX,
+      );
+      const page = paginateOnly(flat, { ...args, limit: verboseLimit });
+      const items = await mapWithConcurrency(page.items, HYDRATE_CONCURRENCY, (ref) =>
+        client.get<ApiItem>(`/pages/${ref.id}`),
+      );
       return pageResult({ ...page, items });
     },
   },
@@ -1610,7 +1617,7 @@ const readTools: ToolDef[] = [
       if (args.includeLinks === false) return jsonResult(page);
       const [backlinks, outgoing] = await Promise.all([
         client.get<ApiItem[]>(`/pages/${args.id}/backlinks`),
-        resolveOutgoingLinks(client, page),
+        fetchOutgoingLinks(client, args.id as string),
       ]);
       return jsonResult({
         ...page,
@@ -1727,8 +1734,7 @@ const readTools: ToolDef[] = [
       'wider traversal than walking page-by-page).',
     inputSchema: { pageId: z.string().describe('Page id.') },
     handler: async (args, client) => {
-      const page = await client.get<ApiItem>(`/pages/${args.pageId}`);
-      const outgoing = await resolveOutgoingLinks(client, page);
+      const outgoing = await fetchOutgoingLinks(client, args.pageId as string);
       return jsonResult({ pageId: args.pageId, ...outgoing });
     },
   },

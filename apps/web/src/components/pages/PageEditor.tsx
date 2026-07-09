@@ -121,10 +121,14 @@ export function PageEditor({
                 {unresolvedCount > 0 && (
                   <span
                     data-testid="page-unresolved-links"
-                    className="hidden items-center gap-1 rounded-full bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700 ring-1 ring-amber-200 sm:inline-flex"
+                    className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700 ring-1 ring-amber-200"
                     title="These [[links]] don't match a page yet — they'll render as a create-it affordance."
+                    aria-label={`${unresolvedCount} unresolved link${unresolvedCount === 1 ? '' : 's'}`}
                   >
-                    {unresolvedCount} unresolved link{unresolvedCount === 1 ? '' : 's'}
+                    {unresolvedCount}
+                    <span className="hidden sm:inline">
+                      &nbsp;unresolved link{unresolvedCount === 1 ? '' : 's'}
+                    </span>
                   </span>
                 )}
                 <Button variant="secondary" size="sm" onClick={handleCancel} data-testid="page-cancel-edit">

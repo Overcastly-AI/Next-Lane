@@ -114,11 +114,17 @@ export class PagesController {
     return this.pages.restoreVersion(user.id, id, n);
   }
 
-  // ── Backlinks ────────────────────────────────────────────────────────────
+  // ── Links (in + out) ─────────────────────────────────────────────────────
 
   @Get('pages/:id/backlinks')
   @RequireScope('pages:read')
   backlinks(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.pages.backlinks(user.id, id);
+  }
+
+  @Get('pages/:id/links')
+  @RequireScope('pages:read')
+  links(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.pages.links(user.id, id);
   }
 }

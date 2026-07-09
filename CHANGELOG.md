@@ -14,6 +14,31 @@ This section summarizes the major capabilities delivered in the pre-1.0
 development phase. A versioned release will be tagged once the v1 criteria in
 [`docs/ROADMAP.md`](./docs/ROADMAP.md) are complete.
 
+### Fixed — 2026-07-09 (Pages review-fix wave — reorder, graph perf, wiki-link integrity, authoritative link traversal)
+
+Post-merge code review of the Pages frontend + MCP surfaces, findings fixed inline:
+- **Optimistic page-tree reorder was inverted** — the up/down affordance
+  showed no change or an overshoot until the server settled. Fixed the splice
+  math and extracted it to a pure module (`pages.reorder.ts`) with unit tests.
+- **Knowledge-graph layout could jank the main thread** (~280 ms in one call
+  on a ~1000-node graph). Reworked `forceLayout` into a resumable stepper the
+  graph view drives in per-frame chunks — no long block, same converged layout.
+- **`[[wiki-link]]` integrity**: page titles containing `[`, `]`, or `|` (the
+  wiki-link delimiters) silently produced dead links + missing graph edges.
+  Titles now forbid those characters at write time (like Obsidian) with inline
+  validation in the create dialog.
+- **Authoritative outgoing links**: new `GET /pages/:id/links` returns a page's
+  outgoing links straight from the stored `PageLink` rows, so `get_page` /
+  `get_page_links` (MCP) can no longer disagree with the graph when two pages
+  share a title. Replaces the previous client-side re-derivation.
+- **MCP response bounds**: `list_pages verbose` now hydrates concurrently and
+  is capped at 25 pages/call (was up to 200 sequential requests that could trip
+  the rate limiter); outgoing links are capped with a `truncated` flag.
+- **First unit-test runner for `apps/web`** (vitest) covering the reorder and
+  force-layout logic. a11y/UX: graph SVG uses `role="group"` (keeps node
+  buttons exposed), delete-with-children disables its confirm, the unresolved-
+  links badge now shows a compact count on mobile.
+
 ### Added — 2026-07-09 (Pages frontend — tree, markdown editor with `[[wiki-links]]`, backlinks + the knowledge graph view)
 
 **The user-facing half of the Pages pillar — a project wiki that's also an

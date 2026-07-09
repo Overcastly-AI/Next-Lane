@@ -1568,7 +1568,29 @@ describe('pages (knowledge base) tools', () => {
     expect(body.items[0]).toMatchObject({ id: 'pg-1', content: 'full body', updatedAt: '2026-07-01T00:00:00.000Z' });
   });
 
-  it('get_page GETs the page and by default also fetches backlinks + resolves outgoing links', async () => {
+  it('list_pages verbose:true caps hydration at 25 pages (rate-limit guard) and reports hasMore', async () => {
+    const bigTree = Array.from({ length: 30 }, (_, i) => ({
+      id: `p${i}`,
+      title: `P${i}`,
+      archived: false,
+      rank: `a${String(i).padStart(3, '0')}`,
+      children: [],
+    }));
+    // Tree first, then a stub page returned for every hydration call.
+    const { client, fetchImpl } = sequencedClient([
+      { status: 200, body: bigTree },
+      { status: 200, body: { id: 'stub', title: 'stub', content: 'c' } },
+    ]);
+    const res = await tool('list_pages').handler({ projectId: 'p1', verbose: true }, client);
+    // 1 tree call + exactly 25 hydration calls (VERBOSE_HYDRATE_MAX), not 30.
+    expect(fetchImpl.mock.calls).toHaveLength(26);
+    const body = JSON.parse(res.content[0].text);
+    expect(body.items).toHaveLength(25);
+    expect(body.total).toBe(30);
+    expect(body.hasMore).toBe(true);
+  });
+
+  it('get_page GETs the page and by default also fetches backlinks + authoritative outgoing links', async () => {
     const { client, fetchImpl } = sequencedClient([
       {
         status: 200,
@@ -1580,15 +1602,25 @@ describe('pages (knowledge base) tools', () => {
         },
       },
       { status: 200, body: [{ id: 'lk1', sourcePageId: 'pg-3', sourcePageTitle: 'Runbook', createdAt: 'x' }] },
-      { status: 200, body: sampleTree },
+      {
+        status: 200,
+        body: {
+          resolved: [{ targetPageId: 'pg-2', targetPageTitle: 'Setup Steps' }],
+          unresolvedTitles: ['Not Written Yet'],
+          truncated: false,
+        },
+      },
     ]);
     const res = await tool('get_page').handler({ id: 'pg-1' }, client);
     expect(fetchImpl.mock.calls[0][0]).toBe('http://localhost:4000/api/pages/pg-1');
-    expect(fetchImpl.mock.calls[1][0]).toBe('http://localhost:4000/api/pages/pg-1/backlinks');
-    expect(fetchImpl.mock.calls[2][0]).toBe('http://localhost:4000/api/projects/p1/pages/tree');
+    // backlinks + links are fetched concurrently; assert both were requested.
+    const urls = fetchImpl.mock.calls.map((c) => c[0]);
+    expect(urls).toContain('http://localhost:4000/api/pages/pg-1/backlinks');
+    expect(urls).toContain('http://localhost:4000/api/pages/pg-1/links');
     const body = JSON.parse(res.content[0].text);
     expect(body.title).toBe('Onboarding Guide');
     expect(body.links.backlinkCount).toBe(1);
+    // Server's targetPageId/targetPageTitle mapped to the MCP pageId/title shape.
     expect(body.links.outgoing.resolved).toEqual([{ pageId: 'pg-2', title: 'Setup Steps' }]);
     expect(body.links.outgoing.unresolvedTitles).toEqual(['Not Written Yet']);
   });
@@ -1661,37 +1693,33 @@ describe('pages (knowledge base) tools', () => {
     expect(body.hasMore).toBe(true);
   });
 
-  it('get_page_links resolves [[wiki-links]] against the project tree, excluding self-links', async () => {
-    const { client, fetchImpl } = sequencedClient([
-      {
-        status: 200,
-        body: {
-          id: 'pg-1',
-          projectId: 'p1',
-          title: 'Onboarding Guide',
-          content: 'Links to [[Setup Steps]], [[Onboarding Guide]] (self), and [[Missing Page]].',
-        },
-      },
-      { status: 200, body: sampleTree },
-    ]);
+  it('get_page_links reads authoritative outgoing links from GET /pages/:id/links', async () => {
+    const { client, fetchImpl } = clientWith(200, {
+      resolved: [{ targetPageId: 'pg-2', targetPageTitle: 'Setup Steps' }],
+      unresolvedTitles: ['Missing Page'],
+      truncated: false,
+    });
     const res = await tool('get_page_links').handler({ pageId: 'pg-1' }, client);
-    expect(fetchImpl.mock.calls[0][0]).toBe('http://localhost:4000/api/pages/pg-1');
-    expect(fetchImpl.mock.calls[1][0]).toBe('http://localhost:4000/api/projects/p1/pages/tree');
+    // Single authoritative call — no page GET + tree re-derivation.
+    expect(fetchImpl.mock.calls).toHaveLength(1);
+    expect(fetchImpl.mock.calls[0][0]).toBe('http://localhost:4000/api/pages/pg-1/links');
     const body = JSON.parse(res.content[0].text);
     expect(body.pageId).toBe('pg-1');
     expect(body.resolved).toEqual([{ pageId: 'pg-2', title: 'Setup Steps' }]);
     expect(body.unresolvedTitles).toEqual(['Missing Page']);
+    expect(body.truncated).toBe(false);
   });
 
-  it('get_page_links returns empty arrays for a page with no wiki-links, without fetching the tree', async () => {
+  it('get_page_links returns empty arrays for a page with no wiki-links', async () => {
     const { client, fetchImpl } = clientWith(200, {
-      id: 'pg-1', projectId: 'p1', title: 'Onboarding Guide', content: 'No links here.',
+      resolved: [],
+      unresolvedTitles: [],
+      truncated: false,
     });
     const res = await tool('get_page_links').handler({ pageId: 'pg-1' }, client);
     const body = JSON.parse(res.content[0].text);
     expect(body.resolved).toEqual([]);
     expect(body.unresolvedTitles).toEqual([]);
-    // No tree call needed when there are no [[links]] to resolve.
     expect(fetchImpl.mock.calls).toHaveLength(1);
   });
 

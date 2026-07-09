@@ -8,7 +8,11 @@ import {
   ValidateIf,
 } from 'class-validator';
 import { IsMaxByteLength } from './is-max-byte-length.decorator';
-import { PAGE_CONTENT_MAX_BYTES } from './create-page.dto';
+import {
+  PAGE_CONTENT_MAX_BYTES,
+  PAGE_TITLE_FORBIDDEN_MESSAGE,
+  PAGE_TITLE_FORBIDDEN_RE,
+} from './create-page.dto';
 
 /**
  * Body for `PATCH /pages/:id`.
@@ -29,6 +33,7 @@ export class UpdatePageDto {
   @IsString()
   @MinLength(1)
   @MaxLength(300)
+  @Matches(PAGE_TITLE_FORBIDDEN_RE, { message: PAGE_TITLE_FORBIDDEN_MESSAGE })
   title?: string;
 
   @IsOptional()

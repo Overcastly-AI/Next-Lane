@@ -24,6 +24,27 @@ export interface ForceLayoutOptions {
   iterations?: number;
 }
 
+/**
+ * A resumable force simulation. `runIterations(n)` advances the shared node
+ * state by `n` steps (carrying velocity/position forward), and `positions()`
+ * snapshots the current layout. This lets `KnowledgeGraphView` spread a large
+ * graph's iteration budget across animation frames — a few steps per frame —
+ * instead of one long blocking `computeForceLayout` call that janks the main
+ * thread (the O(n²) repulsion at ~1000 nodes is ~280ms in one shot). Because
+ * state carries forward, running the budget in chunks converges to the exact
+ * same layout as running it all at once.
+ */
+export interface ForceSimulation {
+  /** Total steps this simulation will run before it's fully settled. */
+  readonly totalIterations: number;
+  /** Steps already run. */
+  readonly ranIterations: number;
+  /** Advance the simulation by up to `count` more steps (clamped to remaining). */
+  runIterations(count: number): void;
+  /** Snapshot the current node positions, clamped within the canvas. */
+  positions(): Map<string, Point>;
+}
+
 /** Deterministic 32-bit string hash (FNV-1a) so each node's seed position is
  * stable across re-renders/reloads of the SAME graph (no visual "jump" on
  * refetch, and reproducible layouts for e2e). */
@@ -52,13 +73,38 @@ function hashString(s: string): number {
 export function computeForceLayout(
   nodeIds: string[],
   edges: Array<readonly [string, string]>,
-  { width, height, iterations = 220 }: ForceLayoutOptions,
+  options: ForceLayoutOptions,
 ): Map<string, Point> {
-  const n = nodeIds.length;
-  if (n === 0 || width <= 0 || height <= 0) return new Map();
+  const sim = createForceSimulation(nodeIds, edges, options);
+  sim.runIterations(sim.totalIterations);
+  return sim.positions();
+}
 
+/**
+ * Build a resumable force simulation (see `ForceSimulation`). The full
+ * iteration budget produces the same layout whether you run it in one
+ * `runIterations(total)` call (what `computeForceLayout` does) or in chunks
+ * across frames (what the graph view does for large graphs to stay smooth).
+ */
+export function createForceSimulation(
+  nodeIds: string[],
+  edges: Array<readonly [string, string]>,
+  { width, height, iterations = 220 }: ForceLayoutOptions,
+): ForceSimulation {
+  const n = nodeIds.length;
+
+  // Degenerate cases: nothing to simulate — fixed positions, zero iterations.
+  if (n === 0 || width <= 0 || height <= 0) {
+    return { totalIterations: 0, ranIterations: 0, runIterations() {}, positions: () => new Map() };
+  }
   if (n === 1) {
-    return new Map([[nodeIds[0], { x: width / 2, y: height / 2 }]]);
+    const only = new Map([[nodeIds[0], { x: width / 2, y: height / 2 }]]);
+    return {
+      totalIterations: 0,
+      ranIterations: 0,
+      runIterations() {},
+      positions: () => new Map(only),
+    };
   }
 
   const cx = width / 2;
@@ -91,11 +137,12 @@ export function computeForceLayout(
   // O(n^2) repulsion is fine at realistic sizes; for very large graphs
   // (approaching the API's MAX_GRAPH_NODES truncation cap) spend fewer
   // iterations rather than adding spatial partitioning.
-  const iters = n > 300 ? Math.min(iterations, 60) : iterations;
+  const totalIterations = n > 300 ? Math.min(iterations, 60) : iterations;
   const margin = Math.min(30, Math.min(width, height) / 6);
+  let ran = 0;
 
-  for (let iter = 0; iter < iters; iter++) {
-    const temp = 1 - iter / iters; // linear cooling, 1 -> 0
+  function stepOnce(iter: number): void {
+    const temp = 1 - iter / totalIterations; // linear cooling, 1 -> 0
 
     // Repulsion — every pair pushes apart.
     for (let i = 0; i < n; i++) {
@@ -158,7 +205,19 @@ export function computeForceLayout(
     }
   }
 
-  const result = new Map<string, Point>();
-  for (const node of nodes) result.set(node.id, { x: node.x, y: node.y });
-  return result;
+  return {
+    totalIterations,
+    get ranIterations() {
+      return ran;
+    },
+    runIterations(count: number) {
+      const end = Math.min(totalIterations, ran + Math.max(0, count));
+      for (; ran < end; ran++) stepOnce(ran);
+    },
+    positions() {
+      const result = new Map<string, Point>();
+      for (const node of nodes) result.set(node.id, { x: node.x, y: node.y });
+      return result;
+    },
+  };
 }

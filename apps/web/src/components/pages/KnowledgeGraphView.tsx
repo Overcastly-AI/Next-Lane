@@ -2,7 +2,7 @@
  * KnowledgeGraphView — the Obsidian-style force-directed graph of a
  * project's pages (nodes) and `[[wiki-link]]` references (edges).
  *
- * Deliberately hand-rolled on plain SVG (`computeForceLayout`,
+ * Deliberately hand-rolled on plain SVG (`createForceSimulation`,
  * `src/lib/forceLayout.ts`) instead of a graph library (d3-force/cytoscape/
  * sigma/...) — self-hosted-friendly, zero extra runtime dependency, and the
  * production nginx CSP is `script-src 'self'` (no external script/CDN).
@@ -22,12 +22,13 @@
  * fit whatever canvas size is available; users pan/zoom to explore a graph
  * too dense for the visible area.
  *
- * `prefers-reduced-motion`: the settle-in simulation is skipped — layout is
- * computed once, synchronously, at full convergence, and rendered as a
- * single static frame (no incremental animation frames at all).
+ * `prefers-reduced-motion`: the settle-in animation is skipped — the layout
+ * still runs to full convergence (chunked across frames so it never blocks
+ * the main thread on a large graph) but only the final, settled frame is
+ * published, so the user sees no incremental motion.
  */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { computeForceLayout, type Point } from '@/lib/forceLayout';
+import { createForceSimulation, type Point } from '@/lib/forceLayout';
 import { usePrefersReducedMotion } from '@/lib/usePrefersReducedMotion';
 import { EmptyState, ErrorState, LoadingState } from '@/components/ui/States';
 import { usePageGraph } from '@/api/pages';
@@ -105,7 +106,11 @@ export function KnowledgeGraphView({ projectId, onOpenPage }: KnowledgeGraphView
   }, [edges]);
 
   // Compute (and, when motion is allowed, animate) the force layout whenever
-  // the graph data or the available canvas size changes.
+  // the graph data or the available canvas size changes. The simulation runs
+  // in per-frame chunks off a single stateful stepper so a large graph's
+  // O(n²) budget never blocks the main thread in one long call — whether we
+  // publish intermediate frames (motion, small graph) or only the settled
+  // result (reduced motion, or a big graph) it stays responsive throughout.
   useEffect(() => {
     if (nodes.length === 0 || width === 0 || height === 0) {
       setPositions(new Map());
@@ -113,22 +118,32 @@ export function KnowledgeGraphView({ projectId, onOpenPage }: KnowledgeGraphView
     }
     const nodeIds = nodes.map((n) => n.id);
     const edgePairs: Array<readonly [string, string]> = edges.map((e) => [e.sourceId, e.targetId] as const);
+    const sim = createForceSimulation(nodeIds, edgePairs, {
+      width,
+      height,
+      iterations: TOTAL_ITERATIONS,
+    });
     const animate = !reducedMotion && nodes.length <= ANIMATE_NODE_CAP;
+    // Small graphs animate in fine steps; large/reduced-motion graphs take
+    // bigger chunks (no motion shown) — either way each frame's slice of
+    // O(n²) work stays short enough to keep the thread responsive.
+    const chunk = animate ? 8 : 20;
 
-    if (!animate) {
-      setPositions(computeForceLayout(nodeIds, edgePairs, { width, height, iterations: TOTAL_ITERATIONS }));
+    if (sim.totalIterations === 0) {
+      setPositions(sim.positions());
       return;
     }
 
     let cancelled = false;
-    let frame = 0;
     let raf = 0;
     const step = () => {
       if (cancelled) return;
-      frame += 8;
-      const iters = Math.min(frame, TOTAL_ITERATIONS);
-      setPositions(computeForceLayout(nodeIds, edgePairs, { width, height, iterations: iters }));
-      if (iters < TOTAL_ITERATIONS) raf = requestAnimationFrame(step);
+      sim.runIterations(chunk);
+      const done = sim.ranIterations >= sim.totalIterations;
+      // When animating, publish every frame so the graph visibly settles;
+      // otherwise publish only the final, converged frame (no motion).
+      if (animate || done) setPositions(sim.positions());
+      if (!done) raf = requestAnimationFrame(step);
     };
     raf = requestAnimationFrame(step);
     return () => {
@@ -255,7 +270,7 @@ export function KnowledgeGraphView({ projectId, onOpenPage }: KnowledgeGraphView
         {width > 0 && height > 0 && (
           <svg
             ref={svgRef}
-            role="img"
+            role="group"
             aria-label={`Knowledge graph: ${nodes.length} pages, ${edges.length} links`}
             viewBox={`0 0 ${width} ${height}`}
             width={width}

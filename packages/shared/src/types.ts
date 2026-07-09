@@ -2480,6 +2480,30 @@ export interface PageBacklinkDto {
   createdAt: string;
 }
 
+/** One resolved outgoing `[[wiki-link]]` — points at a real target page. */
+export interface PageResolvedLinkDto {
+  /** The target page this link resolves to. */
+  targetPageId: string;
+  /** The target page's current title. */
+  targetPageTitle: string;
+}
+
+/**
+ * `GET /pages/:id/links` response — this page's outgoing `[[wiki-link]]`
+ * edges, resolved authoritatively from the stored `PageLink` rows (NOT
+ * re-derived client-side), so `resolved[].targetPageId` always matches what
+ * `graph`/`backlinks` report. `unresolvedTitles` are `[[titles]]` present in
+ * the content that don't (yet) match a page in the project — the "link first,
+ * write the page later" flow. This is the outgoing companion to
+ * `PageBacklinkDto` ("what links here").
+ */
+export interface PageOutgoingLinksDto {
+  resolved: PageResolvedLinkDto[];
+  unresolvedTitles: string[];
+  /** True when a pathological page had more outgoing links than the cap. */
+  truncated: boolean;
+}
+
 /**
  * `GET /pages/:id/versions` response — compact, newest-first version
  * history. Deliberately omits `content` (can be large; see `PageVersionDto`)

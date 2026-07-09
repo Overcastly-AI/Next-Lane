@@ -248,6 +248,7 @@ export function PageTree({
         }
         confirmLabel="Delete"
         variant="danger"
+        confirmDisabled={(deleteTarget?.children.length ?? 0) > 0}
         onConfirm={() => {
           if (deleteTarget) onDelete(deleteTarget.id);
           setDeleteTarget(null);
