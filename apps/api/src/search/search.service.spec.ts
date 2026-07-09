@@ -14,11 +14,13 @@ function makePrisma() {
   return {
     membership: { findMany: jest.fn(), findUnique: jest.fn() },
     issue: { findMany: jest.fn() },
+    page: { findMany: jest.fn() },
     project: { findMany: jest.fn(), findUnique: jest.fn() },
     $queryRaw: jest.fn(),
   } as unknown as PrismaService & {
     membership: { findMany: jest.Mock; findUnique: jest.Mock };
     issue: { findMany: jest.Mock };
+    page: { findMany: jest.Mock };
     project: { findMany: jest.Mock; findUnique: jest.Mock };
     $queryRaw: jest.Mock;
   };
@@ -60,20 +62,31 @@ describe('SearchService.search', () => {
       statusName: 'To Do',
       statusCategory: 'TODO',
     };
+    const pageFtsRow = {
+      id: 'page-1',
+      title: 'Login flow',
+      projectId: 'proj-1',
+      archived: false,
+      projectKey: 'NL',
+    };
     prisma.membership.findMany.mockResolvedValue([
       { workspaceId: 'ws-1' },
       { workspaceId: 'ws-2' },
     ]);
-    prisma.$queryRaw.mockResolvedValue([ftsRow]);
+    // FTS fires issues first, then pages (Promise.all array order).
+    prisma.$queryRaw
+      .mockResolvedValueOnce([ftsRow])
+      .mockResolvedValueOnce([pageFtsRow]);
     prisma.project.findMany.mockResolvedValue([
       { id: 'proj-1', key: 'NL', name: 'Next Lane', workspaceId: 'ws-1' },
     ]);
 
     const result = await service.search('user-1', 'login');
 
-    // FTS path used — $queryRaw called, not issue.findMany
-    expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+    // FTS path used for BOTH issues and pages — $queryRaw twice, no findMany.
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(2);
     expect(prisma.issue.findMany).not.toHaveBeenCalled();
+    expect(prisma.page.findMany).not.toHaveBeenCalled();
 
     // Project query is still via findMany, scoped to caller's workspaces.
     const projectWhere = prisma.project.findMany.mock.calls[0][0].where;
@@ -96,6 +109,9 @@ describe('SearchService.search', () => {
           type: 'BUG',
         },
       ],
+      pages: [
+        { id: 'page-1', title: 'Login flow', projectId: 'proj-1', projectKey: 'NL', archived: false },
+      ],
       projects: [
         { id: 'proj-1', key: 'NL', name: 'Next Lane', workspaceId: 'ws-1' },
       ],
@@ -107,7 +123,7 @@ describe('SearchService.search', () => {
 
     const result = await service.search('user-1', 'login');
 
-    expect(result).toEqual({ query: 'login', issues: [], projects: [] });
+    expect(result).toEqual({ query: 'login', issues: [], pages: [], projects: [] });
     expect(prisma.issue.findMany).not.toHaveBeenCalled();
     expect(prisma.project.findMany).not.toHaveBeenCalled();
   });
@@ -117,13 +133,14 @@ describe('SearchService.search', () => {
 
     const result = await service.search('user-1', '   ');
 
-    expect(result).toEqual({ query: '', issues: [], projects: [] });
+    expect(result).toEqual({ query: '', issues: [], pages: [], projects: [] });
     expect(prisma.issue.findMany).not.toHaveBeenCalled();
   });
 
   it('matches an issue-key query like NL-12', async () => {
     prisma.membership.findMany.mockResolvedValue([{ workspaceId: 'ws-1' }]);
     prisma.issue.findMany.mockResolvedValue([issueRow]);
+    prisma.page.findMany.mockResolvedValue([]);
     prisma.project.findMany.mockResolvedValue([]);
 
     await service.search('user-1', 'NL-12');
@@ -164,9 +181,53 @@ describe('SearchService.search', () => {
 
     await service.search('user-1', 'login', 'proj-1');
 
-    // FTS path — $queryRaw invoked, issue.findMany not invoked
-    expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+    // FTS path — $queryRaw invoked for issues AND pages, findMany not invoked
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(2);
     expect(prisma.issue.findMany).not.toHaveBeenCalled();
+    expect(prisma.page.findMany).not.toHaveBeenCalled();
+  });
+
+  it('page FTS is tenant-scoped to the caller workspaces (no cross-tenant leak)', async () => {
+    prisma.membership.findMany.mockResolvedValue([{ workspaceId: 'ws-1' }]);
+    prisma.$queryRaw
+      .mockResolvedValueOnce([]) // issues
+      .mockResolvedValueOnce([
+        { id: 'page-9', title: 'Runbook', projectId: 'proj-1', archived: false, projectKey: 'NL' },
+      ]); // pages
+    prisma.project.findMany.mockResolvedValue([]);
+
+    const result = await service.search('user-1', 'runbook');
+
+    expect(result.pages).toEqual([
+      { id: 'page-9', title: 'Runbook', projectId: 'proj-1', projectKey: 'NL', archived: false },
+    ]);
+    // The workspace-id array is passed as a parameterized value into the raw
+    // page query — assert it appears in the tagged-template params.
+    const pageCallParams = prisma.$queryRaw.mock.calls[1];
+    expect(JSON.stringify(pageCallParams)).toContain('ws-1');
+  });
+
+  it('falls back to page ILIKE for a 1-char query (below FTS_MIN_LENGTH)', async () => {
+    prisma.membership.findMany.mockResolvedValue([{ workspaceId: 'ws-1' }]);
+    prisma.issue.findMany.mockResolvedValue([]);
+    prisma.page.findMany.mockResolvedValue([
+      {
+        id: 'page-3',
+        title: 'A',
+        projectId: 'proj-1',
+        archived: false,
+        project: { key: 'NL' },
+      },
+    ]);
+    prisma.project.findMany.mockResolvedValue([]);
+
+    const result = await service.search('user-1', 'a');
+
+    expect(prisma.$queryRaw).not.toHaveBeenCalled();
+    expect(prisma.page.findMany).toHaveBeenCalled();
+    expect(result.pages).toEqual([
+      { id: 'page-3', title: 'A', projectId: 'proj-1', projectKey: 'NL', archived: false },
+    ]);
   });
 });
 
@@ -223,8 +284,8 @@ describe('SearchService full-text search path', () => {
 
     const result = await service.search('user-1', 'database');
 
-    // FTS path: $queryRaw called, issue.findMany NOT called
-    expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+    // FTS path: $queryRaw called for issues AND pages, no findMany
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(2);
     expect(prisma.issue.findMany).not.toHaveBeenCalled();
 
     // DTO shape preserved
@@ -243,6 +304,7 @@ describe('SearchService full-text search path', () => {
   it('falls back to ILIKE (issue.findMany) for 1-character queries', async () => {
     prisma.membership.findMany.mockResolvedValue([{ workspaceId: 'ws-1' }]);
     prisma.issue.findMany.mockResolvedValue([]);
+    prisma.page.findMany.mockResolvedValue([]);
     prisma.project.findMany.mockResolvedValue([]);
 
     await service.search('user-1', 'a');
@@ -254,6 +316,7 @@ describe('SearchService full-text search path', () => {
   it('uses ILIKE path for key-style queries like "NL-12" (single-token exact lookup)', async () => {
     prisma.membership.findMany.mockResolvedValue([{ workspaceId: 'ws-1' }]);
     prisma.issue.findMany.mockResolvedValue([]);
+    prisma.page.findMany.mockResolvedValue([]);
     prisma.project.findMany.mockResolvedValue([]);
 
     await service.search('user-1', 'NL-12');
@@ -273,7 +336,7 @@ describe('SearchService full-text search path', () => {
       service.search('user-1', 'bug & (fix OR patch) -wont:fix'),
     ).resolves.toMatchObject({ issues: [], projects: [] });
 
-    expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(2);
   });
 
   it('scopes FTS query to the callers workspaces (tenant isolation)', async () => {
@@ -286,10 +349,10 @@ describe('SearchService full-text search path', () => {
 
     await service.search('user-1', 'performance');
 
-    // The $queryRaw call must have received the workspaceIds so Postgres can
-    // filter — we verify by checking the mock was invoked (the actual SQL is
-    // validated end-to-end on the live instance).
-    expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+    // The $queryRaw calls (issues + pages) must have received the workspaceIds
+    // so Postgres can filter — we verify by checking the mock was invoked (the
+    // actual SQL is validated end-to-end on the live instance).
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(2);
     // The raw template should reference the workspace ids (passed as a bind
     // parameter); we can't easily inspect the Prisma.sql fragment internals
     // in unit tests, but we ensure FTS was invoked and not ILIKE.
@@ -308,7 +371,7 @@ describe('SearchService full-text search path', () => {
 
     await service.search('user-1', 'performance', 'proj-1');
 
-    expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(2);
     expect(prisma.issue.findMany).not.toHaveBeenCalled();
   });
 

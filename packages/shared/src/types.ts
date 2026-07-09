@@ -703,13 +703,24 @@ export interface SearchProjectDto {
   workspaceId: string;
 }
 
+/** A knowledge-base page hit in cross-project / Cmd-K search. */
+export interface SearchPageDto {
+  id: string;
+  title: string;
+  projectId: string;
+  projectKey: string;
+  /** Whether the page is archived (rendered muted / de-emphasised in results). */
+  archived: boolean;
+}
+
 /**
  * Cross-project search results, scoped to the workspaces the caller belongs to.
- * Issues and projects are returned separately so the UI can group them.
+ * Issues, pages, and projects are returned separately so the UI can group them.
  */
 export interface SearchResultsDto {
   query: string;
   issues: SearchIssueDto[];
+  pages: SearchPageDto[];
   projects: SearchProjectDto[];
 }
 

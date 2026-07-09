@@ -2122,6 +2122,12 @@ model Page {
   lastEditedById String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+  // Generated tsvector for full-text search (title + content), managed
+  // entirely by Postgres (GENERATED ALWAYS AS ... STORED). Prisma cannot
+  // read/write this directly — FTS goes through $queryRaw. The GIN index
+  // "Page_searchVector_idx" is created via raw SQL in the add-pages-fts
+  // migration. Mirrors Issue.searchVector.
+  searchVector   Unsupported("tsvector")?
 
   project       Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
   parent        Page?           @relation("pageTree", fields: [parentId], references: [id], onDelete: Restrict)

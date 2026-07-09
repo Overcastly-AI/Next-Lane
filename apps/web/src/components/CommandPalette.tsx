@@ -7,7 +7,7 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router-dom';
-import type { SearchIssueDto, SearchProjectDto } from '@next-lane/shared';
+import type { SearchIssueDto, SearchPageDto, SearchProjectDto } from '@next-lane/shared';
 import { useSearch } from '@/api/search';
 import { useDebouncedValue } from '@/lib/useDebouncedValue';
 import { Spinner } from '@/components/ui/States';
@@ -155,6 +155,26 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
     }));
   }, [results]);
 
+  const pageItems = useMemo<PaletteItem[]>(() => {
+    if (!results) return [];
+    return results.pages.map((page: SearchPageDto) => ({
+      id: `page-${page.id}`,
+      group: 'Pages',
+      label: (
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="shrink-0 font-mono text-xs text-ink-400">{page.projectKey}</span>
+          <span className={cn('truncate', page.archived && 'text-ink-400 line-through')}>
+            {page.title}
+          </span>
+        </span>
+      ),
+      text: `${page.projectKey} ${page.title}`,
+      hint: page.archived ? 'Archived' : undefined,
+      icon: <GlyphPage />,
+      onSelect: () => go(`/projects/${page.projectId}/pages/${page.id}`),
+    }));
+  }, [results]);
+
   const projectItems = useMemo<PaletteItem[]>(() => {
     if (!results) return [];
     return results.projects.map((project: SearchProjectDto) => ({
@@ -176,8 +196,8 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
 
   // Flattened, ordered item list — Actions first, then search groups.
   const items = useMemo<PaletteItem[]>(
-    () => [...quickActions, ...projectItems, ...issueItems],
-    [quickActions, projectItems, issueItems],
+    () => [...quickActions, ...projectItems, ...issueItems, ...pageItems],
+    [quickActions, projectItems, issueItems, pageItems],
   );
 
   // Keep the active index in range as the item list changes.
@@ -235,7 +255,10 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
   const activeId = items[activeIndex]?.id;
   const showEmpty =
     hasQuery && !searchQuery.isFetching && results
-      ? issueItems.length === 0 && projectItems.length === 0 && quickActions.length === 0
+      ? issueItems.length === 0 &&
+        pageItems.length === 0 &&
+        projectItems.length === 0 &&
+        quickActions.length === 0
       : false;
 
   return createPortal(
@@ -274,13 +297,13 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
               setQuery(e.target.value);
               setActiveIndex(0);
             }}
-            placeholder="Search issues and projects…"
+            placeholder="Search issues, pages, and projects…"
             className="w-full bg-transparent py-3.5 text-sm text-ink-900 placeholder:text-ink-400 focus:outline-none"
             role="combobox"
             aria-expanded="true"
             aria-controls="command-palette-list"
             aria-activedescendant={activeId ? `cp-opt-${activeId}` : undefined}
-            aria-label="Search issues and projects"
+            aria-label="Search issues, pages, and projects"
             autoComplete="off"
             spellCheck={false}
           />
@@ -334,7 +357,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
               role="presentation"
               className="px-4 py-10 text-center text-sm text-ink-400"
             >
-              Type to search issues and projects across your workspaces.
+              Type to search issues, pages, and projects across your workspaces.
             </li>
           )}
 
@@ -429,6 +452,14 @@ function GlyphFolder() {
   return (
     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
       <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+    </svg>
+  );
+}
+function GlyphPage() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+      <path strokeLinejoin="round" d="M6 2h8l4 4v16H6z" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M14 2v4h4M9 13h6M9 17h6" />
     </svg>
   );
 }

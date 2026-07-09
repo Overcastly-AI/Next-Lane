@@ -196,7 +196,13 @@ and the two pre-existing decision-gated items renumber from #6/#7 to
    module), `apps/web/src/components/issues/**` (drawer section),
    `apps/mcp/src/**`. **Size:** M.
 
-5. **Pages — full-text search** (P2, S; the schema already shipped) — Pages
+5. ✅ **Pages — full-text search** (SHIPPED 2026-07-09 — remove on next groom:
+   `Page.searchVector` tsvector generated column + GIN index migration
+   `20260709120000_add_pages_fts`; `SearchService` page FTS/ILIKE, tenant-scoped;
+   `SearchPageDto` + `pages` in `SearchResultsDto`; Cmd-K palette "Pages" group
+   with a distinct page glyph, archived-muted; +4 unit tests; e2e
+   `pages-search.spec.ts` 2/2 green desktop+mobile against a real stack. MCP
+   `search_pages` deferred as a nice-to-have follow-up.) — Pages
    join the search surface issues already have, rather than being a
    second-class silo. **Scope:** extend the existing Postgres
    `tsvector`/GIN full-text-search infrastructure (shipped for `Issue`

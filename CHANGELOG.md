@@ -14,6 +14,21 @@ This section summarizes the major capabilities delivered in the pre-1.0
 development phase. A versioned release will be tagged once the v1 criteria in
 [`docs/ROADMAP.md`](./docs/ROADMAP.md) are complete.
 
+### Added — 2026-07-09 (Pages full-text search + issue↔page cross-linking)
+
+- **Full-text search over pages** — `Page` gains a Postgres `searchVector`
+  generated column (title + content) with a GIN index, mirroring the issue
+  FTS. Pages now appear in the ⌘K command palette and cross-project search
+  under their own "Pages" group (distinct icon, archived pages muted),
+  ranked by relevance and strictly tenant-scoped (a viewer never sees a page
+  from a project they can't access). `websearch_to_tsquery` keeps user input
+  safe; short queries fall back to ILIKE.
+- **Issue ↔ page cross-linking** — a page whose body references an issue key
+  (e.g. `NL-123`) auto-links to that issue on save (same project only); the
+  issue drawer shows a "Linked pages" section, and two MCP tools
+  (`get_page_issues` / `get_issue_pages`, 119 tools total) expose both
+  directions to agents.
+
 ### Fixed — 2026-07-09 (Pages review-fix wave — reorder, graph perf, wiki-link integrity, authoritative link traversal)
 
 Post-merge code review of the Pages frontend + MCP surfaces, findings fixed inline:

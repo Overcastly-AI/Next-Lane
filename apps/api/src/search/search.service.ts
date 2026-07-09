@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { assertProjectMember } from '../common/membership.util';
 import type {
   SearchIssueDto,
+  SearchPageDto,
   SearchProjectDto,
   SearchResultsDto,
   StatusCategory,
@@ -32,6 +33,15 @@ interface FtsIssueRow {
   projectKey: string;
   statusName: string;
   statusCategory: string;
+}
+
+/** Raw row returned by the FTS $queryRaw for pages. */
+interface FtsPageRow {
+  id: string;
+  title: string;
+  projectId: string;
+  archived: boolean;
+  projectKey: string;
 }
 
 @Injectable()
@@ -66,7 +76,7 @@ export class SearchService {
     const workspaceIds = memberships.map((m) => m.workspaceId);
 
     if (workspaceIds.length === 0 || query.length === 0) {
-      return { query, issues: [], projects: [] };
+      return { query, issues: [], pages: [], projects: [] };
     }
 
     let allowedProjectId: string | undefined;
@@ -86,16 +96,100 @@ export class SearchService {
     const keyMatch = parseIssueKey(query);
     const useFts = !keyMatch && query.length >= FTS_MIN_LENGTH;
 
-    const [issues, projects] = await Promise.all([
+    const [issues, pages, projects] = await Promise.all([
       useFts
         ? this.searchIssuesFts(query, workspaceIds, allowedProjectId)
         : this.searchIssuesIlike(query, workspaceIds, allowedProjectId, keyMatch),
+      // Pages have no key-style lookup, so they use FTS for len >= FTS_MIN_LENGTH
+      // and ILIKE otherwise — same tenant scoping as issues.
+      useFts
+        ? this.searchPagesFts(query, workspaceIds, allowedProjectId)
+        : this.searchPagesIlike(query, workspaceIds, allowedProjectId),
       // Project search is global within the caller's workspaces, regardless of
-      // the projectId filter (which only scopes issues).
+      // the projectId filter (which only scopes issues/pages).
       this.searchProjects(query, workspaceIds),
     ]);
 
-    return { query, issues, projects };
+    return { query, issues, pages, projects };
+  }
+
+  /**
+   * Full-text search over pages via the GIN-indexed `searchVector` generated
+   * column (title + content). Same tenant scoping as issues — a JOIN on
+   * `Project` constrained to the caller's `workspaceIds`, with an optional
+   * single-project narrow. `websearch_to_tsquery` is user-input-safe.
+   */
+  private async searchPagesFts(
+    query: string,
+    workspaceIds: string[],
+    projectId?: string,
+  ): Promise<SearchPageDto[]> {
+    let rows: FtsPageRow[];
+    if (projectId) {
+      rows = await this.prisma.$queryRaw<FtsPageRow[]>`
+        SELECT pg.id, pg.title, pg."projectId", pg.archived, p.key AS "projectKey"
+        FROM "Page" pg
+        JOIN "Project" p ON p.id = pg."projectId"
+        WHERE p."workspaceId" = ANY(${workspaceIds}::text[])
+          AND pg."projectId"  = ${projectId}
+          AND pg."searchVector" @@ websearch_to_tsquery('english', ${query})
+        ORDER BY ts_rank(pg."searchVector", websearch_to_tsquery('english', ${query})) DESC
+        LIMIT ${RESULT_CAP}
+      `;
+    } else {
+      rows = await this.prisma.$queryRaw<FtsPageRow[]>`
+        SELECT pg.id, pg.title, pg."projectId", pg.archived, p.key AS "projectKey"
+        FROM "Page" pg
+        JOIN "Project" p ON p.id = pg."projectId"
+        WHERE p."workspaceId" = ANY(${workspaceIds}::text[])
+          AND pg."searchVector" @@ websearch_to_tsquery('english', ${query})
+        ORDER BY ts_rank(pg."searchVector", websearch_to_tsquery('english', ${query})) DESC
+        LIMIT ${RESULT_CAP}
+      `;
+    }
+    return rows.map((r) => ({
+      id: r.id,
+      title: r.title,
+      projectId: r.projectId,
+      projectKey: r.projectKey,
+      archived: r.archived,
+    }));
+  }
+
+  /** Fallback ILIKE page search for very short queries (title + content). */
+  private async searchPagesIlike(
+    query: string,
+    workspaceIds: string[],
+    projectId?: string,
+  ): Promise<SearchPageDto[]> {
+    const where: Prisma.PageWhereInput = {
+      project: { workspaceId: { in: workspaceIds } },
+      OR: [
+        { title: { contains: query, mode: 'insensitive' } },
+        { content: { contains: query, mode: 'insensitive' } },
+      ],
+    };
+    if (projectId) where.projectId = projectId;
+
+    const rows = await this.prisma.page.findMany({
+      where,
+      take: RESULT_CAP,
+      orderBy: { updatedAt: 'desc' },
+      select: {
+        id: true,
+        title: true,
+        projectId: true,
+        archived: true,
+        project: { select: { key: true } },
+      },
+    });
+    return rows.map((r) => ({
+      id: r.id,
+      title: r.title,
+      projectId: r.projectId,
+      projectKey: r.project.key,
+      archived: r.archived,
+    }));
   }
 
   /**
