@@ -1,6 +1,7 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   CreatePageDto,
+  IssueLinkedPagesDto,
   PageBacklinkDto,
   PageDto,
   PageGraphDto,
@@ -32,6 +33,18 @@ export function usePageGraph(projectId: string | undefined) {
     queryKey: qk.pageGraph(projectId ?? ''),
     enabled: !!projectId,
     queryFn: () => request<PageGraphDto>(`/projects/${projectId}/pages/graph`),
+  });
+}
+
+/**
+ * Knowledge-base pages that reference a given issue — the issue drawer's
+ * "Linked pages" section (the reverse of a page's issue cross-links).
+ */
+export function useIssuePages(issueId: string | undefined) {
+  return useQuery({
+    queryKey: qk.issuePages(issueId ?? ''),
+    enabled: !!issueId,
+    queryFn: () => request<IssueLinkedPagesDto>(`/issues/${issueId}/pages`),
   });
 }
 

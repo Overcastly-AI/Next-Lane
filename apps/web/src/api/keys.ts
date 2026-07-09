@@ -100,6 +100,8 @@ export const qk = {
     ['pageVersion', pageId, versionNumber] as const,
   /** "What links here" — pages that link TO this page. */
   pageBacklinks: (pageId: string) => ['pageBacklinks', pageId] as const,
+  /** Knowledge-base pages that reference a given issue (issue drawer's "Linked pages"). */
+  issuePages: (issueId: string) => ['issuePages', issueId] as const,
 };
 
 /**

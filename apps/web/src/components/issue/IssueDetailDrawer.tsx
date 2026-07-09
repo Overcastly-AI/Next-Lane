@@ -39,6 +39,7 @@ import { TimeTrackingSection } from './TimeTrackingSection';
 import { GithubLinksSection } from './GithubLinksSection';
 import { GitlabLinksSection } from './GitlabLinksSection';
 import { GiteaLinksSection } from './GiteaLinksSection';
+import { LinkedPagesSection } from './LinkedPagesSection';
 import { useAuth } from '@/auth/AuthContext';
 
 /** Common agile estimate values offered in the Story Points select. */
@@ -434,6 +435,7 @@ function DrawerBody({
             <GithubLinksSection issueId={issue.id} />
             <GitlabLinksSection issueId={issue.id} />
             <GiteaLinksSection issueId={issue.id} />
+            <LinkedPagesSection issueId={issue.id} projectId={issue.projectId} onNavigate={onClose} />
 
             <CommentsPanel issueId={issue.id} users={users} editable={editable} />
           </div>

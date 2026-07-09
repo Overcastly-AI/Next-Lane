@@ -386,10 +386,13 @@ each lives in `docs/BACKLOG.md` § Ready):**
     write (mirrors `syncWikiLinks`); `GET /pages/:id/issues` +
     `GET /issues/:id/pages` (both `pages:read`, bounded + `truncated`).
     Cross-project keys never match, per the existing scoping convention. 6
-    new unit tests. **Remaining:** the issue-drawer "Linked pages" section
-    (frontend) + an MCP tool for the page↔issue direction; layering issue
-    nodes into the knowledge graph is a separate design decision (issues
-    aren't page nodes) and stays deferred.
+    new unit tests. **Frontend shipped**: the issue drawer gains a "Linked
+    pages" section (`LinkedPagesSection`, mirrors the GitHub/GitLab/Gitea
+    Development sections — hidden when empty, click a page to open it + close
+    the drawer). **MCP shipped**: `get_page_issues` + `get_issue_pages`
+    (119 tools). e2e authored (`issue-linked-pages.spec.ts`); independent
+    QA run queued. Layering issue nodes into the knowledge graph is a
+    separate design decision (issues aren't page nodes) and stays deferred.
 11. ⬜ **Full-text search** — Pages join the existing Postgres
     `tsvector`/GIN search infrastructure (issues today); surfaced in the
     command palette and cross-project search, visually distinguished from

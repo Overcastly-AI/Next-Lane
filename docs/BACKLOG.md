@@ -157,11 +157,13 @@ together as one coherent frontend-builder slice; see the ticked entry in
 and the two pre-existing decision-gated items renumber from #6/#7 to
 #3/#4 accordingly.
 
-1. **Pages — issue ↔ page cross-linking** (P2, M; 🚧 **backend shipped
-   2026-07-09** — `PageIssueLink` parse-on-save sync via `extractIssueNumbers`
-   + `GET /pages/:id/issues` + `GET /issues/:id/pages`, bounded+truncated, 6
-   unit tests; **remaining: issue-drawer "Linked pages" UI + MCP tool**) — the
-   tight
+1. **Pages — issue ↔ page cross-linking** (P2, M; 🚧 **backend + frontend +
+   MCP shipped 2026-07-09** — `PageIssueLink` parse-on-save sync via
+   `extractIssueNumbers` + `GET /pages/:id/issues` + `GET /issues/:id/pages`
+   (bounded+truncated, 6 unit tests); issue-drawer "Linked pages" section
+   (`LinkedPagesSection`); MCP `get_page_issues`/`get_issue_pages` (119 tools);
+   e2e authored. **Remaining: independent QA run** of the assembled slice on a
+   full stack, then close) — the tight
    tracker↔docs integration the incumbent splits across two
    separately-priced products, and (once shipped) a second edge type in
    the same graph rather than a disconnected feature. **Scope:** when a
