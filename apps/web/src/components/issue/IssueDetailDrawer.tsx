@@ -435,7 +435,7 @@ function DrawerBody({
             <GithubLinksSection issueId={issue.id} />
             <GitlabLinksSection issueId={issue.id} />
             <GiteaLinksSection issueId={issue.id} />
-            <LinkedPagesSection issueId={issue.id} projectId={issue.projectId} onNavigate={onClose} />
+            <LinkedPagesSection issueId={issue.id} projectId={issue.projectId} />
 
             <CommentsPanel issueId={issue.id} users={users} editable={editable} />
           </div>

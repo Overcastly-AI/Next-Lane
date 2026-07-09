@@ -9,8 +9,10 @@
  * endpoint returns `{ items: [] }` when nothing references the issue), so a
  * single "any links?" check covers the common no-links case with no flash.
  *
- * Clicking a page navigates to it (`/projects/:projectId/pages/:pageId`) and
- * closes the drawer.
+ * Clicking a page navigates to it (`/projects/:projectId/pages/:pageId`);
+ * that route change leaves the board and unmounts the drawer, so no explicit
+ * close is needed (and calling the board's `closeIssue` would clobber the
+ * navigation by rewriting the board's search params).
  */
 import { useNavigate } from 'react-router-dom';
 import { useIssuePages } from '@/api/pages';
@@ -26,12 +28,9 @@ function PageIcon() {
 export function LinkedPagesSection({
   issueId,
   projectId,
-  onNavigate,
 }: {
   issueId: string;
   projectId: string;
-  /** Called after navigating to a page (used to close the drawer). */
-  onNavigate?: () => void;
 }) {
   const navigate = useNavigate();
   const query = useIssuePages(issueId);
@@ -41,7 +40,6 @@ export function LinkedPagesSection({
 
   function openPage(pageId: string) {
     navigate(`/projects/${projectId}/pages/${pageId}`);
-    onNavigate?.();
   }
 
   return (
