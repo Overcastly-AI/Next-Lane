@@ -14,6 +14,33 @@ This section summarizes the major capabilities delivered in the pre-1.0
 development phase. A versioned release will be tagged once the v1 criteria in
 [`docs/ROADMAP.md`](./docs/ROADMAP.md) are complete.
 
+### Added — 2026-07-09 (Pages — schema + backend module: Confluence × Obsidian-hybrid knowledge base)
+
+**Kicks off the new Pages pillar (`docs/ROADMAP.md` Phase 11) — a team wiki
+that's also a knowledge graph.**
+- **Nestable page tree, project-scoped** — create/get/update/move/delete
+  pages with fractional-index sibling ordering (`POST /projects/:id/pages`,
+  `GET /projects/:id/pages/tree`, `GET/PATCH/DELETE /pages/:id`,
+  `POST /pages/:id/move`), cycle-rejected reparenting, and an explicit 400
+  (not a silent cascade) when deleting a page that still has children.
+- **Full, restorable version history** — every create and every
+  content/title-changing save writes a new immutable `PageVersion` snapshot
+  (`GET /pages/:id/versions`, `GET /pages/:id/versions/:n`,
+  `POST /pages/:id/versions/:n/restore` — restoring writes a NEW version,
+  history is never mutated or truncated).
+- **Obsidian-style `[[wiki-links]]`** — a shared `parseWikiLinks` parser
+  (`packages/shared/src/wikilink.ts`) resolves `[[Page Title]]`/
+  `[[Page Title|alias]]` references to pages in the same project
+  case-insensitively on every save, keeping `PageLink` edges in sync
+  (add/remove only the delta). A link to a not-yet-created page is a valid,
+  silently-tracked state, not an error.
+- **Backlinks + knowledge graph** — `GET /pages/:id/backlinks` ("what links
+  here") and `GET /projects/:id/pages/graph` (the full node/edge set for a
+  project, capped and truncation-flagged for very large wikis).
+- Gated by new `pages:read`/`pages:write` PAT scopes from day one.
+- Frontend, MCP tools, and issue↔page cross-linking are separate, upcoming
+  slices — see `docs/BACKLOG.md` § Ready.
+
 ### Added — 2026-07-06 (SSO/OIDC Phase 2 — SAML + multi-provider + JIT provisioning)
 
 **Closes the last "Admin controls" Better-than-Jira lever.**

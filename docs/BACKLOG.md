@@ -118,146 +118,32 @@ Format: `- [ ] (P1, M) title — description [src]` · P0 critical / P1 now / P2
 **Re-sequenced 2026-07-09 (vision-steward pass — Pages kickoff, founder
 directive 2026-07-06: "How can we add a confluence type section?"; scope
 sharpened same day: "Could it be hybrid of confluence and obsidian md? I
-really like the graph feature of obsidian.").** Eleven new items (#1-#11)
-inserted at the TOP of the queue — the Pages epic, reframed as a **Confluence
-× Obsidian hybrid** (team wiki + `[[wiki-links]]` + backlinks + a
-knowledge-graph view, all agent-traversable over MCP), sequenced strictly by
-dependency: schema (incl. the `PageLink` graph-edge table) → backend CRUD →
-`[[wiki-link]]` parsing → graph endpoint → frontend tree/editor → backlinks
+really like the graph feature of obsidian.").** The Pages epic, reframed as a
+**Confluence × Obsidian hybrid** (team wiki + `[[wiki-links]]` + backlinks +
+a knowledge-graph view, all agent-traversable over MCP), sequenced strictly
+by dependency: schema (incl. the `PageLink` graph-edge table) → backend CRUD
++ `[[wiki-link]]` parsing + graph endpoint → frontend tree/editor → backlinks
 panel → graph view → MCP CRUD tools → MCP graph/backlink traversal tools
 (the crown jewel) → issue-linking → search. Per the explicit founder
-directive to "start building." Item #1 (schema) is already in flight — a
-schema-architect is building it concurrently with this doc pass, now
-including the `PageLink` table per the sharpened scope; do not re-scope it,
-only consume its shipped shape in #2 onward. This is deliberately sequenced
-*ahead* of the two pre-existing decision-gated items (now #12/#13, unchanged,
-still awaiting a founder/product call) rather than displacing them — they
-remain visible, not dropped. Framing: `docs/VISION.md` § The pillars item 7
-+ § Better-than-Jira scorecard "Knowledge / Docs" row (new, target: beyond
-both reference points); full phase detail in `docs/ROADMAP.md` Phase 11.
+directive to "start building." This is deliberately sequenced *ahead* of the
+two pre-existing decision-gated items (now #8/#9, unchanged, still awaiting a
+founder/product call) rather than displacing them — they remain visible, not
+dropped. Framing: `docs/VISION.md` § The pillars item 7 + § Better-than-Jira
+scorecard "Knowledge / Docs" row (new, target: beyond both reference points);
+full phase detail in `docs/ROADMAP.md` Phase 11.
 
-**Build update (2026-07-06, prior pass):** Ready item #1 (SSO/OIDC Phase 2 —
-SAML + multi-provider + JIT provisioning) shipped — see the ticked entry in
-§ Already Done. Removed from the Ready queue below; the former items #2/#3
-renumbered to #1/#2, now displaced further by the Pages items below.
+**Build update (2026-07-09, same day):** the schema (former #1) and the
+backend module — CRUD/tree/move, version history, `[[wiki-link]]` parsing +
+`PageLink` sync, backlinks + graph endpoints (former #2/#3/#4, shipped as one
+coherent backend slice) — are done; see the ticked entries in § Already Done.
+Removed from the Ready queue below; the former items #5-#11 renumbered to
+#1-#7, with their `depends on #2/#3/#4` references updated to point at the
+now-shipped backend module instead of a queue position.
 
-1. **Pages — schema + migration (incl. `PageLink` graph edges)** (P0, S,
-   🚧 in progress — schema-architect, concurrent with this doc pass;
-   **scope grew same-day per the founder's Confluence×Obsidian directive —
-   the `PageLink` table below is a new addition to this in-flight item, not
-   a separate one**) — foundation for the whole epic; every item below
-   depends on this shape. **Scope:** Prisma `Page` model, project-scoped:
-   `id`, `projectId`, `parentId` (nullable self-relation — nestable tree),
-   `title`, `content` (markdown text), `rank` (fractional string,
-   sibling-ordering scoped to `(projectId, parentId)`, reusing the exact
-   rank scheme the board already uses — do not invent a second ranking
-   scheme), `createdById`, `updatedById`, timestamps, `archivedAt`
-   (nullable soft-delete/archive, matching the Project archive convention
-   rather than a hard delete). `PageVersion` model: `id`, `pageId`,
-   `title`, `content`, `authorId`, `createdAt` — one **immutable** row per
-   save, no update/delete path — this is the Confluence-signature
-   differentiator (`docs/VISION.md` § pillar 7) and must never be
-   optional/best-effort. **`PageLink` model (new, Obsidian-hybrid scope):**
-   a directed edge, `id`, `sourcePageId`, `targetPageId` (both FK to
-   `Page`, `onDelete: Cascade`), unique on `[sourcePageId, targetPageId]`
-   (no duplicate edges from repeated `[[links]]` to the same target),
-   `createdAt` — this is the backing store for both the backlinks panel
-   (item #6) and the knowledge graph view (item #7); it is populated by
-   item #3's parser, not by this schema item. Indexes:
-   `@@index([projectId, parentId, rank])` (tree + ordering reads),
-   `@@index([pageId, createdAt])` on `PageVersion` (version-history reads),
-   `@@index([targetPageId])` on `PageLink` (backlink reads — "what links
-   here" is a reverse lookup by target). Additive migration only — no
-   changes to existing tables. **Acceptance criteria:** `prisma migrate
-   dev` clean; `prisma migrate diff` zero-drift verified; a page can nest
-   arbitrarily deep; sibling rank ordering supports insert-between without
-   renumbering (same guarantee as board cards); every save is provably
-   recorded as a new, never-mutated `PageVersion` row; a `PageLink` edge
-   correctly cascades away when either endpoint page is deleted.
-   **Territory:** `apps/api/prisma/schema.prisma` + migration file only —
-   no service/controller/frontend code (that's items #2-#3). **Size:** S.
-
-2. **Pages — backend module (CRUD, tree-move, version history)** (P1, M,
-   depends on #1) — `apps/api/src/pages/` (`PagesModule`/`Controller`/
-   `Service`, following the existing per-domain NestJS pattern). **Scope:**
-   `GET /projects/:id/pages` (VIEWER+, full project tree or flat list —
-   pick one shape and document it, whichever the frontend item consumes
-   more cleanly); `GET /pages/:id` (VIEWER+, includes current content);
-   `POST /projects/:id/pages` (MEMBER+, creates at end of the target
-   parent's children via fractional rank, snapshots an initial
-   `PageVersion`); `PATCH /pages/:id` (MEMBER+, title/content edit —
-   **every** successful edit creates a new `PageVersion`, no "just update
-   the row" shortcut); `PATCH /pages/:id/move` (MEMBER+, reparent +
-   resibling via rank-between-neighbors, mirrors the board's
-   drag-and-drop rank semantics exactly; cross-project move rejected —
-   same scoping rule as everything else, cross-project page move is not
-   v1 scope); `DELETE /pages/:id` (MEMBER+ — **decide and document**:
-   reject delete of a page with existing children [require moving/
-   deleting them first] rather than silently cascading or orphaning,
-   matching the conservative-delete convention used elsewhere); `GET
-   /pages/:id/versions` (VIEWER+, paginated metadata list); `GET
-   /pages/:id/versions/:versionId` (VIEWER+, full content of one past
-   version); `POST /pages/:id/versions/:versionId/restore` (MEMBER+,
-   creates a **new** `PageVersion` copying the old content forward — never
-   deletes or rewrites history). RBAC via the existing
-   `assertProjectMember`/`assertProjectRole`/`getEffectiveProjectRole`
-   chokepoint (VIEWER read / MEMBER+ write, matching every other
-   project-scoped resource — do not build a parallel authz path). New
-   `pages:read`/`pages:write` entries in `PAT_SCOPES`
-   (`packages/shared/src/types.ts`), every route `@RequireScope`-gated
-   from day one (avoids a Hardening-Night-style retrofit). Tenant-
-   isolation matrix rows added for every new endpoint (real cross-tenant
-   attempt, BLOCKED). Audit-log entries on create/delete/move. **Acceptance
-   criteria:** full CRUD + tree-move + version-history + restore round-trip
-   unit-tested; VIEWER cannot write (403); tenant isolation proven; a
-   page's edit history is retrievable and restorable without ever losing a
-   prior version; deleting a page with children is rejected, not
-   cascaded. **Territory:** `apps/api/src/pages/**`, `packages/shared/src/`
-   (additive DTOs + scopes only). **Size:** M.
-
-3. **Pages — `[[wiki-link]]` parsing + `PageLink` sync on save** (P1, M,
-   depends on #2) — Obsidian's substance, and the source of truth every
-   graph/backlink surface below reads from. **Scope:** on every successful
-   `PATCH`/`POST` that changes a page's content (routed through #2's same
-   save path — do not fork a second write path), parse `[[Page Title]]`
-   tokens out of the markdown, resolve each to a target page by
-   case-insensitive exact title match **within the same project** (no
-   cross-project link resolution in v1, consistent with every other
-   cross-project scoping rule in this codebase), and upsert/delete
-   `PageLink` rows so the edge set exactly matches the content just saved
-   — idempotent (re-saving unchanged content is a zero-row diff). An
-   unresolved token (no page with that title yet) is tracked rather than
-   silently dropped, Obsidian-style — surfaced back to the editor (item
-   #5) as a distinguishable "unresolved" link, and excluded from graph
-   edges (items #4/#7) and the backlinks panel (item #6) until a
-   matching-titled page exists. **Acceptance criteria:** saving a page
-   containing `[[Existing Page]]` creates exactly one `PageLink` row;
-   removing the token from a subsequent save deletes that row; renaming
-   the token's target title with no matching page leaves it flagged
-   unresolved, not silently linked to the wrong page; two saves with
-   identical `[[links]]` produce zero additional writes on the second
-   save. **Territory:** `apps/api/src/pages/**` (parser + sync logic, unit
-   tests). **Size:** M.
-
-4. **Pages — graph endpoint** (P1, S, depends on #3) — the read side the
-   force-directed graph UI (item #7) and the MCP graph-traversal tools
-   (item #9) both consume; ships once so neither has to build its own
-   query. **Scope:** `GET /projects/:id/pages/graph` (VIEWER+) returns the
-   project's full node/edge set: one node per non-archived `Page` (id,
-   title), one edge per `PageLink` row (source→target). Issue cross-link
-   edges (from item #10) layer in as a second, distinguishable edge type
-   once that slice ships — this endpoint's response shape should
-   anticipate a `kind: 'page-link' | 'issue-link'` discriminator on edges
-   even though only `page-link` edges exist until #10 lands, so #10 is an
-   additive change here, not a breaking one. **Acceptance criteria:** the
-   endpoint returns a correct, tenant-scoped node/edge list for a real
-   multi-page, multi-link fixture; an unresolved `[[link]]` (item #3) does
-   not appear as an edge; VIEWER can read it (graph browsing shouldn't
-   require write access). **Territory:** `apps/api/src/pages/**`. **Size:** S.
-
-5. **Pages — frontend (tree nav + markdown editor + version history +
-   `[[link]]` autocomplete)** (P1, L, depends on #2, #3) — new project
-   route (e.g. `/projects/:id/pages`), reachable from the sidebar's
+1. **Pages — frontend (tree nav + markdown editor + version history +
+   `[[link]]` autocomplete)** (P1, L, depends on the shipped Pages backend
+   module) — new project route (e.g. `/projects/:id/pages`), reachable from
+   the sidebar's
    per-project `ProjectViewsSubNav` alongside Board/Backlog/Roadmap/
    Reports (the persistent-nav precedent from the Navigation & IA
    overhaul — do not bury this behind a "More" dropdown, the exact
@@ -291,66 +177,74 @@ renumbered to #1/#2, now displaced further by the Pages items below.
    `apps/web/src/components/pages/**`, `apps/web/src/api/pages.ts`,
    `apps/web/e2e/pages.spec.ts`. **Size:** L.
 
-6. **Pages — backlinks panel** (P1, S, depends on #3, #5) — Obsidian's
+2. **Pages — backlinks panel** (P1, S, depends on item #1 above; the
+   backend `GET /pages/:id/backlinks` endpoint already shipped) — Obsidian's
    most-loved feature after the graph itself. **Scope:** every page's
-   detail pane gains a "What links here" panel — a reverse `PageLink`
-   query (pages whose content contains a resolved `[[link]]` to the
-   current page), rendered as a simple list linking through to each
-   source page; empty state ("No pages link here yet") for a page with no
-   inbound links. **Acceptance criteria:** creating `[[Page B]]` inside
-   Page A makes Page A appear in Page B's backlinks panel; removing the
-   link removes it from the panel on the next load/realtime update; a
-   page with zero inbound links shows the empty state, not a blank
-   section. **Territory:** `apps/web/src/components/pages/**` (consumes
-   #2's read endpoints + a small backend query if not already covered by
-   #2/#4 — confirm which before duplicating). **Size:** S.
+   detail pane gains a "What links here" panel — consumes the already-live
+   `GET /pages/:id/backlinks` endpoint, rendered as a simple list linking
+   through to each source page; empty state ("No pages link here yet") for
+   a page with no inbound links. **Acceptance criteria:** creating
+   `[[Page B]]` inside Page A makes Page A appear in Page B's backlinks
+   panel; removing the link removes it from the panel on the next
+   load/realtime update; a page with zero inbound links shows the empty
+   state, not a blank section. **Territory:**
+   `apps/web/src/components/pages/**` (backend endpoint already shipped —
+   no new backend work needed). **Size:** S.
 
-7. **Pages — knowledge graph view** (P1, L, depends on #4) — Obsidian's
+3. **Pages — knowledge graph view** (P1, L; the backend
+   `GET /projects/:id/pages/graph` endpoint already shipped) — Obsidian's
    signature visual, and the piece that makes this pillar genuinely a
    hybrid rather than "Confluence with extra linking." **Scope:** a
    force-directed node graph (pages as nodes, `PageLink` edges) rendered
-   from item #4's endpoint, reachable from the Pages nav (e.g. a "Graph"
-   toggle beside the tree view); clicking a node opens that page; zoom/pan;
-   an unresolved-link count or indicator so gaps in the graph are visible,
-   not just missing. Once issue cross-linking (item #10) ships, issue
-   nodes/edges render in the same graph (distinguishable styling, e.g. a
-   different node shape/color for issues vs. pages) rather than shipping a
-   second, disconnected graph view later. Built with the `frontend-design`
-   skill — this is a genuinely new, signature-element-caliber surface, not
-   a component patch. **Acceptance criteria:** a real multi-page,
-   multi-link fixture renders a correct node/edge graph; clicking a node
-   navigates to that page; mobile gets a usable (even if simplified)
-   experience, not a broken/overflowing canvas — confirm the minimum
-   viable mobile treatment (e.g. read-only pan/zoom, or a "best on
-   desktop" note) rather than shipping an untested mobile state.
-   **Territory:** `apps/web/src/components/pages/**` (new graph
+   from the already-live graph endpoint (`PageGraphDto` — nodes/edges/
+   `truncated`, capped at `MAX_GRAPH_NODES` = 1000), reachable from the
+   Pages nav (e.g. a "Graph" toggle beside the tree view); clicking a node
+   opens that page; zoom/pan; surface the `truncated` flag when a wiki
+   exceeds the node cap, and an unresolved-link count or indicator so gaps
+   in the graph are visible, not just missing. Once issue cross-linking
+   (item #6 below) ships, issue nodes/edges render in the same graph
+   (distinguishable styling, e.g. a different node shape/color for issues
+   vs. pages) rather than shipping a second, disconnected graph view later.
+   Built with the `frontend-design` skill — this is a genuinely new,
+   signature-element-caliber surface, not a component patch. **Acceptance
+   criteria:** a real multi-page, multi-link fixture renders a correct
+   node/edge graph; clicking a node navigates to that page; mobile gets a
+   usable (even if simplified) experience, not a broken/overflowing canvas
+   — confirm the minimum viable mobile treatment (e.g. read-only pan/zoom,
+   or a "best on desktop" note) rather than shipping an untested mobile
+   state. **Territory:** `apps/web/src/components/pages/**` (new graph
    component), `apps/web/e2e/pages-graph.spec.ts`. **Size:** L.
 
-8. **Pages — MCP tools: CRUD + version history** (P1, M, depends on #2) —
-   agents read AND write the knowledge base, not just the tracker.
-   **Scope:** `list_pages`, `get_page` (verbose includes full content),
-   `create_page`, `update_page` (content/title — triggers a new version,
-   matching #2's contract), `move_page` (reparent/reorder), `delete_page`,
-   `list_page_versions`, `get_page_version`, `restore_page_version`.
-   Follow the existing compact/verbose + `{items, total, limit, offset,
-   hasMore}` pagination envelope convention from the Agent Experience
-   batch (`docs/BACKLOG.md` § Already Done) — a compact field set by
-   default (no full-content dumps on `list_pages`), `verbose: true` for
-   full content. Update `apps/mcp/README.md` tool/scope tables + counts.
-   **Acceptance criteria:** full CRUD + version-history + restore
-   reachable and live-verified over a real stdio round-trip against a
-   running API; token counts stay sane on a many-page wiki (compact
+4. **Pages — MCP tools: CRUD + version history** (P1, M; the backend
+   module already shipped) — agents read AND write the knowledge base, not
+   just the tracker. **Scope:** `list_pages`, `get_page` (verbose includes
+   full content), `create_page`, `update_page` (content/title — triggers a
+   new version, matching the shipped backend's contract), `move_page`
+   (reparent/reorder via the shipped `POST /pages/:id/move`),
+   `delete_page` (surfaces the shipped "has children" 400 rejection —
+   no cascade), `list_page_versions`, `get_page_version`,
+   `restore_page_version`. Follow the existing compact/verbose +
+   `{items, total, limit, offset, hasMore}` pagination envelope convention
+   from the Agent Experience batch (`docs/BACKLOG.md` § Already Done) — a
+   compact field set by default (no full-content dumps on `list_pages`),
+   `verbose: true` for full content. Update `apps/mcp/README.md` tool/scope
+   tables + counts. **Acceptance criteria:** full CRUD + version-history +
+   restore reachable and live-verified over a real stdio round-trip against
+   a running API; token counts stay sane on a many-page wiki (compact
    envelope proven, not just documented). **Territory:** `apps/mcp/src/**`,
    `apps/mcp/README.md`. **Size:** M.
 
-9. **Pages — MCP tools: graph & backlink traversal (crown jewel)** (P1, M,
-   depends on #4, #8) — the differentiator the whole pillar leads with,
-   per the founder's explicit framing: the graph isn't just a pretty view,
-   it's a knowledge graph an agent traverses. **Scope:** `get_page_graph`
-   (the project's full node/edge set, same shape as item #4's REST
-   endpoint), `get_page_backlinks` (pages linking to a given page — the
-   MCP-callable form of item #6), `get_page_links` (a given page's
-   outgoing `[[links]]`, resolved and unresolved). Update the MCP server's
+5. **Pages — MCP tools: graph & backlink traversal (crown jewel)** (P1, M,
+   depends on item #4 above; the backend graph/backlinks endpoints already
+   shipped) — the differentiator the whole pillar leads with, per the
+   founder's explicit framing: the graph isn't just a pretty view, it's a
+   knowledge graph an agent traverses. **Scope:** `get_page_graph` (the
+   project's full node/edge set, same shape as the shipped
+   `GET /projects/:id/pages/graph` REST endpoint, including the
+   `truncated` cap flag), `get_page_backlinks` (pages linking to a given
+   page — the MCP-callable form of the shipped `GET /pages/:id/backlinks`,
+   also item #2's panel), `get_page_links` (a given page's outgoing
+   `[[links]]`, resolved and unresolved). Update the MCP server's
    protocol-level `instructions` and relevant tool descriptions so an
    agent is nudged to traverse connected pages when answering "what's
    connected to this spec?"/"walk the backlinks from this page" — the
@@ -362,50 +256,54 @@ renumbered to #1/#2, now displaced further by the Pages items below.
    graph in one call via `get_page_graph`. **Territory:**
    `apps/mcp/src/**`, `apps/mcp/README.md`. **Size:** M.
 
-10. **Pages — issue ↔ page cross-linking** (P2, M, depends on #2, #4) —
-    the tight tracker↔docs integration the incumbent splits across two
-    separately-priced products, and (once shipped) a second edge type in
-    the same graph rather than a disconnected feature. **Scope:** when a
-    page's content references an issue key (`NL-123`), auto-link it.
-    **Recommended default (flag as an assumption, not a mandate — confirm
-    or override at build time):** parse on save server-side into an
-    explicit `PageIssueLink` join table (mirrors `IssueLink`'s shape,
-    page↔issue instead of issue↔issue) rather than a render-time text
-    scan, so the issue drawer's "Linked pages" back-reference is a
-    reliable query, not a live re-parse. Issue drawer gains a "Linked
-    pages" section mirroring the GitHub/GitLab/Gitea Development-section
-    link pattern already shipped. Feed these edges into item #4's graph
-    endpoint as the `kind: 'issue-link'` edge type anticipated there, so
-    item #7's graph view picks them up without a second integration.
-    Cross-project key references are out of v1 scope, matching the
-    existing issue-key-extraction scoping convention (GitHub/GitLab/Gitea
-    webhooks already scope keys to their own project only). MCP: a
-    `list_issue_pages`-shaped tool (or extend the existing
-    `get_epic_overview`-style composition) so an agent can ask "what docs
-    exist for this issue" in one call. **Acceptance criteria:** saving a
-    page containing `NL-123` creates a discoverable back-reference on that
-    issue's drawer AND a corresponding edge in `get_page_graph`; editing
-    the reference out of the page's content removes both; a cross-project
-    reference is correctly ignored, not silently mislinked. **Territory:**
-    `apps/api/src/pages/**` (or a small dedicated `page-issue-links`
-    module), `apps/web/src/components/issues/**` (drawer section),
-    `apps/mcp/src/**`. **Size:** M.
+6. **Pages — issue ↔ page cross-linking** (P2, M; depends on the shipped
+   Pages backend module + the shipped graph endpoint) — the tight
+   tracker↔docs integration the incumbent splits across two
+   separately-priced products, and (once shipped) a second edge type in
+   the same graph rather than a disconnected feature. **Scope:** when a
+   page's content references an issue key (`NL-123`), auto-link it.
+   **Recommended default (flag as an assumption, not a mandate — confirm
+   or override at build time):** parse on save server-side into an
+   explicit `PageIssueLink` join table (already in `schema.prisma`,
+   unused until this item — mirrors `IssueLink`'s shape, page↔issue
+   instead of issue↔issue) rather than a render-time text scan, so the
+   issue drawer's "Linked pages" back-reference is a reliable query, not a
+   live re-parse. Issue drawer gains a "Linked pages" section mirroring
+   the GitHub/GitLab/Gitea Development-section link pattern already
+   shipped. Feed these edges into the shipped graph endpoint as the
+   `kind: 'issue-link'` edge type anticipated there (`PageGraphDto` today
+   only carries page-link edges — this item is the additive change that
+   layers issue-link edges in, not a breaking one), so item #3's graph
+   view picks them up without a second integration. Cross-project key
+   references are out of v1 scope, matching the existing
+   issue-key-extraction scoping convention (GitHub/GitLab/Gitea webhooks
+   already scope keys to their own project only). MCP: a
+   `list_issue_pages`-shaped tool (or extend the existing
+   `get_epic_overview`-style composition) so an agent can ask "what docs
+   exist for this issue" in one call. **Acceptance criteria:** saving a
+   page containing `NL-123` creates a discoverable back-reference on that
+   issue's drawer AND a corresponding edge in `get_page_graph`; editing
+   the reference out of the page's content removes both; a cross-project
+   reference is correctly ignored, not silently mislinked. **Territory:**
+   `apps/api/src/pages/**` (or a small dedicated `page-issue-links`
+   module), `apps/web/src/components/issues/**` (drawer section),
+   `apps/mcp/src/**`. **Size:** M.
 
-11. **Pages — full-text search** (P2, S, depends on #1) — Pages join the
-    search surface issues already have, rather than being a second-class
-    silo. **Scope:** extend the existing Postgres `tsvector`/GIN
-    full-text-search infrastructure (shipped for `Issue` title+description)
-    to `Page` title+content via a generated-column migration mirroring the
-    issue one; surface Pages in the command palette (Cmd-K) and
-    cross-project search results alongside issues, visually distinguished
-    (distinct icon/badge) so a search result's type is obvious at a glance.
-    **Acceptance criteria:** a page's content is findable via the same
-    search bar issues already use; a VIEWER never sees a page from a
-    project they can't access (same tenant-scoping the issue search
-    already enforces — reuse it, don't reimplement). **Territory:**
-    `apps/api/src/pages/**` (tsvector migration) or `apps/api/src/search/**`,
-    `apps/web/src/components/CommandPalette*` / cross-project search UI.
-    **Size:** S.
+7. **Pages — full-text search** (P2, S; the schema already shipped) — Pages
+   join the search surface issues already have, rather than being a
+   second-class silo. **Scope:** extend the existing Postgres
+   `tsvector`/GIN full-text-search infrastructure (shipped for `Issue`
+   title+description) to `Page` title+content via a generated-column
+   migration mirroring the issue one; surface Pages in the command palette
+   (Cmd-K) and cross-project search results alongside issues, visually
+   distinguished (distinct icon/badge) so a search result's type is
+   obvious at a glance. **Acceptance criteria:** a page's content is
+   findable via the same search bar issues already use; a VIEWER never
+   sees a page from a project they can't access (same tenant-scoping the
+   issue search already enforces — reuse it, don't reimplement).
+   **Territory:** `apps/api/src/pages/**` (tsvector migration) or
+   `apps/api/src/search/**`, `apps/web/src/components/CommandPalette*` /
+   cross-project search UI. **Size:** S.
 
 **Later (not v1 — filed in § Later (P3) below, referenced here for the
 epic's full shape):** page comments, page templates, workspace-level
@@ -413,7 +311,7 @@ epic's full shape):** page comments, page templates, workspace-level
 share links (reuse `ShareToken`, mirroring the dashboard/board share-link
 pattern already shipped).
 
-12. **Product decision + implementation: distinct "switch workspace" vs.
+8. **Product decision + implementation: distinct "switch workspace" vs.
    "view workspace page" affordance** (P2, S, decision-needed) — since the
    route-derived tenant-context fix shipped, simply viewing (no save
    required) any workspace-scoped page now permanently persists that
@@ -421,10 +319,10 @@ pattern already shipped).
    founder/product call** before building either direction: is "wherever
    you last navigated" the intended default-landing behavior, or should
    "switching" be a distinct, explicit action separate from incidental
-   viewing? Filed decision-gated, same pattern as item 13, rather than
+   viewing? Filed decision-gated, same pattern as item 9, rather than
    guessing at intent. [product-auditor Pass-12 rank #8]
 
-13. **Cross-project issue MOVE** (P2, M, decision-needed) — a mis-filed issue
+9. **Cross-project issue MOVE** (P2, M, decision-needed) — a mis-filed issue
    cannot be moved to the correct project today; the only correction path is
    delete+recreate, which loses history/comments/links and the original key
    (measured: 2 calls, real data loss — MCP-QA pass 1 finding 4). Product-wide,
@@ -699,6 +597,8 @@ _Hardening Night close-out ingest (2026-07-06) — P2s:_
 - [x] (P2, S) Docs site Overcastly v2 re-theme (2026-06-28) — `docs-site/.vitepress/theme/custom.css` rewritten: Overcastly v2 token system (canvas `#15161a`/`#1c1d22`/`#25262c`, ink `#f4f4f1`/`#b8b9b6`/`#6f7075`, accent `#4F8BFF`/`#7AA8FF`, success `#7BD389`, hairlines `rgba(255,255,255,0.08/0.16)`); dotted-grid body background (signature element, radial-gradient dots at 32px grid); pill buttons (`999px`); mono-uppercase eyebrows on sidebar group titles, table `<th>`, code-block lang labels, custom-block titles; `h2` accent bar; `appearance:'dark'` in `config.ts`; SVG logos + favicon to `#4F8BFF`; theme-color meta to `#4F8BFF`; WCAG-AA verified; build clean 4.4s. [oss-curator / frontend-design]
 
 ## Already Done (recent shipments — ticked for reference)
+
+- [x] (P0/P1, S+M) **Pages — schema + backend module (CRUD, tree-move, version history, `[[wiki-link]]` parsing + `PageLink` sync, backlinks + graph endpoints)** ✅ shipped 2026-07-09 (former Ready queue #1-#4) — the Confluence×Obsidian-hybrid knowledge base's foundation + full backend slice, landed as two commits (schema in `092793c`, backend module this commit). **Schema** (`092793c`, unchanged by this pass): `Page` (project-scoped nestable tree via a self-relation `parentId`, `onDelete: Restrict` — deliberately, see below; live `content`; fractional `rank` scoped to `(projectId, parentId)`, reusing `packages/shared/src/rank.ts` verbatim, no second ranking scheme), `PageVersion` (immutable per-save snapshot, service-assigned monotonic `versionNumber`), `PageIssueLink` (reserved for a later slice — issue cross-linking, item #6 in the Ready queue — deliberately untouched by this backend module), `PageLink` (directed page↔page wiki-link edge, unique `[sourcePageId, targetPageId]`, `onDelete: Cascade` both sides); `pages:read`/`pages:write` `PAT_SCOPES` reserved. **Backend module** (`apps/api/src/pages/**`, new `PagesModule`/`Controller`/`Service`, mirroring the `components`/`dashboards`/`agent-context` module shape): 11 routes, every one `@RequireScope`-gated (`pages:read` GETs / `pages:write` mutations) + `assertProjectRole` (VIEWER read / MEMBER+ write, the existing `getEffectiveProjectRole` chokepoint, no parallel authz path) — `POST /projects/:id/pages` (create, content capped ~256 KiB via a `Buffer.byteLength` UTF-8 `IsMaxByteLength` DTO validator mirroring `agent-context`'s), `GET /projects/:id/pages/tree` (nested `PageTreeNode[]`, ordered by rank), `GET /projects/:id/pages/graph` (below), `GET/PATCH/DELETE /pages/:id`, `POST /pages/:id/move`, `GET /pages/:id/versions` (paginated, newest-first, compact — no `content` field, cursor = base64 `versionNumber` since it's already a unique monotonic per-page key), `GET /pages/:id/versions/:n` (one full snapshot), `POST /pages/:id/versions/:n/restore`, `GET /pages/:id/backlinks`. **Two deliberate design decisions, both documented in code:** (1) **delete-with-children → explicit 400**, not a cascade-subtree-delete — `Page.parentId`'s `onDelete: Restrict` (schema-architect's own posture, see the model-level comment in `schema.prisma`) already forces this at the DB layer; the service surfaces it as a clear `BadRequestException` naming the child count rather than silently cascading or building a separate "delete subtree" endpoint — the conservative choice for a v1 document tree where losing a whole branch should never be an implicit side effect. (2) **an unresolved `[[wiki-link]]` is silently skipped for `PageLink` edges, not persisted as a "phantom" row** — the shipped `PageLink` schema has two required, non-nullable FK columns (`sourcePageId`/`targetPageId`), so there is no schema-level slot to persist a title-only unresolved reference; `packages/shared/src/wikilink.ts#parseWikiLinks` is exposed to BOTH the backend sync logic and (for the not-yet-built frontend, item #1 in the Ready queue) an editor that re-parses content client-side against the known page-title list to render the "not yet created" affordance — one parser, two consumers, no backend "phantom row" needed. **`[[wiki-link]]` parsing + sync** (`packages/shared/src/wikilink.ts`, new, exported from the package root): `parseWikiLinks(md)` extracts `[[Title]]`/`[[Title|Alias]]` references (trims whitespace, skips empty titles, resolves the innermost pair on malformed nesting); `PagesService.syncWikiLinks` (private, runs inside the SAME transaction as every content-changing create/update/restore) resolves each unique title to a page in the SAME project via a case-insensitive `OR`-of-`equals` query (self excluded from the candidate set, so a page linking its own title never creates a self-edge), diffs against the page's current outgoing `PageLink` rows, and adds/removes only the delta (`createMany`/`deleteMany`, not delete-then-recreate) — idempotent, re-saving identical content is a zero-row diff. **Version history contract** (matches the `UpdatePageDto`/`PageVersion` doc comments already shipped in `092793c`): a new version is written on CREATE always and on UPDATE only when `title` and/or `content` is part of the change — a `parentId`/`rank`-only move or an `archived` toggle does NOT write a version, keeping tree-reorganization and content-history orthogonal; `restoreVersion` always writes a NEW version copying the target's content forward, never mutates or truncates history. **Tree move** (`POST /pages/:id/move`, `MovePageDto {parentId?, beforeId?, afterId?}`): computes the new rank via `rankBetween` inside a transaction (falls back to a one-time sibling rebalance, mirroring `IssuesService.rebalanceAndPlace`, only when neighbor ranks are exhausted — never renumbers on the normal path); cycle rejection (`assertNoCycle`, walks the `parentId` chain from the proposed new parent up to the root, 400s if it ever reaches the page being moved, including the trivial "become your own parent" case) runs inside the SAME transaction as the write, matching the TOCTOU-safety posture `IssuesService.move`'s neighbor-rank read+write already uses in this codebase (documented as a deliberate scope call, not a `SELECT ... FOR UPDATE` guarantee). **`PATCH /pages/:id`** additionally accepts a direct `parentId`/`rank` assignment (cycle-checked the same way) for a caller that already computed its own fractional rank — the move endpoint is for the neighbor-relative drag-and-drop UX, the PATCH field is for a caller (agent or already-rank-aware UI) that wants to set an exact value. **Graph endpoint** (`GET /projects/:id/pages/graph` → `PageGraphDto {nodes, edges, truncated}`, `truncated` a new field added to the already-shipped shared type): capped at `MAX_GRAPH_NODES` = 1000 (fetch-one-extra-to-detect-truncation, the same pattern as `ROADMAP_EPICS_CAP`/`PUBLIC_BOARD_ISSUES_CAP`), edges filtered to only those between two retained nodes so a truncated graph is never internally inconsistent (no dangling edge to a cut node); strictly project-scoped (never crosses projects, both endpoints of every edge independently verified). **Tests:** 32 new API unit tests (`pages.service.spec.ts`, backed by a small in-memory fake Prisma client rather than per-call jest mocks — the tree/version/wiki-link reconciliation logic needed a working little "database" to exercise realistically) covering CRUD, tree-move + cycle rejection (self-parent + grandparent-under-own-descendant), version-write-on-content-change vs. no-write-on-parentId/rank/archived-only change, restore-writes-new-version-never-mutates-history, wiki-link parse+sync add/remove edges + self-link exclusion + unresolved-link-no-error, backlinks, and graph shape + the `MAX_GRAPH_NODES` truncation case (2002→2034 tests, 95→96 suites); 13 new shared vitest for `parseWikiLinks` (171→184); 11 new `pat-scope-matrix.fixture.ts` rows (all 11 routes) — `pat-scope-coverage.integration.spec.ts` (the drift guard) and `pat-scope-rollout.integration.spec.ts` (401→423, 22 new DENY/ALLOW assertions) both green; 11 new tenant-isolation-matrix rows (real cross-tenant HTTP attempts against a live second project's page/version, all BLOCKED — 401→423 in the same integration count, `tenant-isolation.integration.spec.ts`'s own "126 endpoints, 0 issues" summary line covers them). `tsc --noEmit` clean api/shared; `pnpm --filter @next-lane/api build` clean. **Live end-to-end verification** (real running API + Postgres, not just unit tests): created two pages, saved one with `[[link]] to the other, `GET /projects/:id/pages/graph` showed the resulting edge; restored an old version and confirmed a brand-new version number was written (history untouched); a childful page's DELETE returned the documented 400. **MCP: deliberately NOT exposed in this slice** — `docs/BACKLOG.md`'s own Ready queue sequences MCP CRUD tools (item #4) and MCP graph/backlink traversal tools (item #5, "the crown jewel") as separate, later items depending on this backend module; exposing them here would pre-empt that explicitly-planned slice rather than skip it. **Frontend, MCP tools, and issue↔page cross-linking are separate, not-yet-built Ready-queue items** (see the renumbered #1-#7 above) — this entry covers the backend module only. [founder directive 2026-07-06 "How can we add a confluence type section?" + "Could it be hybrid of confluence and obsidian md? I really like the graph feature of obsidian."; VISION.md § The pillars item 7; ROADMAP Phase 11]
 
 - [x] (P2, M) **SSO/OIDC — Phase 2: SAML + multi-provider + JIT provisioning** ✅ shipped 2026-07-06 (Ready queue #1) — closes the last "Admin controls" Better-than-Jira lever (VISION.md § Better-than-Jira gaps #2). **Library:** `@node-saml/node-saml` 5.1.0 (actively-maintained fork of the `passport-saml` lineage), used directly (not via its Passport strategy wrapper) — consistent with the existing architecture, which already talks to `openid-client` directly for OIDC, not through Passport. **Schema (additive, Phase-1 `OidcConfig` singleton left entirely unmigrated):** new `SsoProvider` table (migration `20260706130000_add_sso_providers`) — one row per ADDITIONAL provider (OIDC or SAML), `type`-discriminated with mutually-exclusive nullable OIDC (`issuerUrl`/`clientId`/`clientSecretEncrypted`) and SAML (`samlEntryPoint`/`samlIdpIssuer`/`samlIdpCertificate`/`samlSpEntityId`) column groups, plus `jitDefaultWorkspaceId`/`jitDefaultRole` (default `VIEWER`) on BOTH this table and two new nullable columns added to the legacy `OidcConfig` row — an existing single-OIDC-provider deployment keeps working completely unmigrated (the new columns default to `null`/`VIEWER`, i.e. Phase-1 behavior unchanged) while still gaining opt-in JIT provisioning for its own provider if the admin sets one. **JIT provisioning semantics (conservative by design, shared `sso-jit-provisioning.util.ts` used identically by the legacy `OidcService` and the new `SsoService`):** ONLY fires for a BRAND NEW user (the very first successful SSO login that creates their `User` row) — an already-existing user's memberships are never touched by a later SSO login regardless of a provider's JIT config; `jitDefaultWorkspaceId: null` (the default) means JIT is off — the account is created so they can authenticate but lands with zero memberships until an existing member invites them; when set, a `Membership` is auto-created at `jitDefaultRole` (default `VIEWER` — admin must explicitly opt into a higher default). **Runtime (`apps/api/src/auth/sso/`, new `SsoModule`, additive alongside the untouched `OidcModule`):** `GET /auth/sso/:slug/login` dispatches by provider type — OIDC gets the same PKCE/state-cookie/discovery shape as the legacy flow (parameterized per-row, client cached per-slug keyed by an issuer+clientId+secret fingerprint) via a new shared `discoverOidcClient` util extracted from (but not replacing) `OidcService`'s own inline discovery; SAML redirects via `SAML.getAuthorizeUrlAsync` (HTTP-Redirect binding, RelayState carries the slug). `GET /auth/sso/:slug/callback` is OIDC-only (query-param authorization-code exchange); `POST /auth/sso/:slug/callback` is the SAML ACS endpoint (form POST, `SamlCallbackDto`) — each 404s for the wrong provider type. **SAML assertion validation strictness (every claim proven live against the real library, not mocked — see Tests below):** `wantAssertionsSigned: true` hardcoded, never admin-configurable off — an unsigned or tampered assertion is rejected outright; `wantAuthnResponseSigned: false` explicitly (the assertion signature alone is the trust boundary — requiring the outer `<Response>` envelope to ALSO be signed would reject interoperable IdPs like Okta/Azure AD/ADFS that by default sign only the assertion); `audience` always enforced (never `false`) against the provider's `samlSpEntityId` (defaults to a computed `${WEB_BASE_URL}/api/auth/sso/{slug}` when unset) — rejects assertions minted for a different SP; `validateInResponseTo: ifPresent` with a new `SamlCacheProviderFactory` (Redis-backed when `REDIS_URL` is set — reuses the existing optional `RedisModule`, correctly shared/restart-safe across replicas — else an in-memory fallback, correct for the common single-instance self-host) enforces single-use replay protection with a 5-minute window (tighter than node-saml's own 8h default, matching the legacy OIDC state token's order of magnitude); `<Conditions NotBefore/NotOnOrAfter>` timestamps always checked by the library regardless of config. **Documented residual gap:** `@node-saml/node-saml` does not independently re-verify `SubjectConfirmationData/@Recipient` against our own ACS URL — mitigated in practice by the signed-assertion + audience-restriction + single-use-InResponseTo combination already enforced, which together prevent cross-SP replay for any IdP that signs assertions (required here); a full custom Recipient check would mean hand-parsing assertion XML ourselves instead of trusting the audited library path. **Admin API** (`apps/api/src/admin-settings/sso-providers.service.ts`/`.controller.ts` — new `GET/POST/PATCH/DELETE /admin/sso-providers` on the existing `AdminSettingsController`, instance-admin gated, `admin:read`/`admin:write` scoped): slug auto-generated from label (or admin-supplied, collision-retried like `WorkspacesService.uniqueSlug`) and immutable after creation (the runtime route + OIDC discovery cache key off it); secrets/certificates write-only (`hasClientSecret`/`hasSamlIdpCertificate` booleans only, raw values never echoed by any GET); SAML certificate sanity-checked for PEM markers at write time (a full X.509 parse happens on first real login attempt). `GET /auth/providers` (the public login-page capability probe) now also returns every currently-ENABLED multi-provider's `{slug, type, label}` alongside the unchanged legacy `oidc` field. **Frontend:** `AdminSsoSettingsPage.tsx` gains a JIT workspace/role picker on the legacy form plus a new "Additional providers" section (list + inline create/edit forms, type radio OIDC/SAML, per-type fields, its own JIT picker, enable toggle, delete-with-confirm) — reuses the existing `Field`/`Input`/`Select`/`Textarea`/`Switch`/`Button` design-system primitives, no new components; `LoginPage.tsx` renders one "Continue with `<label>`" button per enabled multi-provider alongside the legacy button. **Tests:** 68 new API unit tests (`oidc.service.spec.ts` +3 for the legacy provider's own new JIT path, `admin-settings.service.spec.ts`/`oidc-config.service.spec.ts` +9 for the legacy JIT config validation, `sso-providers.service.spec.ts` 19 new, `sso-jit-provisioning.util.spec.ts` 4 new, `sso.service.spec.ts` 13 new — OIDC dispatch mocked like `oidc.service.spec.ts`, `sso.controller.spec.ts` 9 new) — 1931→1999 tests, 90→95 suites, all green. **`saml.service.spec.ts` (10 tests) is a full end-to-end proof against the REAL, unmocked `@node-saml/node-saml` library** — zero network, zero real IdP: a self-signed X.509 keypair (`selfsigned`, pure-JS, no OpenSSL binary dependency) stands in for the IdP, and `xml-crypto` (already a transitive dependency, added as an explicit devDependency) produces a REAL enveloped XML-DSig signature over a hand-built SAML `<Assertion>` (`__fixtures__/saml-response.fixture.ts`); covers accept-valid, forged-keypair rejection, post-signature-tamper rejection (digest mismatch), unsigned-response rejection, audience-confusion rejection, expired-assertion rejection, unknown-InResponseTo rejection, and replay-of-consumed-InResponseTo rejection — every strictness claim above is proven, not asserted. Also 4 new `pat-scope-matrix.fixture.ts` rows (`/admin/sso-providers` GET/POST/PATCH/DELETE) + a new `sso` exemption category in `pat-scope-coverage.integration.spec.ts` for the three `@Public()` runtime routes (`SsoController#login`/`oidcCallback`/`samlCallback`) — full integration suite still green (401 tests, 3 suites). **Live end-to-end verification** (not just unit tests): registered a user, promoted to instance admin, created a workspace, created a SAML provider via the real HTTP API with a locally-generated self-signed cert, hit the real `GET /auth/sso/:slug/login` redirect, extracted the real AuthnRequest ID from the inflated `SAMLRequest`, built and POSTed a real signed assertion to the real ACS endpoint — got redirected to `/login/sso-complete#token=...` with a valid session JWT, confirmed via `GET /auth/me` the user was created and via a DB query that the `Membership` row was auto-created at the configured JIT role; replaying the identical POST was confirmed rejected (`ssoError=...` redirect). `tsc --noEmit` clean across api/web/shared/mcp; `pnpm --filter @next-lane/api build` clean; `scripts/smoke-config-parity.sh` passes unchanged (no new env vars — SAML config is entirely DB/admin-UI-driven, secrets reuse the existing `OIDC_CONFIG_ENCRYPTION_KEY` derivation). **MCP:** deliberately **not exposed**, same reasoning as Phase 1 (`apps/mcp/README.md`'s "Not exposed over MCP" table, extended) — every write carries a client secret or IdP signing certificate, and the runtime login/callback routes are unauthenticated browser redirects with no agent-appropriate shape (an agent can't "click through" an IdP's own login form). [product-auditor Pass 9/10/11/12 admin-controls carryover; VISION.md § Better-than-Jira gaps #2]
 

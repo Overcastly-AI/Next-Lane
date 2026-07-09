@@ -81,6 +81,9 @@ interface Tenant {
   dashboardId: string;
   gadgetId: string;
   dashboardShareTokenId: string;
+  // Pages (Confluence x Obsidian-hybrid knowledge base).
+  pageId: string;
+  pageVersionNumber: number;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -451,6 +454,22 @@ async function setupTenant(
       ? (JSON.parse(dashboardShareTokenResp.body) as { id: string }).id
       : 'nonexistent-dashboard-share-token-id';
 
+  // ── Page (knowledge base) ──────────────────────────────────────────────────
+  const pageResp = await req(server, 'POST', `/projects/${projectId}/pages`, token, {
+    title: `Page-${suffix}`,
+    content: 'Initial content',
+  });
+  const pageId =
+    pageResp.status === 201
+      ? (JSON.parse(pageResp.body) as { id: string }).id
+      : 'nonexistent-page-id';
+  // A second save so there's a version 1 (create) AND version 2 (edit) to
+  // exercise the versions/:n and restore routes against a real row.
+  if (pageResp.status === 201) {
+    await req(server, 'PATCH', `/pages/${pageId}`, token, { content: 'Edited content' });
+  }
+  const pageVersionNumber = 1;
+
   return {
     token,
     userId,
@@ -474,6 +493,8 @@ async function setupTenant(
     dashboardId,
     gadgetId,
     dashboardShareTokenId,
+    pageId,
+    pageVersionNumber,
   };
 }
 
@@ -1205,6 +1226,66 @@ function buildMatrix(a: Tenant): Array<MatrixRow & { resolvedPath: string; resol
       path: (t) => `/poker-sessions/${t.pokerSessionId}`,
       body: () => ({ name: 'Hijacked session' }),
     },
+
+    // ── Pages (Confluence x Obsidian-hybrid knowledge base) ──────────────────
+    {
+      label: 'POST page for project A',
+      method: 'POST',
+      path: (t) => `/projects/${t.projectId}/pages`,
+      body: () => ({ title: 'Injected page' }),
+    },
+    {
+      label: 'GET page tree for project A',
+      method: 'GET',
+      path: (t) => `/projects/${t.projectId}/pages/tree`,
+    },
+    {
+      label: 'GET page graph for project A',
+      method: 'GET',
+      path: (t) => `/projects/${t.projectId}/pages/graph`,
+    },
+    {
+      label: 'GET page A by id',
+      method: 'GET',
+      path: (t) => `/pages/${t.pageId}`,
+    },
+    {
+      label: 'PATCH page A (cross-tenant mutation)',
+      method: 'PATCH',
+      path: (t) => `/pages/${t.pageId}`,
+      body: () => ({ content: 'Hijacked page — attacker was here.' }),
+    },
+    {
+      label: 'POST move page A (cross-tenant mutation)',
+      method: 'POST',
+      path: (t) => `/pages/${t.pageId}/move`,
+      body: () => ({ parentId: null }),
+    },
+    {
+      label: "GET page A's version history",
+      method: 'GET',
+      path: (t) => `/pages/${t.pageId}/versions`,
+    },
+    {
+      label: 'GET page A version 1',
+      method: 'GET',
+      path: (t) => `/pages/${t.pageId}/versions/${t.pageVersionNumber}`,
+    },
+    {
+      label: 'POST restore page A version 1 (cross-tenant mutation)',
+      method: 'POST',
+      path: (t) => `/pages/${t.pageId}/versions/${t.pageVersionNumber}/restore`,
+    },
+    {
+      label: 'GET backlinks for page A',
+      method: 'GET',
+      path: (t) => `/pages/${t.pageId}/backlinks`,
+    },
+    {
+      label: 'DELETE page A (cross-tenant mutation)',
+      method: 'DELETE',
+      path: (t) => `/pages/${t.pageId}`,
+    },
   ];
 
   return rows.map((row) => ({
@@ -1256,6 +1337,7 @@ function buildMatrix(a: Tenant): Array<MatrixRow & { resolvedPath: string; resol
         tenantA.dashboardShareTokenId,
         tenantA.personalCardId,
         tenantA.quickLinkId,
+        tenantA.pageId,
       ].filter(Boolean);
 
       // Note: webhookId may be a placeholder string if webhook creation was

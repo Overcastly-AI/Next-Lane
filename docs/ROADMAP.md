@@ -267,7 +267,7 @@ live.
 - ✅ **Personal & team analytics backend** — `AnalyticsModule` (`apps/api/src/analytics/`): `GET /me/analytics?days=N` → `PersonalAnalyticsDto` (open/completed/overdue assigned issues, per-day throughput flow series, avg cycle time, byType/byPriority CategoryCountDto groups, personal board stats); `GET /projects/:projectId/analytics?days=N` → `ProjectAnalyticsDto` (per-day flow series, createdTotal/completedTotal, avg cycle time, all-5-bucket CycleTimeBucketDto distribution with en-dash labels, WorkloadRowDto by assignee busiest-first + Unassigned row); both endpoints use ActivityLog completion-date reconstruction identical to reports.service; `days` defaults to 30, clamped to [1, 366]; 25 unit tests (analytics.service.spec.ts); build + typecheck clean; registered in AppModule. (2026-06-28)
 - ✅ **Personal & team analytics frontend** (2026-06-28) — `PersonalAnalyticsPage` at `/me/analytics` (14/30/90-day window selector, headline stat cards, hand-rolled SVG throughput chart, type/priority horizontal bar breakdowns, personal board mini-stats); `ProjectAnalyticsPage` at `/projects/:projectId/analytics` (window selector, headline stats, flow chart, cycle-time distribution, workload bars by assignee); "Analytics" tab in `ProjectNav`; "Insights" link in `AppHeader`; WCAG-AA, accessible charts with visually-hidden summaries; full data-testid coverage; Playwright e2e (desktop + mobile); build green.
 
-## Phase 11 — Pages: a Confluence × Obsidian hybrid, agent-traversable 🚧 (kickoff — founder directive 2026-07-06, scope sharpened 2026-07-09)
+## Phase 11 — Pages: a Confluence × Obsidian hybrid, agent-traversable 🚧 (schema + backend module shipped 2026-07-09 — founder directive 2026-07-06, scope sharpened 2026-07-09)
 
 **Founder directive, verbatim (2026-07-06): "How can we add a confluence type
 section?"** **Sharpened same-week (2026-07-09): "Could it be hybrid of
@@ -291,39 +291,51 @@ search (Postgres `tsvector`/GIN), and `ShareToken` — with the graph, backlinks
 and `[[wiki-link]]` parsing as the genuinely new surface area.
 
 **v1 slices (sequenced; full scope/acceptance-criteria/territory/size for
-each lives in `docs/BACKLOG.md` § Ready — schema is at the top of that
-queue and already in flight):**
+each lives in `docs/BACKLOG.md` § Ready):**
 
-1. 🚧 **Schema + migration** — `Page` (project-scoped, nestable via a
-   `parentId` self-relation, fractional `rank` for sibling ordering — reuses
-   the board's ranking scheme rather than inventing a second one — markdown
-   `content`, `createdById`/`updatedById`), `PageVersion` (an immutable
-   snapshot on every save: author, timestamp, full content — Confluence's
-   own signature differentiator, not an afterthought), and **`PageLink`**
+1. ✅ **Schema + migration** (shipped 2026-07-09) — `Page` (project-scoped,
+   nestable via a `parentId` self-relation, fractional `rank` for sibling
+   ordering — reuses the board's ranking scheme rather than inventing a
+   second one — markdown `content`, `authorId`/`lastEditedById`),
+   `PageVersion` (an immutable snapshot on every save: author, timestamp,
+   full content — Confluence's own signature differentiator, not an
+   afterthought), `PageIssueLink` (reserved for slice 10), and **`PageLink`**
    (a directed edge table, `sourcePageId` → `targetPageId`, one row per
    resolved `[[wiki-link]]` — the backing store for the backlinks panel and
-   the graph view, added to this same schema pass per the founder's
-   Obsidian-hybrid directive). Additive only.
-   **In progress now, concurrently with this roadmap pass — schema-architect.**
-2. ⬜ **Backend module — CRUD/tree-move/version history** — `PagesModule`:
-   CRUD, tree-move (reparent + resibling by rank, mirrors board
-   drag-and-drop semantics), version history (list/get/restore-as-new-
-   version, never destructive), VIEWER read / MEMBER+ write via the
-   existing `assertProjectMember`/`assertProjectRole` chokepoint, new
-   `pages:read`/`pages:write` PAT scopes gated from day one (no
-   Hardening-Night-style retrofit needed).
-3. ⬜ **Backend — `[[wiki-link]]` parsing + `PageLink` sync on save** —
-   Obsidian's substance: every save parses `[[Page Title]]` tokens out of
-   the markdown content, resolves them to a target page by title within the
-   project, and upserts/prunes `PageLink` rows to match exactly (idempotent
-   — re-saving unchanged content is a no-op diff). Unresolved links (no
-   matching page title) are tracked, Obsidian-style, rather than silently
-   dropped — surfaced in the editor and excluded from graph edges until
-   resolved.
-4. ⬜ **Backend — graph endpoint** — `GET /projects/:id/pages/graph` returns
-   the project's full node/edge set (pages as nodes, `PageLink` rows as
-   edges; issue cross-links from slice 8 layered in as a second edge type
-   once that slice ships) for the force-directed graph UI to render.
+   the graph view). Additive only.
+2. ✅ **Backend module — CRUD/tree-move/version history** (shipped
+   2026-07-09) — `apps/api/src/pages/**` (`PagesModule`): full CRUD,
+   `POST /pages/:id/move` (reparent + resibling by rank via `rankBetween`,
+   cycle-rejected, mirrors board drag-and-drop semantics), version history
+   (list/get/restore-as-new-version, never destructive — a version is
+   written on create and on any content/title-changing update, not on a
+   pure move/archive), VIEWER read / MEMBER+ write via the existing
+   `assertProjectRole`/`getEffectiveProjectRole` chokepoint, `pages:read`/
+   `pages:write` PAT scopes gated from day one (no Hardening-Night-style
+   retrofit needed). Delete of a page with children is an explicit 400
+   (move/delete children first), not a cascade — see the ticked
+   `docs/BACKLOG.md` entry for the full design-decision writeup.
+3. ✅ **Backend — `[[wiki-link]]` parsing + `PageLink` sync on save**
+   (shipped 2026-07-09, same commit as #2) — Obsidian's substance: every
+   content-changing save parses `[[Page Title]]`/`[[Page Title|Alias]]`
+   tokens (new shared `packages/shared/src/wikilink.ts#parseWikiLinks`,
+   used by both the backend sync and, later, the frontend editor) out of
+   the markdown content, resolves them to a target page by
+   case-insensitive title within the project (self-links excluded), and
+   upserts/prunes `PageLink` rows to match exactly (idempotent — re-saving
+   unchanged content is a no-op diff). An unresolved link (no matching page
+   title yet) is simply not persisted as an edge — Obsidian's "link to a
+   not-yet-created page" is a valid state, not an error; it's surfaced at
+   the frontend layer (slice 5) by re-parsing content against the known
+   page-title list, not via a backend "phantom" row (the `PageLink` schema
+   has no slot for a title-only unresolved reference).
+4. ✅ **Backend — graph endpoint** (shipped 2026-07-09, same commit as #2)
+   — `GET /projects/:id/pages/graph` returns the project's full node/edge
+   set (pages as nodes, `PageLink` rows as edges; issue cross-links from
+   slice 10 layered in as a second edge type once that slice ships),
+   capped at `MAX_GRAPH_NODES` (1000) with a `truncated` flag mirroring the
+   roadmap/board/dashboard cap pattern; `GET /pages/:id/backlinks` (the
+   backing query for slice 6's panel) shipped alongside it.
 5. ⬜ **Frontend — tree nav + markdown editor + version history** —
    nestable tree-nav (drag-to-reorder/reparent via dnd-kit, reusing the
    board's rank-based DnD pattern), markdown editor reusing the existing
@@ -401,8 +413,20 @@ sequenced v1 slices — schema (incl. the `PageLink` graph-edge table) →
 backend CRUD → `[[wiki-link]]` parsing → graph endpoint → frontend
 tree/editor → backlinks panel → graph view → MCP CRUD tools → MCP graph/
 backlink traversal tools (the crown jewel) → issue-linking → search — and
-`docs/BACKLOG.md` § Ready for the buildable queue (schema is already in
-flight, concurrent with this doc pass).
+`docs/BACKLOG.md` § Ready for the buildable queue.
+
+**Build update (2026-07-09, same day): schema + backend module shipped.**
+Slices 1-4 above (schema, CRUD/tree-move/version-history, `[[wiki-link]]`
+parsing + `PageLink` sync, graph + backlinks endpoints) are done — 11 new
+REST routes (`apps/api/src/pages/**`), `pages:read`/`pages:write` PAT
+scopes live, 32 new API unit tests + 13 new shared vitest for
+`parseWikiLinks`, tenant-isolation + PAT-scope-matrix rows for every new
+route, all green. See the ticked `docs/BACKLOG.md` § Already Done entry for
+the full writeup (incl. the two documented design decisions: explicit-400
+on delete-with-children, and unresolved-`[[link]]`-is-not-an-error). Next up:
+the frontend (tree nav + markdown editor + version history + `[[link]]`
+autocomplete, `docs/BACKLOG.md` § Ready item #1) is the critical path for
+everything downstream (backlinks panel, graph view) to become human-visible.
 
 **Founder directive (2026-07-03, shipped same day): per-project agent context memory over MCP** — every project carries a persistent agent handoff document (read-first/hand-off-last, prompted at the protocol layer via MCP server instructions + tool descriptions, distributable `skills/project-context` Agent Skill, measured staleness signal). The agent-native pillar now includes cross-session memory. **Web-UI panel follow-up — ✅ shipped 2026-07-03**: a new "Agent context" section on project Settings (`AgentContextSection.tsx`, after Members/GitLab) renders the shared handoff document as markdown (empty-state copy, updatedAt/updatedBy metadata, amber "N changes since last update" staleness pill), edit-in-place (Edit → textarea → Save/Cancel, toast on save, inline error on the 64 KB cap) for effective project MEMBER+, read-only for VIEWER; realtime via the existing `useBoardRealtime` project-socket hook (new `project-agent-context.updated` + issue-activity invalidation of `qk.projectAgentContext`). 12 new e2e cases in `agent-context.spec.ts` (desktop 1280 + mobile 393): empty state, write→render→survives reload, a second live session sees the save with no reload, the staleness pill appearing live after another session changes an issue, VIEWER read-only, and the 64 KB inline-error path — all green, plus `settings-robustness.spec.ts` (15) + `gitlab-integration.spec.ts` (5) + `project-members.spec.ts` (4) regression re-verified green.
 

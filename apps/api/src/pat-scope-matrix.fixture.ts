@@ -197,6 +197,19 @@ export const MATRIX: MatrixRow[] = [
   { controller: 'poker', method: 'POST', path: `/poker-items/${X}/reveal`, scope: 'projects:write' },
   { controller: 'poker', method: 'POST', path: `/poker-items/${X}/commit`, scope: 'projects:write' },
 
+  // pages (Confluence x Obsidian-hybrid knowledge base)
+  { controller: 'pages', method: 'POST', path: `/projects/${X}/pages`, scope: 'pages:write' },
+  { controller: 'pages', method: 'GET', path: `/projects/${X}/pages/tree`, scope: 'pages:read' },
+  { controller: 'pages', method: 'GET', path: `/projects/${X}/pages/graph`, scope: 'pages:read' },
+  { controller: 'pages', method: 'GET', path: `/pages/${X}`, scope: 'pages:read' },
+  { controller: 'pages', method: 'PATCH', path: `/pages/${X}`, scope: 'pages:write' },
+  { controller: 'pages', method: 'DELETE', path: `/pages/${X}`, scope: 'pages:write' },
+  { controller: 'pages', method: 'POST', path: `/pages/${X}/move`, scope: 'pages:write' },
+  { controller: 'pages', method: 'GET', path: `/pages/${X}/versions`, scope: 'pages:read' },
+  { controller: 'pages', method: 'GET', path: `/pages/${X}/versions/${X}`, scope: 'pages:read' },
+  { controller: 'pages', method: 'POST', path: `/pages/${X}/versions/${X}/restore`, scope: 'pages:write' },
+  { controller: 'pages', method: 'GET', path: `/pages/${X}/backlinks`, scope: 'pages:read' },
+
   // project-memberships
   { controller: 'project-memberships', method: 'GET', path: `/projects/${X}/members`, scope: 'projects:read' },
   { controller: 'project-memberships', method: 'PUT', path: `/projects/${X}/members/${X}/role`, scope: 'projects:write' },

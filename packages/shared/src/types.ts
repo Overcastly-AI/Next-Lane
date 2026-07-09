@@ -841,6 +841,15 @@ export const SocketEvents = {
    * from `AgentContextService.upsert`.
    */
   ProjectAgentContextUpdated: 'project-agent-context.updated',
+  /**
+   * A project's page tree changed — a page was created, edited (content/
+   * title/version), moved/reparented, archived, or deleted. Payload is
+   * `{ projectId, pageId }` — clients refetch the affected page tree/detail
+   * query rather than receiving the full nested DTO (same lightweight
+   * "refetch, don't ship the payload" shape as `DashboardUpdated`). Emitted
+   * from `PagesService` on every page mutation.
+   */
+  PageUpdated: 'page.updated',
 } as const;
 
 export type SocketEvent = (typeof SocketEvents)[keyof typeof SocketEvents];
@@ -2447,8 +2456,47 @@ export interface PageGraphEdge {
  * by the Obsidian-style graph view. The API populates this by resolving
  * every `PageLink` row for the project's pages; this type is the shared
  * contract only.
+ *
+ * `truncated` — true when the project has more pages than the API's
+ * `MAX_GRAPH_NODES` cap and the response was cut off (nodes AND their
+ * edges), mirroring the `epicsTruncated`/`issuesTruncated` cap pattern used
+ * by the roadmap/board/dashboard endpoints. The client should surface this
+ * so a very large wiki doesn't silently render an incomplete graph as if it
+ * were complete.
  */
 export interface PageGraphDto {
   nodes: PageGraphNode[];
   edges: PageGraphEdge[];
+  truncated: boolean;
+}
+
+/** Compact page reference — used by the "what links here" backlinks panel. */
+export interface PageBacklinkDto {
+  /** The `PageLink` row id. */
+  id: string;
+  /** The page that links TO the page being queried. */
+  sourcePageId: string;
+  sourcePageTitle: string;
+  createdAt: string;
+}
+
+/**
+ * `GET /pages/:id/versions` response — compact, newest-first version
+ * history. Deliberately omits `content` (can be large; see `PageVersionDto`)
+ * so the history list itself stays cheap regardless of document size.
+ */
+export interface PageVersionSummaryDto {
+  id: string;
+  versionNumber: number;
+  title: string;
+  editedById: string | null;
+  editedBy?: UserDto | null;
+  createdAt: string;
+}
+
+/** `GET /pages/:id/versions` paginated response. */
+export interface PaginatedPageVersionsDto {
+  items: PageVersionSummaryDto[];
+  /** Opaque cursor for the next page, or null when there is no more. */
+  nextCursor: string | null;
 }
