@@ -1516,6 +1516,22 @@ export interface SavedFilterDto {
  *                       rather than folded into an existing one: without it a
  *                       scoped-down token could mint itself a brand-new
  *                       *unrestricted* token and escape its own restrictions.
+ * - `pages:read`     — GET the knowledge-base surface for a project: page
+ *                       tree/list, a single page's live content, its version
+ *                       history, its page<->issue links (`PageIssueLink`),
+ *                       and its page<->page wiki-links / graph view / "what
+ *                       links here" backlinks panel (`PageLink`). Reserved
+ *                       now (no routes exist yet) so the schema and the PAT
+ *                       vocabulary land together; the backend slice that
+ *                       adds the Pages controllers gates its GET routes on
+ *                       this scope and adds the matching
+ *                       `pat-scope-matrix.fixture.ts` rows.
+ * - `pages:write`    — POST/PATCH/DELETE on pages (create, edit — which also
+ *                       writes a new `PageVersion` snapshot — move/reparent,
+ *                       archive, delete) and mutations to page substructure:
+ *                       page<->issue links and page<->page wiki-links.
+ *                       Reserved now alongside `pages:read`; not yet gating
+ *                       any route.
  *
  * An empty `scopes` array on a token means "unrestricted" (same as a browser
  * JWT session — all routes are accessible). Only non-empty scopes arrays are
@@ -1542,6 +1558,8 @@ export const PAT_SCOPES = [
   'admin:write',
   'tokens:read',
   'tokens:write',
+  'pages:read',
+  'pages:write',
 ] as const;
 
 export type PATScope = (typeof PAT_SCOPES)[number];
@@ -2289,4 +2307,148 @@ export interface PaginatedProjectActivityDto {
   items: ProjectActivityItemDto[];
   /** Opaque cursor for the next page, or null when there is no more. */
   nextCursor: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Pages — Confluence x Obsidian hybrid knowledge base. A project-scoped,
+// nestable tree of markdown pages (`PageDto`) with full version history
+// (`PageVersionDto`), cross-links to tracked issues (`PageIssueLinkDto`), and
+// directed page<->page wiki-links (`PageLinkDto`) that power an Obsidian-style
+// graph view + "what links here" backlinks panel (`PageGraphDto`). See the
+// `Page` / `PageVersion` / `PageIssueLink` / `PageLink` models in
+// `apps/api/prisma/schema.prisma` for the full design rationale (in
+// particular why `Page.content` is the live body rather than a
+// latest-version lookup, and why `Page.parentId` is `onDelete: Restrict`).
+// ---------------------------------------------------------------------------
+
+/**
+ * A knowledge-base page. `content` is the LIVE markdown body — always equal
+ * to the content of the most recent `PageVersionDto` snapshot for this page
+ * (a new version is written on every save, including the first).
+ */
+export interface PageDto {
+  id: string;
+  projectId: string;
+  /** Null = top-level page (no parent in the tree). */
+  parentId: string | null;
+  title: string;
+  content: string;
+  /** Fractional-index sibling order — see `packages/shared/src/rank.ts`. */
+  rank: string;
+  archived: boolean;
+  authorId: string | null;
+  author?: UserDto | null;
+  lastEditedById: string | null;
+  lastEditedBy?: UserDto | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Body for `POST /projects/:id/pages`. */
+export interface CreatePageDto {
+  title: string;
+  /**
+   * Markdown body. Omitted/undefined defaults to `""`. Capped at ~256 KiB by
+   * the API DTO layer (pages are longer-form documents than the 64 KiB
+   * `ProjectAgentContext` handoff note this cap is modeled after).
+   */
+  content?: string;
+  /** Null/omitted = create as a top-level page. */
+  parentId?: string | null;
+}
+
+/**
+ * Body for `PATCH /pages/:id`. Changing `title` and/or `content` writes a new
+ * `PageVersionDto` snapshot. `parentId`/`rank` changes move the page within
+ * (or out of) the tree without touching version history.
+ */
+export interface UpdatePageDto {
+  title?: string;
+  content?: string;
+  parentId?: string | null;
+  rank?: string;
+  archived?: boolean;
+}
+
+/**
+ * An immutable snapshot of a page's title + content at one point in time —
+ * one row per save, `versionNumber` starting at 1 and increasing
+ * monotonically per page.
+ */
+export interface PageVersionDto {
+  id: string;
+  pageId: string;
+  versionNumber: number;
+  title: string;
+  content: string;
+  editedById: string | null;
+  editedBy?: UserDto | null;
+  createdAt: string;
+}
+
+/**
+ * A lightweight node in a project's page tree (sidebar navigation).
+ * Deliberately omits `content`/version history, which can be large — fetch
+ * the full `PageDto` (and, if needed, its `PageVersionDto[]` history)
+ * separately once a specific page is opened.
+ */
+export interface PageTreeNode {
+  id: string;
+  title: string;
+  archived: boolean;
+  rank: string;
+  children: PageTreeNode[];
+}
+
+/**
+ * A cross-link between a page and a tracked issue (`PageIssueLink`). Both
+ * sides are project-scoped; the service layer rejects creating a link across
+ * two different projects (no DB-level cross-table tenant constraint exists).
+ */
+export interface PageIssueLinkDto {
+  id: string;
+  pageId: string;
+  issueId: string;
+  issue?: IssueRefDto;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * A directed page<->page wiki-link (`PageLink`) — the backing edge for
+ * Obsidian-style `[[wiki-links]]` embedded in a page's markdown body.
+ * `sourcePageId` is the page containing the link; `targetPageId` is the page
+ * being linked to. This is the raw edge record (e.g. for a single page's
+ * "links out" / "backlinks" list); see `PageGraphDto` for a whole-project
+ * graph-view payload.
+ */
+export interface PageLinkDto {
+  id: string;
+  sourcePageId: string;
+  targetPageId: string;
+  createdAt: string;
+}
+
+/** One node in a project's page graph view. */
+export interface PageGraphNode {
+  id: string;
+  title: string;
+}
+
+/** One directed edge in a project's page graph view (one page -> page wiki-link). */
+export interface PageGraphEdge {
+  sourceId: string;
+  targetId: string;
+}
+
+/**
+ * `GET /projects/:id/pages/graph` response — the full page<->page link graph
+ * for a project (all pages as nodes, all `PageLink` rows as edges), consumed
+ * by the Obsidian-style graph view. The API populates this by resolving
+ * every `PageLink` row for the project's pages; this type is the shared
+ * contract only.
+ */
+export interface PageGraphDto {
+  nodes: PageGraphNode[];
+  edges: PageGraphEdge[];
 }

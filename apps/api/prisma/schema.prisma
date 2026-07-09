@@ -16,6 +16,7 @@
 // add_dashboards — applied 2026-07-02.
 // add_instance_admin_oidc_config — applied 2026-07-02.
 // add_project_membership — applied 2026-07-02.
+// add_pages — applied 2026-07-09.
 // Deferred to feature slices (do not add here without a feature branch):
 //   - pgvector embedding column (Phase 6)
 //   - GitLab / Gitea connections, auto-link-on-PR-open (Phase 9 follow-up)
@@ -242,6 +243,12 @@ model User {
 
   // Agent context handoff writes attributed to this user (nullable FK; see ProjectAgentContext)
   agentContextUpdates ProjectAgentContext[]
+
+  // Pages — authorship / attribution (all nullable FKs; SetNull preserves the
+  // page/version when the account is later deleted)
+  authoredPages      Page[]        @relation("pageAuthor")
+  lastEditedPages    Page[]        @relation("pageLastEditedBy")
+  editedPageVersions PageVersion[]
 }
 
 /// A user-defined shortcut to an external URL (their own apps/tools), shown in
@@ -419,6 +426,9 @@ model Project {
 
   // Agent context (per-project agent handoff memory — one row, optional)
   agentContext ProjectAgentContext?
+
+  // Pages (Confluence-style knowledge base — project-scoped page tree)
+  pages Page[]
 
   @@unique([workspaceId, key])
   @@index([workspaceId])
@@ -786,6 +796,9 @@ model Issue {
 
   // Gitea integration — linked PRs / commits / branches (Phase 9)
   giteaLinks IssueGiteaLink[]
+
+  // Pages — cross-links from the knowledge base to this issue
+  pageLinks PageIssueLink[]
 
   @@unique([projectId, number])
   @@index([projectId, statusId])
@@ -1597,16 +1610,16 @@ model OidcConfig {
 /// them — the safe, opt-in default. JIT never touches an ALREADY-EXISTING
 /// user's memberships on a later login, by design (see `sso.service.ts`).
 model SsoProvider {
-  id                       String          @id @default(cuid())
-  type                     SsoProviderType
-  enabled                  Boolean         @default(true)
-  label                    String
-  slug                     String          @unique
+  id      String          @id @default(cuid())
+  type    SsoProviderType
+  enabled Boolean         @default(true)
+  label   String
+  slug    String          @unique
 
   // ── OIDC (type = OIDC); null when type = SAML ──────────────────────────
-  issuerUrl                String?
-  clientId                 String?
-  clientSecretEncrypted    String?
+  issuerUrl             String?
+  clientId              String?
+  clientSecretEncrypted String?
 
   // ── SAML (type = SAML); null when type = OIDC ──────────────────────────
   /// The IdP's SSO endpoint (HTTP-Redirect binding) the SP-initiated
@@ -1626,14 +1639,14 @@ model SsoProvider {
   /// `dto/create-sso-provider.dto.ts`); persisted so the enforcement is
   /// explicit and reviewable per-row rather than implied by application code
   /// alone.
-  samlWantAssertionsSigned Boolean         @default(true)
+  samlWantAssertionsSigned Boolean @default(true)
 
   // ── JIT provisioning (applies to both types) ───────────────────────────
-  jitDefaultWorkspaceId    String?
-  jitDefaultRole           Role            @default(VIEWER)
+  jitDefaultWorkspaceId String?
+  jitDefaultRole        Role    @default(VIEWER)
 
-  createdAt                DateTime        @default(now())
-  updatedAt                DateTime        @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   jitDefaultWorkspace Workspace? @relation(fields: [jitDefaultWorkspaceId], references: [id], onDelete: SetNull)
 
@@ -2031,4 +2044,211 @@ model IdempotencyRecord {
 
   @@unique([key, userId, endpoint])
   @@index([createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Pages — Confluence-style knowledge base (project-scoped page tree)
+// ---------------------------------------------------------------------------
+
+/// A project-scoped, nestable document page. Pages form a tree via the
+/// self-referencing `parentId` (top-level pages have `parentId = null`);
+/// sibling order within a parent (or within the top-level list) is a
+/// fractional-index `rank` string, same scheme as `Issue.rank` — see
+/// `rankBetween`/`rankAfter`/`rankBefore` in `packages/shared/src/rank.ts`.
+///
+/// `content` holds the LIVE markdown body. `PageVersion` is the append-only
+/// history: every save (including the page's very first save) writes a new
+/// `PageVersion` snapshot, so `Page.content` is always exactly equal to the
+/// content of its latest `PageVersion` row and the two are never a separate
+/// source of truth to reconcile. This (vs. treating "the latest PageVersion"
+/// as the canonical current content with no live column on Page) is
+/// deliberate: nearly every read path (page view, search, the tree sidebar,
+/// NLQL/agent tooling) wants the current content with a single-table lookup
+/// and no "fetch the page, then fetch its MAX(versionNumber) row" join or
+/// N+1; only the history/diff/revert UI needs to walk `PageVersion`, and that
+/// stays a cheap, explicitly-opted-into query. A denormalized live column is
+/// the same tradeoff this schema already makes elsewhere (e.g.
+/// `ProjectAgentContext.content` is the live doc with no version table at
+/// all); here we additionally get full history without giving up the fast path.
+/// Length is uncapped at the DB layer (plain `String` -> Postgres TEXT, no
+/// `@db.VarChar`); the DTO layer enforces a generous ~256 KiB cap on write
+/// (pages are longer-form docs than the 64 KiB `ProjectAgentContext` handoff
+/// note — see that model's comment for the precedent this mirrors).
+///
+/// `parentId` onDelete: Restrict — deliberately NOT Cascade or SetNull.
+/// Deleting a page that has children is an inherently ambiguous, destructive
+/// operation with three very different reasonable outcomes (delete the whole
+/// subtree too / promote the children to root / reparent them to the
+/// deleted page's own parent), and a plain FK action can only ever implement
+/// ONE of those silently:
+///   - `Cascade` would silently wipe out an entire subtree just because its
+///     root was deleted — the "cascade a whole subtree unexpectedly" failure
+///     mode call out below.
+///   - `SetNull` would silently flatten the tree (children jump to top-level)
+///     with no record that a restructure happened — surprising and, unlike
+///     Issue.parentId's SetNull (where a sub-task losing its epic link is a
+///     low-stakes, easily-visible/undo-able field change), here it can
+///     silently rewrite a whole document tree's navigation structure.
+/// `Restrict` instead makes the database refuse the delete outright while a
+/// page still has children, forcing the service layer to make an EXPLICIT,
+/// intentional choice before the delete can proceed (e.g. require the caller
+/// to first re-parent or delete the children, or expose a dedicated
+/// "delete subtree" endpoint that cascades inside one transaction after
+/// explicit user confirmation). This is the same conservative posture this
+/// schema already takes for FKs where an implicit action would be surprising
+/// (e.g. `Notification.projectId` and most Cascade FKs are the "safe to lose
+/// the dependent row" case; Restrict is reserved for "the dependent rows are
+/// themselves independently valuable and losing/moving them needs to be a
+/// deliberate act").
+model Page {
+  id             String   @id @default(cuid())
+  projectId      String
+  /// Self-relation for the nestable tree. Null = top-level page. See the
+  /// model-level comment for why this FK is `onDelete: Restrict`.
+  parentId       String?
+  title          String
+  /// Live markdown body. See model-level comment: this is always the content
+  /// of the latest `PageVersion` row for this page.
+  content        String   @default("")
+  /// Fractional-index sibling order (within the same parent, including the
+  /// top-level list where parentId is null). See `packages/shared/src/rank.ts`.
+  rank           String
+  archived       Boolean  @default(false)
+  /// Nullable: the user who originally created the page; SetNull preserves
+  /// the page if that account is later deleted.
+  authorId       String?
+  /// Nullable: the user who made the most recent edit; SetNull preserves the
+  /// page if that account is later deleted.
+  lastEditedById String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  project       Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  parent        Page?           @relation("pageTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children      Page[]          @relation("pageTree")
+  author        User?           @relation("pageAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  lastEditedBy  User?           @relation("pageLastEditedBy", fields: [lastEditedById], references: [id], onDelete: SetNull)
+  versions      PageVersion[]
+  issueLinks    PageIssueLink[]
+  /// Obsidian-style `[[wiki-links]]` this page contains (outbound edges).
+  outgoingLinks PageLink[]      @relation("PageOutgoing")
+  /// Backlinks — other pages whose body links TO this page (inbound edges;
+  /// the source of the "what links here" panel and graph-view edges).
+  incomingLinks PageLink[]      @relation("PageIncoming")
+
+  // Fast "children of this parent within this project" / tree-render query
+  // (also covers "top-level pages of a project" where parentId is null).
+  @@index([projectId, parentId])
+  // Fast "ordered page list for a project" query (backlog/sidebar-style scan).
+  @@index([projectId, rank])
+}
+
+/// An immutable snapshot of a `Page`'s title + content at one point in time —
+/// Confluence-style version history. A new row is written on every save of
+/// the page, including the very first (so history is complete from creation,
+/// never starting mid-way). `versionNumber` is monotonically increasing per
+/// page (1, 2, 3, ...), assigned by the service layer (not a DB sequence, so
+/// it can be computed alongside the same transaction that updates
+/// `Page.content`/`Page.updatedAt`). See `Page`'s model-level comment for why
+/// `Page.content` (not "the latest PageVersion row") is the canonical current
+/// content.
+model PageVersion {
+  id            String   @id @default(cuid())
+  pageId        String
+  /// Monotonic per-page version counter, starting at 1. Service-assigned.
+  versionNumber Int
+  /// Snapshot of the page's title at save time (titles can change between
+  /// versions too, not just content).
+  title         String
+  /// Snapshot of the page's markdown body at save time.
+  content       String
+  /// Nullable: who made this particular edit; SetNull preserves the
+  /// historical snapshot if that account is later deleted.
+  editedById    String?
+  createdAt     DateTime @default(now())
+
+  page     Page  @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  editedBy User? @relation(fields: [editedById], references: [id], onDelete: SetNull)
+
+  @@unique([pageId, versionNumber])
+  // History-list query: "most recent versions of this page first".
+  @@index([pageId, versionNumber(sort: Desc)])
+}
+
+/// Cross-link between a `Page` and an `Issue` — lets a knowledge-base page
+/// reference (and be referenced from) specific tracked issues, mirroring the
+/// `IssueLink` pattern used for issue-to-issue links but simpler: a page/issue
+/// association has no direction/type vocabulary (BLOCKS, DUPLICATES, ...) the
+/// way two issues can relate, it is a single plain association, so there is
+/// no `type` column here.
+///
+/// Tenant constraint (service-layer enforced, not a DB constraint — Prisma/
+/// Postgres cannot express a cross-row-scope FK check declaratively): the
+/// linked `Page` and `Issue` must belong to the SAME `projectId`. Both sides
+/// are already independently project-scoped (`Page.projectId`,
+/// `Issue.projectId`); the service that creates a `PageIssueLink` must load
+/// both rows and reject the link (400) if their `projectId`s differ, the same
+/// way cross-project `IssueLink`s are guarded today.
+model PageIssueLink {
+  id        String   @id @default(cuid())
+  pageId    String
+  issueId   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  page  Page  @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  issue Issue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+
+  @@unique([pageId, issueId])
+  @@index([pageId])
+  @@index([issueId])
+}
+
+/// A directed page-to-page link — the backing store for Obsidian-style
+/// `[[wiki-links]]` embedded in a page's markdown body, and therefore the
+/// edge table for both the graph view and the "backlinks" / "what links
+/// here" panel. Distinct from `PageIssueLink` (page <-> issue) — this is
+/// page <-> PAGE.
+///
+/// `sourcePageId` — the page whose body contains the `[[link]]`.
+/// `targetPageId` — the page being linked to.
+/// Both FKs are `onDelete: Cascade`: a link edge has no meaning once either
+/// endpoint page is gone (unlike `Page.parentId`'s Restrict — a wiki-link
+/// reference is not a structural/ownership relationship the way tree nesting
+/// is, so losing the edge silently when either page is deleted is the
+/// expected, low-stakes outcome, same posture as `IssueLink`'s Cascade FKs).
+///
+/// One row per (source, target) pair — `@@unique([sourcePageId, targetPageId])`
+/// collapses repeated `[[links]]` to the same target within one page's body
+/// into a single graph edge; re-parsing a page's content on save should
+/// upsert against this constraint (delete-then-recreate the page's outgoing
+/// set, or diff) rather than insert duplicates.
+///
+/// Both indexes are load-bearing for different queries: `sourcePageId` powers
+/// "what does this page link out to" (rendering the page's outbound links),
+/// while `targetPageId` powers "what links here" (the backlinks panel) and,
+/// combined with `sourcePageId`, the full edge set for a project's graph view.
+///
+/// Tenant constraint (service-layer enforced, same pattern as
+/// `PageIssueLink`): source and target pages must belong to the same
+/// `projectId` — the graph view is per-project, never cross-project. A
+/// self-link (`sourcePageId === targetPageId`) is also a service-layer
+/// rejection (a page linking to itself is not a meaningful graph edge); not
+/// modeled as a DB CHECK constraint to keep this consistent with how the rest
+/// of this schema handles application-level invariants (see `PageIssueLink`'s
+/// tenant-constraint note).
+model PageLink {
+  id           String   @id @default(cuid())
+  sourcePageId String
+  targetPageId String
+  createdAt    DateTime @default(now())
+
+  sourcePage Page @relation("PageOutgoing", fields: [sourcePageId], references: [id], onDelete: Cascade)
+  targetPage Page @relation("PageIncoming", fields: [targetPageId], references: [id], onDelete: Cascade)
+
+  @@unique([sourcePageId, targetPageId])
+  // Outbound: "pages this page links to".
+  @@index([sourcePageId])
+  // Inbound: "backlinks — what links HERE" + graph-edge queries.
+  @@index([targetPageId])
 }
