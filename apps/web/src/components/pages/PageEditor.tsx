@@ -30,6 +30,8 @@ export interface PageEditorProps {
   onSave: (patch: { title: string; content: string }) => Promise<unknown>;
   onOpenPage: (pageId: string) => void;
   onCreatePage: (title: string) => void;
+  /** Fires when edit mode toggles — lets the parent hide sidecar panels for full-page editing. */
+  onEditingChange?: (editing: boolean) => void;
 }
 
 export function PageEditor({
@@ -41,9 +43,17 @@ export function PageEditor({
   onSave,
   onOpenPage,
   onCreatePage,
+  onEditingChange,
 }: PageEditorProps) {
   const toast = useToast();
   const [editing, setEditing] = useState(false);
+
+  // Let the parent react to edit mode (hide backlinks etc. for a full-page
+  // editing canvas). Effect-based so every transition path (edit button,
+  // cancel, save, page navigation reset) is covered.
+  useEffect(() => {
+    onEditingChange?.(editing);
+  }, [editing, onEditingChange]);
   const [title, setTitle] = useState(page.title);
   const [content, setContent] = useState(page.content);
 
@@ -105,7 +115,10 @@ export function PageEditor({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex items-start justify-between gap-3 border-b border-ink-100 px-4 py-3 sm:px-6">
+      {/* Document header — title + actions, constrained to the same centered
+          reading column as the body so the whole surface reads as one page. */}
+      <div className="border-b border-ink-100 px-4 py-3 sm:px-8">
+        <div className="mx-auto flex w-full max-w-3xl items-start justify-between gap-3">
         {editing ? (
           <Input
             value={title}
@@ -113,12 +126,12 @@ export function PageEditor({
             placeholder="Page title"
             aria-label="Page title"
             data-testid="page-title-input"
-            className="h-auto flex-1 border-none bg-transparent px-0 font-display text-xl font-semibold text-ink-900 shadow-none focus:ring-0"
+            className="h-auto flex-1 border-none bg-transparent px-0 font-display text-2xl font-semibold text-ink-900 shadow-none focus:ring-0"
           />
         ) : (
           <h1
             data-testid="page-title"
-            className="min-w-0 flex-1 truncate font-display text-xl font-semibold tracking-[-0.01em] text-ink-900"
+            className="min-w-0 flex-1 font-display text-2xl font-semibold tracking-[-0.01em] text-ink-900 sm:text-3xl"
           >
             {page.title}
           </h1>
@@ -169,34 +182,45 @@ export function PageEditor({
             )}
           </div>
         )}
+        </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6">
-        {editing ? (
-          <WikiLinkTextarea
-            value={content}
-            onChange={setContent}
-            pages={pageOptions}
-            rows={20}
-            aria-label="Page content (Markdown, use [[ to link another page)"
-            placeholder="Write in Markdown… type [[ to link another page."
-            data-testid="page-content-editor"
-            className="min-h-[50vh]"
-          />
-        ) : content ? (
-          <PageContent
-            content={content}
-            titleIndex={titleIndex}
-            onOpenPage={onOpenPage}
-            onCreatePage={onCreatePage}
-            className="max-w-none"
-          />
-        ) : (
-          <p data-testid="page-content-empty" className="text-sm text-ink-400">
-            {editable ? 'This page is empty. Click Edit to start writing.' : 'This page is empty.'}
-          </p>
-        )}
-      </div>
+      {editing ? (
+        /* Full-page editing canvas: the textarea fills every pixel down to
+           the bottom of the pane (it scrolls internally), borderless inside
+           the same centered column — writing on the page, not in a box. */
+        <div className="flex min-h-0 flex-1 flex-col px-4 py-4 sm:px-8">
+          <div className="mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col">
+            <WikiLinkTextarea
+              value={content}
+              onChange={setContent}
+              pages={pageOptions}
+              aria-label="Page content (Markdown, use [[ to link another page)"
+              placeholder="Write in Markdown… type [[ to link another page."
+              data-testid="page-content-editor"
+              className="min-h-[50vh] flex-1 resize-none border-none bg-transparent px-0 shadow-none focus:ring-0"
+            />
+          </div>
+        </div>
+      ) : (
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-8">
+          <div className="mx-auto w-full max-w-3xl">
+            {content ? (
+              <PageContent
+                content={content}
+                titleIndex={titleIndex}
+                onOpenPage={onOpenPage}
+                onCreatePage={onCreatePage}
+                className="max-w-none"
+              />
+            ) : (
+              <p data-testid="page-content-empty" className="text-sm text-ink-400">
+                {editable ? 'This page is empty. Click Edit to start writing.' : 'This page is empty.'}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

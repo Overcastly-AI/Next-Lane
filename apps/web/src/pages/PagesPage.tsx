@@ -97,6 +97,9 @@ export function PagesPage() {
 
   const [mobileTreeOpen, setMobileTreeOpen] = useState(false);
   const [versionsOpen, setVersionsOpen] = useState(false);
+  // True while the editor is in edit mode — the backlinks panel is hidden so
+  // the editing canvas gets the full page (founder directive: full-page editing).
+  const [editingPage, setEditingPage] = useState(false);
   const [createModal, setCreateModal] = useState<{ parentId: string | null; parentTitle?: string; initialTitle?: string } | null>(null);
 
   function openPage(id: string) {
@@ -300,7 +303,10 @@ export function PagesPage() {
               (() => {
                 const page = pageQuery.data;
                 return (
-                  <div className="flex flex-col">
+                  // min-h-full (not h-full) so the editor can flex-fill the
+                  // pane for full-page editing while long read-mode content
+                  // still grows and scrolls naturally.
+                  <div className="flex min-h-full flex-col">
                     <PageEditor
                       page={page}
                       titleIndex={titleIndex}
@@ -312,8 +318,9 @@ export function PagesPage() {
                       }
                       onOpenPage={openPage}
                       onCreatePage={handleCreateFromWikiLink}
+                      onEditingChange={setEditingPage}
                     />
-                    <BacklinksPanel pageId={page.id} onOpenPage={openPage} />
+                    {!editingPage && <BacklinksPanel pageId={page.id} onOpenPage={openPage} />}
                   </div>
                 );
               })()

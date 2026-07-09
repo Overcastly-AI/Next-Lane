@@ -143,7 +143,9 @@ export const WikiLinkTextarea = forwardRef<WikiLinkTextareaHandle, WikiLinkTexta
     const hasResults = filtered.length > 0;
 
     return (
-      <div className="relative">
+      // flex/min-h-0 so a parent can stretch the textarea into a full-page
+      // editing canvas (PageEditor's edit mode) — inert when not stretched.
+      <div className="relative flex min-h-0 flex-1 flex-col">
         <Textarea
           ref={textareaRef}
           value={value}

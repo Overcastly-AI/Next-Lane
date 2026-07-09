@@ -14,6 +14,18 @@ This section summarizes the major capabilities delivered in the pre-1.0
 development phase. A versioned release will be tagged once the v1 criteria in
 [`docs/ROADMAP.md`](./docs/ROADMAP.md) are complete.
 
+### Changed — 2026-07-09 (Pages: full-page document layout + full-page editing — founder directive)
+
+A page now reads and edits like a real document, not a boxed panel:
+- **Read mode** — display-size title and a centered, comfortable reading
+  column; the backlinks panel anchors to the bottom of a full-height page.
+- **Full-page editing** — entering Edit turns the whole pane into a
+  borderless writing canvas: the editor fills every pixel down to the bottom
+  (scrolls internally), the backlinks panel gets out of the way, and the
+  `[[wiki-link]]` autocomplete works as before. Title and body sit in the
+  same centered column, so you write on the page, not in a form field.
+All 30 Pages e2e green (desktop + mobile) after the change.
+
 ### Changed — 2026-07-09 (Knowledge graph: Obsidian-style visual redesign — founder directive)
 
 The graph view now speaks Obsidian's visual language instead of bordered
