@@ -378,7 +378,7 @@ each lives in `docs/BACKLOG.md` § Ready):**
    memory's protocol-level `instructions` do. `apps/mcp/src/tools/index.ts`
    +12 tools (105→117), `apps/mcp/README.md` tool/scope tables updated,
    19 new vitest (112→131 MCP tests), tsc + build clean.
-10. 🚧 **Issue ↔ page cross-linking** — **backend shipped 2026-07-09**: every
+10. ✅ **Issue ↔ page cross-linking** (shipped 2026-07-09) — every
     content-changing save parses the project's issue keys (`NL-123`) via the
     shared `extractIssueNumbers` (same project-scoped parser the SCM
     integrations use), resolves them to same-project `Issue` rows, and
