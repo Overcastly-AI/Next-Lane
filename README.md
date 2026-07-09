@@ -122,6 +122,14 @@ a hot-reload dev setup are in [Quickstart](#-quickstart) below.
   <img src="docs/screenshots/login-desktop.png" alt="Login (desktop)" width="49%" />
 </div>
 
+<!-- SCREENSHOT PLACEHOLDER: Pages knowledge-graph view (desktop + mobile)
+     not yet captured. Once shot per docs/screenshots/README.md, add here as:
+     <div align="center">
+       <img src="docs/screenshots/pages-graph-desktop.png" alt="Pages knowledge graph — force-directed page/link view (desktop)" width="49%" />
+       <img src="docs/screenshots/pages-graph-mobile.png" alt="Pages knowledge graph on mobile" width="24%" />
+     </div>
+-->
+
 </details>
 
 ## Why Next Lane
@@ -261,7 +269,9 @@ for status and what's next), grouped by who it's for:
 backlog, custom workflows with transition gates, the **NLQL** query language
 (search, saved filters, *and* dashboards), full-text search + ⌘K palette,
 realtime collaboration, configurable dashboards (STAT/TABLE/BREAKDOWN/BURNDOWN),
-burndown/velocity/CFD reports, planning poker, and async standups.
+burndown/velocity/CFD reports, planning poker, async standups, and a **Pages**
+project wiki with `[[wiki-link]]` autocomplete, version history, backlinks,
+and a force-directed knowledge graph.
 
 **For self-hosters** — one-command Docker Compose or Helm/Kustomize for
 Kubernetes, SSO/OIDC with in-app admin configuration, per-project role overrides,
@@ -269,8 +279,10 @@ GitHub, GitLab, and Gitea two-way integration with HMAC-verified webhooks, works
 branding, and a 102-endpoint tenant-isolation regression matrix.
 
 **For AI-agent users** — the 117-tool `@next-lane/mcp` server, server-side NLQL
-filtering, one-call epic rollups, persistent per-project agent memory, an
-installable Agent Skill, and personal API tokens scoped for agent auth.
+filtering, one-call epic rollups, an **agent-traversable Pages knowledge
+graph** (`get_page_graph`/`get_page_backlinks`/`get_page_links`), persistent
+per-project agent memory, an installable Agent Skill, and personal API tokens
+scoped for agent auth.
 
 The full capability matrix:
 
@@ -285,7 +297,8 @@ The full capability matrix:
 | **Collaboration** | Comments & activity history · realtime updates (Socket.io) · in-app notifications & @mentions · "My Work" + Team Pulse dashboards |
 | **Auth & SSO** | Email/password (JWT) · **SSO/OIDC** with an **in-app admin configuration screen** (`/admin/sso`, secrets encrypted at rest, no redeploy to change) — works with Okta/Auth0/Keycloak/Authentik/Google · personal API tokens (PATs) |
 | **Workflows (SDLC)** | **Configurable workflows** — per-project enforcement **and reusable named workflows assigned per board** · transition graph with **visual node/edge editor** · gates (require assignee/description/field/link/no-open-blockers) · seed from templates (simple / kanban / scrum / bug-triage) |
-| **Agent-native (MCP)** | **MCP server** (`apps/mcp`) — 97 read/write tools (41/56) over PAT auth, server-side NLQL evaluation, `get_epic_overview`, and **persistent per-project agent memory**. See [above](#-agent-native-your-coding-agent-can-run-the-tracker) |
+| **Agent-native (MCP)** | **MCP server** (`apps/mcp`) — 117 read/write tools (54 read, 63 write) over PAT auth, server-side NLQL evaluation, `get_epic_overview`, agent-traversable Pages knowledge graph, and **persistent per-project agent memory**. See [above](#-agent-native-your-coding-agent-can-run-the-tracker) |
+| **Pages (knowledge base)** | Project-scoped wiki: nestable page tree · markdown editor with `[[wiki-link]]` autocomplete (resolved + "create-it" unresolved links) · append-only **version history** with restore · **backlinks** ("what links here") · Obsidian-style **force-directed knowledge graph** view · graph/backlinks/links traversable over MCP for agent-native document authoring |
 | **Estimation & tracking** | Story points · **original estimate + work logs** (time spent vs estimate rollup) · **checklists** (sub-items + progress) · **WIP limits** per column |
 | **Automation** | **Glass Box engine** — trigger → condition → action rules · NLQL-based conditions · unlimited runs · full **run log** (audit trail per execution) |
 | **Rituals** | **Planning poker** (real-time estimation via Socket.io) · **async standups** (per-member responses + team digest) |
@@ -399,7 +412,7 @@ markers, in [`docs/ROADMAP.md`](./docs/ROADMAP.md) — driven by [`docs/VISION.m
 - **🔐 SAML & multi-provider SSO** — Phase 2 of the OIDC login work already shipped, plus per-workspace/role JIT provisioning.
 - **🤖 Autopilot** — a self-hosted AI teammate: private, unlimited, $0 AI (natural-language → NLQL, auto-triage, semantic dedupe, sprint risk radar) building further on the MCP-native foundation and persistent agent memory already shipped.
 - **Data ownership (Glass Box Phase 2)** — SQL / warehouse export, Grafana dashboards, scheduled/emailed reports.
-- **📚 The Unbundle** — free what others sell separately: docs/wiki, whiteboard, a public roadmap + voting portal, and intake forms.
+- **📚 The Unbundle** — free what others sell separately: **Pages, the project wiki with an Obsidian-style knowledge graph, is shipped**; still ahead — whiteboard, a public roadmap + voting portal, and intake forms.
 
 Full plan with phase status markers: [`docs/ROADMAP.md`](./docs/ROADMAP.md) · vision and thesis: [`docs/VISION.md`](./docs/VISION.md).
 

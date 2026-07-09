@@ -44,10 +44,10 @@ features:
   - icon: "🤖"
     title: AI-native and agent-native
     details: >
-      Built for the agent era. MCP-native today — 105 tools let AI coding agents
-      read and write issues, workflows, and dashboards directly from the IDE,
-      with persistent per-project agent memory. Dogfooded by a team of AI agents
-      that build this very product.
+      Built for the agent era. MCP-native today — 117 tools let AI coding agents
+      read and write issues, workflows, pages, and dashboards directly from the
+      IDE, with persistent per-project agent memory. Dogfooded by a team of AI
+      agents that build this very product.
 ---
 
 > Built by [Overcastly AI](https://overcastly.com) — open-source, MIT licensed, yours to self-host.
@@ -89,7 +89,8 @@ Log in: `demo@nextlane.dev` / `nextlane`
 | SSO/OIDC login (env or in-app admin config) | Live |
 | Per-project role overrides, workspace audit log, public share links (boards + dashboards) | Live |
 | Personal boards, dark mode, workspace branding | Live |
-| **MCP agent integration — 105 tools + per-project agent memory** | **Live** |
+| Pages — project wiki with `[[wiki-links]]`, version history, backlinks, and a force-directed knowledge graph | Live |
+| **MCP agent integration — 117 tools + per-project agent memory, incl. agent-traversable page graph** | **Live** |
 | Private AI inference | Roadmap |
 
 See the full [Features](./guide/features) guide and the

@@ -429,11 +429,82 @@ delivery with retries when Redis is configured.
 
 ### Pages — project knowledge base
 
-A team wiki with Obsidian-style features: nestable page trees per project,
-full version history, markdown editor with `[[wiki-link]]` autocomplete,
-backlinks ("what links here"), and a force-directed **knowledge graph view**
-for visual navigation. Pages are cross-linkable to issues and traversable over
-MCP for agent-native document authoring and graph traversal.
+A project-scoped wiki that blends a Confluence-style page tree with
+Obsidian-style linking and a visual knowledge graph — and, unlike either of
+those, one an AI agent can traverse programmatically. Reach it from a
+project's **Pages** tab (`/projects/:id/pages`).
+
+**Navigation.** A collapsible tree sidebar lists every page, nested
+arbitrarily deep, with a **Document** / **Graph** view switcher in the header
+and a project breadcrumb above it. "New page" creates a root page; a
+per-row hover action creates a child under any existing page. The tree is a
+full WAI-ARIA `tree` widget — arrow keys move between rows, Left/Right
+collapse/expand or jump to parent/first child, Enter opens — and rows have
+their own up/down move and delete actions. On mobile the tree becomes a
+slide-over drawer opened from the document header. Opening a page
+auto-expands the tree down to it, so you're never looking at a page with its
+own location collapsed out of view.
+
+**The markdown editor.** Click **Edit** to switch a page into an editable
+title + body. The body is a plain-markdown textarea (mermaid diagrams render
+too, same pipeline as issue descriptions) with one addition: typing `[[`
+opens a per-keystroke autocomplete dropdown of matching page titles —
+arrow keys to move, Enter/Tab to accept, Escape to dismiss, exactly like the
+`@mention` composer elsewhere in the app. `[[Existing Page]]` resolves to a
+real link; `[[Some New Idea]]` that doesn't match anything yet is still valid
+syntax — it renders as a dashed **"create it"** link that spins up a new page
+pre-filled with that title on click. `[[Title|custom display text]]` aliases
+the link text. A live counter next to Save/Cancel shows how many links in the
+draft are currently unresolved. Because `[`, `]`, and `|` are reserved for
+this link grammar, page **titles** can't contain them — the "New page" modal
+validates this inline before you can hit a round-trip 400.
+
+**Version history.** Every save snapshots a full, immutable `PageVersion` —
+**append-only**, nothing is ever overwritten. The History drawer (clock icon,
+top-right of a page) lists every version newest-first with author and
+relative timestamp, expands inline to preview that version's rendered
+content, and offers **Restore**. Restoring doesn't roll back destructively —
+it writes a *new* version with the old content, so the version you restored
+*from* stays in history too. You can never lose a revision.
+
+**Backlinks — "what links here."** Below every page, a panel lists every
+*other* page in the project whose body links to it via `[[wiki-link]]`,
+letting you navigate a wiki by its actual reference graph instead of only
+the tree. Version previews reuse the same wiki-link-aware renderer, so a
+restored version's links are just as navigable as the live one.
+
+**Knowledge graph view.** Switch to **Graph** for an Obsidian-style
+force-directed visualization of the whole project: every page is a node,
+every resolved `[[wiki-link]]` a directed edge. It's hand-rolled on plain SVG
+(no external graph library or CDN — keeps the self-hosted, script-src-`self`
+CSP posture) and supports drag-to-pan, mouse-wheel/pinch-to-zoom plus
+keyboard-reachable +/−/reset controls, and hovering (or focusing) a node dims
+everything except it and its direct neighbors so a dense graph's local
+structure stays readable. Click a node to open that page. It works on
+mobile (touch pan/pinch, a canvas sized to the actual viewport rather than a
+shrunk "world"), respects dark mode, and honors `prefers-reduced-motion` by
+skipping the settle-in animation while still converging to the same final
+layout.
+
+<!-- SCREENSHOT PLACEHOLDER: pages-graph-desktop.png / pages-graph-mobile.png
+     not yet captured. Once shot per docs/screenshots/README.md, replace this
+     comment with:
+     ![Pages knowledge graph — force-directed page/link view](/screenshots/pages-graph-desktop.png)
+-->
+
+**The standout: an agent can walk this graph too.** Next Lane's MCP server
+exposes `get_page_graph` (the full node/edge set for a project),
+`get_page_backlinks`, and `get_page_links` (a page's own outgoing links,
+split into resolved vs. unresolved) alongside full page CRUD and version
+tools — letting an AI agent traverse and author the knowledge base
+programmatically, not just read a rendered page. Neither a closed,
+cloud-only wiki (no graph/agent API) nor a local-only graph note-taking tool
+(no server, no agent surface) offers that combination. Full tool reference in
+[AI Agents & MCP](./agents-mcp#the-117-tool-surface-at-a-glance).
+
+Issue ↔ page cross-linking (a "Linked pages" section on the issue drawer) is
+on the roadmap, not shipped yet — today, pages link to each other, not to
+issues.
 
 ### AI agents (MCP)
 

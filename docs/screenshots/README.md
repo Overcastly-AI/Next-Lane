@@ -27,6 +27,8 @@ Last reshoot: **2026-07-03** (post-sidebar, dark mode, and design-elevation work
 | `home-mobile.png` | Workspace home on mobile |
 | `login-mobile.png` | Login on mobile |
 | `sidebar-mobile.png` | Mobile navigation drawer open |
+| `pages-graph-desktop.png` *(planned — not yet captured)* | Pages knowledge graph view — force-directed node/edge layout of a project's wiki (desktop) |
+| `pages-graph-mobile.png` *(planned — not yet captured)* | Pages knowledge graph view on mobile (touch pan/pinch) |
 
 ## Consumers
 
@@ -44,6 +46,12 @@ Last reshoot: **2026-07-03** (post-sidebar, dark mode, and design-elevation work
   relevant to what they document. After a reshoot here, re-copy the whole
   directory (`cp docs/screenshots/*.png docs-site/public/screenshots/`) and
   re-run `pnpm --filter @next-lane/docs docs:build` before pushing.
+- `pages-graph-desktop.png` / `pages-graph-mobile.png` are placeholders for
+  the Pages knowledge-graph view (`docs-site/guide/features.md` "Pages —
+  project knowledge base" and the root README both have marked HTML-comment
+  slots for them). Capture per the recipe below, drop the two files in this
+  directory **and** `docs-site/public/screenshots/`, then swap the comments
+  for real `![alt](...)` / `<img>` references in both places.
 
 ## Reshooting
 
