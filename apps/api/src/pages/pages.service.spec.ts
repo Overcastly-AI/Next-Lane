@@ -1,6 +1,6 @@
 import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Role, initialRanks } from '@next-lane/shared';
-import { PagesService, MAX_GRAPH_NODES } from './pages.service';
+import { PagesService, MAX_GRAPH_NODES, MAX_GRAPH_EDGES } from './pages.service';
 import type { PrismaService } from '../prisma/prisma.service';
 import type { RealtimeService } from '../realtime/realtime.service';
 
@@ -293,15 +293,18 @@ class Harness {
           where,
           include,
           orderBy,
+          take,
         }: {
           where?: Record<string, unknown>;
           include?: { sourcePage?: unknown };
           orderBy?: Record<string, 'asc' | 'desc'>;
+          take?: number;
         }) => {
-          const rows = [...self.links.values()].filter((r) =>
+          let rows = [...self.links.values()].filter((r) =>
             matchesWhere(r as unknown as Record<string, unknown>, where, (id) => self.pages.get(id)),
           );
           sortRows(rows, orderBy);
+          if (typeof take === 'number') rows = rows.slice(0, take);
           return Promise.resolve(
             rows.map((r) =>
               include?.sourcePage
@@ -819,5 +822,29 @@ describe('PagesService.graph', () => {
     expect(graph.nodes).toHaveLength(MAX_GRAPH_NODES);
     expect(graph.truncated).toBe(true);
     expect(graph.edges).toEqual([]); // the edge touched the truncated-out node
+  });
+
+  it('caps edges at MAX_GRAPH_EDGES and sets truncated (resource-exhaustion guard, review must-fix)', async () => {
+    const h = new Harness();
+    h.setRole(VIEWER, Role.VIEWER);
+    // ~102 nodes (well under the node cap) densely linked to exceed the edge
+    // cap — proves the edge query is bounded independently of the node cap.
+    const ids: string[] = [];
+    for (let i = 0; i < 102; i += 1) ids.push(h.addPage({ title: `N${i}` }).id);
+    let e = 0;
+    outer: for (const s of ids) {
+      for (const t of ids) {
+        if (s === t) continue;
+        h.links.set(`l${e}`, { id: `l${e}`, sourcePageId: s, targetPageId: t, createdAt: new Date() });
+        e += 1;
+        if (e > MAX_GRAPH_EDGES) break outer;
+      }
+    }
+    const service = makeService(h);
+
+    const graph = await service.graph(VIEWER, PROJECT_ID);
+
+    expect(graph.edges).toHaveLength(MAX_GRAPH_EDGES);
+    expect(graph.truncated).toBe(true);
   });
 });

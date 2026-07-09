@@ -2,6 +2,7 @@ import {
   IsBoolean,
   IsOptional,
   IsString,
+  Matches,
   MaxLength,
   MinLength,
   ValidateIf,
@@ -43,9 +44,21 @@ export class UpdatePageDto {
   @IsString()
   parentId?: string | null;
 
-  /** Raw fractional-index rank string. Stored as-is — see class doc. */
+  /**
+   * Raw fractional-index rank string. Constrained to the fractional-indexing
+   * base-62 alphabet (code-review should-fix on 3b03430): an unvalidated
+   * value stored here doesn't fail at write time but makes a LATER,
+   * unrelated `rankBetween`/`rankAfter` on a sibling throw — one member could
+   * otherwise 500 another member's future move. Prefer `POST /pages/:id/move`
+   * (server-computed) over setting this directly.
+   */
   @IsOptional()
   @IsString()
+  @MinLength(1)
+  @MaxLength(200)
+  @Matches(/^[0-9A-Za-z]+$/, {
+    message: 'rank must be a fractional-index string (base-62 alphanumeric)',
+  })
   rank?: string;
 
   @IsOptional()

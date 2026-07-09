@@ -47,6 +47,13 @@ import {
  * isn't there).
  */
 export const MAX_GRAPH_NODES = 1000;
+/**
+ * Hard ceiling on edges returned by the project graph — bounds the response
+ * independently of the node cap (a fully-connected 1000-node graph could
+ * otherwise be ~1M edges). 5000 comfortably covers a densely-linked real
+ * wiki while keeping the payload sane.
+ */
+export const MAX_GRAPH_EDGES = 5000;
 
 /** Default/max page size for `GET /pages/:id/versions`. */
 const VERSIONS_DEFAULT_LIMIT = 50;
@@ -84,14 +91,19 @@ export class PagesService {
     }
 
     const content = dto.content ?? '';
-    const lastSibling = await this.prisma.page.findFirst({
-      where: { projectId, parentId },
-      orderBy: { rank: 'desc' },
-      select: { rank: true },
-    });
-    const rank = rankAfter(lastSibling?.rank ?? null);
 
     const page = await this.prisma.$transaction(async (tx) => {
+      // Read the last sibling's rank INSIDE the transaction (code-review
+      // should-fix on 3b03430): two concurrent creates under the same parent
+      // that read the same lastSibling would otherwise compute an identical
+      // rank and both insert (no unique constraint on rank), leaving sibling
+      // order unstable. Mirrors IssuesService.create.
+      const lastSibling = await tx.page.findFirst({
+        where: { projectId, parentId },
+        orderBy: { rank: 'desc' },
+        select: { rank: true },
+      });
+      const rank = rankAfter(lastSibling?.rank ?? null);
       const created = await tx.page.create({
         data: {
           projectId,
@@ -473,7 +485,19 @@ export class PagesService {
         pageId: id,
         ...(cursorVersion !== null ? { versionNumber: { lt: cursorVersion } } : {}),
       },
-      include: { editedBy: true },
+      // Explicit select — the summary DTO never returns `content`, and each
+      // version's content can be up to 256 KiB; `include` would pull ~50 MB
+      // of bodies per full page only to discard them (code-review
+      // should-fix on 3b03430).
+      select: {
+        id: true,
+        pageId: true,
+        versionNumber: true,
+        title: true,
+        editedById: true,
+        createdAt: true,
+        editedBy: true,
+      },
       orderBy: { versionNumber: 'desc' },
       take: limit + 1,
     });
@@ -597,24 +621,35 @@ export class PagesService {
       orderBy: { createdAt: 'asc' },
       take: MAX_GRAPH_NODES + 1,
     });
-    const truncated = fetched.length > MAX_GRAPH_NODES;
-    const nodes = truncated ? fetched.slice(0, MAX_GRAPH_NODES) : fetched;
-    const nodeIds = new Set(nodes.map((n) => n.id));
+    const nodesTruncated = fetched.length > MAX_GRAPH_NODES;
+    const nodes = nodesTruncated ? fetched.slice(0, MAX_GRAPH_NODES) : fetched;
+    const nodeIdList = nodes.map((n) => n.id);
 
+    // Scope the edge query to the capped node set (both endpoints must be a
+    // kept node) AND cap the edge rows themselves — a project with thousands
+    // of pages each linking many titles can otherwise produce millions of
+    // PageLink rows, and pulling them all into memory before filtering is a
+    // resource-exhaustion vector any pages:write member could trigger
+    // (code-review must-fix on 3b03430). The `in`-list bounds it so Postgres
+    // never materialises an edge outside the visible graph; the `take` is a
+    // hard ceiling with its own truncation flag.
     const edgeRows = await this.prisma.pageLink.findMany({
-      where: { sourcePage: { projectId }, targetPage: { projectId } },
+      where: {
+        sourcePageId: { in: nodeIdList },
+        targetPageId: { in: nodeIdList },
+      },
       select: { sourcePageId: true, targetPageId: true },
+      take: MAX_GRAPH_EDGES + 1,
     });
-    // Keep the truncated graph internally consistent: drop any edge that
-    // touches a node cut off by the cap above.
-    const edges = edgeRows
-      .filter((e) => nodeIds.has(e.sourcePageId) && nodeIds.has(e.targetPageId))
-      .map((e) => ({ sourceId: e.sourcePageId, targetId: e.targetPageId }));
+    const edgesTruncated = edgeRows.length > MAX_GRAPH_EDGES;
+    const edges = (edgesTruncated ? edgeRows.slice(0, MAX_GRAPH_EDGES) : edgeRows).map(
+      (e) => ({ sourceId: e.sourcePageId, targetId: e.targetPageId }),
+    );
 
     return {
       nodes: nodes.map((n) => ({ id: n.id, title: n.title })),
       edges,
-      truncated,
+      truncated: nodesTruncated || edgesTruncated,
     };
   }
 
