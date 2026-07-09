@@ -452,3 +452,190 @@ This is the error-quality bar the rest of the surface should be held to.
   names in `create_dashboard_gadget`/saved-filter queries.
 - **P3 (new):** normalize id-param naming across dashboard tools
   (`dashboardId` vs `id`).
+
+---
+
+## Pass 3 — 2026-07-09 (Pages knowledge-graph surface, review-fix wave `79b6d32` + `e23eb47`)
+
+**Scope.** Acceptance of the 12 Pages tools (`list_pages`, `get_page`,
+`create_page`, `move_page`, `update_page`, `delete_page`,
+`list_page_versions`, `get_page_version`, `restore_page_version`,
+`get_page_graph`, `get_page_backlinks`, `get_page_links`) with a focus on the
+crown-jewel graph-traversal surface and the just-landed review-fix wave:
+(a) the three graph tools now read the AUTHORITATIVE stored `PageLink` rows
+(`GET /pages/:id/links`) instead of re-deriving from the tree — they must
+agree on edges/target ids, *especially* when two pages share a title;
+(b) `list_pages verbose` capped at 25 hydrated pages/call, fetched
+concurrently, must not 429; (c) `get_page_links` now carries a `truncated`
+flag.
+
+**Method.** Built `apps/mcp` from the committed tree (`pnpm build`), drove it
+via a stdio MCP client harness (`initialize` handshake + `tools/call`, real
+JSON), PAT auth (`nlp_...`, scopes `pages:read`+`pages:write`+`projects:read`)
+against the shared API on `:4000` — no second API started. Fresh user +
+workspace + project **KB QA Project**. Seeded 9 interlinked pages via
+`create_page`/`update_page` with `[[wiki-links]]`: a hub (**Engineering
+Handbook**), a 5-page cross-linked cluster (Onboarding → Dev Env → Architecture
+→ API Design, plus Release Process), a **true orphan** (Scratch Notes), and —
+for the ambiguity test — **two pages both titled "Glossary"** with the
+Handbook linking `[[Glossary]]`. Later added 22 filler pages (31 total) for
+the verbose-cap test. Traversed the graph purely through MCP tools to answer
+"how does our documentation connect, and what are the hub/orphan pages?".
+Every response byte-counted (payload = the tool-result text an agent sees).
+
+### Verdicts on the three review-fix criteria
+
+1. **Three graph tools agree on the ambiguous target id — CONFIRMED.** With
+   two same-title "Glossary" pages (older `…u503ppuwtfu01fnhrv`, newer
+   `…um03puuwtf2wr2w1vx`), the Handbook's `[[Glossary]]` resolves to the
+   **older** page across all three reads, byte-for-byte consistent:
+   - `get_page_graph` edge: `{sourceId: Handbook, targetId: …u503ppuwtfu01fnhrv}`.
+   - `get_page_links` (Handbook): `resolved[].pageId = …u503ppuwtfu01fnhrv`.
+   - `get_page_backlinks` on the **older** Glossary returns Handbook (1 item,
+     283 B); on the **newer** Glossary returns `[]` (81 B).
+   The authoritative-`PageLink` refactor holds: no tool re-derives a different
+   winner. (Resolution rule = oldest page by `createdAt` wins; verified against
+   `syncWikiLinks` in `pages.service.ts`.)
+
+2. **`list_pages verbose` 25-cap + no 429 — CONFIRMED.** On the 31-page
+   project: compact = 31 items / `hasMore:false` / **4,264 B**; verbose =
+   **exactly 25 items** / `limit:25` / `total:31` / **`hasMore:true`** /
+   **25,332 B**, `isError:false`, 140 ms (concurrent hydration, zero 429s).
+   Cap and pagination signal both correct.
+
+3. **`get_page_links` `truncated` flag — CONFIRMED.** Present on every
+   `get_page_links` result and inside `get_page`'s nested `links.outgoing`
+   (`truncated:false` throughout this pass; no page exceeded the cap).
+
+### Graph internal-consistency + post-delete integrity — CONFIRMED
+
+Whole graph (9 nodes / 14 edges) returned by one `get_page_graph` call
+(2,333 B, `truncated:false`); every edge's `sourceId`/`targetId` matched a
+node id. After I deleted the hub (see finding 1), a re-read returned 30 nodes
+/ 6 edges — the Handbook node and **all 8 edges touching it** were dropped
+atomically (no dangling edge id survived), and the three ex-linkers'
+`get_page_links` flipped `[[Engineering Handbook]]` from `resolved` to
+`unresolvedTitles` (re-derived from content vs the now-deleted `PageLink`
+rows). The graph never went internally inconsistent.
+
+### Calls-per-question (the PM interrogation) — all ≤ 1 MCP call
+
+| Question | Tool | Calls | Bytes |
+|---|---|---|---|
+| "How do our docs connect; which are hubs/orphans?" | `get_page_graph` | 1 | 2,333 |
+| "What links to the Handbook?" | `get_page_backlinks` | 1 | 675 |
+| "What does the Handbook link to; any broken links?" | `get_page_links` | 1 | 572 |
+| "Give me this page + its graph context" | `get_page` (default) | 1 | 1,664 |
+| Walk hub → Architecture → its links (one hop) | `get_page_links` | 1 | 305 |
+
+`get_page` bundles the page + backlink-count + split outgoing links into a
+single MCP call (3 API round-trips server-side, invisible to the agent) — the
+single best-shaped read on the Pages surface.
+
+### New findings (this pass), ranked
+
+**Finding 1 — P2: `delete_page` silently orphans inbound backlinks (no
+referential guard, bare `{id}` response).** `delete_page` guards TREE
+integrity (400 if the page has child pages) but not REFERENTIAL integrity. I
+deleted the **Engineering Handbook** — a hub with **3 backlinks and 5
+outgoing links** — and the call **succeeded**, returning `{ "id": "…" }`
+(39 B) with no warning. The three pages that linked to it (Onboarding, API
+Design, Release Process) were silently left with dangling `[[Engineering
+Handbook]]` references (now `unresolvedTitles`). *Agent-workflow it blocks:*
+an agent told "delete the old draft page" can destroy a load-bearing doc and
+get zero signal that it just broke N other pages' links — the exact
+information `get_page_backlinks`'s own description says to "check before
+editing or archiving a page to see what would be left dangling," yet
+`delete_page` neither checks nor hints it. A human in the web UI sees the page
+and its Backlinks panel first; the agent sees nothing. *Evidence:* delete
+returned 39 B success; graph 14→6 edges; `get_page_links` on Onboarding after:
+`resolved:[DevEnv]`, `unresolvedTitles:["Engineering Handbook"]`. *Suggested
+fix shape:* have `delete_page` return the count it just orphaned
+(`{ id, orphanedBacklinkCount: 3 }`) so the agent can react, and/or add a
+`force`-style guard that 409s when `backlinkCount > 0` unless explicitly
+acknowledged; at minimum the description should instruct checking
+`get_page_backlinks` first (mirroring the archive guidance).
+
+**Finding 2 — P3: "which pages changed today / recently" is not answerable
+compactly.** Compact `list_pages` refs are `{id, title, parentId, archived}`
+— **no `updatedAt`** (documented: the tree endpoint carries no timestamps),
+and `get_page_graph` nodes are just `{id, title}`. The only timestamped list
+is `list_pages verbose`, capped at **25 pages / 25,332 B per call**. So on a
+31-page project the natural agent question "what pages changed today?" costs
+**2 verbose calls (~50 KB) + client-side date filtering**, or one `get_page`
+per page. *Agent-workflow it blocks:* the "what changed today" standup
+question that Pass-1 praised for issues has no cheap Pages equivalent.
+*Suggested fix shape:* carry `updatedAt` on the compact ref (the tree query
+would need to select it), or expose a lightweight recently-updated-pages
+read (sortable by `updatedAt`, compact) so freshness doesn't force full
+hydration.
+
+**Finding 3 — P3: `create_page` has no misfile guard (unlike
+`create_issue`).** `create_issue` gained an `expectedProjectKey` echo/guard
+(Pass 1) precisely to stop agents writing to the wrong project.
+`create_page` takes only `projectId` — a single opaque cuid — with no
+expected-key confirmation, so writing a page into the wrong project is a
+one-argument mistake caught only by inspecting the returned `projectId` after
+the fact. *Agent-workflow it blocks:* multi-project agents mis-filing docs
+with no pre-write safety net. *Suggested fix shape:* optional
+`expectedProjectKey` on `create_page` mirroring `create_issue`
+(soft-recommend, hard-fail under `NEXT_LANE_MCP_STRICT_PROJECT_KEY`).
+
+**Finding 4 — P3: `get_page_graph` returns raw nodes+edges with no per-node
+degree.** Answering "which pages are hubs/orphans" — the graph tool's own
+headline use case, per its description — requires the agent to aggregate edge
+degree client-side. Trivial at 9 nodes; at the 1000-node cap it is real token
++ compute the agent must spend on every "hubs?" question. *Suggested fix
+shape:* optional `includeDegree:true` adding `{inbound, outbound}` per node,
+or a tiny `{hubs:[…], orphans:[…]}` summary block, so the crown-jewel question
+is answered by the crown-jewel call without post-processing.
+
+### What worked well (marketing-grade, all measured this pass)
+
+- **The tool descriptions taught the traversal pattern with zero guesswork.**
+  `get_page_graph` is self-labeled the "CROWN-JEWEL traversal call" and spells
+  out hub-spotting (many edges), orphan-spotting (no edges), and the
+  truncation-consistency contract; `get_page_links`/`get_page_backlinks`
+  cross-reference each other ("the reverse direction") and tell you to "follow
+  `pageId` into another get_page/get_page_links call to keep traversing." I
+  drove the entire graph walk from descriptions alone — no schema spelunking.
+- **Authoritative `PageLink` reads are genuinely consistent.** The
+  hardest-to-get-right case (two pages sharing a title) resolves to the same id
+  across all three tools, and stays consistent through a hub deletion. This is
+  the correctness bar an agent-native graph needs.
+- **Compact, bounded payloads.** Whole 9-node graph = 2,333 B; backlinks =
+  675 B; outgoing links = 572 B; a not-found error = 32 B (`Error: Page not
+  found [HTTP 404]`). Every graph question was ≤ 1 MCP call and single-digit KB.
+- **Verbose is safely bounded.** The 25-cap + concurrent hydration means an
+  agent that naively asks for "all pages, full detail" on a big wiki gets a
+  fast 25-KB slice + `hasMore:true`, never an unbounded dump or a 429.
+- **Errors are precise and one-retry self-correctable.** Reads: `Page not
+  found [HTTP 404]` (32 B), `Page version not found [HTTP 404]` (40 B), bad
+  project `Not a member of this project [HTTP 403]` (46 B), self-parent
+  `A page cannot be its own parent [HTTP 400]` (49 B). Input: the zod
+  envelope names the missing `projectId` path (241 B). Nothing generic.
+
+### Toolset footprint tracker (carried from Pass 2)
+
+`tools/list` now **117 tools / 103,407 B** (Pass 2: 104 / 89,111 B; +12.5%
+tools, +16% bytes — the 12 Pages tools land in this pass). Trend still upward;
+worth a one-time audit of whether the full `tools/list` needs to ship every
+description in full, but not blocking.
+
+### For the groomer
+
+- **P2 (new):** `delete_page` referential-integrity signal — return
+  `orphanedBacklinkCount` (and/or 409-on-backlinks guard / description warning)
+  so deleting a hub page isn't a silent, unsignalled break of N other docs.
+- **P3 (new):** carry `updatedAt` on compact `list_pages` refs (or add a
+  compact recently-updated-pages read) so "what pages changed today" doesn't
+  force 25-cap verbose hydration.
+- **P3 (new):** add optional `expectedProjectKey` misfile guard to
+  `create_page`, mirroring `create_issue`.
+- **P3 (new):** optional per-node degree (or `hubs`/`orphans` summary) on
+  `get_page_graph` so its headline hub/orphan question needs no client-side
+  aggregation.
+- **Verified closed:** review-fix wave `79b6d32` + `e23eb47` — the three
+  graph tools agree on the ambiguous same-title target id, `list_pages
+  verbose` is 25-capped with `hasMore` and no 429, and `get_page_links` carries
+  `truncated`. All independently reproduced above.
