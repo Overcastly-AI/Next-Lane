@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { Field } from '@/components/ui/Field';
@@ -24,10 +24,24 @@ export function CreatePageModal({
   onClose,
 }: CreatePageModalProps) {
   const [title, setTitle] = useState(initialTitle);
+  // Synchronous in-flight guard: `loading` reflects the async mutation state,
+  // which hasn't flipped when a fast double-click fires two clicks in the same
+  // tick — both would POST and create duplicate pages. Reset each time the
+  // modal (re)opens.
+  const submittingRef = useRef(false);
 
   useEffect(() => {
-    if (open) setTitle(initialTitle);
+    if (open) {
+      setTitle(initialTitle);
+      submittingRef.current = false;
+    }
   }, [open, initialTitle]);
+
+  // Release the guard once the create settles (success closes the modal; a
+  // failure keeps it open, and the user must be able to retry).
+  useEffect(() => {
+    if (!loading) submittingRef.current = false;
+  }, [loading]);
 
   // `[ ] |` are reserved for the [[wiki-link]] grammar; a title containing
   // them can't be linked to, so the API rejects it. Flag it inline instead of
@@ -36,8 +50,10 @@ export function CreatePageModal({
   const canSubmit = title.trim().length > 0 && !hasReservedChar;
 
   function submit() {
+    if (submittingRef.current) return;
     const trimmed = title.trim();
     if (!trimmed || hasReservedChar) return;
+    submittingRef.current = true;
     onCreate(trimmed);
   }
 

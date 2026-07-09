@@ -38,6 +38,11 @@ const MIN_SCALE = 0.35;
 const MAX_SCALE = 3;
 const TOTAL_ITERATIONS = 220;
 const ANIMATE_NODE_CAP = 150; // above this, skip incremental frames even with motion allowed
+// Rendered node "pill" box. The layout is given these half-extents as padding
+// so a node clamped at a canvas edge still renders fully on-screen (its box is
+// centered on the layout point) instead of clipping its label — QA defect.
+const NODE_W = 132;
+const NODE_H = 40;
 
 export interface KnowledgeGraphViewProps {
   projectId: string;
@@ -122,6 +127,9 @@ export function KnowledgeGraphView({ projectId, onOpenPage }: KnowledgeGraphView
       width,
       height,
       iterations: TOTAL_ITERATIONS,
+      // Keep node centers inset by the box half-extents (+2px breathing room)
+      // so labels never clip at the canvas edge.
+      padding: { x: NODE_W / 2 + 2, y: NODE_H / 2 + 2 },
     });
     const animate = !reducedMotion && nodes.length <= ANIMATE_NODE_CAP;
     // Small graphs animate in fine steps; large/reduced-motion graphs take
@@ -323,8 +331,8 @@ export function KnowledgeGraphView({ projectId, onOpenPage }: KnowledgeGraphView
                 const isHovered = hoveredId === n.id;
                 const isNeighbor = hoveredId !== null && (neighbors.get(hoveredId)?.has(n.id) ?? false);
                 const isDimmed = hoveredId !== null && !isHovered && !isNeighbor;
-                const w = 132;
-                const h = 40;
+                const w = NODE_W;
+                const h = NODE_H;
                 return (
                   <foreignObject
                     key={n.id}

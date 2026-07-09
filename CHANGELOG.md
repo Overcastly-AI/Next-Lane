@@ -38,6 +38,18 @@ Post-merge code review of the Pages frontend + MCP surfaces, findings fixed inli
   force-layout logic. a11y/UX: graph SVG uses `role="group"` (keeps node
   buttons exposed), delete-with-children disables its confirm, the unresolved-
   links badge now shows a compact count on mobile.
+- **Independent QA pass (desktop + mobile) — 3 defects found and fixed**, each
+  with a regression test now in the suite:
+  - Double-clicking **Save** double-submitted (duplicate version) and
+    double-clicking **Create** made duplicate pages — added synchronous
+    in-flight guards (the async pending state couldn't block a same-tick click).
+  - **Knowledge-graph node labels clipped** past the canvas edge on any graph
+    with >2 pages (reliable on mobile) — the layout clamped node *centers* by a
+    30px margin while nodes render as 132×40 boxes. The layout now insets
+    centers by the node half-extents so every label stays fully on-screen.
+  - New e2e coverage: `pages-qa-extra.spec.ts` (hierarchy, reorder, title
+    validation, graph pan/zoom) and `pages-adversarial.spec.ts` (double-submit,
+    title overflow, delete-guard, graph clipping) — all green desktop + mobile.
 
 ### Added — 2026-07-09 (Pages frontend — tree, markdown editor with `[[wiki-links]]`, backlinks + the knowledge graph view)
 

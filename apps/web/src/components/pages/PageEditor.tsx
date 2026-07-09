@@ -11,7 +11,7 @@
  * (see `UpdatePageDto`) — this component doesn't manage version history
  * itself, see `VersionHistoryDrawer`.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { PageDto } from '@next-lane/shared';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -73,17 +73,27 @@ export function PageEditor({
   const dirty = editing && (title !== page.title || content !== page.content);
   const unresolvedCount = editing ? countUnresolvedWikiLinks(content, titleIndex) : 0;
 
+  // Synchronous in-flight guard: the `saving` prop reflects the mutation's
+  // async state, which hasn't flipped yet when a fast double-click fires two
+  // clicks in the same tick — both would PATCH and create a duplicate version.
+  // A ref set synchronously blocks the second one.
+  const savingRef = useRef(false);
+
   async function handleSave() {
+    if (savingRef.current) return;
     if (!title.trim()) {
       toast.error('Page title can’t be empty.');
       return;
     }
+    savingRef.current = true;
     try {
       await onSave({ title: title.trim(), content });
       setEditing(false);
       toast.success('Page saved.');
     } catch (err) {
       toast.error(errorMessage(err, 'Could not save the page.'));
+    } finally {
+      savingRef.current = false;
     }
   }
 

@@ -22,6 +22,14 @@ export interface ForceLayoutOptions {
   height: number;
   /** Simulation steps to run. More = better-settled layout, more CPU. */
   iterations?: number;
+  /**
+   * Extra inset (px) to keep node CENTERS away from each canvas edge, so a
+   * node rendered as a box centered on its point isn't clipped by the canvas.
+   * Pass the node's half-width as `x` and half-height as `y`; the layout keeps
+   * every center at least this far from the edge (clamped so the usable band
+   * never inverts on a tiny canvas). Defaults to 0 (points, not boxes).
+   */
+  padding?: { x?: number; y?: number };
 }
 
 /**
@@ -89,7 +97,7 @@ export function computeForceLayout(
 export function createForceSimulation(
   nodeIds: string[],
   edges: Array<readonly [string, string]>,
-  { width, height, iterations = 220 }: ForceLayoutOptions,
+  { width, height, iterations = 220, padding }: ForceLayoutOptions,
 ): ForceSimulation {
   const n = nodeIds.length;
 
@@ -138,7 +146,12 @@ export function createForceSimulation(
   // (approaching the API's MAX_GRAPH_NODES truncation cap) spend fewer
   // iterations rather than adding spatial partitioning.
   const totalIterations = n > 300 ? Math.min(iterations, 60) : iterations;
-  const margin = Math.min(30, Math.min(width, height) / 6);
+  const baseMargin = Math.min(30, Math.min(width, height) / 6);
+  // Keep node CENTERS inset by at least their half-extent so the rendered box
+  // stays on-canvas (see `padding`). Clamp so the usable band never inverts on
+  // a tiny canvas — leave at least a few px of travel.
+  const marginX = Math.min(Math.max(baseMargin, padding?.x ?? 0), width / 2 - 4);
+  const marginY = Math.min(Math.max(baseMargin, padding?.y ?? 0), height / 2 - 4);
   let ran = 0;
 
   function stepOnce(iter: number): void {
@@ -200,8 +213,8 @@ export function createForceSimulation(
       node.vx *= 0.85;
       node.vy *= 0.85;
 
-      node.x = Math.min(width - margin, Math.max(margin, node.x));
-      node.y = Math.min(height - margin, Math.max(margin, node.y));
+      node.x = Math.min(width - marginX, Math.max(marginX, node.x));
+      node.y = Math.min(height - marginY, Math.max(marginY, node.y));
     }
   }
 

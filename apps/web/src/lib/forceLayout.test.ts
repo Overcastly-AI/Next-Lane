@@ -48,6 +48,18 @@ describe('createForceSimulation', () => {
     }
   });
 
+  it('keeps node centers inset by padding so a rendered box never clips the canvas (QA defect)', () => {
+    const pad = { x: 68, y: 22 };
+    // Narrow canvas that would otherwise clamp centers to a 30px margin.
+    const result = computeForceLayout(nodeIds, edges, { width: 400, height: 320, padding: pad });
+    for (const p of result.values()) {
+      expect(p.x).toBeGreaterThanOrEqual(pad.x - 0.001);
+      expect(p.x).toBeLessThanOrEqual(400 - pad.x + 0.001);
+      expect(p.y).toBeGreaterThanOrEqual(pad.y - 0.001);
+      expect(p.y).toBeLessThanOrEqual(320 - pad.y + 0.001);
+    }
+  });
+
   it('handles the single-node and empty cases', () => {
     expect(createForceSimulation([], [], opts).positions().size).toBe(0);
     const one = computeForceLayout(['solo'], [], opts);
