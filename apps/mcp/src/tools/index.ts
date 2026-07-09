@@ -1738,6 +1738,37 @@ const readTools: ToolDef[] = [
       return jsonResult({ pageId: args.pageId, ...outgoing });
     },
   },
+  {
+    name: 'get_page_issues',
+    group: 'read',
+    description:
+      'The tracked ISSUES this page links to — the tracker↔docs bridge. A ' +
+      'page auto-links an issue when its markdown mentions that issue key ' +
+      '(e.g. "NL-123") in the SAME project; the link is (re)computed every ' +
+      'time the page is saved. Returns compact issue refs (`{id, key, ' +
+      'title, type, status}`) so you can jump from a design doc to the work ' +
+      'it describes. Reverse of get_issue_pages (which pages document a ' +
+      'given issue). `truncated: true` means the page mentions more issues ' +
+      'than the response cap.',
+    inputSchema: { pageId: z.string().describe('Page id.') },
+    handler: (args, client) =>
+      client.get(`/pages/${args.pageId}/issues`).then(jsonResult),
+  },
+  {
+    name: 'get_issue_pages',
+    group: 'read',
+    description:
+      'The knowledge-base PAGES that reference this issue — "what docs ' +
+      'mention this work". Powers the issue drawer\'s "Linked pages" ' +
+      'section. Returns compact page refs (`{id, title}`); follow `id` into ' +
+      'get_page to read the doc. Reverse of get_page_issues. Use this to ' +
+      'find the spec/runbook/ADR behind an issue before starting it, or to ' +
+      'see what documentation an issue change might invalidate. `truncated: ' +
+      'true` means more pages reference the issue than the response cap.',
+    inputSchema: { issueId: z.string().describe('Issue id (not the key — the id).') },
+    handler: (args, client) =>
+      client.get(`/issues/${args.issueId}/pages`).then(jsonResult),
+  },
 ];
 
 // ---------------------------------------------------------------------------

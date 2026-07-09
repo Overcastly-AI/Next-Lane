@@ -154,6 +154,8 @@ describe('tool registry', () => {
       'get_page_graph',
       'get_page_backlinks',
       'get_page_links',
+      'get_page_issues',
+      'get_issue_pages',
       'create_page',
       'move_page',
       'update_page',
@@ -1721,6 +1723,29 @@ describe('pages (knowledge base) tools', () => {
     expect(body.resolved).toEqual([]);
     expect(body.unresolvedTitles).toEqual([]);
     expect(fetchImpl.mock.calls).toHaveLength(1);
+  });
+
+  it('get_page_issues GETs /pages/:id/issues and passes the {items, truncated} envelope through', async () => {
+    const { client, fetchImpl } = clientWith(200, {
+      items: [{ id: 'i-1', key: 'NL-1', title: 'Ship it', type: 'TASK' }],
+      truncated: false,
+    });
+    const res = await tool('get_page_issues').handler({ pageId: 'pg-1' }, client);
+    expect(fetchImpl.mock.calls[0][0]).toBe('http://localhost:4000/api/pages/pg-1/issues');
+    const body = JSON.parse(res.content[0].text);
+    expect(body.items[0]).toMatchObject({ id: 'i-1', key: 'NL-1' });
+    expect(body.truncated).toBe(false);
+  });
+
+  it('get_issue_pages GETs /issues/:id/pages (reverse direction)', async () => {
+    const { client, fetchImpl } = clientWith(200, {
+      items: [{ id: 'pg-2', title: 'Spec' }],
+      truncated: false,
+    });
+    const res = await tool('get_issue_pages').handler({ issueId: 'i-1' }, client);
+    expect(fetchImpl.mock.calls[0][0]).toBe('http://localhost:4000/api/issues/i-1/pages');
+    const body = JSON.parse(res.content[0].text);
+    expect(body.items).toEqual([{ id: 'pg-2', title: 'Spec' }]);
   });
 
   it('create_page POSTs title/content/parentId to /projects/:id/pages', async () => {
