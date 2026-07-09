@@ -706,3 +706,23 @@ h1, h2, h3, h4, h5, h6,
 .markdown-body th { @apply border border-ink-200 bg-ink-50 px-2 py-1 font-semibold; }
 .markdown-body td { @apply border border-ink-200 px-2 py-1; }
 .markdown-body > *:first-child { @apply mt-0; }
+
+/* ── Pages: [[wiki-link]] rendering ───────────────────────────────────────
+   Resolved links (→ #page:<id>) read as normal in-app links; unresolved
+   links (→ #create-page:<title>) get a dashed underline + "+" affordance so
+   the reader can tell, at a glance, that clicking creates a new page rather
+   than opening one — mirroring Obsidian's "unresolved link" convention. */
+.nl-page-content a[href^="page:"],
+.nl-page-content a[href^="#page:"] {
+  @apply rounded-sm bg-signal-50/60 px-0.5 font-medium text-signal-700 no-underline
+    hover:bg-signal-100 hover:text-signal-800;
+}
+.nl-page-content a[href^="create-page:"],
+.nl-page-content a[href^="#create-page:"] {
+  @apply rounded-sm border-b border-dashed border-ink-400 text-ink-500 no-underline hover:text-ink-700;
+}
+.nl-page-content a[href^="create-page:"]::after,
+.nl-page-content a[href^="#create-page:"]::after {
+  content: "+";
+  @apply ml-0.5 text-[0.7em] font-bold text-ink-400;
+}

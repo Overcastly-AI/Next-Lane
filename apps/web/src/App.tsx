@@ -48,6 +48,7 @@ import { WorkspaceBrandingPage } from '@/pages/WorkspaceBrandingPage';
 import { WorkspaceSettingsPage } from '@/pages/WorkspaceSettingsPage';
 import { NotificationsPage } from '@/pages/NotificationsPage';
 import { AdminSsoSettingsPage } from '@/pages/AdminSsoSettingsPage';
+import { PagesPage } from '@/pages/PagesPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -207,6 +208,9 @@ export default function App() {
             >
               <Route path="board" element={<BoardPage />} />
               <Route path="backlog" element={<BacklogPage />} />
+              <Route path="pages" element={<PagesPage />} />
+              <Route path="pages/graph" element={<PagesPage />} />
+              <Route path="pages/:pageId" element={<PagesPage />} />
               <Route path="dashboards" element={<DashboardsPage />} />
               <Route path="reports" element={<ReportsPage />} />
               <Route path="analytics" element={<ProjectAnalyticsPage />} />

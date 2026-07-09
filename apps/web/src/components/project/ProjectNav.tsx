@@ -51,6 +51,7 @@ const MORE_TABS = [
   { to: 'analytics',   label: 'Analytics'  },
   { to: 'dashboards',  label: 'Dashboards' },
   { to: 'roadmap',     label: 'Roadmap'    },
+  { to: 'pages',       label: 'Pages',      testId: 'nav-pages' as const },
   { to: 'poker',       label: 'Poker'      },
   { to: 'standups',    label: 'Standup'    },
   { to: 'automations', label: 'Automation', testId: 'nav-automation' as const },

@@ -148,82 +148,16 @@ Removed from the Ready queue below; the former items #6/#7 (issue↔page
 cross-linking, full-text search) renumbered to #4/#5, and the two
 pre-existing decision-gated items renumber from #8/#9 to #6/#7 accordingly.
 
-1. **Pages — frontend (tree nav + markdown editor + version history +
-   `[[link]]` autocomplete)** (P1, L, depends on the shipped Pages backend
-   module) — new project route (e.g. `/projects/:id/pages`), reachable from
-   the sidebar's
-   per-project `ProjectViewsSubNav` alongside Board/Backlog/Roadmap/
-   Reports (the persistent-nav precedent from the Navigation & IA
-   overhaul — do not bury this behind a "More" dropdown, the exact
-   anti-pattern that overhaul fixed). **Scope:** left tree-nav panel
-   (nestable, expand/collapse, drag-to-reorder/reparent via dnd-kit
-   reusing the board's rank-based DnD pattern — do not build a second DnD
-   implementation); page detail pane (title + markdown editor reusing the
-   existing sanitized `MarkdownRenderer` + view/edit-toggle pattern
-   already used for issue descriptions and comments — no parallel
-   renderer) with a `[[`-triggered page-title autocomplete (typing `[[`
-   opens a combobox of the project's page titles, matching the mention-
-   autocomplete UX pattern `MentionComposer` already established for
-   `@mentions`); "New page"/"New sub-page" affordances at any tree
-   position; version-history side panel (list past versions with author +
-   relative timestamp, view a version read-only, "Restore this version"
-   behind a `ConfirmDialog` guard). VIEWER sees the full tree + content
-   read-only, zero create/edit/move/delete affordances. Dispatch design
-   tokens throughout — MUST invoke the `frontend-design` skill per the
-   standing design-elevation directive in `CLAUDE.md`, not a generic
-   tree+textarea. Mobile: tree collapses to a drawer, matching the app's
-   existing mobile-sidebar pattern. **Acceptance criteria:**
-   create/edit/reparent/reorder/delete a page end-to-end via real
-   per-keystroke UI interaction (not `.fill()`); version history
-   round-trips (edit → save → edit again → view an old version → restore
-   → content reverts AND a new version is recorded, not a destructive
-   rewrite); typing `[[` opens the page-title autocomplete and inserting a
-   link is reflected as a `PageLink` after save; desktop (1280) + mobile
-   (393) Playwright e2e, zero horizontal overflow; VIEWER read-only
-   enforced in the UI, not just the API. **Territory:**
-   `apps/web/src/pages/**` (new Pages surface),
-   `apps/web/src/components/pages/**`, `apps/web/src/api/pages.ts`,
-   `apps/web/e2e/pages.spec.ts`. **Size:** L.
+**Build update (2026-07-09, still same day):** the frontend — tree nav +
+markdown editor with `[[link]]` autocomplete (former #1), the backlinks
+panel (former #2), and the knowledge graph view (former #3) — shipped
+together as one coherent frontend-builder slice; see the ticked entry in
+§ Already Done. Removed from the Ready queue below; the former items
+#4/#5 (issue↔page cross-linking, full-text search) renumbered to #1/#2,
+and the two pre-existing decision-gated items renumber from #6/#7 to
+#3/#4 accordingly.
 
-2. **Pages — backlinks panel** (P1, S, depends on item #1 above; the
-   backend `GET /pages/:id/backlinks` endpoint already shipped) — Obsidian's
-   most-loved feature after the graph itself. **Scope:** every page's
-   detail pane gains a "What links here" panel — consumes the already-live
-   `GET /pages/:id/backlinks` endpoint, rendered as a simple list linking
-   through to each source page; empty state ("No pages link here yet") for
-   a page with no inbound links. **Acceptance criteria:** creating
-   `[[Page B]]` inside Page A makes Page A appear in Page B's backlinks
-   panel; removing the link removes it from the panel on the next
-   load/realtime update; a page with zero inbound links shows the empty
-   state, not a blank section. **Territory:**
-   `apps/web/src/components/pages/**` (backend endpoint already shipped —
-   no new backend work needed). **Size:** S.
-
-3. **Pages — knowledge graph view** (P1, L; the backend
-   `GET /projects/:id/pages/graph` endpoint already shipped) — Obsidian's
-   signature visual, and the piece that makes this pillar genuinely a
-   hybrid rather than "Confluence with extra linking." **Scope:** a
-   force-directed node graph (pages as nodes, `PageLink` edges) rendered
-   from the already-live graph endpoint (`PageGraphDto` — nodes/edges/
-   `truncated`, capped at `MAX_GRAPH_NODES` = 1000), reachable from the
-   Pages nav (e.g. a "Graph" toggle beside the tree view); clicking a node
-   opens that page; zoom/pan; surface the `truncated` flag when a wiki
-   exceeds the node cap, and an unresolved-link count or indicator so gaps
-   in the graph are visible, not just missing. Once issue cross-linking
-   (item #4 below) ships, issue nodes/edges render in the same graph
-   (distinguishable styling, e.g. a different node shape/color for issues
-   vs. pages) rather than shipping a second, disconnected graph view later.
-   Built with the `frontend-design` skill — this is a genuinely new,
-   signature-element-caliber surface, not a component patch. **Acceptance
-   criteria:** a real multi-page, multi-link fixture renders a correct
-   node/edge graph; clicking a node navigates to that page; mobile gets a
-   usable (even if simplified) experience, not a broken/overflowing canvas
-   — confirm the minimum viable mobile treatment (e.g. read-only pan/zoom,
-   or a "best on desktop" note) rather than shipping an untested mobile
-   state. **Territory:** `apps/web/src/components/pages/**` (new graph
-   component), `apps/web/e2e/pages-graph.spec.ts`. **Size:** L.
-
-4. **Pages — issue ↔ page cross-linking** (P2, M; depends on the shipped
+1. **Pages — issue ↔ page cross-linking** (P2, M; depends on the shipped
    Pages backend module + the shipped graph endpoint) — the tight
    tracker↔docs integration the incumbent splits across two
    separately-priced products, and (once shipped) a second edge type in

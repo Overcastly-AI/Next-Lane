@@ -14,6 +14,24 @@ This section summarizes the major capabilities delivered in the pre-1.0
 development phase. A versioned release will be tagged once the v1 criteria in
 [`docs/ROADMAP.md`](./docs/ROADMAP.md) are complete.
 
+### Added — 2026-07-09 (Pages frontend — tree, markdown editor with `[[wiki-links]]`, backlinks + the knowledge graph view)
+
+**The user-facing half of the Pages pillar — a project wiki that's also an
+Obsidian-style knowledge graph.**
+- **Pages section** per project (nav entry beside Board/Backlog/Dashboards):
+  a collapsible page **tree** sidebar, breadcrumb, create-root/create-child.
+- **Markdown editor** reusing the existing renderer, with Obsidian-style
+  **`[[wiki-link]]` autocomplete** (type `[[` → pick a page in the project;
+  the shared `parseWikiLinks` powers both the editor and link resolution) and
+  a **Document ⇄ Graph** view toggle.
+- **Version history** drawer (view any past version, restore) and a
+  **backlinks / "what links here"** panel on every page.
+- **Force-directed knowledge graph view** — pages as nodes, `[[wiki-links]]`
+  as edges, per project; hand-rolled force simulation (no external
+  CDN/graph-lib — CSP-safe under the prod nginx `script-src 'self'`),
+  `prefers-reduced-motion`-aware, Dispatch-tokened for light + dark, click a
+  node to open the page. Renders on desktop and mobile.
+
 ### Added — 2026-07-09 (Pages MCP tools — agents read, write, AND traverse the knowledge graph)
 
 **The crown jewel of the Pages pillar: an agent can now do over MCP what

@@ -8,7 +8,7 @@ import {
   type ProjectDto,
 } from '@next-lane/shared';
 import { API_URL, getToken } from './client';
-import { qk, invalidateBoardFamily, invalidateDashboardDataFamily } from './keys';
+import { qk, invalidateBoardFamily, invalidateDashboardDataFamily, invalidatePagesFamily } from './keys';
 
 let socket: Socket | null = null;
 
@@ -157,6 +157,14 @@ export function useBoardRealtime(
           // also moves on plain issue/audit activity, handled by the
           // ISSUE_EVENTS/broad invalidation below).
           void qc.invalidateQueries({ queryKey: qk.projectAgentContext(projectId) });
+        }
+        if (event === SocketEvents.PageUpdated) {
+          // A page in this project was created/edited/moved/archived/deleted —
+          // refresh the tree, the graph view, and (if we know which page) its
+          // own detail/version-history caches so an open Pages surface never
+          // shows stale content when a teammate (or an agent) edits elsewhere.
+          const p = payload as { pageId?: string } | null;
+          invalidatePagesFamily(qc, projectId, p?.pageId);
         }
         if (event === SocketEvents.DashboardUpdated) {
           // A dashboard's metadata changed or a gadget was added/edited/

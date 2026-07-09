@@ -85,7 +85,44 @@ export const qk = {
   /** A project's agent-context handoff document (content + staleness). */
   projectAgentContext: (projectId: string) =>
     ['projectAgentContext', projectId] as const,
+
+  // ── Pages (Confluence x Obsidian knowledge base) ─────────────────────────
+  /** A project's page tree (sidebar nav). */
+  pageTree: (projectId: string) => ['pageTree', projectId] as const,
+  /** A project's whole page<->page wiki-link graph (the graph view). */
+  pageGraph: (projectId: string) => ['pageGraph', projectId] as const,
+  /** A single page's full detail (title/content/metadata). */
+  page: (pageId: string) => ['page', pageId] as const,
+  /** A page's version history (cursor-paginated, newest-first). */
+  pageVersions: (pageId: string) => ['pageVersions', pageId] as const,
+  /** One specific version's full content. */
+  pageVersion: (pageId: string, versionNumber: number) =>
+    ['pageVersion', pageId, versionNumber] as const,
+  /** "What links here" — pages that link TO this page. */
+  pageBacklinks: (pageId: string) => ['pageBacklinks', pageId] as const,
 };
+
+/**
+ * Invalidate every cache entry a `PageUpdated` realtime event (or a local
+ * mutation) can affect. Mirrors `invalidateBoardFamily`'s "invalidate the
+ * whole family" shape: the tree/graph are project-wide, `pageBacklinks` is
+ * keyed by the LINKED-TO page (which the mutating page doesn't know), so a
+ * broad prefix-match invalidation on `['pageBacklinks']` is the same
+ * pragmatic tradeoff already made for `['boardView']`/`['dashboardData']`.
+ */
+export function invalidatePagesFamily(
+  qc: import('@tanstack/react-query').QueryClient,
+  projectId: string,
+  pageId?: string,
+): void {
+  void qc.invalidateQueries({ queryKey: qk.pageTree(projectId) });
+  void qc.invalidateQueries({ queryKey: qk.pageGraph(projectId) });
+  if (pageId) {
+    void qc.invalidateQueries({ queryKey: qk.page(pageId) });
+    void qc.invalidateQueries({ queryKey: qk.pageVersions(pageId) });
+  }
+  void qc.invalidateQueries({ queryKey: ['pageBacklinks'] });
+}
 
 /**
  * Invalidate every cache entry that renders board content for a project: the
