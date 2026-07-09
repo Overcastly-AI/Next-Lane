@@ -127,4 +127,18 @@ export class PagesController {
   links(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.pages.links(user.id, id);
   }
+
+  // ── Issue cross-links (in + out) ─────────────────────────────────────────
+
+  @Get('pages/:id/issues')
+  @RequireScope('pages:read')
+  pageIssues(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.pages.pageIssues(user.id, id);
+  }
+
+  @Get('issues/:id/pages')
+  @RequireScope('pages:read')
+  issuePages(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.pages.issuePages(user.id, id);
+  }
 }

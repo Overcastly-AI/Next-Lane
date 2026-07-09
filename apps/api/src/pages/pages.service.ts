@@ -7,6 +7,8 @@ import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { assertProjectRole } from '../common/membership.util';
+import { extractIssueNumbers } from '../common/issue-key.util';
+import { toIssueRefDto } from '../issues/issue.mapper';
 import {
   Role,
   SocketEvents,
@@ -20,6 +22,8 @@ import type {
   PageBacklinkDto,
   PageGraphDto,
   PageOutgoingLinksDto,
+  PageLinkedIssuesDto,
+  IssueLinkedPagesDto,
   PageTreeNode,
   PageVersionDto,
   PaginatedPageVersionsDto,
@@ -64,6 +68,22 @@ export const MAX_GRAPH_EDGES = 5000;
  */
 export const MAX_OUTGOING_LINKS = 500;
 
+/**
+ * Hard ceiling on issues returned by `GET /pages/:id/issues`. Same
+ * resource-exhaustion posture as `MAX_OUTGOING_LINKS` — a single page
+ * mentioning an unbounded number of issue keys is pathological, not a real
+ * workflow.
+ */
+export const MAX_LINKED_ISSUES = 500;
+
+/**
+ * Hard ceiling on pages returned by `GET /issues/:id/pages`. An issue
+ * mentioned from more than this many pages is pathological; the cap keeps
+ * the issue drawer's "Linked pages" panel bounded regardless of how many
+ * docs reference it.
+ */
+export const MAX_LINKED_PAGES = 500;
+
 /** Default/max page size for `GET /pages/:id/versions`. */
 const VERSIONS_DEFAULT_LIMIT = 50;
 const VERSIONS_MAX_LIMIT = 200;
@@ -92,7 +112,12 @@ export class PagesService {
     projectId: string,
     dto: CreatePageDto,
   ): Promise<PageDto> {
-    await assertProjectRole(this.prisma, userId, projectId, Role.MEMBER);
+    const project = await assertProjectRole(
+      this.prisma,
+      userId,
+      projectId,
+      Role.MEMBER,
+    );
 
     const parentId = dto.parentId ?? null;
     if (parentId !== null) {
@@ -135,6 +160,7 @@ export class PagesService {
         },
       });
       await this.syncWikiLinks(tx, projectId, created.id, content);
+      await this.syncIssueLinks(tx, projectId, project.key, created.id, content);
       return created;
     });
 
@@ -156,7 +182,7 @@ export class PagesService {
   ): Promise<PageDto> {
     const existing = await this.prisma.page.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('Page not found');
-    await assertProjectRole(
+    const project = await assertProjectRole(
       this.prisma,
       userId,
       existing.projectId,
@@ -211,6 +237,7 @@ export class PagesService {
 
       if (dto.content !== undefined) {
         await this.syncWikiLinks(tx, existing.projectId, id, dto.content);
+        await this.syncIssueLinks(tx, existing.projectId, project.key, id, dto.content);
       }
 
       return updated;
@@ -549,7 +576,7 @@ export class PagesService {
   ): Promise<PageDto> {
     const existing = await this.prisma.page.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('Page not found');
-    await assertProjectRole(
+    const project = await assertProjectRole(
       this.prisma,
       userId,
       existing.projectId,
@@ -590,6 +617,7 @@ export class PagesService {
       });
 
       await this.syncWikiLinks(tx, existing.projectId, id, target.content);
+      await this.syncIssueLinks(tx, existing.projectId, project.key, id, target.content);
 
       return updated;
     });
@@ -663,6 +691,87 @@ export class PagesService {
     }
 
     return { resolved, unresolvedTitles, truncated };
+  }
+
+  // ── Issue cross-links (in + out) ─────────────────────────────────────────
+
+  /**
+   * The issues this page's body currently references — reconciled into
+   * `PageIssueLink` on every save/restore by `syncIssueLinks`, so this is a
+   * straight read of that join table (never a live re-parse of `content`),
+   * ordered newest-linked-first.
+   */
+  async pageIssues(userId: string, id: string): Promise<PageLinkedIssuesDto> {
+    const page = await this.prisma.page.findUnique({
+      where: { id },
+      select: { id: true, projectId: true },
+    });
+    if (!page) throw new NotFoundException('Page not found');
+    await assertProjectRole(this.prisma, userId, page.projectId, Role.VIEWER);
+
+    const rows = await this.prisma.pageIssueLink.findMany({
+      where: { pageId: id },
+      include: {
+        issue: {
+          select: {
+            id: true,
+            number: true,
+            type: true,
+            title: true,
+            statusId: true,
+            project: { select: { key: true } },
+            status: {
+              select: {
+                id: true,
+                name: true,
+                category: true,
+                order: true,
+                wipLimit: true,
+                projectId: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: MAX_LINKED_ISSUES + 1,
+    });
+    const truncated = rows.length > MAX_LINKED_ISSUES;
+    const items = (truncated ? rows.slice(0, MAX_LINKED_ISSUES) : rows).map((row) =>
+      toIssueRefDto(row.issue),
+    );
+
+    return { items, truncated };
+  }
+
+  /**
+   * The pages whose body currently references this issue — the other
+   * direction of `pageIssues`, powering the issue drawer's "Linked pages"
+   * section. Authorization is checked against the ISSUE's project (not a
+   * page id the caller doesn't have), matching every other issue-scoped
+   * read in the API.
+   */
+  async issuePages(userId: string, issueId: string): Promise<IssueLinkedPagesDto> {
+    const issue = await this.prisma.issue.findUnique({
+      where: { id: issueId },
+      select: { id: true, projectId: true },
+    });
+    if (!issue) throw new NotFoundException('Issue not found');
+    await assertProjectRole(this.prisma, userId, issue.projectId, Role.VIEWER);
+
+    const rows = await this.prisma.pageIssueLink.findMany({
+      where: { issueId },
+      include: { page: { select: { id: true, title: true } } },
+      orderBy: { createdAt: 'desc' },
+      take: MAX_LINKED_PAGES + 1,
+    });
+    const truncated = rows.length > MAX_LINKED_PAGES;
+    const items = (truncated ? rows.slice(0, MAX_LINKED_PAGES) : rows).map((row) => ({
+      id: row.page.id,
+      title: row.page.title,
+    }));
+
+    return { items, truncated };
   }
 
   async graph(userId: string, projectId: string): Promise<PageGraphDto> {
@@ -779,6 +888,73 @@ export class PagesService {
     }
     if (toRemoveIds.length > 0) {
       await tx.pageLink.deleteMany({ where: { id: { in: toRemoveIds } } });
+    }
+  }
+
+  // ── Issue-key parsing + PageIssueLink sync ──────────────────────────────
+
+  /**
+   * Parse `content` for this project's issue keys (e.g. "NL-123", via the
+   * shared `extractIssueNumbers` — the same project-scoped parser every SCM
+   * integration uses for commit/branch/PR-title linking), resolve each
+   * number to an `Issue` row in the SAME project, and reconcile this page's
+   * `PageIssueLink` rows to match — add missing links, remove stale ones.
+   * Mirrors `syncWikiLinks` exactly (see its doc for the general shape); the
+   * key difference is the resolution key is a project-scoped issue number
+   * instead of a page title, and there's no "unresolved/create later" flow —
+   * an issue key with no matching `Issue` row (wrong number, or the issue
+   * was deleted) is simply skipped, same as an unresolved `[[wiki-link]]`.
+   *
+   * Cross-project issue keys never match: `extractIssueNumbers` is built
+   * from the CALLER-SUPPLIED `projectKey`, so a page in project "NL"
+   * mentioning "OTHER-123" produces no match at all — the same scoping
+   * `extractIssueNumbers`'s module doc documents for webhook-driven
+   * commit/branch linking. There is deliberately no cross-project linking
+   * escape hatch here.
+   *
+   * Must run inside the SAME transaction as the page/version write that
+   * triggered it (all three call sites — create/update/restore — already do
+   * this for `syncWikiLinks`), so a reader never observes a page whose
+   * content mentions an issue key that hasn't been reconciled into
+   * `PageIssueLink` yet.
+   */
+  private async syncIssueLinks(
+    tx: Prisma.TransactionClient,
+    projectId: string,
+    projectKey: string,
+    pageId: string,
+    content: string,
+  ): Promise<void> {
+    const numbers = extractIssueNumbers(content, projectKey);
+
+    let resolvedIssueIds = new Set<string>();
+    if (numbers.length > 0) {
+      const issues = await tx.issue.findMany({
+        where: { projectId, number: { in: numbers } },
+        select: { id: true },
+      });
+      resolvedIssueIds = new Set(issues.map((i) => i.id));
+    }
+
+    const existingLinks = await tx.pageIssueLink.findMany({
+      where: { pageId },
+      select: { id: true, issueId: true },
+    });
+    const existingIssueIds = new Set(existingLinks.map((l) => l.issueId));
+
+    const toAdd = [...resolvedIssueIds].filter((id) => !existingIssueIds.has(id));
+    const toRemoveIds = existingLinks
+      .filter((l) => !resolvedIssueIds.has(l.issueId))
+      .map((l) => l.id);
+
+    if (toAdd.length > 0) {
+      await tx.pageIssueLink.createMany({
+        data: toAdd.map((issueId) => ({ pageId, issueId })),
+        skipDuplicates: true,
+      });
+    }
+    if (toRemoveIds.length > 0) {
+      await tx.pageIssueLink.deleteMany({ where: { id: { in: toRemoveIds } } });
     }
   }
 

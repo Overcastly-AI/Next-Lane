@@ -2504,6 +2504,48 @@ export interface PageOutgoingLinksDto {
   truncated: boolean;
 }
 
+// ---------------------------------------------------------------------------
+// Page <-> Issue cross-links (`PageIssueLink`)
+//
+// Reconciled automatically on every page save/restore: the page's markdown
+// body is parsed for the SAME project's issue keys (e.g. "NL-123") and the
+// resulting set of issues is diffed against the stored `PageIssueLink` rows
+// for that page (add missing, remove stale) — the same "parse on save,
+// reconcile the join table" pattern `PageLinkDto`/`syncWikiLinks` uses for
+// `[[wiki-links]]`. A key belonging to a DIFFERENT project never resolves
+// (mirrors the git-integration commit/branch parsing convention in
+// `extractIssueNumbers`), so cross-project issue mentions in a page's body
+// are silently ignored rather than linked.
+// ---------------------------------------------------------------------------
+
+/**
+ * `GET /pages/:id/issues` response — the issues this page's body currently
+ * references (compact refs, reusing `IssueRefDto` so the shape matches every
+ * other issue-reference surface in the app: board cards, issue links, etc).
+ */
+export interface PageLinkedIssuesDto {
+  items: IssueRefDto[];
+  /** True when a pathological page linked more issues than the cap. */
+  truncated: boolean;
+}
+
+/** Compact page reference — used by `IssueLinkedPagesDto` ("linked pages" on an issue). */
+export interface IssueLinkedPageDto {
+  id: string;
+  title: string;
+}
+
+/**
+ * `GET /issues/:id/pages` response — the pages whose body references this
+ * issue. Powers the issue drawer's "Linked pages" section (the other
+ * direction of `PageLinkedIssuesDto`).
+ */
+export interface IssueLinkedPagesDto {
+  items: IssueLinkedPageDto[];
+  /** True when a pathological issue was linked from more pages than the cap. */
+  truncated: boolean;
+}
+
 /**
  * `GET /pages/:id/versions` response — compact, newest-first version
  * history. Deliberately omits `content` (can be large; see `PageVersionDto`)

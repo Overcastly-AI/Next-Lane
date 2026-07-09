@@ -1,6 +1,13 @@
 import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Role, initialRanks } from '@next-lane/shared';
-import { PagesService, MAX_GRAPH_NODES, MAX_GRAPH_EDGES, MAX_OUTGOING_LINKS } from './pages.service';
+import {
+  PagesService,
+  MAX_GRAPH_NODES,
+  MAX_GRAPH_EDGES,
+  MAX_OUTGOING_LINKS,
+  MAX_LINKED_ISSUES,
+  MAX_LINKED_PAGES,
+} from './pages.service';
 import type { PrismaService } from '../prisma/prisma.service';
 import type { RealtimeService } from '../realtime/realtime.service';
 
@@ -49,6 +56,26 @@ interface FakeLinkRow {
   id: string;
   sourcePageId: string;
   targetPageId: string;
+  createdAt: Date;
+}
+
+interface FakeIssueRow {
+  id: string;
+  projectId: string;
+  number: number;
+  type: string;
+  title: string;
+  statusId: string | null;
+  project: { key: string };
+  status:
+    | { id: string; name: string; category: string; order: number; wipLimit: number | null; projectId: string }
+    | null;
+}
+
+interface FakePageIssueLinkRow {
+  id: string;
+  pageId: string;
+  issueId: string;
   createdAt: Date;
 }
 
@@ -117,7 +144,14 @@ class Harness {
   pages = new Map<string, FakePageRow>();
   versions = new Map<string, FakeVersionRow>();
   links = new Map<string, FakeLinkRow>();
+  issues = new Map<string, FakeIssueRow>();
+  issueLinks = new Map<string, FakePageIssueLinkRow>();
   roles = new Map<string, Role>();
+  /** Per-project issue-key prefix (defaults to 'NL' for PROJECT_ID). */
+  projectKeys = new Map<string, string>([
+    [PROJECT_ID, 'NL'],
+    [OTHER_PROJECT_ID, 'OTHER'],
+  ]);
   private seq = 0;
 
   nextId(prefix: string): string {
@@ -156,16 +190,40 @@ class Harness {
     return row;
   }
 
+  addIssue(partial: Partial<FakeIssueRow> & { number: number }): FakeIssueRow {
+    const id = partial.id ?? this.nextId('issue');
+    const projectId = partial.projectId ?? PROJECT_ID;
+    const row: FakeIssueRow = {
+      projectId,
+      type: 'TASK',
+      title: `Issue ${partial.number}`,
+      statusId: null,
+      project: { key: this.projectKeys.get(projectId) ?? 'NL' },
+      status: null,
+      ...partial,
+      id,
+    };
+    this.issues.set(id, row);
+    return row;
+  }
+
+  addPageIssueLink(pageId: string, issueId: string): FakePageIssueLinkRow {
+    const id = this.nextId('pil');
+    const row: FakePageIssueLinkRow = { id, pageId, issueId, createdAt: new Date() };
+    this.issueLinks.set(id, row);
+    return row;
+  }
+
   get prisma(): PrismaService {
     const self = this;
     const fake = {
       project: {
         findUnique: ({ where }: { where: { id: string } }) => {
           if (where.id === PROJECT_ID) {
-            return Promise.resolve({ id: PROJECT_ID, workspaceId: WORKSPACE_ID, workspace: { id: WORKSPACE_ID } });
+            return Promise.resolve({ id: PROJECT_ID, key: self.projectKeys.get(PROJECT_ID), workspaceId: WORKSPACE_ID, workspace: { id: WORKSPACE_ID } });
           }
           if (where.id === OTHER_PROJECT_ID) {
-            return Promise.resolve({ id: OTHER_PROJECT_ID, workspaceId: 'ws-2', workspace: { id: 'ws-2' } });
+            return Promise.resolve({ id: OTHER_PROJECT_ID, key: self.projectKeys.get(OTHER_PROJECT_ID), workspaceId: 'ws-2', workspace: { id: 'ws-2' } });
           }
           return Promise.resolve(null);
         },
@@ -329,6 +387,67 @@ class Harness {
         },
         deleteMany: ({ where }: { where: { id: { in: string[] } } }) => {
           for (const id of where.id.in) self.links.delete(id);
+          return Promise.resolve({ count: where.id.in.length });
+        },
+      },
+      issue: {
+        findUnique: ({ where }: { where: { id: string } }) =>
+          Promise.resolve(self.issues.get(where.id) ?? null),
+        findMany: ({
+          where,
+        }: {
+          where?: { projectId?: string; number?: { in?: number[] } };
+        }) => {
+          const rows = [...self.issues.values()].filter((r) => {
+            if (where?.projectId !== undefined && r.projectId !== where.projectId) return false;
+            if (where?.number?.in && !where.number.in.includes(r.number)) return false;
+            return true;
+          });
+          return Promise.resolve(rows);
+        },
+      },
+      pageIssueLink: {
+        findMany: ({
+          where,
+          include,
+          orderBy,
+          take,
+        }: {
+          where?: { pageId?: string; issueId?: string };
+          include?: { issue?: unknown; page?: unknown };
+          orderBy?: Record<string, 'asc' | 'desc'>;
+          take?: number;
+        }) => {
+          let rows = [...self.issueLinks.values()].filter((r) => {
+            if (where?.pageId !== undefined && r.pageId !== where.pageId) return false;
+            if (where?.issueId !== undefined && r.issueId !== where.issueId) return false;
+            return true;
+          });
+          sortRows(rows, orderBy);
+          if (typeof take === 'number') rows = rows.slice(0, take);
+          return Promise.resolve(
+            rows.map((r) => {
+              let out: Record<string, unknown> = { ...r };
+              if (include?.issue) out = { ...out, issue: self.issues.get(r.issueId) ?? null };
+              if (include?.page) out = { ...out, page: self.pages.get(r.pageId) ?? null };
+              return out;
+            }),
+          );
+        },
+        createMany: ({ data }: { data: Array<{ pageId: string; issueId: string }> }) => {
+          let count = 0;
+          for (const d of data) {
+            const dup = [...self.issueLinks.values()].some(
+              (l) => l.pageId === d.pageId && l.issueId === d.issueId,
+            );
+            if (dup) continue;
+            self.addPageIssueLink(d.pageId, d.issueId);
+            count += 1;
+          }
+          return Promise.resolve({ count });
+        },
+        deleteMany: ({ where }: { where: { id: { in: string[] } } }) => {
+          for (const id of where.id.in) self.issueLinks.delete(id);
           return Promise.resolve({ count: where.id.in.length });
         },
       },
@@ -833,6 +952,113 @@ describe('PagesService.links', () => {
     expect(result.truncated).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// issue cross-links (PageIssueLink sync + the two link endpoints)
+// ---------------------------------------------------------------------------
+describe('PagesService issue cross-links', () => {
+  it('create parses issue keys and links to same-project issues, ignoring cross-project keys', async () => {
+    const h = new Harness();
+    h.setRole(MEMBER, Role.MEMBER);
+    const issue1 = h.addIssue({ number: 1 }); // PROJECT_ID, key NL
+    h.addIssue({ number: 2, projectId: OTHER_PROJECT_ID }); // OTHER-2, must NOT match
+    const service = makeService(h);
+
+    // "NL-1" resolves (same project); "NL-2" has no issue #2 in NL; "OTHER-2"
+    // never matches NL's key prefix at all.
+    const page = await service.create(MEMBER, PROJECT_ID, {
+      title: 'Design',
+      content: 'Implements NL-1 and NL-2; see OTHER-2 for context.',
+    });
+
+    const links = [...h.issueLinks.values()].filter((l) => l.pageId === page.id);
+    expect(links).toHaveLength(1);
+    expect(links[0].issueId).toBe(issue1.id);
+  });
+
+  it('update reconciles links — adds newly-referenced, removes no-longer-referenced', async () => {
+    const h = new Harness();
+    h.setRole(MEMBER, Role.MEMBER);
+    const issue1 = h.addIssue({ number: 1 });
+    const issue2 = h.addIssue({ number: 2 });
+    const page = await service_createLinked(h, 'Uses NL-1');
+    expect([...h.issueLinks.values()].map((l) => l.issueId)).toEqual([issue1.id]);
+
+    const service = makeService(h);
+    await service.update(MEMBER, page.id, { content: 'Now uses NL-2 instead' });
+
+    const after = [...h.issueLinks.values()].filter((l) => l.pageId === page.id);
+    expect(after.map((l) => l.issueId)).toEqual([issue2.id]);
+  });
+
+  it('pageIssues returns compact issue refs (key composed) for a page', async () => {
+    const h = new Harness();
+    h.setRole(VIEWER, Role.VIEWER);
+    const page = h.addPage({ title: 'Doc' });
+    const issue = h.addIssue({ number: 7, title: 'Ship it' });
+    h.addPageIssueLink(page.id, issue.id);
+    const service = makeService(h);
+
+    const result = await service.pageIssues(VIEWER, page.id);
+
+    expect(result.truncated).toBe(false);
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]).toMatchObject({ id: issue.id, key: 'NL-7', title: 'Ship it' });
+  });
+
+  it('issuePages returns compact page refs linking TO an issue', async () => {
+    const h = new Harness();
+    h.setRole(VIEWER, Role.VIEWER);
+    const issue = h.addIssue({ number: 9 });
+    const p1 = h.addPage({ title: 'Spec' });
+    const p2 = h.addPage({ title: 'Runbook' });
+    h.addPageIssueLink(p1.id, issue.id);
+    h.addPageIssueLink(p2.id, issue.id);
+    const service = makeService(h);
+
+    const result = await service.issuePages(VIEWER, issue.id);
+
+    expect(result.truncated).toBe(false);
+    expect(result.items.map((i) => i.title).sort()).toEqual(['Runbook', 'Spec']);
+  });
+
+  it('pageIssues caps at MAX_LINKED_ISSUES and sets truncated', async () => {
+    const h = new Harness();
+    h.setRole(VIEWER, Role.VIEWER);
+    const page = h.addPage({ title: 'Mega' });
+    for (let i = 0; i < MAX_LINKED_ISSUES + 3; i += 1) {
+      const issue = h.addIssue({ number: 1000 + i });
+      h.addPageIssueLink(page.id, issue.id);
+    }
+    const service = makeService(h);
+
+    const result = await service.pageIssues(VIEWER, page.id);
+
+    expect(result.items).toHaveLength(MAX_LINKED_ISSUES);
+    expect(result.truncated).toBe(true);
+  });
+
+  it('issuePages caps at MAX_LINKED_PAGES and sets truncated', async () => {
+    const h = new Harness();
+    h.setRole(VIEWER, Role.VIEWER);
+    const issue = h.addIssue({ number: 42 });
+    for (let i = 0; i < MAX_LINKED_PAGES + 3; i += 1) {
+      const page = h.addPage({ title: `P${i}` });
+      h.addPageIssueLink(page.id, issue.id);
+    }
+    const service = makeService(h);
+
+    const result = await service.issuePages(VIEWER, issue.id);
+
+    expect(result.items).toHaveLength(MAX_LINKED_PAGES);
+    expect(result.truncated).toBe(true);
+  });
+});
+
+/** Create a page as MEMBER and return it (issue-link tests helper). */
+async function service_createLinked(h: Harness, content: string) {
+  return makeService(h).create(MEMBER, PROJECT_ID, { title: 'Linked', content });
+}
 
 // ---------------------------------------------------------------------------
 // graph

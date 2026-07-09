@@ -336,22 +336,25 @@ each lives in `docs/BACKLOG.md` § Ready):**
    capped at `MAX_GRAPH_NODES` (1000) with a `truncated` flag mirroring the
    roadmap/board/dashboard cap pattern; `GET /pages/:id/backlinks` (the
    backing query for slice 6's panel) shipped alongside it.
-5. ⬜ **Frontend — tree nav + markdown editor + version history** —
-   nestable tree-nav (drag-to-reorder/reparent via dnd-kit, reusing the
-   board's rank-based DnD pattern), markdown editor reusing the existing
-   sanitized `MarkdownRenderer`/edit-view-toggle pattern from issue
-   descriptions and comments (not a parallel renderer) with `[[`-triggered
-   page-title autocomplete, version-history panel (view a past version,
-   restore with a `ConfirmDialog` guard). Built with the `frontend-design`
-   skill per the standing design-elevation directive; VIEWER read-only.
-6. ⬜ **Frontend — backlinks panel** — every page shows "what links here":
-   the reverse `PageLink` query rendered as a panel beneath/beside the
-   editor — Obsidian's most-loved feature after the graph itself.
-7. ⬜ **Frontend — knowledge graph view** — a force-directed node graph of a
-   project's pages and their `[[links]]` (Obsidian's signature visual),
-   reachable from the Pages nav; nodes open the corresponding page on
-   click. Once issue cross-linking (slice 8) ships, issue nodes/edges layer
-   into the same graph rather than shipping a second, disconnected view.
+5. ✅ **Frontend — tree nav + markdown editor + version history** (shipped
+   2026-07-09, `49cedd6`; review+QA-fixed `79b6d32`/`e23eb47`) — nestable
+   tree-nav with up/down reorder (rank-based, optimistic), markdown editor
+   reusing the sanitized `MarkdownRenderer` with `[[`-triggered page-title
+   autocomplete (per-keystroke, no focus loss), version-history drawer (view
+   a past version, restore behind a `ConfirmDialog`). Page titles forbid
+   `[ ] |` (reserved for the wiki-link grammar). VIEWER read-only.
+6. ✅ **Frontend — backlinks panel** (shipped 2026-07-09, `49cedd6`) — every
+   page shows "what links here": the reverse `PageLink` query rendered as a
+   panel beside the editor.
+7. ✅ **Frontend — knowledge graph view** (shipped 2026-07-09, `49cedd6`;
+   perf/clipping-fixed `79b6d32`/`e23eb47`) — a hand-rolled, CSP-safe (no
+   external graph lib) force-directed node graph of a project's pages and
+   their `[[links]]`, reachable from the Pages nav; nodes open the page on
+   click; pan/zoom, hover-neighbor highlight, dark mode, mobile,
+   `prefers-reduced-motion`. Layout runs as a resumable stepper chunked
+   across frames so a large graph never blocks the main thread. Once issue
+   cross-linking (slice 10) fully ships, issue nodes/edges can layer into
+   the same graph.
 8. ✅ **MCP tools — Pages CRUD + version history** (shipped 2026-07-09) —
    `list_pages`/`get_page`/`create_page`/`update_page`/`move_page`/
    `delete_page`/`list_page_versions`/`get_page_version`/
@@ -375,12 +378,18 @@ each lives in `docs/BACKLOG.md` § Ready):**
    memory's protocol-level `instructions` do. `apps/mcp/src/tools/index.ts`
    +12 tools (105→117), `apps/mcp/README.md` tool/scope tables updated,
    19 new vitest (112→131 MCP tests), tsc + build clean.
-10. ⬜ **Issue ↔ page cross-linking** — a page referencing `NL-123`
-    auto-links; the issue drawer gains a "Linked pages" section (mirrors
-    the GitHub/GitLab/Gitea Development-section link pattern); the same
-    link becomes a graph edge (slices 4/7/9). Cross-project key references
-    stay out of scope for v1, matching the existing issue-key-extraction
-    scoping convention.
+10. 🚧 **Issue ↔ page cross-linking** — **backend shipped 2026-07-09**: every
+    content-changing save parses the project's issue keys (`NL-123`) via the
+    shared `extractIssueNumbers` (same project-scoped parser the SCM
+    integrations use), resolves them to same-project `Issue` rows, and
+    reconciles `PageIssueLink` rows in the same transaction as the page
+    write (mirrors `syncWikiLinks`); `GET /pages/:id/issues` +
+    `GET /issues/:id/pages` (both `pages:read`, bounded + `truncated`).
+    Cross-project keys never match, per the existing scoping convention. 6
+    new unit tests. **Remaining:** the issue-drawer "Linked pages" section
+    (frontend) + an MCP tool for the page↔issue direction; layering issue
+    nodes into the knowledge graph is a separate design decision (issues
+    aren't page nodes) and stays deferred.
 11. ⬜ **Full-text search** — Pages join the existing Postgres
     `tsvector`/GIN search infrastructure (issues today); surfaced in the
     command palette and cross-project search, visually distinguished from

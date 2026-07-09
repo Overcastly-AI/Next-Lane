@@ -100,8 +100,13 @@ export interface IssueWithRelations {
   workLogs?: Array<{ minutes: number }>;
 }
 
-/** Subset of an Issue row sufficient to build an IssueRefDto. */
-interface IssueRef {
+/**
+ * Subset of an Issue row sufficient to build an IssueRefDto. Exported so
+ * other domains that need the same compact issue reference (e.g. Pages'
+ * page<->issue cross-link endpoints) can reuse the exact mapping instead of
+ * re-deriving the `key` composition rule.
+ */
+export interface IssueRef {
   id: string;
   number: number;
   type: string;
@@ -118,7 +123,7 @@ interface IssueRef {
   } | null;
 }
 
-function toIssueRefDto(issue: IssueRef): IssueRefDto {
+export function toIssueRefDto(issue: IssueRef): IssueRefDto {
   const ref: IssueRefDto = {
     id: issue.id,
     key: issue.project ? `${issue.project.key}-${issue.number}` : `${issue.number}`,
