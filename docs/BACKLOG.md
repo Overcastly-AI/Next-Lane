@@ -905,6 +905,62 @@ _Hardening Night close-out ingest (2026-07-06):_
 - [x] (P3, L) Tracker importers (Jira/GitHub/Linear) — file-based only (`?source=jira|github|linear`; no live API calls); ships as a pre-normalisation layer on top of the existing CSV import pipeline: header-alias maps + enum-value maps per tracker; GitHub JSON array path; `issues-import.sources.ts` pure module; `ImportSource` type in `@next-lane/shared`; 126 unit tests; 1303 total green; `tsc --noEmit` clean. SSO/OIDC remains open. [roadmap, shipped 2026-06-29]
 - [ ] (P3, S) Optional metrics endpoint + `ServiceMonitor` + OTLP traces (builds on pino structured logging) for operator-grade observability in-cluster [engineering-auditor]
 
+## Future (not-yet-Ready — explicitly gated, do not promote)
+
+Approved future pillars that are deliberately sequenced behind other
+priorities per `CLAUDE.md`'s converge-don't-sprawl mandate ("drive toward the
+v1 release criteria... then polish — don't generate endless backlog without
+finishing"). The backlog-groomer must NOT pull anything from this section
+into § Ready until its stated gate is met — this section exists precisely so
+a good idea is captured and sequenced without displacing whatever § Ready is
+currently working (right now, the Pages epic).
+
+- [ ] (P2, XL — **GATED: do not promote until BOTH (1) v1.0 release criteria
+  met AND (2) `docs/ROADMAP.md` Phase 11 Pages has shipped its v1 slices,
+  specifically the frontend force-directed graph view, item #7**) **Systems
+  Map — lightweight, agent-native architecture & dependency mapping** —
+  founder directive 2026-07-09, verbatim: *"Enterprise architecture is an
+  interesting thing to tackle... I've worked in many companies without a
+  good solution to map out architecture/dependencies and integrations. Does
+  it make sense to have this in this app?"* Orchestrator recommended a
+  lightweight version, not a LeanIX/Ardoq clone; founder approved: *"Lite
+  weight is good by me."* **Scope (sketch — reserved for a real
+  slice-by-slice breakdown, mirroring how Phase 11/Pages was sequenced, once
+  the gate above is met):** a system/service catalog (a new `System` node
+  type: name, owner team, tier/criticality, description, links to its
+  repo(s), docs page(s), and owning project/issues) with typed dependency
+  edges (depends-on / calls / integrates-with), rendered via **the same
+  force-directed graph + MCP-traversal engine Pages is building** — a second
+  consumer of that infrastructure, not a parallel build; a design note is
+  already left on Phase 11's remaining frontend graph-view slice to keep the
+  graph component and MCP graph-traversal tool shape generic enough for this
+  reuse. **The wedge:** existing EA tools are heavyweight per-seat SaaS
+  (LeanIX/Ardoq-class) or static diagrams that rot the day after the
+  offsite; Next Lane's version stays current because (1) the developer graph
+  is already real (GitHub/GitLab/Gitea two-way links, Phase 9, shipped),
+  (2) an agent maintains it over MCP (the living-docs thesis Phase 11
+  establishes for Pages, applied to systems), (3) an agent can traverse
+  systems → dependencies → linked issues → repos to answer "what breaks if
+  we deprecate service X?" — the question every EA tool fails at — and
+  (4) architecture/dependency maps are sensitive "your data, your compute"
+  topology data that belongs self-hosted. Opens an entirely new
+  Better-than-Jira scorecard category (Enterprise Architecture / systems
+  mapping) the per-seat incumbent doesn't bundle at any price — see
+  `docs/VISION.md` § Better-than-Jira scorecard, "Architecture / Systems
+  mapping" row. **Deliberately lightweight v1, NOT a full EA suite:** system
+  catalog + typed dependency edges + the graph view + agent traversal, full
+  stop. **Explicitly NOT v1** (call these out so scope stays honest):
+  capability models, TIME (Tolerate/Invest/Migrate/Eliminate) lifecycle
+  scoring, compliance/GRC workflows, diagram-authoring tools. Full framing
+  and the sketched v1-slice sequence: `docs/ROADMAP.md` Phase 12. **Size:**
+  XL as filed (schema + backend + frontend graph view + MCP tools —
+  comparable in shape to the Pages epic it depends on); do not attempt to
+  scope-break this into buildable P1/P2 slices with acceptance criteria/
+  territory/size until the gate above is actually met — re-run that exercise
+  then, mirroring how Phase 11 was broken into 12 numbered sub-slices.
+  [founder directive 2026-07-09; VISION.md § The pillars item 8;
+  ROADMAP.md Phase 12]
+
 ## Cloud-native / Kubernetes (post-v1 epic — ROADMAP Phase 4)
 
 Make Next Lane deployable on Kubernetes with HA + autoscaling, keeping the

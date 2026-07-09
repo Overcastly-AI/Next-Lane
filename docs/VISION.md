@@ -99,13 +99,18 @@ materially changes.
 | Reliability / coherence-of-state | **Parity** | Elevated from Behind this pass. Pass-11's headline defect — the workspace/tenant context lying to the header chip on up to 7 of 15 routes — is genuinely and fully fixed via the recommended structural pattern: `useSyncActiveWorkspace` hoisted into route-level `WorkspaceScopedLayout`/`ProjectScopedLayout` wrappers so every scoped route derives truth from the URL instead of opt-in context sync, "CONFIRMED FIXED — structurally" by engineering and independently re-verified by product with a fresh two-workspace deep-link matrix covering every previously-broken page (both AUDIT-PRODUCT.md and AUDIT-ENGINEERING.md, Pass 12). Not yet Better: the same wave shipped a fresh P1 in the same "green tests, broken shipped artifact" failure class that already burned this project once — the dark-mode no-flash bootstrap script is silently blocked by the production CSP's `script-src` (no hash/nonce/`unsafe-inline`), so every reload with a dark preference flashes light first and logs a CSP violation in real deployments (AUDIT-ENGINEERING.md Pass 12, P1). A fix (CSP hash allowlist + a Docker-artifact Playwright gate) is in flight. |
 | Admin controls | Behind | Stays Behind. SSO/OIDC Phase 1 shipped and is correctly gated (no broken UI when unconfigured) and the workspace-switcher search/recents closed a second admin-adjacent gap — but two blockers an evaluating enterprise/agency admin checks first remain unaddressed: SSO configuration is env-var/redeploy-only with no in-app admin settings screen, and per-project role override is still schema-confirmed absent, unchanged since Pass 9 (AUDIT-PRODUCT.md Pass 12). |
 | Knowledge / Docs | Behind | **New row (2026-07-09, vision-steward, founder directive; scope sharpened same day to a Confluence × Obsidian hybrid).** Absent today — a whole category the incumbent wins by default because their paired wiki product exists and ours doesn't yet. Not a re-score of shipped work; a newly-tracked dimension so this gap can't hide. **Target once Phase 11 v1 ships: not Parity, not even "Better" in the usual sense — genuinely BEYOND both reference points.** The incumbent's own wiki product has no knowledge graph and no agent API at all; Obsidian has the graph but is local-only with no team backbone and structurally no server-side agent API. Next Lane v1 ships a team wiki (Confluence's backbone: RBAC, version history, self-hosted) **+** a `[[wiki-link]]`-driven knowledge graph with a backlinks panel and a force-directed graph view (Obsidian's signature) **+** an agent that can traverse and author that graph over MCP (`get_page_graph`, `get_page_backlinks`, read/write pages) — a combination neither incumbent offers today, at any price. Tracked in `docs/ROADMAP.md` Phase 11 and `docs/BACKLOG.md` Ready queue. |
+| Architecture / Systems mapping | Behind | **New row (2026-07-09, vision-steward, founder directive: "Enterprise architecture is an interesting thing to tackle... I've worked in many companies without a good solution to map out architecture/dependencies and integrations.").** A category the incumbent cedes entirely too — neither it nor its ecosystem bundles a systems/service catalog or a dependency graph; that space today belongs to separate, heavyweight EA-sales tools (LeanIX/Ardoq-class) most teams never actually keep current. Not a re-score of shipped work — a newly-tracked dimension, currently and honestly **Behind**: nothing is built yet. **Target, once built (Phase 12 — explicitly gated behind Phase 11 Pages shipping and the v1.0 release criteria being met, not current work):** BEYOND the category entirely, the same shape as the Knowledge/Docs row above — a lightweight system/service catalog + typed dependency graph, reusing the Pages force-directed graph engine and MCP-traversal pattern pointed at systems instead of pages, kept current by (a) real developer-graph signal from the GitHub/GitLab/Gitea integrations rather than hand-drawn boxes and (b) an agent maintaining it over MCP — closing the "stale the day after the offsite" failure mode that kills every static EA diagram. Deliberately scoped lightweight, not a LeanIX/Ardoq clone: no capability models, no TIME lifecycle scoring, no compliance/GRC. See `docs/ROADMAP.md` Phase 12, `docs/BACKLOG.md` § Future. |
 
-**Tally as of 2026-07-09 (vision-steward pass — new "Knowledge / Docs" row
-added, no re-score of the other ten): 4 better / 3 parity / 4 behind.**
+**Tally as of 2026-07-09 (vision-steward pass — new "Architecture / Systems
+mapping" row added as a future-pillar placeholder, no re-score of the other
+eleven): 4 better / 3 parity / 5 behind.**
 This is the honest current state, not a target. The backlog-groomer sequences
 work to flip "behind" rows first — see the "Better-than-Jira gaps" note in
 `docs/BACKLOG.md`, and `docs/ROADMAP.md` § Current focus for this pass's
-post-wave priority order.
+post-wave priority order. The new Architecture/Systems-mapping row is a
+deliberate exception to that sequencing rule: it is explicitly gated behind
+Phase 11 (Pages) and v1 convergence, so it must NOT be read as "next up" —
+see `docs/ROADMAP.md` Phase 12 for the gate.
 
 **Cross-cutting finding (2026-07-02, founder session):** three separately-
 reported "lost features" — workspace branding, board default filters, the
@@ -205,6 +210,53 @@ prioritized; it is no longer open work.
    Phase 11 for the sequenced v1 slices; the former one-line "Docs / wiki"
    stub under Phase 8 (The Unbundle) is promoted here rather than
    duplicated.
+8. **Systems Map — lightweight, agent-native architecture & dependency
+   mapping** *(future pillar — explicitly sequenced AFTER Phase 11 Pages
+   ships and the v1.0 release criteria are met; not current build work.
+   Founder directive, verbatim, 2026-07-09: "Enterprise architecture is an
+   interesting thing to tackle... I've worked in many companies without a
+   good solution to map out architecture/dependencies and integrations.
+   Does it make sense to have this in this app?" The orchestrator recommended
+   a lightweight version rather than a LeanIX/Ardoq clone; founder approved:
+   "Lite weight is good by me.")* — a system/service catalog (a new `System`
+   node type: name, owner team, tier/criticality, description, links to its
+   repo(s), docs page(s), and owning project/issues) with typed dependency
+   edges (depends-on / calls / integrates-with), rendered via **the same
+   force-directed graph + agent-traversal primitive Pages (Phase 11) is
+   building right now, pointed at systems instead of pages** — not a new
+   pillar built from scratch; the graph infrastructure, the MCP
+   graph-traversal pattern, and the force-directed view are shared, second
+   consumers of what Phase 11 ships, not a parallel stack. **The wedge —
+   why this is genuinely ours, and why the founder has never seen a good
+   solution for it in the wild:** existing EA tools are heavyweight
+   enterprise-sales SaaS (LeanIX/Ardoq-class) or static offsite diagrams
+   that are stale the moment everyone goes back to their desks — nobody
+   maintains them because nothing forces them to stay true. Next Lane's
+   version stays current for reasons no incumbent, EA-specialist or
+   general-purpose, can structurally copy: (1) **the developer graph is
+   already real** — GitHub/GitLab/Gitea two-way links (Phase 9, shipped)
+   give code-level dependency signal, not hand-drawn boxes; (2) **an agent
+   keeps the map current over MCP** — the living-docs thesis Phase 11
+   establishes for Pages, applied to systems; (3) **uniquely, an agent can
+   traverse systems → dependencies → linked issues → repos** to answer the
+   question every EA tool fails at: "what breaks if we deprecate service
+   X?"; (4) architecture/dependency maps are exactly the sensitive
+   internal-topology data that belongs on "your data, your compute"
+   (advantage 2), not handed to a third-party SaaS with its own breach
+   surface. All four structural advantages apply directly — free/unlimited
+   (no per-seat EA-tool tax), your-data (sensitive topology stays
+   self-hosted), open/extensible (MIT, no marketplace), and agent-native
+   (traversal, not the picture, is the differentiator) — and it opens an
+   entirely new scorecard category (Enterprise Architecture / systems
+   mapping) the per-seat incumbent doesn't bundle at any price.
+   **Deliberately lightweight v1, not a full EA suite:** system catalog +
+   typed dependency edges + the graph view + agent traversal, full stop.
+   **Explicitly NOT v1** — call these out so scope stays honest and this
+   never creeps into a LeanIX/Ardoq clone: capability models, TIME
+   (Tolerate/Invest/Migrate/Eliminate) lifecycle scoring, compliance/GRC
+   workflows, or diagram-authoring tools. See `docs/ROADMAP.md` Phase 12 for
+   the gated sequencing and `docs/BACKLOG.md` § Future for the filed
+   (not-yet-Ready) epic.
 
 ## Operating principles
 
