@@ -2,7 +2,7 @@
 
 Next Lane is **agent-native**: AI agents are first-class users of the tracker,
 not an afterthought. The official MCP server — **`@next-lane/mcp`** — exposes
-**105 tools** over the [Model Context Protocol](https://modelcontextprotocol.io)
+**117 tools** over the [Model Context Protocol](https://modelcontextprotocol.io)
 so Claude Code, Claude Desktop, and any other MCP host can read *and write*
 your Next Lane instance end-to-end: file bugs, move cards, design workflows,
 run NLQL queries, log time, build dashboards, and hand off context between
@@ -17,9 +17,9 @@ in lockstep with the product.
 
 ## What "agent-native" means here
 
-- **Full read/write coverage** — 105 tools spanning the whole product surface
+- **Full read/write coverage** — 117 tools spanning the whole product surface
   (issues, boards, sprints, workflows, dashboards, automations, analytics,
-  notifications, and more), not a read-only wrapper.
+  notifications, pages, and more), not a read-only wrapper.
 - **Token-efficient by design** — compact responses, pagination everywhere,
   and server-side NLQL evaluation so an agent never has to pull a whole
   project into context to answer a question.
@@ -123,7 +123,7 @@ Two environment variables configure the server:
 
 ---
 
-## The 105-tool surface at a glance
+## The 117-tool surface at a glance
 
 Grouped by area (see the
 [full tool table in `apps/mcp/README.md`](https://github.com/Overcastly-AI/Next-Lane/blob/main/apps/mcp/README.md)
@@ -143,6 +143,7 @@ for every tool and parameter):
 | **Personal** | Personal board cards, quick links, notifications (list / mark read) |
 | **SCM links** | Read an issue's linked GitHub PRs/commits, GitLab MRs/commits/branches, and Gitea PRs/commits/branches |
 | **Agent memory** | `get_project_context` / `update_project_context` — the persistent per-project handoff document |
+| **Pages** | CRUD (create, list, get, update, delete), move in tree, version history (list/get/restore), backlinks ("what links here"), and **knowledge-graph traversal** (`get_page_graph` → full node/edge set, `get_page_links` → outgoing links, `get_page_backlinks` → inbound links) for Obsidian-style wiki navigation over the agent API |
 
 **Deliberately not exposed:** configuring the GitHub/GitLab/Gitea
 integrations and instance SSO settings (admin-only and secret-bearing),

@@ -427,8 +427,16 @@ Outbound webhooks deliver issue events to any system: HMAC-signed payloads,
 SSRF guard on by default (`WEBHOOK_ALLOW_PRIVATE` opt-out), durable BullMQ
 delivery with retries when Redis is configured.
 
+### Pages — project knowledge base
+
+A team wiki with Obsidian-style features: nestable page trees per project,
+full version history, markdown editor with `[[wiki-link]]` autocomplete,
+backlinks ("what links here"), and a force-directed **knowledge graph view**
+for visual navigation. Pages are cross-linkable to issues and traversable over
+MCP for agent-native document authoring and graph traversal.
+
 ### AI agents (MCP)
 
-The flagship integration — 105 tools over the Model Context Protocol, with
+The flagship integration — 117 tools over the Model Context Protocol, with
 per-project agent memory. See the dedicated
 [AI Agents & MCP](./agents-mcp) chapter.

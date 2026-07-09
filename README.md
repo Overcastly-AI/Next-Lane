@@ -7,7 +7,7 @@
 Next Lane is an **open source project tracker**: boards, sprints, backlog, custom
 workflows, and reporting, running entirely on **your** hardware with **your** data,
 under an MIT license. It's also built for a world where AI coding agents write half
-your code — a first-party **MCP server** with 105 tools lets Claude (or any MCP
+your code — a first-party **MCP server** with 117 tools lets Claude (or any MCP
 client) **read and write your tracker directly**, not just chat about it.
 
 **⭐ If Next Lane is useful to you (or your agent), starring the repo helps other
@@ -17,7 +17,7 @@ teams find it — that's the only ask.**
 [![Documentation](https://img.shields.io/badge/docs-overcastly--ai.github.io-0B7285.svg?logo=readthedocs&logoColor=white)](https://overcastly-ai.github.io/Next-Lane/)
 [![CI](https://github.com/Overcastly-AI/Next-Lane/actions/workflows/ci.yml/badge.svg)](https://github.com/Overcastly-AI/Next-Lane/actions/workflows/ci.yml)
 [![E2E](https://github.com/Overcastly-AI/Next-Lane/actions/workflows/e2e.yml/badge.svg)](https://github.com/Overcastly-AI/Next-Lane/actions/workflows/e2e.yml)
-[![MCP server](https://img.shields.io/badge/MCP-105%20tools-8A2BE2.svg)](./apps/mcp/README.md)
+[![MCP server](https://img.shields.io/badge/MCP-117%20tools-8A2BE2.svg)](./apps/mcp/README.md)
 [![Unit tests](https://img.shields.io/badge/unit%20tests-1999-brightgreen.svg)](./docs/ROADMAP.md)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6.svg?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Docker](https://img.shields.io/badge/Docker-compose%20up-2496ED.svg?logo=docker&logoColor=white)](#-quickstart)
@@ -162,7 +162,7 @@ for where we're still catching up):
 | **Hosting & data** | Self-hosted via Docker Compose or Kubernetes — your Postgres, your box, no egress | Vendor's cloud only — your data lives on their servers |
 | **License** | MIT — read the source, fork it, extend it | Closed source |
 | **Query language** | **NLQL** — one query language for search, saved filters, automations, *and* dashboards | Separate, non-interchangeable mechanisms for search vs. automation vs. dashboards |
-| **AI / agent access** | **MCP-native**: 105-tool server (read *and* write), server-side NLQL filtering, and **persistent per-project agent memory** that survives across sessions | Bolt-on AI add-ons, usually cloud-only, rate- or seat-limited — no first-party protocol for an agent to read *and* write |
+| **AI / agent access** | **MCP-native**: 117-tool server (read *and* write), server-side NLQL filtering, and **persistent per-project agent memory** that survives across sessions | Bolt-on AI add-ons, usually cloud-only, rate- or seat-limited — no first-party protocol for an agent to read *and* write |
 | **Source-control links** | Two-way GitHub, GitLab, **and** Gitea issue ↔ PR/MR/commit/branch linking, HMAC-verified webhooks | Varies by vendor and pricing tier |
 | **Setup** | `docker compose up -d --build` on hardware you already own | Nothing to run — but nothing you can run yourself, either |
 
@@ -178,13 +178,13 @@ This is the part no incumbent — closed or open — has: an issue tracker built
 a world where AI agents are first-class users, not an API afterthought.
 
 Next Lane ships **`@next-lane/mcp`** — a first-party [Model Context
-Protocol](https://modelcontextprotocol.io) server with **105 tools** (47 read, 58
+Protocol](https://modelcontextprotocol.io) server with **117 tools** (54 read, 63
 write) that let Claude Desktop, Claude Code, or any MCP client **read *and write*
 your workspace**: issues (with server-side **NLQL** `query` evaluation and
 pagination), sprints, comments, worklogs, checklists, labels, components,
 versions, NLQL-native dashboards, saved filters, automations, GitHub/GitLab/Gitea links,
 personal boards, issue templates, analytics, reports, bulk updates, CSV export,
-role overrides, and one-call rollups like `get_epic_overview` — plus the
+role overrides, pages (with knowledge-graph traversal), and one-call rollups like `get_epic_overview` — plus the
 workflow/SDLC graph itself (statuses, transitions, gates, board assignment). No
 other open tracker exposes its own SDLC as an agent-editable surface.
 
@@ -268,7 +268,7 @@ Kubernetes, SSO/OIDC with in-app admin configuration, per-project role overrides
 GitHub, GitLab, and Gitea two-way integration with HMAC-verified webhooks, workspace
 branding, and a 102-endpoint tenant-isolation regression matrix.
 
-**For AI-agent users** — the 105-tool `@next-lane/mcp` server, server-side NLQL
+**For AI-agent users** — the 117-tool `@next-lane/mcp` server, server-side NLQL
 filtering, one-call epic rollups, persistent per-project agent memory, an
 installable Agent Skill, and personal API tokens scoped for agent auth.
 
@@ -355,7 +355,7 @@ Other useful scripts: `pnpm build`, `pnpm lint`, `pnpm test`, `pnpm format`.
 | Frontend | React + Vite + TypeScript |
 | UI | Tailwind CSS + shadcn/ui · TanStack Query · dnd-kit |
 | Auth | JWT access token · SSO/OIDC · personal API tokens (PATs) |
-| Agents | MCP server (`apps/mcp`, stdio, 105 tools with persistent agent memory) over the same REST API |
+| Agents | MCP server (`apps/mcp`, stdio, 117 tools with persistent agent memory) over the same REST API |
 | Infra | Docker Compose · Helm / Kustomize for Kubernetes |
 
 ```mermaid
@@ -377,7 +377,7 @@ Next-Lane/
 ├── apps/
 │   ├── api/        # NestJS backend (REST + WebSocket, 1999 unit tests)
 │   ├── web/        # React + Vite frontend
-│   └── mcp/        # MCP server (stdio, 105 tools with persistent agent memory) for AI agents
+│   └── mcp/        # MCP server (stdio, 117 tools with persistent agent memory) for AI agents
 ├── packages/
 │   └── shared/     # Shared TypeScript types / contracts
 ├── skills/
