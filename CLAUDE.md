@@ -183,6 +183,17 @@ This project is built by a **team of specialized AI agents**, not one generalist
   `git add -A`. Push with `git push -u origin <branch>`; on rejection,
   `git pull --rebase` and retry. Commit only when your full gates are green
   (never push red), and tick ROADMAP/BACKLOG in the same commit.
+- **Shared-tree edit race (parallel doc-writers).** Agents share ONE working
+  tree (not per-agent worktrees unless `isolation: worktree`). A sibling's
+  `git add`/`commit`/`stash` operates on that shared index, so *unstaged*
+  edits you're holding can be swept into a sibling's commit or discarded
+  (hit 3× on 2026-07-09 when a builder + MCP-builder + vision-steward all
+  edited ROADMAP/BACKLOG/CHANGELOG concurrently — content survived by luck).
+  Mitigation: make doc edits (BACKLOG/ROADMAP/CHANGELOG) the LAST step, then
+  `git add <your files>` + `commit` immediately in the same turn — never
+  leave shared-doc edits unstaged across other tool calls. When many agents
+  will touch the same shared docs, prefer serializing the doc-writers or
+  giving one `isolation: worktree`.
 - **Liveness (orchestrator duty).** Container restarts and usage-limit pauses
   kill agents silently. On every wakeup, check in-flight agents' task-output
   mtimes; >30 min stale without a known long-running gate = investigate, reap,
