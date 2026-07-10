@@ -2,7 +2,7 @@
 
 A [Model Context Protocol](https://modelcontextprotocol.io) server that lets
 external AI agents — **Claude Desktop**, **Claude Code**, and any other MCP host
-— **read and write** a Next Lane instance end-to-end: **119 tools** covering
+— **read and write** a Next Lane instance end-to-end: **120 tools** covering
 workspaces/projects, workflows / SDLC, issues (incl. links, labels, comments
 with author-or-admin edit/delete, checklists, worklogs), boards, statuses,
 sprints, components, versions, custom fields, saved NLQL filters, automation
@@ -243,6 +243,7 @@ minimal, so there is no `verbose` mode.
 | `get_page_links` | This page's own OUTGOING `[[wiki-links]]` (`pageId`), split into `resolved` (existing target pages) and `unresolvedTitles` (referenced but not yet written). Requires `pages:read`. |
 | `get_page_issues` | The tracked issues a page links to (`pageId`) — auto-linked when the page body mentions a same-project issue key (`NL-123`). Compact issue refs + `truncated`. Requires `pages:read`. |
 | `get_issue_pages` | Reverse of `get_page_issues`: the knowledge-base pages that reference an issue (`issueId`) — "what docs mention this work". Compact page refs + `truncated`. Requires `pages:read`. |
+| `search_pages` | Full-text search over page titles AND body content (relevance-ranked Postgres FTS), optionally scoped to one project — the cheapest way to find the right doc. Compact page refs, **paged**. Requires `pages:read`. |
 
 ### Write (SDLC)
 
@@ -355,6 +356,17 @@ cp -r skills/project-context ~/.claude/skills/
 The read tool returns a `staleness` signal (`changesSinceUpdate` — project
 activity newer than the handoff) so an agent knows when to re-verify a stale
 handoff instead of trusting it blindly.
+
+The same pattern covers the knowledge base: the server `instructions` teach
+the find-docs-first / document-as-you-work workflow, and the distributable
+[`knowledge-base` skill](../../skills/knowledge-base/SKILL.md) bakes in the
+full discipline (search before building, link-first writing with
+`[[wiki-links]]` + issue keys, check backlinks before deleting):
+
+```bash
+# Claude Code
+cp -r skills/knowledge-base ~/.claude/skills/
+```
 
 ## Read AND write the knowledge base — and traverse its graph
 

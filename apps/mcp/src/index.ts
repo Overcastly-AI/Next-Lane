@@ -45,7 +45,18 @@ const SERVER_INSTRUCTIONS =
   'optional nicety, and this server may enforce it as a hard error via ' +
   'NEXT_LANE_MCP_STRICT_PROJECT_KEY. Pass `idempotencyKey` on create_issue/ ' +
   'add_comment whenever you are RETRYING after a network error/timeout, so ' +
-  'the retry replays the original result instead of creating a duplicate.';
+  'the retry replays the original result instead of creating a duplicate. ' +
+  'Every project also has a PAGES knowledge base (a wiki that is also a ' +
+  'link graph). Before starting work, find the relevant docs: search_pages ' +
+  '(full-text, cheapest), get_issue_pages (the docs behind a specific ' +
+  'issue), or get_page_graph (the whole structure in one call — hubs are ' +
+  'the load-bearing docs). DOCUMENT AS YOU WORK: write/update pages with ' +
+  'create_page/update_page, connect them with [[Page Title]] wiki-links ' +
+  '(links resolve within the project; linking to a not-yet-created title ' +
+  'is fine — create it later), and mention issue keys (e.g. NL-123) in ' +
+  'page text to auto-link the page to those issues. Page titles must not ' +
+  'contain [ ] or | (reserved for the link grammar). Every save snapshots ' +
+  'a version; restore_page_version is non-destructive.';
 
 /** Build a fully-wired server (no transport connected). Exported for tests. */
 export function createServer(): McpServer {

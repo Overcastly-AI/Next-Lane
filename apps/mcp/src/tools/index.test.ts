@@ -156,6 +156,7 @@ describe('tool registry', () => {
       'get_page_links',
       'get_page_issues',
       'get_issue_pages',
+      'search_pages',
       'create_page',
       'move_page',
       'update_page',
@@ -1735,6 +1736,31 @@ describe('pages (knowledge base) tools', () => {
     const body = JSON.parse(res.content[0].text);
     expect(body.items[0]).toMatchObject({ id: 'i-1', key: 'NL-1' });
     expect(body.truncated).toBe(false);
+  });
+
+  it('search_pages GETs /search with q + projectId and returns only the pages group, paginated', async () => {
+    const { client, fetchImpl } = clientWith(200, {
+      query: 'runbook',
+      issues: [{ id: 'i-1', key: 'NL-1', title: 'noise' }],
+      pages: [
+        { id: 'pg-1', title: 'Runbook', projectId: 'p1', projectKey: 'NL', archived: false },
+        { id: 'pg-2', title: 'Deploy Runbook', projectId: 'p1', projectKey: 'NL', archived: false },
+      ],
+      projects: [],
+    });
+    const res = await tool('search_pages').handler({ q: 'runbook', projectId: 'p1', limit: 1 }, client);
+    const url = fetchImpl.mock.calls[0][0] as string;
+    expect(url).toContain('/api/search?');
+    expect(url).toContain('q=runbook');
+    expect(url).toContain('projectId=p1');
+    const body = JSON.parse(res.content[0].text);
+    // Pages only — the issues/projects groups are not duplicated here.
+    expect(body.items).toEqual([
+      { id: 'pg-1', title: 'Runbook', projectId: 'p1', projectKey: 'NL', archived: false },
+    ]);
+    expect(body.total).toBe(2);
+    expect(body.hasMore).toBe(true);
+    expect(body.issues).toBeUndefined();
   });
 
   it('get_issue_pages GETs /issues/:id/pages (reverse direction)', async () => {

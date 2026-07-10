@@ -1769,6 +1769,34 @@ const readTools: ToolDef[] = [
     handler: (args, client) =>
       client.get(`/issues/${args.issueId}/pages`).then(jsonResult),
   },
+  {
+    name: 'search_pages',
+    group: 'read',
+    description:
+      'Full-text search the knowledge base: relevance-ranked matches over ' +
+      'page TITLES AND BODY CONTENT (Postgres FTS), scoped to what the ' +
+      'caller can access. The cheapest way to find the right doc — prefer ' +
+      'this over listing/reading pages one by one when you know words that ' +
+      'would appear in it ("deploy runbook", an error message, a feature ' +
+      'name). Scope to one project with projectId or omit it to search all ' +
+      'accessible projects. Returns compact page refs (`{id, title, ' +
+      'projectId, projectKey, archived}`) — follow `id` into get_page to ' +
+      'read, then get_page_links/get_page_backlinks to traverse outward. ' +
+      'Pairs with get_page_graph (structure-first discovery) the way ' +
+      'search pairs with browsing.',
+    inputSchema: {
+      q: z.string().describe('Search text (words likely to appear in the page title or body).'),
+      projectId: z.string().optional().describe('Restrict to this project.'),
+      ...pageParams,
+    },
+    handler: async (args, client) => {
+      const data = await client.get<{ pages: ApiItem[] }>('/search', {
+        q: args.q as string,
+        projectId: args.projectId as string | undefined,
+      });
+      return pageResult(paginateOnly(data.pages ?? [], args));
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------

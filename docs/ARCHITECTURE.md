@@ -62,7 +62,7 @@ Issues on a board (and in a sprint/backlog) are ordered by a `rank` **string** c
 
 ## MCP Server (`apps/mcp`)
 
-- **Model Context Protocol** server (stdio transport) with **119 tools** (56 read, 63 write — Pages pillar added 12 tools for CRUD, version history, and knowledge-graph traversal).
+- **Model Context Protocol** server (stdio transport) with **120 tools** (57 read, 63 write — Pages pillar added 12 tools for CRUD, version history, and knowledge-graph traversal).
 - Speaks MCP over stdio; makes authenticated HTTP calls to the Next Lane REST API using Personal Access Tokens (PATs).
 - Tools expose: projects, boards, workflows, statuses, issues (with NLQL `query` param for server-side evaluation), sprints, comments, worklogs, checklists, labels, components, versions, saved filters, automations, dashboards, GitHub links, GitLab links, Gitea links, personal boards, issue templates, time-tracking, analytics, reports, notifications, bulk updates, CSV export, and project agent context.
 - **Token-efficiency features:** all list_*/search_* tools return a uniform `{items, total?, limit, offset?, hasMore}` envelope; resources support `compact` (default, minimal field set) and `verbose:true` (full DTO); pagination defaults to 50 items/page with a maximum of 200. Live-verified: the same list call is ~11 KB (compact) vs. ~150 KB (verbose).

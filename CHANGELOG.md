@@ -14,6 +14,24 @@ This section summarizes the major capabilities delivered in the pre-1.0
 development phase. A versioned release will be tagged once the v1 criteria in
 [`docs/ROADMAP.md`](./docs/ROADMAP.md) are complete.
 
+### Added — 2026-07-09 (Agent-side knowledge-base support: search_pages tool, server instructions, distributable skill)
+
+Closing the "does the MCP side need a skill?" gap (founder question):
+- **`search_pages` MCP tool** (120 tools total, 57 read / 63 write) — the
+  server-side page FTS was unreachable by agents; now it's their cheapest
+  discovery path (relevance-ranked over titles + content, compact refs,
+  paged, optional project scope).
+- **Server `instructions` now teach the knowledge-base workflow** to every
+  connecting MCP client: find docs first (search_pages / get_issue_pages /
+  get_page_graph), document as you work, connect with `[[wiki-links]]`,
+  mention issue keys to auto-link, titles can't contain `[ ] |`, versioning
+  is automatic and restore is non-destructive.
+- **New distributable skill `skills/knowledge-base`** (alongside
+  `project-context`) for agents that support Agent Skills: the full
+  discipline — search before building, read the docs behind an issue first,
+  link-first writing, where new knowledge belongs, check backlinks before
+  deleting.
+
 ### Changed — 2026-07-09 (Pages: full-page document layout + full-page editing — founder directive)
 
 A page now reads and edits like a real document, not a boxed panel:
