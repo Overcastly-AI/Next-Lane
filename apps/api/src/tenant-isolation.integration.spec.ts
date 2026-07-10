@@ -1286,6 +1286,29 @@ function buildMatrix(a: Tenant): Array<MatrixRow & { resolvedPath: string; resol
       method: 'DELETE',
       path: (t) => `/pages/${t.pageId}`,
     },
+
+    // ── Workspace-level docs pages (org-level-docs epic, Slice 2) ────────────
+    // A workspace page (`Page.projectId: null`) is authorized via
+    // `assertWorkspaceRole` directly against `Page.workspaceId`, not via a
+    // project — these three routes exercise that chokepoint specifically
+    // (mirroring slice 14's acceptance criteria in docs/ROADMAP.md: "a user
+    // who is a member of a DIFFERENT workspace gets 403/404").
+    {
+      label: 'POST workspace-level page under workspace A (cross-tenant write)',
+      method: 'POST',
+      path: (t) => `/workspaces/${t.workspaceId}/pages`,
+      body: () => ({ title: 'Injected workspace page' }),
+    },
+    {
+      label: "GET workspace A's docs tree",
+      method: 'GET',
+      path: (t) => `/workspaces/${t.workspaceId}/pages/tree`,
+    },
+    {
+      label: "GET workspace A's docs graph",
+      method: 'GET',
+      path: (t) => `/workspaces/${t.workspaceId}/pages/graph`,
+    },
   ];
 
   return rows.map((row) => ({

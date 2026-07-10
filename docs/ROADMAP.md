@@ -268,7 +268,7 @@ live.
 - ✅ **Personal & team analytics backend** — `AnalyticsModule` (`apps/api/src/analytics/`): `GET /me/analytics?days=N` → `PersonalAnalyticsDto` (open/completed/overdue assigned issues, per-day throughput flow series, avg cycle time, byType/byPriority CategoryCountDto groups, personal board stats); `GET /projects/:projectId/analytics?days=N` → `ProjectAnalyticsDto` (per-day flow series, createdTotal/completedTotal, avg cycle time, all-5-bucket CycleTimeBucketDto distribution with en-dash labels, WorkloadRowDto by assignee busiest-first + Unassigned row); both endpoints use ActivityLog completion-date reconstruction identical to reports.service; `days` defaults to 30, clamped to [1, 366]; 25 unit tests (analytics.service.spec.ts); build + typecheck clean; registered in AppModule. (2026-06-28)
 - ✅ **Personal & team analytics frontend** (2026-06-28) — `PersonalAnalyticsPage` at `/me/analytics` (14/30/90-day window selector, headline stat cards, hand-rolled SVG throughput chart, type/priority horizontal bar breakdowns, personal board mini-stats); `ProjectAnalyticsPage` at `/projects/:projectId/analytics` (window selector, headline stats, flow chart, cycle-time distribution, workload bars by assignee); "Analytics" tab in `ProjectNav`; "Insights" link in `AppHeader`; WCAG-AA, accessible charts with visually-hidden summaries; full data-testid coverage; Playwright e2e (desktop + mobile); build green.
 
-## Phase 11 — Pages: a Confluence × Obsidian hybrid, agent-traversable 🚧 (schema + backend module + MCP tools shipped 2026-07-09 — founder directive 2026-07-06, scope sharpened 2026-07-09)
+## Phase 11 — Pages: a Confluence × Obsidian hybrid, agent-traversable 🚧 (schema + backend module + MCP tools shipped 2026-07-09; org-wide docs schema + workspace-scoped backend shipped 2026-07-10 — founder directive 2026-07-06, scope sharpened 2026-07-09, org-wide 2026-07-10)
 
 **Founder directive, verbatim (2026-07-06): "How can we add a confluence type
 section?"** **Sharpened same-week (2026-07-09): "Could it be hybrid of
@@ -445,8 +445,8 @@ already-existing `assertWorkspaceMember`/`assertWorkspaceRole` helpers
 (same file, already used by `WorkspacesController`) as the workspace-level
 chokepoint, mirroring `assertProjectRole`'s role as the project-level one.
 
-13. ⬜ **Schema — nullable `Page.projectId` + always-present
-    `Page.workspaceId`** (flagged for a **schema-architect design pass**,
+13. ✅ **Schema — nullable `Page.projectId` + always-present
+    `Page.workspaceId`** — shipped 2026-07-10 (schema-architect design pass,
     not a mechanical migration) — recommended shape: add
     `Page.workspaceId String` (non-nullable, backfilled for every existing
     row from `project.workspaceId` in the same migration) and relax
@@ -474,7 +474,7 @@ chokepoint, mirroring `assertProjectRole`'s role as the project-level one.
     pre-existing data, every pre-existing project-page test still passes
     unmodified. **Territory:** `apps/api/prisma/schema.prisma` + migration.
     **Size:** S (schema is small; the real work is slice 14).
-14. ⬜ **Backend — workspace-scoped page CRUD/tree/move/version history** —
+14. ✅ **Backend — workspace-scoped page CRUD/tree/move/version history** — shipped 2026-07-10 —
     mirrors `PagesService`'s existing project-scoped methods, branching on
     `projectId === null`. **Authz decision (explicit):** workspace-scoped
     pages are gated by `assertWorkspaceMember`/`assertWorkspaceRole`
@@ -793,6 +793,62 @@ after Phase 11's v1 slices (all shipped as of this pass) rather than
 waiting behind anything else, since it directly extends the "Knowledge /
 Docs" Better-than-Jira row's *beyond-both-incumbents* target. See
 `docs/BACKLOG.md` § Ready for the six sequenced, authz-explicit build items.
+
+**Build update (2026-07-10): Slices 1-2 shipped — schema + workspace-scoped
+page CRUD.** Items 13-14 above are done, landed as two coordinated slices in
+the same working tree (schema-architect then backend-builder): **Slice 1**
+(`apps/api/prisma/schema.prisma`, migration
+`20260710120000_pages_workspace_scope`) added `Page.workspaceId String`
+(non-nullable, present on every row — a project page's always equals
+`project.workspaceId`, a workspace page's is its only owner), relaxed
+`Page.projectId` to nullable (null = workspace-level page), added the
+`Workspace.pages` back-relation, and two new indexes
+(`[workspaceId, parentId]` / `[workspaceId, rank]`) mirroring the existing
+project-scoped ones — additive-only, zero drift for pre-existing rows.
+**Slice 2** (`apps/api/src/pages/**`, `apps/api/src/search/**`,
+`apps/api/src/realtime/**`) is the backend module: every one of the ~25
+call sites `PagesService` had that assumed a non-null `projectId` now
+branches through one small `PageScope` helper set
+(`assertPageRole`/`scopeOf`/`scopeWhere`/`siblingWhere`/`assertParentInScope`
+— dispatches to `assertProjectRole` for a project page or the existing
+`assertWorkspaceRole` for a workspace page, VIEWER read / MEMBER+ write
+either way) instead of repeating the branch at each site; a new
+`createWorkspacePage()` + `POST /workspaces/:id/pages`,
+`GET /workspaces/:id/pages/tree`, `GET /workspaces/:id/pages/graph` mirror
+the project entry points (the existing by-id routes — findOne/update/
+remove/move/versions/links/issues — already work for both kinds, no new
+routes needed there). `[[wiki-link]]` resolution for a workspace page is
+scoped to that workspace's OTHER workspace-level pages only — a project
+page's resolution is UNCHANGED (still project-scoped; broadening it to
+cross-project, item 15, stays a later slice, deliberately not done here).
+Issue-key sync is skipped entirely for a workspace page (no `PageIssueLink`
+rows — `Issue` is project-scoped, a workspace page has no project to
+resolve keys against). Realtime: a new `RealtimeService.emitToWorkspace` +
+`workspaceRoom()` (`workspace:<id>`, mirroring `userRoom`'s convention)
+broadcasts `page.updated` for a workspace page instead of the project room.
+`SearchService` fixed two silent workspace-page-drop bugs the schema-architect
+flagged ahead of time: the ILIKE page search scoped tenancy via
+`project: { workspaceId: { in } } }` (excludes every `projectId: null` row);
+the FTS raw query `JOIN`ed `Project` (an inner join drops every workspace
+page) — both now scope directly by `Page.workspaceId` and the FTS query is a
+`LEFT JOIN`. `PageDto`/`SearchPageDto` (`packages/shared/src/types.ts`) gained
+`workspaceId: string` and `projectId`/`projectKey` went nullable. Tests: 24
+new API unit tests across `pages.service.spec.ts` (workspace create/read/
+update/move/remove, cross-scope wiki-link isolation both directions,
+issue-link-skip control-cased against a project page, workspace tree/graph)
+and `search.service.spec.ts` (ILIKE/FTS/`searchPagesOnly` all surfacing a
+workspace page with `projectKey: null`, tenancy-by-`workspaceId` assertions);
+3 new `pat-scope-matrix.fixture.ts` rows + 3 new tenant-isolation-matrix rows
+(live cross-workspace HTTP attempts against the new routes, all BLOCKED —
+126→129 endpoints, 0 issues) — both `pat-scope-coverage` and
+`tenant-isolation` integration specs re-verified green against a disposable
+DB. `tsc --noEmit` clean api/web/shared; full API unit suite green (2075
+tests, 96 suites). MCP tools for workspace-level docs are a **follow-up, not
+done in this slice** — see the ticked `docs/BACKLOG.md` entry for the
+explicit note. Next up: item 15 (cross-workspace-safe `[[wiki-link]]`
+resolution broadening project pages beyond same-project) and item 16
+(a true workspace-WIDE graph unioning every project's pages, distinct from
+this slice's workspace-root-only tree/graph).
 
 *(Note to backlog-groomer: this is the intended Ready-queue order for the next
 build-loop pass; `docs/BACKLOG.md` itself is unchanged by this vision-steward

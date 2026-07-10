@@ -212,6 +212,11 @@ export const MATRIX: MatrixRow[] = [
   { controller: 'pages', method: 'GET', path: `/pages/${X}/links`, scope: 'pages:read' },
   { controller: 'pages', method: 'GET', path: `/pages/${X}/issues`, scope: 'pages:read' },
   { controller: 'pages', method: 'GET', path: `/issues/${X}/pages`, scope: 'pages:read' },
+  // pages — workspace-level docs (org-level-docs epic, Slice 2): a Page with
+  // projectId: null. The by-id routes above already cover both kinds.
+  { controller: 'pages', method: 'POST', path: `/workspaces/${X}/pages`, scope: 'pages:write' },
+  { controller: 'pages', method: 'GET', path: `/workspaces/${X}/pages/tree`, scope: 'pages:read' },
+  { controller: 'pages', method: 'GET', path: `/workspaces/${X}/pages/graph`, scope: 'pages:read' },
 
   // project-memberships
   { controller: 'project-memberships', method: 'GET', path: `/projects/${X}/members`, scope: 'projects:read' },

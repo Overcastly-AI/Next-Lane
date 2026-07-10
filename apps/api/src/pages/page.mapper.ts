@@ -18,7 +18,10 @@ type UserRow = {
 
 export type PageRow = {
   id: string;
-  projectId: string;
+  /** Always present — see `Page.workspaceId`'s model comment in schema.prisma. */
+  workspaceId: string;
+  /** Null = workspace-level page (no single owning project). */
+  projectId: string | null;
   parentId: string | null;
   title: string;
   content: string;
@@ -40,6 +43,7 @@ export const pageInclude = {
 export function toPageDto(page: PageRow): PageDto {
   return {
     id: page.id,
+    workspaceId: page.workspaceId,
     projectId: page.projectId,
     parentId: page.parentId,
     title: page.title,

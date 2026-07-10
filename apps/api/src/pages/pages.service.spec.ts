@@ -30,7 +30,9 @@ const FOREIGN = 'user-foreign';
 
 interface FakePageRow {
   id: string;
-  projectId: string;
+  workspaceId: string;
+  /** Null = a workspace-level page (org-level-docs epic, Slice 2). */
+  projectId: string | null;
   parentId: string | null;
   title: string;
   content: string;
@@ -166,6 +168,7 @@ class Harness {
   addPage(partial: Partial<FakePageRow> & { id?: string }): FakePageRow {
     const id = partial.id ?? this.nextId('page');
     const row: FakePageRow = {
+      workspaceId: WORKSPACE_ID,
       projectId: PROJECT_ID,
       parentId: null,
       title: 'Untitled',
@@ -465,7 +468,12 @@ class Harness {
   }
 }
 
-const realtimeMock = { emitToProject: jest.fn(), emitToUser: jest.fn(), emit: jest.fn() } as unknown as RealtimeService;
+const realtimeMock = {
+  emitToProject: jest.fn(),
+  emitToWorkspace: jest.fn(),
+  emitToUser: jest.fn(),
+  emit: jest.fn(),
+} as unknown as RealtimeService;
 
 function makeService(h: Harness): PagesService {
   return new PagesService(h.prisma, realtimeMock);
@@ -1148,5 +1156,304 @@ describe('PagesService.graph', () => {
 
     expect(graph.edges).toHaveLength(MAX_GRAPH_EDGES);
     expect(graph.truncated).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Workspace-level docs (org-level-docs epic, Slice 2)
+//
+// A workspace page is a `Page` with `projectId: null` — not attached to any
+// single project (e.g. a company handbook). Authorization for these routes
+// goes through `assertWorkspaceRole` (workspace `Membership.role`) instead of
+// `assertProjectRole`; every other CRUD/tree/graph/link behavior is exercised
+// through the SAME service methods a project page uses (the service branches
+// internally via `PagesService.assertPageRole`/`scopeOf`).
+// ---------------------------------------------------------------------------
+describe('PagesService workspace-level pages (org-level-docs epic, Slice 2)', () => {
+  describe('createWorkspacePage', () => {
+    it('creates a top-level workspace page (projectId: null, workspaceId set), writes version 1', async () => {
+      const h = new Harness();
+      h.setRole(MEMBER, Role.MEMBER);
+      const service = makeService(h);
+
+      const page = await service.createWorkspacePage(MEMBER, WORKSPACE_ID, { title: 'Handbook' });
+
+      expect(page.projectId).toBeNull();
+      expect(page.workspaceId).toBe(WORKSPACE_ID);
+      expect(page.title).toBe('Handbook');
+      expect(page.parentId).toBeNull();
+
+      const versions = [...h.versions.values()].filter((v) => v.pageId === page.id);
+      expect(versions).toHaveLength(1);
+      expect(versions[0]).toMatchObject({ versionNumber: 1, title: 'Handbook' });
+    });
+
+    it('emits to the WORKSPACE room (emitToWorkspace), never the project room', async () => {
+      const h = new Harness();
+      h.setRole(MEMBER, Role.MEMBER);
+      const service = makeService(h);
+
+      const page = await service.createWorkspacePage(MEMBER, WORKSPACE_ID, { title: 'Handbook' });
+
+      expect(realtimeMock.emitToWorkspace).toHaveBeenCalledWith(
+        WORKSPACE_ID,
+        'page.updated',
+        { workspaceId: WORKSPACE_ID, pageId: page.id },
+      );
+      expect(realtimeMock.emitToProject).not.toHaveBeenCalled();
+    });
+
+    it('rejects a workspace VIEWER (ForbiddenException — write requires MEMBER+)', async () => {
+      const h = new Harness();
+      h.setRole(VIEWER, Role.VIEWER);
+      const service = makeService(h);
+      await expect(
+        service.createWorkspacePage(VIEWER, WORKSPACE_ID, { title: 'x' }),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('rejects a non-member of the workspace (ForbiddenException)', async () => {
+      const h = new Harness();
+      const service = makeService(h);
+      await expect(
+        service.createWorkspacePage(FOREIGN, WORKSPACE_ID, { title: 'x' }),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('rejects a parentId that belongs to a PROJECT page (cross-scope reject, 400)', async () => {
+      const h = new Harness();
+      h.setRole(MEMBER, Role.MEMBER);
+      const projectPage = h.addPage({ title: 'Project page' }); // projectId: PROJECT_ID
+      const service = makeService(h);
+      await expect(
+        service.createWorkspacePage(MEMBER, WORKSPACE_ID, { title: 'x', parentId: projectPage.id }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('nests correctly under an existing workspace-page parent', async () => {
+      const h = new Harness();
+      h.setRole(MEMBER, Role.MEMBER);
+      const service = makeService(h);
+      const parent = await service.createWorkspacePage(MEMBER, WORKSPACE_ID, { title: 'Parent doc' });
+
+      const child = await service.createWorkspacePage(MEMBER, WORKSPACE_ID, {
+        title: 'Child doc',
+        parentId: parent.id,
+      });
+
+      expect(child.parentId).toBe(parent.id);
+    });
+  });
+
+  describe('by-id routes (findOne/update/move/remove) on a workspace page', () => {
+    it('findOne: a workspace VIEWER can read', async () => {
+      const h = new Harness();
+      h.setRole(VIEWER, Role.VIEWER);
+      const page = h.addPage({ projectId: null, title: 'Handbook' });
+      const service = makeService(h);
+
+      const dto = await service.findOne(VIEWER, page.id);
+      expect(dto.title).toBe('Handbook');
+      expect(dto.projectId).toBeNull();
+    });
+
+    it('findOne: rejects a non-member of the workspace', async () => {
+      const h = new Harness();
+      const page = h.addPage({ projectId: null, title: 'Secret' });
+      const service = makeService(h);
+      await expect(service.findOne(FOREIGN, page.id)).rejects.toThrow(ForbiddenException);
+    });
+
+    it('update: a MEMBER can edit content and a new version is written; emits emitToWorkspace', async () => {
+      const h = new Harness();
+      h.setRole(MEMBER, Role.MEMBER);
+      const page = h.addPage({ projectId: null, title: 'Handbook', content: 'v1' });
+      h.addVersion({ pageId: page.id, versionNumber: 1, title: 'Handbook', content: 'v1' });
+      const service = makeService(h);
+
+      const updated = await service.update(MEMBER, page.id, { content: 'v2' });
+
+      expect(updated.content).toBe('v2');
+      expect(realtimeMock.emitToWorkspace).toHaveBeenCalledWith(
+        WORKSPACE_ID,
+        'page.updated',
+        { workspaceId: WORKSPACE_ID, pageId: page.id },
+      );
+    });
+
+    it('update: rejects a workspace VIEWER (ForbiddenException)', async () => {
+      const h = new Harness();
+      h.setRole(VIEWER, Role.VIEWER);
+      const page = h.addPage({ projectId: null, title: 'Handbook' });
+      const service = makeService(h);
+      await expect(service.update(VIEWER, page.id, { title: 'y' })).rejects.toThrow(
+        ForbiddenException,
+      );
+    });
+
+    it('move: reorders a workspace page among its workspace-page siblings', async () => {
+      const h = new Harness();
+      h.setRole(MEMBER, Role.MEMBER);
+      const [rankA, rankB, rankC] = initialRanks(3);
+      const a = h.addPage({ projectId: null, title: 'A', rank: rankA });
+      const b = h.addPage({ projectId: null, title: 'B', rank: rankB });
+      const c = h.addPage({ projectId: null, title: 'C', rank: rankC });
+      const service = makeService(h);
+
+      const moved = await service.move(MEMBER, c.id, { beforeId: a.id, afterId: b.id });
+
+      expect(moved.rank > a.rank).toBe(true);
+      expect(moved.rank < b.rank).toBe(true);
+    });
+
+    it('move: rejects a beforeId sibling that is actually a PROJECT page', async () => {
+      const h = new Harness();
+      h.setRole(MEMBER, Role.MEMBER);
+      const wsPage = h.addPage({ projectId: null, title: 'WS page' });
+      const projectPage = h.addPage({ title: 'Project page' });
+      const service = makeService(h);
+
+      await expect(
+        service.move(MEMBER, wsPage.id, { beforeId: projectPage.id }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('remove: deletes a childless workspace page and emits emitToWorkspace', async () => {
+      const h = new Harness();
+      h.setRole(MEMBER, Role.MEMBER);
+      const page = h.addPage({ projectId: null, title: 'Leaf' });
+      const service = makeService(h);
+
+      const result = await service.remove(MEMBER, page.id);
+
+      expect(result).toEqual({ id: page.id, orphanedBacklinks: 0 });
+      expect(h.pages.has(page.id)).toBe(false);
+      expect(realtimeMock.emitToWorkspace).toHaveBeenCalled();
+    });
+  });
+
+  describe('[[wiki-link]] resolution is scoped to workspace-level pages only', () => {
+    it('resolves a [[link]] to another workspace-level page', async () => {
+      const h = new Harness();
+      h.setRole(MEMBER, Role.MEMBER);
+      const target = h.addPage({ projectId: null, title: 'Runbook' });
+      const service = makeService(h);
+
+      const page = await service.createWorkspacePage(MEMBER, WORKSPACE_ID, {
+        title: 'Onboarding',
+        content: 'See [[Runbook]].',
+      });
+
+      const links = [...h.links.values()];
+      expect(links).toHaveLength(1);
+      expect(links[0]).toMatchObject({ sourcePageId: page.id, targetPageId: target.id });
+    });
+
+    it('does NOT resolve a [[link]] to a PROJECT page with a matching title (cross-scope isolation)', async () => {
+      const h = new Harness();
+      h.setRole(MEMBER, Role.MEMBER);
+      h.addPage({ title: 'Runbook' }); // a PROJECT page, same title
+      const service = makeService(h);
+
+      const page = await service.createWorkspacePage(MEMBER, WORKSPACE_ID, {
+        title: 'Onboarding',
+        content: 'See [[Runbook]].',
+      });
+
+      expect(h.links.size).toBe(0);
+      expect(page).toBeDefined();
+    });
+
+    it('a PROJECT page does NOT resolve a [[link]] to a workspace-level page with a matching title', async () => {
+      const h = new Harness();
+      h.setRole(MEMBER, Role.MEMBER);
+      h.addPage({ projectId: null, title: 'Runbook' }); // a WORKSPACE page, same title
+      const service = makeService(h);
+
+      const page = await service.create(MEMBER, PROJECT_ID, {
+        title: 'Onboarding',
+        content: 'See [[Runbook]].',
+      });
+
+      expect(h.links.size).toBe(0);
+      expect(page).toBeDefined();
+    });
+  });
+
+  describe('issue-key sync is SKIPPED for workspace pages (deliberate slice-2 behavior)', () => {
+    it('creates no PageIssueLink rows even when content mentions a valid issue key', async () => {
+      const h = new Harness();
+      h.setRole(MEMBER, Role.MEMBER);
+      h.addIssue({ number: 1, projectId: PROJECT_ID }); // NL-1 exists
+      const service = makeService(h);
+
+      const page = await service.createWorkspacePage(MEMBER, WORKSPACE_ID, {
+        title: 'Notes',
+        content: 'Related to NL-1.',
+      });
+
+      expect(h.issueLinks.size).toBe(0);
+      const result = await service.pageIssues(MEMBER, page.id);
+      expect(result.items).toEqual([]);
+    });
+
+    it('still syncs issue links normally for a PROJECT page (unchanged control case)', async () => {
+      const h = new Harness();
+      h.setRole(MEMBER, Role.MEMBER);
+      const issue = h.addIssue({ number: 1, projectId: PROJECT_ID });
+      const service = makeService(h);
+
+      const page = await service.create(MEMBER, PROJECT_ID, {
+        title: 'Notes',
+        content: 'Related to NL-1.',
+      });
+
+      const links = [...h.issueLinks.values()];
+      expect(links).toHaveLength(1);
+      expect(links[0]).toMatchObject({ pageId: page.id, issueId: issue.id });
+    });
+  });
+
+  describe('workspaceTree', () => {
+    it('builds a tree of workspace-level pages only, excluding project pages', async () => {
+      const h = new Harness();
+      h.setRole(VIEWER, Role.VIEWER);
+      const root = h.addPage({ projectId: null, title: 'WS Root', rank: 'a' });
+      h.addPage({ projectId: null, title: 'WS Child', parentId: root.id, rank: 'a' });
+      h.addPage({ title: 'Project Root' }); // a project page — must not appear
+      const service = makeService(h);
+
+      const tree = await service.workspaceTree(VIEWER, WORKSPACE_ID);
+
+      expect(tree).toHaveLength(1);
+      expect(tree[0].id).toBe(root.id);
+      expect(tree[0].children).toHaveLength(1);
+    });
+
+    it('rejects a non-member of the workspace', async () => {
+      const h = new Harness();
+      const service = makeService(h);
+      await expect(service.workspaceTree(FOREIGN, WORKSPACE_ID)).rejects.toThrow(
+        ForbiddenException,
+      );
+    });
+  });
+
+  describe('workspaceGraph', () => {
+    it('returns workspace-level pages as nodes and their PageLink edges, excluding project pages', async () => {
+      const h = new Harness();
+      h.setRole(VIEWER, Role.VIEWER);
+      const a = h.addPage({ projectId: null, title: 'A' });
+      const b = h.addPage({ projectId: null, title: 'B' });
+      h.addPage({ title: 'Project page (excluded)' });
+      h.links.set('l1', { id: 'l1', sourcePageId: a.id, targetPageId: b.id, createdAt: new Date() });
+      const service = makeService(h);
+
+      const graph = await service.workspaceGraph(VIEWER, WORKSPACE_ID);
+
+      expect(graph.nodes).toHaveLength(2);
+      expect(graph.nodes.map((n) => n.id).sort()).toEqual([a.id, b.id].sort());
+      expect(graph.edges).toEqual([{ sourceId: a.id, targetId: b.id }]);
+    });
   });
 });

@@ -39,9 +39,12 @@ interface FtsIssueRow {
 interface FtsPageRow {
   id: string;
   title: string;
-  projectId: string;
+  workspaceId: string;
+  /** Null = a workspace-level page (no owning project). */
+  projectId: string | null;
   archived: boolean;
-  projectKey: string;
+  /** Null when `projectId` is null. */
+  projectKey: string | null;
 }
 
 @Injectable()
@@ -170,9 +173,14 @@ export class SearchService {
 
   /**
    * Full-text search over pages via the GIN-indexed `searchVector` generated
-   * column (title + content). Same tenant scoping as issues — a JOIN on
-   * `Project` constrained to the caller's `workspaceIds`, with an optional
-   * single-project narrow. `websearch_to_tsquery` is user-input-safe.
+   * column (title + content). Tenant scoping is by `Page.workspaceId`
+   * DIRECTLY (every page — project or workspace-level — always has one), NOT
+   * via an inner join through `Project`: `Page.projectId` is nullable
+   * (workspace-level pages have none), so a `JOIN "Project"` would silently
+   * drop every workspace page from the results. The `LEFT JOIN` below exists
+   * only to fetch `projectKey` for a project page; it plays no role in tenant
+   * scoping. An optional single-project narrow additionally filters by
+   * `pg."projectId"`. `websearch_to_tsquery` is user-input-safe.
    */
   private async searchPagesFts(
     query: string,
@@ -182,21 +190,21 @@ export class SearchService {
     let rows: FtsPageRow[];
     if (projectId) {
       rows = await this.prisma.$queryRaw<FtsPageRow[]>`
-        SELECT pg.id, pg.title, pg."projectId", pg.archived, p.key AS "projectKey"
+        SELECT pg.id, pg.title, pg."workspaceId", pg."projectId", pg.archived, p.key AS "projectKey"
         FROM "Page" pg
-        JOIN "Project" p ON p.id = pg."projectId"
-        WHERE p."workspaceId" = ANY(${workspaceIds}::text[])
-          AND pg."projectId"  = ${projectId}
+        LEFT JOIN "Project" p ON p.id = pg."projectId"
+        WHERE pg."workspaceId" = ANY(${workspaceIds}::text[])
+          AND pg."projectId"   = ${projectId}
           AND pg."searchVector" @@ websearch_to_tsquery('english', ${query})
         ORDER BY ts_rank(pg."searchVector", websearch_to_tsquery('english', ${query})) DESC
         LIMIT ${RESULT_CAP}
       `;
     } else {
       rows = await this.prisma.$queryRaw<FtsPageRow[]>`
-        SELECT pg.id, pg.title, pg."projectId", pg.archived, p.key AS "projectKey"
+        SELECT pg.id, pg.title, pg."workspaceId", pg."projectId", pg.archived, p.key AS "projectKey"
         FROM "Page" pg
-        JOIN "Project" p ON p.id = pg."projectId"
-        WHERE p."workspaceId" = ANY(${workspaceIds}::text[])
+        LEFT JOIN "Project" p ON p.id = pg."projectId"
+        WHERE pg."workspaceId" = ANY(${workspaceIds}::text[])
           AND pg."searchVector" @@ websearch_to_tsquery('english', ${query})
         ORDER BY ts_rank(pg."searchVector", websearch_to_tsquery('english', ${query})) DESC
         LIMIT ${RESULT_CAP}
@@ -205,20 +213,26 @@ export class SearchService {
     return rows.map((r) => ({
       id: r.id,
       title: r.title,
+      workspaceId: r.workspaceId,
       projectId: r.projectId,
       projectKey: r.projectKey,
       archived: r.archived,
     }));
   }
 
-  /** Fallback ILIKE page search for very short queries (title + content). */
+  /**
+   * Fallback ILIKE page search for very short queries (title + content).
+   * Tenant-scoped by `Page.workspaceId` directly — see `searchPagesFts`'s doc
+   * for why this must NOT go through the `project` relation (that filter
+   * silently excludes every `projectId: null` workspace page).
+   */
   private async searchPagesIlike(
     query: string,
     workspaceIds: string[],
     projectId?: string,
   ): Promise<SearchPageDto[]> {
     const where: Prisma.PageWhereInput = {
-      project: { workspaceId: { in: workspaceIds } },
+      workspaceId: { in: workspaceIds },
       OR: [
         { title: { contains: query, mode: 'insensitive' } },
         { content: { contains: query, mode: 'insensitive' } },
@@ -233,6 +247,7 @@ export class SearchService {
       select: {
         id: true,
         title: true,
+        workspaceId: true,
         projectId: true,
         archived: true,
         project: { select: { key: true } },
@@ -241,8 +256,9 @@ export class SearchService {
     return rows.map((r) => ({
       id: r.id,
       title: r.title,
+      workspaceId: r.workspaceId,
       projectId: r.projectId,
-      projectKey: r.project.key,
+      projectKey: r.project?.key ?? null,
       archived: r.archived,
     }));
   }

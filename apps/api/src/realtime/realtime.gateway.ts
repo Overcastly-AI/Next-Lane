@@ -41,6 +41,20 @@ export function userRoom(userId: string): string {
 }
 
 /**
+ * Workspace-scoped broadcast room name — mirrors `userRoom`'s `<kind>:<id>`
+ * convention (the project room, by contrast, is the bare `projectId` string
+ * with no prefix, for historical reasons predating this convention). Used by
+ * `RealtimeService.emitToWorkspace` for events with no owning project (e.g.
+ * a workspace-level `Page`, `projectId: null`). There is deliberately no
+ * `subscribe:workspace` handler yet — no client currently needs to JOIN this
+ * room, only the pages service emits to it ahead of the frontend slice that
+ * will add a `workspace-docs` view and subscribe to it.
+ */
+export function workspaceRoom(workspaceId: string): string {
+  return `workspace:${workspaceId}`;
+}
+
+/**
  * In-memory per-project presence store.
  *
  * Maps projectId → Map<userId, PresenceViewer>.

@@ -65,6 +65,7 @@ describe('SearchService.search', () => {
     const pageFtsRow = {
       id: 'page-1',
       title: 'Login flow',
+      workspaceId: 'ws-1',
       projectId: 'proj-1',
       archived: false,
       projectKey: 'NL',
@@ -110,7 +111,7 @@ describe('SearchService.search', () => {
         },
       ],
       pages: [
-        { id: 'page-1', title: 'Login flow', projectId: 'proj-1', projectKey: 'NL', archived: false },
+        { id: 'page-1', title: 'Login flow', workspaceId: 'ws-1', projectId: 'proj-1', projectKey: 'NL', archived: false },
       ],
       projects: [
         { id: 'proj-1', key: 'NL', name: 'Next Lane', workspaceId: 'ws-1' },
@@ -225,14 +226,14 @@ describe('SearchService.search', () => {
     prisma.$queryRaw
       .mockResolvedValueOnce([]) // issues
       .mockResolvedValueOnce([
-        { id: 'page-9', title: 'Runbook', projectId: 'proj-1', archived: false, projectKey: 'NL' },
+        { id: 'page-9', title: 'Runbook', workspaceId: 'ws-1', projectId: 'proj-1', archived: false, projectKey: 'NL' },
       ]); // pages
     prisma.project.findMany.mockResolvedValue([]);
 
     const result = await service.search('user-1', 'runbook');
 
     expect(result.pages).toEqual([
-      { id: 'page-9', title: 'Runbook', projectId: 'proj-1', projectKey: 'NL', archived: false },
+      { id: 'page-9', title: 'Runbook', workspaceId: 'ws-1', projectId: 'proj-1', projectKey: 'NL', archived: false },
     ]);
     // The workspace-id array is passed as a parameterized value into the raw
     // page query — assert it appears in the tagged-template params.
@@ -243,7 +244,7 @@ describe('SearchService.search', () => {
   it('searchPagesOnly returns only pages (the pages:read surface — no issue/project groups)', async () => {
     prisma.membership.findMany.mockResolvedValue([{ workspaceId: 'ws-1' }]);
     prisma.$queryRaw.mockResolvedValueOnce([
-      { id: 'page-1', title: 'Runbook', projectId: 'proj-1', archived: false, projectKey: 'NL' },
+      { id: 'page-1', title: 'Runbook', workspaceId: 'ws-1', projectId: 'proj-1', archived: false, projectKey: 'NL' },
     ]);
 
     const result = await service.searchPagesOnly('user-1', 'runbook');
@@ -253,7 +254,7 @@ describe('SearchService.search', () => {
     expect(result).toEqual({
       query: 'runbook',
       pages: [
-        { id: 'page-1', title: 'Runbook', projectId: 'proj-1', projectKey: 'NL', archived: false },
+        { id: 'page-1', title: 'Runbook', workspaceId: 'ws-1', projectId: 'proj-1', projectKey: 'NL', archived: false },
       ],
     });
   });
@@ -282,6 +283,7 @@ describe('SearchService.search', () => {
       {
         id: 'page-3',
         title: 'A',
+        workspaceId: 'ws-1',
         projectId: 'proj-1',
         archived: false,
         project: { key: 'NL' },
@@ -294,8 +296,90 @@ describe('SearchService.search', () => {
     expect(prisma.$queryRaw).not.toHaveBeenCalled();
     expect(prisma.page.findMany).toHaveBeenCalled();
     expect(result.pages).toEqual([
-      { id: 'page-3', title: 'A', projectId: 'proj-1', projectKey: 'NL', archived: false },
+      { id: 'page-3', title: 'A', workspaceId: 'ws-1', projectId: 'proj-1', projectKey: 'NL', archived: false },
     ]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Workspace-level docs (org-level-docs epic, Slice 2): Page.projectId is now
+// nullable (a workspace page has none). These tests pin down the two bugs
+// the schema-architect flagged for this slice — the ILIKE `project` relation
+// filter silently excluding `projectId: null` rows, and the FTS inner JOIN
+// silently dropping them — by asserting a workspace-level page (mocked with
+// `projectId: null`) IS returned, with `projectKey: null`, from every page
+// search path (ILIKE, FTS, and `searchPagesOnly`).
+// ---------------------------------------------------------------------------
+describe('SearchService page search — workspace-level pages (org-level-docs epic, Slice 2)', () => {
+  let prisma: MockPrisma;
+  let service: SearchService;
+
+  beforeEach(() => {
+    prisma = makePrisma();
+    service = new SearchService(prisma);
+  });
+
+  it('ILIKE page search scopes tenancy by Page.workspaceId directly (never via the project relation)', async () => {
+    prisma.membership.findMany.mockResolvedValue([{ workspaceId: 'ws-1' }]);
+    prisma.issue.findMany.mockResolvedValue([]);
+    prisma.page.findMany.mockResolvedValue([
+      { id: 'page-ws', title: 'Handbook', workspaceId: 'ws-1', projectId: null, archived: false, project: null },
+    ]);
+    prisma.project.findMany.mockResolvedValue([]);
+
+    // 1-char query -> ILIKE path.
+    const result = await service.search('user-1', 'a');
+
+    const where = prisma.page.findMany.mock.calls[0][0].where;
+    // Tenant scope is `workspaceId: { in: [...] }` directly on Page, NOT
+    // `project: { workspaceId: { in: [...] } }` — the latter would silently
+    // exclude this exact workspace-level page (projectId: null).
+    expect(where.workspaceId).toEqual({ in: ['ws-1'] });
+    expect(where.project).toBeUndefined();
+    expect(result.pages).toEqual([
+      { id: 'page-ws', title: 'Handbook', workspaceId: 'ws-1', projectId: null, projectKey: null, archived: false },
+    ]);
+  });
+
+  it('FTS page search LEFT JOINs Project (a workspace page has no Project row) and scopes by pg.workspaceId', async () => {
+    prisma.membership.findMany.mockResolvedValue([{ workspaceId: 'ws-1' }]);
+    prisma.$queryRaw
+      .mockResolvedValueOnce([]) // issues
+      .mockResolvedValueOnce([
+        { id: 'page-ws', title: 'Handbook', workspaceId: 'ws-1', projectId: null, archived: false, projectKey: null },
+      ]); // pages
+    prisma.project.findMany.mockResolvedValue([]);
+
+    const result = await service.search('user-1', 'handbook');
+
+    expect(result.pages).toEqual([
+      { id: 'page-ws', title: 'Handbook', workspaceId: 'ws-1', projectId: null, projectKey: null, archived: false },
+    ]);
+
+    // Inspect the raw SQL text (the tagged-template strings array, joined) —
+    // must be a LEFT JOIN (an INNER JOIN would silently drop this row) and
+    // scoped by pg."workspaceId" (not p."workspaceId", which would be NULL
+    // for a workspace page and never match).
+    const pageCallStrings = prisma.$queryRaw.mock.calls[1][0] as unknown as string[];
+    const sql = pageCallStrings.join('');
+    expect(sql).toContain('LEFT JOIN "Project"');
+    expect(sql).toContain('pg."workspaceId"');
+  });
+
+  it('searchPagesOnly surfaces a workspace-level page with projectKey null', async () => {
+    prisma.membership.findMany.mockResolvedValue([{ workspaceId: 'ws-1' }]);
+    prisma.$queryRaw.mockResolvedValueOnce([
+      { id: 'page-ws', title: 'Handbook', workspaceId: 'ws-1', projectId: null, archived: false, projectKey: null },
+    ]);
+
+    const result = await service.searchPagesOnly('user-1', 'handbook');
+
+    expect(result).toEqual({
+      query: 'handbook',
+      pages: [
+        { id: 'page-ws', title: 'Handbook', workspaceId: 'ws-1', projectId: null, projectKey: null, archived: false },
+      ],
+    });
   });
 });
 

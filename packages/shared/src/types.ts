@@ -707,8 +707,12 @@ export interface SearchProjectDto {
 export interface SearchPageDto {
   id: string;
   title: string;
-  projectId: string;
-  projectKey: string;
+  /** Always present — every page (project or workspace-level) belongs to a workspace. */
+  workspaceId: string;
+  /** Null = a workspace-level page (not attached to a single project). */
+  projectId: string | null;
+  /** Null when `projectId` is null (a workspace-level page has no project key). */
+  projectKey: string | null;
   /** Whether the page is archived (rendered muted / de-emphasised in results). */
   archived: boolean;
 }
@@ -2347,7 +2351,10 @@ export interface PaginatedProjectActivityDto {
  */
 export interface PageDto {
   id: string;
-  projectId: string;
+  /** Always present — every page (project or workspace-level) belongs to a workspace. */
+  workspaceId: string;
+  /** Null = a workspace-level page (not attached to a single project). */
+  projectId: string | null;
   /** Null = top-level page (no parent in the tree). */
   parentId: string | null;
   title: string;

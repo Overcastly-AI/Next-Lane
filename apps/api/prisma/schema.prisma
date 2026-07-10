@@ -17,6 +17,7 @@
 // add_instance_admin_oidc_config — applied 2026-07-02.
 // add_project_membership — applied 2026-07-02.
 // add_pages — applied 2026-07-09.
+// pages_workspace_scope — applied 2026-07-10.
 // Deferred to feature slices (do not add here without a feature branch):
 //   - pgvector embedding column (Phase 6)
 //   - GitLab / Gitea connections, auto-link-on-PR-open (Phase 9 follow-up)
@@ -340,6 +341,10 @@ model Workspace {
   /// deleting a workspace disables JIT auto-provisioning for any provider
   /// pointed at it rather than blocking the delete or cascading).
   ssoJitDefaultFor SsoProvider[]
+
+  // Pages — every page (project-scoped or workspace-level) belongs to a
+  // workspace; see `Page.workspaceId`.
+  pages Page[]
 }
 
 model Membership {
@@ -2102,7 +2107,22 @@ model IdempotencyRecord {
 /// deliberate act").
 model Page {
   id             String   @id @default(cuid())
-  projectId      String
+  /// Always present. Every page — project-scoped or workspace-level — belongs
+  /// to exactly one workspace; `onDelete: Cascade` so deleting a workspace
+  /// removes all of its pages regardless of whether they also have a
+  /// `projectId`. For a project page this always equals `project.workspaceId`
+  /// (the service layer sets/validates both together); for a workspace-level
+  /// page (`projectId` null) this is the page's only owner.
+  workspaceId    String
+  /// Nullable: non-null for a project-scoped page, null for a workspace-level
+  /// page that isn't attached to any single project. See `workspaceId` above
+  /// — a page is ALWAYS scoped to a workspace either way; this column only
+  /// narrows that to one project. Deliberately not split into a separate
+  /// `WorkspacePage` table (see the migration/schema-change note this model
+  /// was updated under) — one `Page` table with a nullable project owner
+  /// keeps every consumer (tree/version/link/graph/search) working unchanged
+  /// for project pages while workspace pages simply carry `projectId: null`.
+  projectId      String?
   /// Self-relation for the nestable tree. Null = top-level page. See the
   /// model-level comment for why this FK is `onDelete: Restrict`.
   parentId       String?
@@ -2129,7 +2149,8 @@ model Page {
   // migration. Mirrors Issue.searchVector.
   searchVector   Unsupported("tsvector")?
 
-  project       Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  workspace     Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project       Project?        @relation(fields: [projectId], references: [id], onDelete: Cascade)
   parent        Page?           @relation("pageTree", fields: [parentId], references: [id], onDelete: Restrict)
   children      Page[]          @relation("pageTree")
   author        User?           @relation("pageAuthor", fields: [authorId], references: [id], onDelete: SetNull)
@@ -2147,6 +2168,14 @@ model Page {
   @@index([projectId, parentId])
   // Fast "ordered page list for a project" query (backlog/sidebar-style scan).
   @@index([projectId, rank])
+  // Fast "children of this parent within this workspace" / workspace-docs
+  // tree-render query (also covers "top-level workspace pages" where
+  // parentId is null) — mirrors the projectId index above for pages that
+  // have no project (projectId null) as well as project pages.
+  @@index([workspaceId, parentId])
+  // Fast "ordered page list for a workspace" query (workspace-docs
+  // backlog/sidebar-style scan), mirroring the projectId+rank index above.
+  @@index([workspaceId, rank])
 }
 
 /// An immutable snapshot of a `Page`'s title + content at one point in time —

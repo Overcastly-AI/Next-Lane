@@ -48,6 +48,37 @@ export class PagesController {
     return this.pages.graph(user.id, projectId);
   }
 
+  // ── Workspace-level docs (org-level-docs epic, Slice 2) ─────────────────
+  // A workspace page is a `Page` with `projectId: null` — not attached to any
+  // single project, e.g. company-wide onboarding/handbook docs. The by-id
+  // routes below (findOne/update/remove/move/versions/links/issues) already
+  // work for both project and workspace pages — `PagesService` branches
+  // internally on `page.projectId === null` — so only the "list a scope's
+  // pages" and "create under a scope" routes need workspace-specific
+  // entry points, mirroring the project ones above.
+
+  @Post('workspaces/:workspaceId/pages')
+  @RequireScope('pages:write')
+  createWorkspacePage(
+    @CurrentUser() user: AuthUser,
+    @Param('workspaceId') workspaceId: string,
+    @Body() dto: CreatePageDto,
+  ) {
+    return this.pages.createWorkspacePage(user.id, workspaceId, dto);
+  }
+
+  @Get('workspaces/:workspaceId/pages/tree')
+  @RequireScope('pages:read')
+  workspaceTree(@CurrentUser() user: AuthUser, @Param('workspaceId') workspaceId: string) {
+    return this.pages.workspaceTree(user.id, workspaceId);
+  }
+
+  @Get('workspaces/:workspaceId/pages/graph')
+  @RequireScope('pages:read')
+  workspaceGraph(@CurrentUser() user: AuthUser, @Param('workspaceId') workspaceId: string) {
+    return this.pages.workspaceGraph(user.id, workspaceId);
+  }
+
   @Get('pages/:id')
   @RequireScope('pages:read')
   findOne(@CurrentUser() user: AuthUser, @Param('id') id: string) {
