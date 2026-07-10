@@ -5,6 +5,18 @@ import { SearchQueryDto } from './dto/search-query.dto';
 import { CurrentUser, AuthUser } from '../auth/current-user.decorator';
 import { RequireScope } from '../auth/require-scope.decorator';
 
+/**
+ * Whether this principal may receive knowledge-base page hits in the combined
+ * `/search` response. `patScopes` is undefined for JWT sessions and unscoped
+ * PATs (both fully unrestricted); a scoped PAT must explicitly hold
+ * `pages:read`. Without this, a token scoped to only `issues:read` would get
+ * page content back from `/search` even though `/pages/*` and `/search/pages`
+ * correctly 403 it.
+ */
+function canReadPages(user: AuthUser): boolean {
+  return !user.patScopes || user.patScopes.includes('pages:read');
+}
+
 @ApiTags('search')
 @ApiBearerAuth()
 @Controller()
@@ -15,7 +27,7 @@ export class SearchController {
   @Get('search')
   @RequireScope('issues:read')
   global(@CurrentUser() user: AuthUser, @Query() query: SearchQueryDto) {
-    return this.search.search(user.id, query.q, query.projectId);
+    return this.search.search(user.id, query.q, query.projectId, canReadPages(user));
   }
 
   /** Search scoped to a single project the caller can access. */
@@ -26,7 +38,7 @@ export class SearchController {
     @Param('projectId') projectId: string,
     @Query() query: SearchQueryDto,
   ) {
-    return this.search.search(user.id, query.q, projectId);
+    return this.search.search(user.id, query.q, projectId, canReadPages(user));
   }
 
   /**

@@ -50,6 +50,60 @@ jobs:
       - name: Typecheck web
         run: pnpm --filter @next-lane/web exec tsc --noEmit
 
+  integration-test:
+    name: Integration specs (tenant isolation + PAT-scope guards)
+    runs-on: ubuntu-latest
+    # The DB-backed safety nets — tenant-isolation, pat-scope-rollout (per-route
+    # DENY/ALLOW), and pat-scope-coverage (every @RequireScope route is rostered
+    # and every route is scoped-or-exempt). These boot the REAL AppModule against
+    # a real Postgres, so they can't run in the DB-free unit lane above. Without
+    # this job they never ran in CI — a correct guard that never executes catches
+    # nothing (a page-data scope leak shipped past exactly this gap; 2026-07-10).
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: nextlane_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/nextlane_test?schema=public
+      JWT_SECRET: ci-integration-secret
+      RATE_LIMIT_DISABLED: 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm --filter @next-lane/api exec prisma generate
+
+      - name: Apply migrations
+        run: pnpm --filter @next-lane/api exec prisma migrate deploy
+
+      - name: Run integration specs
+        run: pnpm --filter @next-lane/api test:isolation
+
   docker-build:
     name: Production image build (compose)
     runs-on: ubuntu-latest

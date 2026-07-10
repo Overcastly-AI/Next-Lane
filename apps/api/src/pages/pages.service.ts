@@ -851,7 +851,16 @@ export class PagesService {
     content: string,
   ): Promise<void> {
     const parsed = parseWikiLinks(content);
-    const uniqueTitles = [...new Set(parsed.map((l) => l.title.toLowerCase()))];
+    // Cap the distinct titles we resolve per save at the same ceiling the read
+    // side enforces (`MAX_OUTGOING_LINKS`). Without this, a pathological page
+    // (up to 256 KiB of `[[a]][[b]]…`) would build an unbounded `OR` predicate
+    // on every write — inconsistent with the MAX_* caps used everywhere else in
+    // this file. A page linking to more than that many distinct pages only gets
+    // the first N reconciled, which matches what `links()` will ever return.
+    const uniqueTitles = [...new Set(parsed.map((l) => l.title.toLowerCase()))].slice(
+      0,
+      MAX_OUTGOING_LINKS,
+    );
 
     let resolvedTargetIds = new Set<string>();
     if (uniqueTitles.length > 0) {
@@ -937,7 +946,11 @@ export class PagesService {
     pageId: string,
     content: string,
   ): Promise<void> {
-    const numbers = extractIssueNumbers(content, projectKey);
+    // Cap the distinct issue numbers we resolve per save at the same ceiling
+    // the read side enforces (`MAX_LINKED_ISSUES`), so a pathological page can't
+    // build an unbounded `IN (…)` list on every write. Mirrors the cap in
+    // `syncWikiLinks`.
+    const numbers = extractIssueNumbers(content, projectKey).slice(0, MAX_LINKED_ISSUES);
 
     let resolvedIssueIds = new Set<string>();
     if (numbers.length > 0) {

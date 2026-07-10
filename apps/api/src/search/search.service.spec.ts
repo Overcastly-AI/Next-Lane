@@ -118,6 +118,39 @@ describe('SearchService.search', () => {
     });
   });
 
+  it('suppresses the pages group (never queries pages) when includePages=false', async () => {
+    // Regression for the /search page-leak: a PAT scoped only `issues:read`
+    // must get issues + projects but NO knowledge-base page hits, even though
+    // pages live in the same workspace. The controller passes includePages=false
+    // for such a principal.
+    const ftsRow = {
+      id: 'issue-1',
+      number: BigInt(12),
+      title: 'Fix the login bug',
+      type: 'BUG',
+      projectId: 'proj-1',
+      statusId: 'status-1',
+      projectKey: 'NL',
+      statusName: 'To Do',
+      statusCategory: 'TODO',
+    };
+    prisma.membership.findMany.mockResolvedValue([{ workspaceId: 'ws-1' }]);
+    // Only the issues FTS query should fire — pages must not be queried at all.
+    prisma.$queryRaw.mockResolvedValueOnce([ftsRow]);
+    prisma.project.findMany.mockResolvedValue([
+      { id: 'proj-1', key: 'NL', name: 'Next Lane', workspaceId: 'ws-1' },
+    ]);
+
+    const result = await service.search('user-1', 'login', undefined, false);
+
+    // Issues FTS ran once; the page query (FTS or ILIKE) never ran.
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(prisma.page.findMany).not.toHaveBeenCalled();
+    expect(result.pages).toEqual([]);
+    expect(result.issues).toHaveLength(1);
+    expect(result.projects).toHaveLength(1);
+  });
+
   it('returns empty results when the caller has no memberships (no leak)', async () => {
     prisma.membership.findMany.mockResolvedValue([]);
 

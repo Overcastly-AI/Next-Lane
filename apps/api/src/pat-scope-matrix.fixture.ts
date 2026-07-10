@@ -209,6 +209,9 @@ export const MATRIX: MatrixRow[] = [
   { controller: 'pages', method: 'GET', path: `/pages/${X}/versions/${X}`, scope: 'pages:read' },
   { controller: 'pages', method: 'POST', path: `/pages/${X}/versions/${X}/restore`, scope: 'pages:write' },
   { controller: 'pages', method: 'GET', path: `/pages/${X}/backlinks`, scope: 'pages:read' },
+  { controller: 'pages', method: 'GET', path: `/pages/${X}/links`, scope: 'pages:read' },
+  { controller: 'pages', method: 'GET', path: `/pages/${X}/issues`, scope: 'pages:read' },
+  { controller: 'pages', method: 'GET', path: `/issues/${X}/pages`, scope: 'pages:read' },
 
   // project-memberships
   { controller: 'project-memberships', method: 'GET', path: `/projects/${X}/members`, scope: 'projects:read' },
@@ -241,6 +244,10 @@ export const MATRIX: MatrixRow[] = [
   // search
   { controller: 'search', method: 'GET', path: '/search?q=x', scope: 'issues:read' },
   { controller: 'search', method: 'GET', path: `/projects/${X}/search?q=x`, scope: 'issues:read' },
+  // Pages-only FTS, gated by pages:read (NOT issues:read) so a wiki-scoped token
+  // can search pages; the combined /search stays issues:read but now suppresses
+  // the pages group unless the caller also holds pages:read.
+  { controller: 'search', method: 'GET', path: '/search/pages?q=x', scope: 'pages:read' },
 
   // share-tokens
   { controller: 'share-tokens', method: 'POST', path: `/projects/${X}/share-tokens`, scope: 'projects:write' },

@@ -63,8 +63,21 @@ export class SearchService {
    * For very short queries (< {@link FTS_MIN_LENGTH} chars) and key-style
    * queries like "NL-12" the service falls back to Prisma ILIKE, which is correct
    * for single-token or exact-key lookups.
+   *
+   * `includePages` gates the knowledge-base `pages` group. The `GET /search`
+   * route only requires `issues:read`, but its response also carries page hits,
+   * which are a distinct surface guarded by `pages:read`. A PAT scoped to only
+   * `issues:read` must therefore NOT receive page content here (that would leak
+   * the wiki past its scope — the exact bug the pages-only `/search/pages`
+   * route was created to avoid). Callers pass `false` when the principal lacks
+   * `pages:read`; JWT sessions and unscoped PATs pass `true` (full access).
    */
-  async search(userId: string, q?: string, projectId?: string): Promise<SearchResultsDto> {
+  async search(
+    userId: string,
+    q?: string,
+    projectId?: string,
+    includePages = true,
+  ): Promise<SearchResultsDto> {
     const query = (q ?? '').trim();
 
     // Workspaces the caller can see. This is the only authorization boundary
@@ -101,10 +114,13 @@ export class SearchService {
         ? this.searchIssuesFts(query, workspaceIds, allowedProjectId)
         : this.searchIssuesIlike(query, workspaceIds, allowedProjectId, keyMatch),
       // Pages have no key-style lookup, so they use FTS for len >= FTS_MIN_LENGTH
-      // and ILIKE otherwise — same tenant scoping as issues.
-      useFts
-        ? this.searchPagesFts(query, workspaceIds, allowedProjectId)
-        : this.searchPagesIlike(query, workspaceIds, allowedProjectId),
+      // and ILIKE otherwise — same tenant scoping as issues. Skipped entirely
+      // (empty group) when the caller lacks `pages:read` — see `includePages`.
+      !includePages
+        ? Promise.resolve([] as SearchPageDto[])
+        : useFts
+          ? this.searchPagesFts(query, workspaceIds, allowedProjectId)
+          : this.searchPagesIlike(query, workspaceIds, allowedProjectId),
       // Project search is global within the caller's workspaces, regardless of
       // the projectId filter (which only scopes issues/pages).
       this.searchProjects(query, workspaceIds),
