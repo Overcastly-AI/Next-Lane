@@ -218,8 +218,13 @@ and the two pre-existing decision-gated items renumber from #6/#7 to
    `apps/api/src/search/**`, `apps/web/src/components/CommandPalette*` /
    cross-project search UI. **Size:** S.
 
-8. **Pages — delete-time backlink impact signal** (P2, S; MCP-QA pass 3
-   finding, `docs/MCP-QA.md`) — deleting a page today succeeds silently even
+8. ✅ **Pages — delete-time backlink impact signal** (SHIPPED 2026-07-09 —
+   remove on next groom: DELETE response reports `orphanedBacklinks` (counted
+   pre-cascade); web confirm dialog warns "N pages link here — their [[links]]
+   will become unresolved" without blocking; MCP `delete_page` description
+   teaches check-backlinks-first + explains the response field. 43 API pages
+   unit tests; adversarial e2e 14/14 green desktop+mobile.) — original scope:
+   deleting a page today succeeds silently even
    when OTHER pages link to it. The graph stays consistent (the `PageLink`
    rows cascade-delete), but the *source* pages' content keeps a now-dangling
    `[[Title]]` that renders as an unresolved/create-it link with no warning at

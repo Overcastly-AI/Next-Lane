@@ -3349,8 +3349,14 @@ const writeTools: ToolDef[] = [
       'move them elsewhere (update_page with a new parentId) or delete ' +
       'them first; this keeps a whole subtree from disappearing as a side ' +
       'effect of deleting one parent page. Irreversible — there is no undo ' +
-      'and no cascade-delete-subtree option in this API. Requires ' +
-      '`pages:write` scope when the token is scoped.',
+      'and no cascade-delete-subtree option in this API. CHECK ' +
+      'get_page_backlinks FIRST: deleting a page other pages link to ' +
+      'leaves their [[links]] dangling as unresolved references (the graph ' +
+      'stays consistent but readers hit dead ends) — re-point or update the ' +
+      'linking pages first, or archive instead. The response reports ' +
+      '`orphanedBacklinks` (how many inbound links the delete just ' +
+      'orphaned); a non-zero value you did not expect means you skipped ' +
+      'that check. Requires `pages:write` scope when the token is scoped.',
     inputSchema: { id: z.string().describe('Page id.') },
     handler: (args, client) => client.delete(`/pages/${args.id}`).then(jsonResult),
   },

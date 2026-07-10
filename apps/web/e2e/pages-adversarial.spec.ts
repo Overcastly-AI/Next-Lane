@@ -242,6 +242,53 @@ test.describe('Pages adversarial QA', () => {
     await expect(confirmBtn).toBeDisabled();
   });
 
+  test('deleting a page other pages link to warns "N pages link here" (informed consent, not a block)', async ({
+    page,
+    request,
+  }) => {
+    const { project, token } = await setupIsolatedProject(page, request, {
+      label: 'pages-adv-orphanwarn',
+      projectName: 'Pages Adversarial OrphanWarn QA',
+      openBoard: false,
+    });
+    const headers = { Authorization: `Bearer ${token}` };
+    async function apiCreatePage(title: string, content?: string) {
+      const res = await request.post(`http://localhost:4000/api/projects/${project.id}/pages`, {
+        headers,
+        data: { title, content },
+      });
+      expect(res.ok()).toBeTruthy();
+      return ((await res.json()) as { id: string }).id;
+    }
+    const hubId = await apiCreatePage('Hub Doc');
+    await apiCreatePage('Linker One', 'see [[Hub Doc]]');
+    await apiCreatePage('Linker Two', 'also [[Hub Doc]]');
+
+    await page.goto(`/projects/${project.id}/pages`);
+    await expect(page.getByTestId('page-title')).toBeVisible();
+
+    const mobileToggle = page.getByTestId('page-tree-mobile-toggle');
+    if (await mobileToggle.isVisible().catch(() => false)) await mobileToggle.click();
+    const scope = (await mobileToggle.isVisible().catch(() => false))
+      ? page.getByTestId('page-tree-mobile-drawer')
+      : page.locator('nav[aria-label="Pages"]');
+
+    await scope.getByTestId(`page-tree-delete-${hubId}`).click();
+    const dialog = page.getByRole('alertdialog', { name: 'Delete page' });
+    await expect(dialog).toBeVisible();
+    // The warning surfaces the inbound-link count but the delete stays
+    // ENABLED — informed consent (Obsidian-style), never a block.
+    const warning = dialog.getByTestId('page-delete-backlink-warning');
+    await expect(warning).toBeVisible();
+    await expect(warning).toContainText('2 pages link here');
+    const confirmBtn = dialog.getByRole('button', { name: 'Delete', exact: true });
+    await expect(confirmBtn).toBeEnabled();
+
+    // Confirming actually deletes the page from the tree.
+    await confirmBtn.click();
+    await expect(scope.getByTestId(`page-tree-item-${hubId}`)).toHaveCount(0);
+  });
+
   // DEFECT (filed to dev team): graph node boxes can render PARTIALLY
   // OUTSIDE the canvas and get clipped by the container's `overflow-hidden`,
   // truncating the visible label — e.g. "Onboarding" renders as "nboarding"

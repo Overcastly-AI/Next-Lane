@@ -389,6 +389,14 @@ class Harness {
           for (const id of where.id.in) self.links.delete(id);
           return Promise.resolve({ count: where.id.in.length });
         },
+        count: ({ where }: { where?: { targetPageId?: string; sourcePageId?: string } }) =>
+          Promise.resolve(
+            [...self.links.values()].filter((r) => {
+              if (where?.targetPageId !== undefined && r.targetPageId !== where.targetPageId) return false;
+              if (where?.sourcePageId !== undefined && r.sourcePageId !== where.sourcePageId) return false;
+              return true;
+            }).length,
+          ),
       },
       issue: {
         findUnique: ({ where }: { where: { id: string } }) =>
@@ -694,9 +702,27 @@ describe('PagesService.remove', () => {
 
     const result = await service.remove(MEMBER, page.id);
 
-    expect(result).toEqual({ id: page.id });
+    expect(result).toEqual({ id: page.id, orphanedBacklinks: 0 });
     expect(h.pages.has(page.id)).toBe(false);
     expect(realtimeMock.emitToProject).toHaveBeenCalled();
+  });
+
+  it('reports how many inbound backlinks the delete orphaned (informed-consent signal)', async () => {
+    const h = new Harness();
+    h.setRole(MEMBER, Role.MEMBER);
+    const hub = h.addPage({ title: 'Hub' });
+    const s1 = h.addPage({ title: 'Source One' });
+    const s2 = h.addPage({ title: 'Source Two' });
+    h.links.set('l1', { id: 'l1', sourcePageId: s1.id, targetPageId: hub.id, createdAt: new Date() });
+    h.links.set('l2', { id: 'l2', sourcePageId: s2.id, targetPageId: hub.id, createdAt: new Date() });
+    // An OUTGOING link from the hub must not count — only inbound ones orphan.
+    h.links.set('l3', { id: 'l3', sourcePageId: hub.id, targetPageId: s1.id, createdAt: new Date() });
+    const service = makeService(h);
+
+    const result = await service.remove(MEMBER, hub.id);
+
+    expect(result).toEqual({ id: hub.id, orphanedBacklinks: 2 });
+    expect(h.pages.has(hub.id)).toBe(false);
   });
 
   it('rejects deleting a page that has children (BadRequestException, no cascade)', async () => {

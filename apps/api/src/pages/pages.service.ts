@@ -256,7 +256,10 @@ export class PagesService {
    * children elsewhere (`move()`) or delete them individually,
    * leaves-up — there is no cascade-subtree-delete endpoint in this slice.
    */
-  async remove(userId: string, id: string): Promise<{ id: string }> {
+  async remove(
+    userId: string,
+    id: string,
+  ): Promise<{ id: string; orphanedBacklinks: number }> {
     const existing = await this.prisma.page.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('Page not found');
     await assertProjectRole(
@@ -275,9 +278,18 @@ export class PagesService {
       );
     }
 
+    // Informed-consent signal (MCP-QA pass 3, P2): deleting a page other
+    // pages link to is legitimate (Obsidian-style, never blocked), but the
+    // caller should KNOW those pages' [[links]] just became unresolved.
+    // Counted before the delete (the cascade removes the rows), reported in
+    // the response, and surfaced pre-delete in the web confirm dialog.
+    const orphanedBacklinks = await this.prisma.pageLink.count({
+      where: { targetPageId: id },
+    });
+
     await this.prisma.page.delete({ where: { id } });
     this.emitUpdated(existing.projectId, id);
-    return { id };
+    return { id, orphanedBacklinks };
   }
 
   // ── Tree ──────────────────────────────────────────────────────────────────

@@ -17,6 +17,7 @@
  * fully keyboard- and screen-reader-operable, no pointer required.
  */
 import { useEffect, useRef, useState } from 'react';
+import { usePageBacklinks } from '@/api/pages';
 import type { PageTreeNode } from '@next-lane/shared';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { cn } from '@/lib/cn';
@@ -80,6 +81,11 @@ export function PageTree({
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [activeId, setActiveId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<PageTreeNode | null>(null);
+  // Informed-consent signal: how many OTHER pages link to the delete target
+  // (their [[links]] would become unresolved). Fetched lazily — only while
+  // the confirm dialog is open. Never blocks the delete.
+  const deleteTargetBacklinks = usePageBacklinks(deleteTarget?.id);
+  const orphanCount = deleteTargetBacklinks.data?.length ?? 0;
   const rowRefs = useRef(new Map<string, HTMLDivElement>());
   const focusPending = useRef(false);
 
@@ -243,6 +249,12 @@ export function PageTree({
           ) : (
             <>
               Delete <strong>{deleteTarget?.title}</strong>? This can’t be undone.
+              {orphanCount > 0 && (
+                <span data-testid="page-delete-backlink-warning" className="mt-2 block text-amber-700">
+                  {orphanCount} page{orphanCount === 1 ? '' : 's'} link{orphanCount === 1 ? 's' : ''} here —
+                  {orphanCount === 1 ? ' its' : ' their'} [[links]] will become unresolved.
+                </span>
+              )}
             </>
           )
         }
