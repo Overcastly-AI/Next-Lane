@@ -33,6 +33,8 @@ const SCOPE_LABELS: Record<string, string> = {
   'gitea:write': 'Gitea — write',
   'workspaces:read': 'Workspaces — read',
   'workspaces:write': 'Workspaces — write',
+  'pages:read': 'Pages (wiki) — read',
+  'pages:write': 'Pages (wiki) — write',
   'admin:read': 'Admin settings — read',
   'admin:write': 'Admin settings — write',
   'tokens:read': 'API tokens — read',
