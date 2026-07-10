@@ -2574,3 +2574,241 @@ forward for any absolutely-positioned overlay near a viewport edge.
 - Swimlane WIP/health summary strip — P3 · S · New ideation; turns Swimlanes v2 from visual grouping into an at-a-glance team/component health signal
 - Configurable dashboards Phase 2 (cross-sprint trend, cross-workspace scoping) — P2 · M · Carried forward, natural next increment given Phase 1's verified strength
 - Scheduled/time-based automation trigger — P2 · M · Carried forward from Pass 9-11, unretested this pass
+
+## 2026-07-10 — Pass 13 (Pages: Confluence × Obsidian knowledge-base pillar deep-dive + full-product pass)
+
+**Independent product/UX audit.** Conducted without reading the engineering
+auditor's Pass 14 notes (`docs/AUDIT-ENGINEERING.md`), per standing
+instructions — I'm told its P0 finding (a `/search` page-data scope leak) is
+already fixed and shipped, and I did not re-verify engineering internals.
+This pass focused hardest on the newest surface — **Pages**, the Confluence ×
+Obsidian-hybrid knowledge base (ROADMAP Phase 11) — evaluated purely as a
+user experiencing it for the first time, plus a lighter full-product
+regression sweep.
+
+**Method — real usage, not code reading alone.** Registered fresh users via
+the API, then drove the actual running web app (`http://localhost:3000`
+against the live API on `:4000`) with Playwright: created workspaces,
+projects, and an 18-page interlinked wiki (Team Handbook, 5 runbooks, 5
+ADRs, 3 meeting-notes pages, a glossary, security policy, onboarding
+checklist) modeled on a real small team's wiki, exercised `[[wiki-links]]`
+(resolved/unresolved), the knowledge graph, version history + restore,
+issue↔page cross-linking, Cmd-K search (title, body-word, and typo
+queries), a second project to test cross-project link/search behavior, and a
+VIEWER-role user to check RBAC. Captured 40+ screenshots desktop (1280×800)
+and mobile (Pixel 5, 393×851). One environment note for future auditors: this
+sandbox's pre-built `web` preview bundle was compiled against a stale
+`VITE_API_URL` (`:4055`, presumably from a sibling agent's earlier build) —
+login silently failed with `ERR_CONNECTION_REFUSED` in the console until I
+overrode `window.__NL_CONFIG__.apiUrl` via `page.addInitScript`. Not a product
+bug (a real Docker deploy sets this once via `config.js`), but worth noting
+for the next agent who hits an inexplicable "Unable to sign in."
+
+### Ratings — newest surface (Pages), 1–5
+
+| Area | Score | Note |
+|---|---|---|
+| Discoverability & IA | 4 | "Pages" is a first-class primary tab (`Board · Backlog · Triage · Pages · Reports`) *and* a persistent sidebar sub-link under the expanded project row — unaided discovery is trivial (`apps/web/src/pages/PagesPage.tsx`, `nav-pages` testid confirmed clickable from the board). Docked one point: the empty state ("No pages yet — create your project's first page to start building a knowledge base") never teases the two things that make this pillar special — `[[wiki-links]]` or the Graph tab — a brand-new user has zero signal this is Obsidian-flavored until they stumble into edit mode and see the "type `[[` to link" placeholder. |
+| Full-page editing UX | 3 | The explicit Edit/Save/Cancel mode (not click-to-edit) reads as a deliberate, good "this is a document" affordance, and the unresolved-link counter + reserved-character title validation are genuinely thoughtful. **But: zero unsaved-changes protection** — live-verified (see Top Gaps #1) that navigating to another page in the tree, or a plain `page.reload()`, while mid-edit **silently discards the draft with no dialog, no `beforeunload` guard, and no visual "unsaved" indicator** other than the Save button's own disabled/enabled state. No `Cmd/Ctrl+S` shortcut either — you must click Save with the mouse. A tool whose entire pitch is "a real document editor" cannot silently eat a paragraph a user just wrote. |
+| Knowledge graph | 3 | The Obsidian-style constellation hover (neighbors highlight, everything else fades to translucent grey) is genuinely delightful and worked flawlessly live (`31-graph-hover-highlight.png`). Degree-sized nodes are correct (hub pages visibly larger). But **legibility already degrades at 18 pages** — several node labels physically overlap ("Runbook: Incident…" and "Runbook: On-call…" render on top of each other on mobile, `42-mobile-graph.png`), one node was fully hidden behind another in the desktop screenshot (confirmed present in the DOM via `page-graph-node-*` testids, just visually unreachable without a lucky zoom/drag), and **there is no search-within-graph, no node list, no "find and center" affordance** — the only navigation aid is pan/zoom + hover. A real team wiki reaches 50-200+ pages quickly; this graph has no mechanism to stay useful past roughly the page count I tested with. Decorative-leaning at scale today, not yet the navigation aid VISION.md's "crown jewel" framing promises. |
+| Search | 4 | Postgres `websearch_to_tsquery` full-text search genuinely works well: live-verified a nonsense body token (`ZEBRAFISH-*`) planted in 9 pages' bodies surfaced all 9 correctly ranked, `ts_rank` ordering looked sane for both title and body matches, and it correctly spans **all projects in the workspace** (a second project's page surfaced from a first-project Cmd-K search, tagged with its own project-key badge for clarity — good scoping signal). Docked one point for two real gaps: **zero typo tolerance** (searching "Rnubok" returns nothing — no `pg_trgm`/similarity fallback), and there is **no dedicated search-results page** — Cmd-K's compact dropdown (capped, `RESULT_CAP`-style truncation) is the *only* search surface; there's no way to see "43 more results," filter by author/date, or search-within-current-project-only. |
+| Cross-link coherence | 3 | `[[wiki-links]]` resolve/re-render correctly across navigation and reload (re-verified: Hub→Target both directions, `20-runbook-page-created.png`), and version restore is genuinely non-destructive with a clear confirm message ("stays in history too, since restoring saves a new version" — `63-restore-confirm-dialog.png`, verified a restore produces v3, not a v1/v2 overwrite). **But issue↔page cross-linking is one-directional in the UI.** The issue drawer's "Linked pages" section works correctly (live-verified end-to-end: mentioning `GR3220-1` in a page body surfaced it in the issue drawer, scrolled screenshot `38-issue-drawer-scrolled.png`). The reverse never renders anywhere: `GET /pages/:id/issues` exists server-side and `get_page_issues` exists over MCP, but **grepping the entire web frontend for any consumer of that endpoint returns zero hits** — a page that documents three issues gives the reader no way to see that from the page itself. This is a real, fixable asymmetry, not a design choice (the data is already computed and stored server-side on every save). |
+| Parity vs. a credible wiki | 2 | The two features that matter most for *actually writing docs* are the two biggest misses. **(1) No images, at all, anywhere in a page** — live-verified: `![Diagram](https://picsum.photos/...)` written into a page's Markdown is silently stripped on render with zero trace, zero broken-image icon, zero error (`MarkdownRenderer.tsx`'s DOMPurify `ALLOWED_TAGS` list has no `img`; screenshot `80-image-and-table-render-test.png` shows the image line vanish while the adjacent Markdown table renders perfectly). Pages also have no attachment-upload affordance at all (issues do — the drawer's "Attachments" drag-and-drop panel — pages have nothing analogous). A user writing an architecture doc or a runbook cannot embed a single screenshot or diagram (Mermaid code-fences are the one workaround, and they *do* render — a real mitigating strength). **(2) No page templates** (title-only create modal, confirmed by reading `CreatePageModal.tsx`) **and no rich formatting affordances** (raw Markdown only — no slash-command menu, no toolbar, no live preview toggle) — matches the ROADMAP's own "Later, not v1" list, so this is an honest, tracked gap, not a surprise, but it's still what a Confluence/Notion/Obsidian user hits in their first ten minutes. Page comments, favorites/recents, and page-level permissions beyond the existing project RBAC are likewise absent (also ROADMAP-acknowledged "Later"). |
+
+### Is per-project scoping the right call? (explicit ask)
+
+**Mostly yes, with one sharp edge.** For team-specific runbooks, ADRs, and
+meeting notes, per-project scoping is the right default — it reuses the
+exact RBAC/PAT-scope chokepoint the rest of the app already has, with zero
+new permission surface. But I live-verified the edge the ROADMAP itself
+already flags as deferred ("workspace-level spaces"): I created "Shared
+Glossary" as a page in one project, then wrote `[[Shared Glossary]]` in a
+*different* project in the **same workspace** — it renders **unresolved**
+(`#create-page:Shared%20Glossary`), and clicking it would create a brand-new,
+disconnected duplicate page rather than linking to the org-wide one
+(`50-cross-project-wikilink-does-not-resolve.png`). Every real org has 3-5
+documents that are inherently workspace-wide, not project-specific
+(onboarding, glossary, security policy, brand guidelines) — exactly the
+titles I picked for this test wiki, deliberately mirroring what a real team
+would actually write. Today those either get duplicated per-project (drifting
+copies) or arbitrarily "own" a single project that isn't really their home.
+This is the single highest-leverage structural gap in the whole pillar
+because it's a modeling decision, not a missing button — the longer real
+content accumulates per-project, the more expensive a later "workspace
+spaces" migration becomes.
+
+### Full-product pass (regression sweep, lighter touch this cycle)
+
+Scope this pass was Pages-first; the following is what I directly
+re-verified live while driving the app, not a re-audit of every surface Pass
+12 already covered in depth (those are carried forward unchanged below with
+no fresh evidence, per the no-hand-waving principle — I'm not re-claiming a
+score without re-testing it).
+
+- **RBAC on the new surface holds up.** A VIEWER-role user correctly sees no
+  "Edit" button and no "New page" affordance on Pages (`90-viewer-role-pages-view.png`)
+  — the same `canEdit(myRole)` chokepoint the rest of the app uses.
+- **Delete-with-children UX is genuinely well-designed** — the confirm
+  dialog pre-emptively explains children must be moved/deleted first *and*
+  disables the Delete button until they are, plus separately warns "N pages
+  link here — their `[[links]]` will become unresolved" when deleting a page
+  with backlinks (`PageTree.tsx`). This is better guardrail design than most
+  of the rest of the app's delete flows and worth holding up as the pattern
+  to copy elsewhere.
+- **Version history is a real, correctly-implemented Confluence-style
+  feature**, not scaffolding — live-verified non-destructive restore end to
+  end (a v1 restore produces a new v3; v1 and v2 both remain in history,
+  screenshot `64-after-restore.png` / `65-version-history-after-restore.png`).
+- **The image-stripping DOMPurify config is app-wide** (`MarkdownRenderer.tsx`
+  is shared by issue descriptions/comments too), so this isn't Pages-only —
+  but issues have a *separate*, working image path (the Attachments
+  drag-and-drop panel, confirmed present in the issue drawer screenshot
+  `36-issue-drawer-linked-pages.png`), so the practical impact is
+  concentrated on Pages, which has neither the Markdown path nor an
+  attachment path.
+- **One save-timing flake, not reproduced on retry**: a first-run save once
+  appeared to leave the UI stuck in edit mode past a 500ms wait even though
+  the PATCH had already returned 200 and the version was correctly
+  persisted (confirmed via direct API query); a clean re-run with network
+  logging showed a normal save→read-mode transition well within 500ms. Likely
+  a cold-start/first-request latency artifact in this shared sandbox, not a
+  reproducible product bug — flagging for awareness, not filing as a gap.
+- Areas not re-touched this pass (board, backlog, dashboards, GitHub/GitLab/
+  Gitea integrations, SSO, sprints, dark mode, workspace switcher): no fresh
+  evidence either way; Pass 12's ratings stand uncontested from this pass.
+
+### Category-Parity Benchmark (mandatory every pass) — Pages-relevant rows updated, rest carried forward
+
+| Capability | Our depth | Leader baseline | Gap | Note |
+|---|---|---|---|---|
+| Team wiki / docs (pages, tree, RBAC, version history) | 4 | 5 | No page templates, no page-level permission overrides beyond project RBAC, no page comments | **New row this pass.** Confluence's core backbone is genuinely present and works (nestable tree, fractional rank, version history + non-destructive restore, RBAC) — a real 4, not scaffolding. |
+| Linked-thought / knowledge graph | 3 | 4 (Obsidian has no team backbone, so "leader" here is a composite of Obsidian's graph UX at a lower absolute bar) | No search-within-graph, no node-list fallback, labels overlap by ~18 nodes, no minimap | **New row.** The hover-constellation effect is best-in-class visual polish; the navigation utility ceiling is low without an in-graph search/filter. |
+| Rich content in docs (images, embeds, tables) | 1 | 5 | Images fully non-functional (stripped, no attachment path); tables + Mermaid diagrams work | **New row.** This is the sharpest gap in the whole pillar — most teams' documentation is unusable without screenshots/diagrams. |
+| Cross-linking (wiki-links + issue↔doc) | 3 | 5 | Issue→page linking works; page→issue direction has no frontend consumer despite a working backend endpoint | **New row.** |
+| Multiple boards / board types | 5 | 5 | none | Carried forward from Pass 12, not retested this pass. |
+| Query language (NLQL) + saved/shared filters | 5 | 5 | none | Carried forward, not retested. |
+| Custom fields | 5 | 5 | none | Carried forward, not retested. |
+| Dashboards/gadgets | 5 | 5 | none | Carried forward, not retested. |
+| Automation rule engine | 4 | 5 | No scheduled/time trigger | Carried forward, not retested. |
+| Permissions granularity | 3 | 5 | No per-project role override; SSO env-var-only | Carried forward, not retested. |
+| Mobile board toolbar | unknown this pass | 5 | Pass 12 found a P1 regression (invisible dropdown menus) | Not retested this pass — status unknown; the fix may or may not have landed. Flagging so it doesn't silently fall off the board's radar. |
+
+### Better-than-Jira scorecard — input for vision-steward
+
+**Knowledge / Docs row (currently "Behind" in VISION.md, with an explicit
+target of "BEYOND both reference points" once Phase 11 v1 ships).**
+
+My honest read after hands-on testing: **the pillar is real, ambitious, and
+partially delivers on the "beyond" thesis (the agent-traversable graph +
+MCP tools are a genuine category no incumbent offers), but v1 as shipped is
+not yet even a confident Parity with a baseline team wiki, let alone
+Beyond.** The reasoning: the single most common thing a real team writes
+into a wiki — a runbook, an architecture doc, an incident postmortem — very
+quickly needs a screenshot or a diagram, and this is the one thing Pages
+structurally cannot do today (not "hard to do," but *actively strips it with
+no error*, which is worse than merely unsupported — it's silently data-lossy
+in the way the unsaved-edits gap is too). A user migrating from Confluence
+or Notion who pastes their first screenshot into a runbook and watches it
+vanish will not conclude they've upgraded. I'd recommend **VISION.md keep
+this row at "Behind"** (not yet re-score toward the "Beyond" target) until
+image support and the unsaved-changes guard land — those two are the
+gate, not polish, on this specific row's promise. Once those two ship, I'd
+support elevating to at least Parity given how strong the graph,
+backlinks, version history, and cross-project search already are.
+
+### Top gaps — prioritized backlog candidates
+
+| Rank | Item | Why it matters (user value) | Size | Area |
+|---|---|---|---|---|
+| P1-1 | **Unsaved-changes protection in the page editor** — at minimum a `beforeunload` guard during `editing=true` with unsaved `dirty` state, and block/confirm in-app navigation (tree click, breadcrumb, back button) the same way `ConfirmDialog` already gates destructive deletes. Ideally also periodic autosave-to-draft (localStorage) as a safety net. | Live-verified: editing a page, then either navigating to a sibling page via the tree **or reloading the browser**, silently discards everything typed with zero warning of any kind — no dialog, no toast, no visual cue. This is a real, disqualifying trust break for a "document editor" — the single worst thing a wiki can do to a user is eat their work with no warning. | S–M | Pages / editor |
+| P1-2 | **Image support in Pages** — either (a) restore `img` to the sanitizer's `ALLOWED_TAGS` for the Pages content pipeline specifically (external-URL images, at minimum) and/or (b) add a page-level attachment/upload path mirroring the issue drawer's existing Attachments panel, with paste-to-upload in the editor as the ideal end state. | Live-verified: a Markdown image line vanishes with zero trace on save/render. This is the single largest gap between "has a wiki" and "has a wiki people actually use" — runbooks, architecture docs, and incident postmortems are close to unusable without screenshots/diagrams. Directly gates whether the "Knowledge/Docs" Better-than-Jira row can honestly move past "Behind." | M | Pages / editor |
+| P1-3 | **Surface "Linked issues" on the page itself** (the reverse of the already-shipped issue-drawer "Linked pages" section) — a small panel beside/below Backlinks, consuming the already-existing `GET /pages/:id/issues` endpoint (zero new backend work, `useIssuePages`-shaped hook + a component mirroring `LinkedPagesSection`). | The backend computes and stores this on every save; the MCP surface already exposes it (`get_page_issues`); only the page-reading human is denied it. A user reading a runbook has no way to see "which 3 issues reference this doc" without leaving the page and guessing. | S | Pages / cross-linking |
+| P2-1 | **Search-within-graph / a "find & center" affordance** (a lightweight text filter above the graph that dims non-matching nodes and pans to the first match, reusing the same fade mechanic the hover-highlight already has). | Live-verified: at just 18 pages, node labels already overlap and one node was fully occluded behind another with no way to locate it except by luck. A real team wiki will outgrow "legible by eyeballing" within its first month; without in-graph search the "crown jewel" graph degrades into decoration exactly at the scale where it would matter most. | S–M | Pages / graph |
+| P2-2 | **Cross-project ("workspace space") pages for genuinely org-wide docs** — either a lightweight "workspace" page tree that all projects can link into (ROADMAP's own deferred "Later" item), or, as a cheaper interim step, let a `[[wiki-link]]` resolve against sibling projects in the same workspace when no same-project match exists (disambiguated by a project-key prefix in the picker), instead of silently offering to create a duplicate. | Live-verified: linking to a same-titled page in a sibling project renders unresolved and offers to create a *duplicate*, disconnected page — exactly the failure mode that produces drifting, forked copies of a team's glossary/onboarding/security docs. This is a data-model decision that gets more expensive to fix the more real content accumulates on the current per-project-only model. | L | Pages / IA |
+| P2-3 | **Typo-tolerant search** — add a `pg_trgm`/`similarity()` fallback (or Postgres's built-in `similarity()` GIN index) when `websearch_to_tsquery` returns zero hits, the same two-tier pattern the service already uses for short queries (FTS vs. ILIKE fallback). | Live-verified: "Rnubok" returns nothing even though 6 "Runbook: …" pages exist. A comparable wiki's search tolerates a typo; today a single transposed letter here returns a dead end with no "did you mean" recovery. | S–M | Search |
+| P2-4 | **Page-creation empty state should tease the pillar's own best features** — mention `[[wiki-links]]` and/or a one-line "see how your docs connect" pointer to the Graph tab directly in the "No pages yet" empty state, not just as a placeholder discovered mid-edit. | A brand-new user's very first impression of Pages gives zero signal that this is meaningfully different from a plain per-project notes list — the crown-jewel graph and linked-thought model are completely invisible until stumbled into. Cheap, high-leverage first-impression fix. | S | Pages / onboarding |
+| P3-1 | **`Cmd/Ctrl+S` to save in the page editor** (and consider `Cmd/Ctrl+Enter`, matching the comment box's own convention) — `preventDefault` the browser's native save-page dialog and call the same `handleSave`. | The rest of the app markets keyboard-first ergonomics as a genuine differentiator (VISION.md scorecard: "Better"); the flagship new editor surface doesn't participate in that story at all today — a small, cheap fix that keeps the story coherent. | S | Pages / editor |
+| P3-2 | **A dedicated, paginated search-results surface** beyond Cmd-K's capped dropdown — even a simple `/search?q=` results page reusing the same API, with basic type/project filters. | Cmd-K is excellent for "jump to a thing I remember the name of"; it has no answer for "show me everything mentioning X" once results exceed the dropdown's cap. A wiki-shaped product needs a real search-results experience eventually. | M | Search |
+| P3-3 | **Mobile graph layout: prevent label overlap and keep the zoom control from covering bottom-row labels** — either increase minimum inter-node spacing at narrow viewports or truncate/stagger overlapping labels, and reposition/shrink the zoom control on mobile so it doesn't sit on top of node text. | Live-verified on a Pixel-5-width viewport: two node labels rendered literally on top of each other, and the zoom control overlapped the bottom row's labels. A smaller, cheaper fix than the full "search-within-graph" item above, worth doing regardless of that larger fix. | S | Pages / graph / mobile |
+
+### Ideation — 3+ ambitious new features/UX improvements (Pass 13)
+
+1. **"Create a page from this issue" and "create an issue from this
+   selection"** — two small, high-leverage bridges between the tracker and
+   the wiki that make the cross-linking pillar feel alive rather than
+   incidental. (a) A "New page" quick action in the issue drawer that seeds a
+   page titled after the issue and pre-fills a `Related issue: NL-123` line
+   (auto-linking on save, reusing the parser that already exists) — turns "I
+   should write this up" into one click instead of a context switch. (b) The
+   inverse: select text in a page's editor and get a "Create issue from
+   selection" affordance (mirrors how many docs tools turn a TODO comment
+   into a tracked task) — a genuinely differentiated "living docs → living
+   backlog" loop that neither Confluence (no tracker) nor a standalone
+   Obsidian vault (no tracker, no team backend) can offer at all.
+2. **A "stale docs" signal, powered by the same developer-graph +
+   activity-log infrastructure Phase 9/10 already ship.** Surface a subtle
+   badge on a page ("Last verified 94 days ago" or "3 linked issues have
+   closed since this was last edited") computed from `PageVersion` timestamps
+   crossed against linked-issue activity — the single biggest reason real
+   wikis rot is that nothing ever tells you a doc is stale, and Next Lane
+   already has 100% of the underlying signal (issue close events, page edit
+   history) that no incumbent wiki product structurally has access to,
+   because theirs isn't fused with a tracker in the first place. This is a
+   genuinely agent-native idea too: an agent could periodically walk the
+   graph over MCP and flag/propose updates to stale pages, closing the loop
+   VISION.md's "living docs" framing gestures at but doesn't yet build.
+3. **Page-level "watchers" + a digest, reusing the issue-watch
+   infrastructure that already exists** — let a user watch a page (or a
+   whole subtree) and get notified when it's edited or when a new backlink
+   appears, the same way issue watchers already get notified on changes.
+   Combined with idea #2 above, this turns Pages from a passive "go check if
+   anything changed" surface into an active one, which is table stakes for
+   any team wiki people actually rely on daily.
+4. **A lightweight "page diff" view in Version History** — right now
+   restoring a version requires opening it and eyeballing the full content
+   against your memory of the current version; a simple unified-diff render
+   between any two versions (even a naive line-diff, no need for anything
+   fancy) would make the already-strong version-history feature genuinely
+   best-in-class rather than merely "has version history."
+
+### Direction — next quarter
+
+Pages v1 is a real, working pillar — not scaffolding, not a demo. The tree,
+version history, wiki-links, backlinks, RBAC, and cross-project search all
+held up under adversarial, hands-on testing with a deliberately realistic
+18-page wiki, and the graph's hover-constellation effect is the kind of
+detail that actually earns the "distinctive, not templated" bar this
+project holds itself to. But the two gaps that matter most — no images and
+no unsaved-changes protection — are exactly the kind of thing that decides
+whether a real team's first hour with Pages ends in "I'm switching" or "I
+just lost my draft, forget this." Both are P1 for a reason: they're not
+missing nice-to-haves, they're the two things a first-time user is most
+likely to hit in their very first edit. I'd sequence P1-1 (unsaved-changes
+guard) as the single highest-priority item — it's the smaller fix of the
+two and it's a trust-breaking bug, not a feature gap — then P1-2 (images),
+since that one directly gates whether VISION.md's "Knowledge/Docs" row can
+honestly move off "Behind." After those, the graph's in-scale legibility
+(P2-1) and the page→issue reverse-link surface (P1-3, genuinely cheap since
+the backend already does the work) are the next-highest-leverage items
+before broadening scope further (workspace-spaces, templates, comments).
+Outside Pages, this pass didn't find evidence of new regressions elsewhere,
+but also didn't re-verify Pass 12's open items (the mobile board-toolbar
+regression status is now unknown and should be re-checked next full pass).
+
+### Backlog-Groomer Ingest — Pass 13 (title · priority · size · rationale)
+
+- Unsaved-changes protection in the Pages editor (beforeunload guard + in-app nav confirm) — P1 · S–M · Live-verified silent data loss on navigate-away or reload while editing, with zero warning of any kind
+- Image support in Pages (restore `img` to the sanitizer allowlist and/or a page attachment-upload path) — P1 · M · Live-verified Markdown images vanish silently on render; gates the Knowledge/Docs Better-than-Jira row moving off "Behind"
+- Surface "Linked issues" on the page itself (reverse of the shipped issue-drawer "Linked pages") — P1 · S · Backend endpoint (`GET /pages/:id/issues`) and MCP tool already exist; zero frontend consumer found anywhere in the web app
+- Search-within-graph / "find & center" affordance for the knowledge graph — P2 · S–M · Live-verified label overlap and a fully-occluded node at just 18 pages with no way to locate it
+- Cross-project wiki-link resolution or a workspace-level "spaces" tier for org-wide docs — P2 · L · Live-verified linking to a same-titled sibling-project page renders unresolved and offers to create a disconnected duplicate
+- Typo-tolerant fallback for Pages/issue full-text search (`pg_trgm`/`similarity()`) — P2 · S–M · Live-verified a single-letter transposition ("Rnubok") returns zero results despite 6 matching pages
+- Pages empty-state should tease `[[wiki-links]]` / the Graph tab — P2 · S · First-time-user first impression gives zero signal this is Obsidian-flavored
+- `Cmd/Ctrl+S` to save in the page editor — P3 · S · The app markets keyboard-first ergonomics as a differentiator; the newest editor surface doesn't participate
+- Dedicated paginated search-results page beyond Cmd-K's capped dropdown — P3 · M · No answer today for "show me everything mentioning X" once results exceed the dropdown
+- Mobile graph label-overlap + zoom-control-overlap fixes — P3 · S · Live-verified on a Pixel-5-width viewport
+- "Create page from issue" + "create issue from page selection" bridges — P2 · M · New ideation; makes the cross-linking pillar feel alive, a genuinely differentiated tracker↔wiki loop
+- "Stale docs" signal from PageVersion timestamps × linked-issue activity — P3 · M · New ideation; the underlying signal already exists and no incumbent wiki has access to it
+- Page-level watchers + digest (reuse issue-watch infrastructure) — P3 · M · New ideation; turns Pages from passive to active
+- Version History diff view (even a naive line-diff) — P3 · S–M · New ideation; makes an already-strong feature best-in-class
+- Re-verify mobile board-toolbar dropdown regression status (Pass 12 P1, not retested this pass) — P1 (unconfirmed status) · — · Carried forward as an open question, not a fresh finding
