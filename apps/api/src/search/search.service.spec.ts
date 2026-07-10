@@ -207,6 +207,41 @@ describe('SearchService.search', () => {
     expect(JSON.stringify(pageCallParams)).toContain('ws-1');
   });
 
+  it('searchPagesOnly returns only pages (the pages:read surface — no issue/project groups)', async () => {
+    prisma.membership.findMany.mockResolvedValue([{ workspaceId: 'ws-1' }]);
+    prisma.$queryRaw.mockResolvedValueOnce([
+      { id: 'page-1', title: 'Runbook', projectId: 'proj-1', archived: false, projectKey: 'NL' },
+    ]);
+
+    const result = await service.searchPagesOnly('user-1', 'runbook');
+
+    // One raw query (pages FTS only — never the issue query), pages-only shape.
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({
+      query: 'runbook',
+      pages: [
+        { id: 'page-1', title: 'Runbook', projectId: 'proj-1', projectKey: 'NL', archived: false },
+      ],
+    });
+  });
+
+  it('searchPagesOnly returns empty without querying when the caller has no memberships', async () => {
+    prisma.membership.findMany.mockResolvedValue([]);
+    const result = await service.searchPagesOnly('user-1', 'runbook');
+    expect(result).toEqual({ query: 'runbook', pages: [] });
+    expect(prisma.$queryRaw).not.toHaveBeenCalled();
+    expect(prisma.page.findMany).not.toHaveBeenCalled();
+  });
+
+  it('searchPagesOnly rejects a projectId outside the caller workspaces', async () => {
+    prisma.membership.findMany.mockResolvedValue([{ workspaceId: 'ws-1' }]);
+    prisma.project.findUnique.mockResolvedValue({ id: 'proj-x', workspaceId: 'ws-other' });
+    prisma.membership.findUnique.mockResolvedValue(null);
+    await expect(
+      service.searchPagesOnly('user-1', 'runbook', 'proj-x'),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
   it('falls back to page ILIKE for a 1-char query (below FTS_MIN_LENGTH)', async () => {
     prisma.membership.findMany.mockResolvedValue([{ workspaceId: 'ws-1' }]);
     prisma.issue.findMany.mockResolvedValue([]);

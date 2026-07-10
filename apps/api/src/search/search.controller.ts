@@ -28,4 +28,18 @@ export class SearchController {
   ) {
     return this.search.search(user.id, query.q, projectId);
   }
+
+  /**
+   * Pages-only full-text search, gated by `pages:read` (NOT `issues:read`) so
+   * a knowledge-base-scoped token — e.g. an agent minted only for the wiki —
+   * can search pages without being granted the issue surface. The combined
+   * `GET /search` deliberately stays `issues:read` because its response
+   * includes issue hits; this route returns pages only, so there is nothing
+   * cross-surface to leak.
+   */
+  @Get('search/pages')
+  @RequireScope('pages:read')
+  pagesOnly(@CurrentUser() user: AuthUser, @Query() query: SearchQueryDto) {
+    return this.search.searchPagesOnly(user.id, query.q, query.projectId);
+  }
 }

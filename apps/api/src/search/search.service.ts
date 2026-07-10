@@ -114,6 +114,45 @@ export class SearchService {
   }
 
   /**
+   * Pages-only search for `GET /search/pages` (`pages:read` — see the
+   * controller for why this exists separately from the combined `/search`,
+   * which is `issues:read` because its response includes issue hits). Same
+   * workspace scoping and FTS/ILIKE split as the combined search; returns
+   * only the `pages` group.
+   */
+  async searchPagesOnly(
+    userId: string,
+    q?: string,
+    projectId?: string,
+  ): Promise<{ query: string; pages: SearchPageDto[] }> {
+    const query = (q ?? '').trim();
+
+    const memberships = await this.prisma.membership.findMany({
+      where: { userId },
+      select: { workspaceId: true },
+    });
+    const workspaceIds = memberships.map((m) => m.workspaceId);
+    if (workspaceIds.length === 0 || query.length === 0) {
+      return { query, pages: [] };
+    }
+
+    let allowedProjectId: string | undefined;
+    if (projectId) {
+      const project = await assertProjectMember(this.prisma, userId, projectId);
+      if (!workspaceIds.includes(project.workspaceId)) {
+        throw new ForbiddenException('Not a member of this project');
+      }
+      allowedProjectId = projectId;
+    }
+
+    const pages =
+      query.length >= FTS_MIN_LENGTH
+        ? await this.searchPagesFts(query, workspaceIds, allowedProjectId)
+        : await this.searchPagesIlike(query, workspaceIds, allowedProjectId);
+    return { query, pages };
+  }
+
+  /**
    * Full-text search over pages via the GIN-indexed `searchVector` generated
    * column (title + content). Same tenant scoping as issues — a JOIN on
    * `Project` constrained to the caller's `workspaceIds`, with an optional

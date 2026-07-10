@@ -1738,19 +1738,19 @@ describe('pages (knowledge base) tools', () => {
     expect(body.truncated).toBe(false);
   });
 
-  it('search_pages GETs /search with q + projectId and returns only the pages group, paginated', async () => {
+  it('search_pages GETs the pages:read-scoped /search/pages route, paginated', async () => {
     const { client, fetchImpl } = clientWith(200, {
       query: 'runbook',
-      issues: [{ id: 'i-1', key: 'NL-1', title: 'noise' }],
       pages: [
         { id: 'pg-1', title: 'Runbook', projectId: 'p1', projectKey: 'NL', archived: false },
         { id: 'pg-2', title: 'Deploy Runbook', projectId: 'p1', projectKey: 'NL', archived: false },
       ],
-      projects: [],
     });
     const res = await tool('search_pages').handler({ q: 'runbook', projectId: 'p1', limit: 1 }, client);
     const url = fetchImpl.mock.calls[0][0] as string;
-    expect(url).toContain('/api/search?');
+    // Dedicated pages-only route: gated by pages:read (a knowledge-base-scoped
+    // token must not need issues:read to search its own surface).
+    expect(url).toContain('/api/search/pages?');
     expect(url).toContain('q=runbook');
     expect(url).toContain('projectId=p1');
     const body = JSON.parse(res.content[0].text);

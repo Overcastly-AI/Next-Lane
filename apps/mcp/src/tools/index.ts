@@ -1790,7 +1790,9 @@ const readTools: ToolDef[] = [
       ...pageParams,
     },
     handler: async (args, client) => {
-      const data = await client.get<{ pages: ApiItem[] }>('/search', {
+      // /search/pages (not /search): pages-only response gated by pages:read,
+      // so a knowledge-base-scoped token can search without issues:read.
+      const data = await client.get<{ pages: ApiItem[] }>('/search/pages', {
         q: args.q as string,
         projectId: args.projectId as string | undefined,
       });
