@@ -6,6 +6,165 @@ groomer alongside the product audit and QA reviews.
 
 ---
 
+## 2026-07-10 — Pass 14 (Security/Hardening focus — Pages knowledge base + full-text search pillar)
+
+Scope: independent security-hardening audit of everything shipped since Pass
+13 (2026-07-06) — the **Pages knowledge base** (`apps/api/src/pages/**`:
+CRUD/tree/move, version history, `[[wiki-link]]` sync, issue-key sync,
+backlinks/links/graph endpoints), **full-text search**
+(`apps/api/src/search/**`: `Page.searchVector` generated column + GIN index,
+`$queryRaw` tagged templates, the new `GET /search/pages` route), the PAT
+scope matrix for both, frontend render safety for the wiki-link markdown
+pipeline, and the MCP surface's growth to 120 tools. Method: full static
+review of the new modules/migrations/DTOs plus **live verification** — a real
+Postgres 16 + Redis instance were available in-session, so the API was built
+and run for real (not just read), two tenants/users were registered through
+the actual HTTP API, a PAT was minted through the actual token-creation
+endpoint, and the headline finding below was reproduced end-to-end against a
+running server, not inferred from code reading. The project's own
+`pat-scope-coverage.integration.spec.ts` structural closer (added Pass 13,
+2026-07-06, commit `c64966a`) was also executed for real against this branch's
+head, which is what actually surfaced the top finding — see Risk 1.
+
+### Ratings
+
+| Area | Score | Note |
+|---|---|---|
+| Architecture & module boundaries | 5 | `pages/` and `search/` are clean, single-responsibility NestJS modules; both route every authorization check through the existing `assertProjectRole`/`assertProjectMember` helpers rather than reinventing membership logic — no drift from the established pattern. |
+| Data model & migrations | 5 | `20260709120000_add_pages_fts` is additive, idempotent (`DROP COLUMN IF EXISTS` guard), and mirrors `Issue.searchVector` exactly; `Page.parentId` correctly uses `onDelete: Restrict` (deliberate — a tree can't silently lose a subtree) while `PageLink`/`PageIssueLink` correctly use `Cascade` (an edge has no meaning once an endpoint is gone) — the FK-behavior split is well-reasoned and documented in-schema. |
+| AuthN/AuthZ — tenant isolation (can one workspace touch another's data?) | 5 | **Live-verified, not just read.** Registered two independent users/workspaces against the real running API; a page created in workspace A returned 403 `Not a member of this project` for every cross-tenant read (`GET /pages/:id`), write (`PATCH /pages/:id`), and tree-list (`GET /projects/:id/pages/tree`) attempt from workspace B's session, and `GET /search?q=<secret-page-text>` from workspace B returned an empty `pages: []` (no leak via the search index either). `pat-scope-rollout.integration.spec.ts` (real HTTP, 410 assertions) passes in full against a live Postgres. |
+| AuthN/AuthZ — PAT scope enforcement | **2** | **Live-verified vulnerability + a currently-red regression test.** `GET /search` (and `GET /projects/:id/search`) is gated `@RequireScope('issues:read')` but its handler unconditionally returns a `pages` array too (`apps/api/src/search/search.service.ts:113`) — so a PAT scoped ONLY to `issues:read` (no `pages:read`) can read knowledge-base page titles/metadata it has no scope for, contradicting the token-creation UI's explicit promise ("restricts this token to only those operations", `ApiTokensSection.tsx:181-184`). Reproduced live end-to-end (see Risk 1). The project's own purpose-built structural closer for exactly this class of drift, `pat-scope-coverage.integration.spec.ts` (added Pass 13, 2026-07-06), is **currently failing** when run against this branch's head — it flags 4 unrostered `@RequireScope` routes, all from this pillar. |
+| Input validation | 5 | `CreatePageDto`/`UpdatePageDto` cap `content` at 256 KiB via a UTF-8-byte-aware `IsMaxByteLength` (correctly uses `Buffer.byteLength(..., 'utf8')`, not code-unit length), forbid `[`/`]`/`|` in titles (keeps every title `[[linkable]]`), and `MovePageDto.rank` is constrained to the fractional-index base-62 alphabet so an unvalidated value can't later 500 an unrelated sibling's move. `SearchQueryDto.q` is length-capped. No gaps found. |
+| Injection (SQL/XSS) | 5 | Every `$queryRaw` in `search.service.ts` uses tagged-template parameter binding for `workspaceIds`/`projectId`/`query` — confirmed no string interpolation of user input anywhere in the four FTS query sites. `extractIssueNumbers` (`apps/api/src/common/issue-key.util.ts:23`) correctly regex-escapes the caller-supplied `projectKey` before building a dynamic `RegExp`. The `[[wiki-link]]`→markdown-link rewrite (`apps/web/src/lib/wikiLinks.ts:77-93`) escapes `]` in link-display text so an attacker-controlled page title/alias can't break out of the generated `[text](url)` span; the result still flows through the existing `marked` + DOMPurify allowlist pipeline (`ALLOWED_TAGS`/`ALLOWED_ATTR`, no `on*`, structural not string-level sanitization) before `dangerouslySetInnerHTML`. `LinkedPagesSection`/`CommandPalette` render page titles via plain JSX text interpolation (React-escaped), not raw HTML. |
+| Resource exhaustion / DoS | 3 | The pillar is unusually disciplined about this everywhere it documents it: `MAX_GRAPH_NODES`/`MAX_GRAPH_EDGES`/`MAX_OUTGOING_LINKS`/`MAX_LINKED_ISSUES`/`MAX_LINKED_PAGES` all cap their respective endpoints with an explicit `truncated` flag, and the graph query scopes edges to the capped node-id set before hitting Postgres. But `syncWikiLinks`/`syncIssueLinks` (`pages.service.ts:847-971`), which run on **every** page create/update/restore, parse the *entire* uncapped 256 KiB content for `[[titles]]`/issue keys and build an unbounded `OR`-list / `IN`-list against those matches — a 256 KiB body of densely packed `[[X]][[Y]][[Z]]...` or `AUD-1 AUD-2 AUD-3...` tokens can drive tens of thousands of predicates into a single query on every save. Inconsistent with how carefully every *read* path in this same file is capped. |
+| Realtime correctness | 5 | `emitUpdated` (`pages.service.ts:973-978`) fires `SocketEvents.PageUpdated` on every create/update/move/restore/delete, scoped to the owning project room — consistent with the rest of the app's realtime posture; no gap found. |
+| Rank / ordering integrity | 5 | `move()`/`create()` use the same fractional-index (`rankBetween`/`rankAfter`/`initialRanks`) pattern as issues, with the sibling-rank read correctly moved inside the `$transaction` (the code comment at `pages.service.ts:130-134` cites the exact prior code-review finding this fixes) and a documented one-time rebalance fallback — never a blind renumber. |
+| Test coverage (unit + integration) | 3 | Unit coverage is strong: `pages.service.spec.ts` and `search.service.spec.ts` both explicitly assert tenant-scoping and FTS-safety at the mocked level (`search.service.spec.ts:190-397` covers page-FTS tenant isolation, ILIKE fallback, and parameterization). But the **integration** layer has a live, reproducible gap: none of `tenant-isolation.integration.spec.ts`, `pat-scope-rollout.integration.spec.ts`, or `pat-scope-coverage.integration.spec.ts` exercise `GET /pages/:id/links`, `GET /pages/:id/issues`, `GET /issues/:id/pages`, or `GET /search/pages` at all, and — more importantly — **none of the three run in CI** (see Risk 2), so even the coverage that exists provides no automatic protection. Full suite run this pass: 96 suites / **2050** unit tests green (up from 2035), 410/410 `pat-scope-rollout` HTTP assertions green, 7/7 `tenant-isolation` green, but `pat-scope-coverage` **red** (1 failing assertion, 4 missing routes — see Risk 1). |
+| Type safety | 5 | `tsc --noEmit` clean on both `api` and `web`, verified this pass. |
+| Dependency risk | 4 | `pnpm audit --prod`: **0 high, 7 moderate** — unchanged from the Pass 13 post-remediation baseline (`js-yaml` ×2, `qs`, `@nestjs/core`, `file-type` ×2, all previously triaged and deliberately deferred pending major-version bumps). No new advisories introduced by this pillar's dependencies (no new runtime deps added for Pages/Search — FTS is pure Postgres). |
+| Secrets / config hygiene | 5 | Confirmed live: the integration-test HTTP logs (Pino) redact the `Authorization` header as `"[REDACTED]"` on every request, including the PAT-authenticated ones exercised this pass. `apps/mcp/src/client.ts` surfaces only the API's own JSON error message + status/URL on failure — never the bearer token — in `ApiError`. |
+| MCP surface (120 tools) | 4 | `search_pages`'s handler deliberately calls `/search/pages` (not `/search`) specifically so a `pages:read`-only agent token isn't forced into `issues:read` too (comment at `apps/mcp/src/tools/index.ts:1791-1792` states the reasoning) — correct design intent on the MCP side. The asymmetry is that `search_issues` (backed by `/search`, `issues:read`) receives page data from the API in the same response and simply discards it client-side (`tools/index.ts:903-909` destructures only `issues`/`projects`) — good defense in depth in the MCP client, but it doesn't fix the underlying server-side over-return, which is directly reachable by any other HTTP client using the same PAT (e.g. `curl`, a custom integration). |
+| Debugging & QA discipline | 2 | See dedicated section below — this pass's core finding is a fresh, concrete instance of the project's own named failure mode, but at a new layer: a **regression guard that exists, is well-built, and is currently red** never gets the chance to protect anyone because nothing runs it. |
+
+### Top risks & debt (ranked by severity)
+
+**[Risk 1 — P0, fix before next deploy] `GET /search` leaks knowledge-base page hits to any PAT scoped only `issues:read` — live-verified — and the project's own structural PAT-scope-drift closer is currently red, having caught exactly this**
+- What: `SearchService.search()` (`apps/api/src/search/search.service.ts:67-114`) always returns `{ query, issues, pages, projects }` regardless of which scope let the caller in. Both `GET /search` and `GET /projects/:id/search` are gated `@RequireScope('issues:read')` only (`search.controller.ts:15-30`) — there is no `pages:read` check anywhere on this response path, even though the dedicated `GET /search/pages` route (added in the same pillar) is correctly gated `pages:read` specifically "so a knowledge-base-scoped token ... can search pages without being granted the issue surface" (the controller's own doc comment, `search.controller.ts:32-39`) — the reverse direction (an issues-only token reaching page data) was missed.
+- **Reproduced live, end-to-end, this pass** (not inferred): built and ran the real API against a real Postgres/Redis; registered a user, created a workspace + project, created a page titled `ZorkmidTopSecretRunbook` with body text `"...deploy password rotation runbook — confidential."`; minted a PAT via the real `POST /me/tokens` endpoint with `scopes: ["issues:read"]` only. Confirmed the token correctly gets **403** `"This token does not have the required scope: pages:read"` on both `GET /search/pages?q=confidential` and `GET /pages/:id` directly. Then:
+  ```
+  GET /search?q=confidential   (Authorization: Bearer <issues:read-only PAT>)
+  → 200 {"query":"confidential","issues":[],"pages":[{"id":"...","title":"ZorkmidTopSecretRunbook","projectId":"...","projectKey":"AUD","archived":false}],"projects":[]}
+  ```
+  The scoped-down token — which the product explicitly promises is "restricted to only those operations" (`apps/web/src/components/settings/ApiTokensSection.tsx:181-184`) — retrieves the page. This is a real confidentiality boundary break for any self-hoster who mints a narrowly-scoped agent/integration token believing `issues:read` cannot see the wiki.
+- **The project's own regression guard for this exact class already exists and already caught it** — ran `pat-scope-coverage.integration.spec.ts` (built Pass 13, 2026-07-06, specifically as "the structural closer" for PAT-scope drift, per that spec's own doc comment) against this branch's head with a real Postgres:
+  ```
+  FAIL src/pat-scope-coverage.integration.spec.ts
+    ● every @RequireScope route appears in pat-scope-matrix.fixture.ts with a matching scope
+    4 @RequireScope route(s) are missing from MATRIX:
+      - GET /search/pages requires 'pages:read' (SearchController#pagesOnly)
+      - GET /pages/:id/links requires 'pages:read' (PagesController#links)
+      - GET /pages/:id/issues requires 'pages:read' (PagesController#pageIssues)
+      - GET /issues/:id/pages requires 'pages:read' (PagesController#issuePages)
+    Tests: 1 failed, 5 passed, 6 total
+  ```
+  This spec (item (b) of its own four checks) is specifically designed to fail exactly this way when a decorated route ships without a matching `pat-scope-matrix.fixture.ts` row — and it is failing, right now, on this branch's HEAD (`996e48d`). The 4 missing rows are not a hypothetical coverage gap; they are a proven one. (The `/search` over-return itself is a distinct, deeper bug than the 4 missing rows — even a 5th matrix row for `/search` with the correct `issues:read` scope would still pass this particular spec, since the spec checks route-to-scope mapping, not response-field-to-scope mapping. Closing the matrix gap is necessary but not sufficient; the `/search` handler itself needs the fix in the "Fix" note below.)
+- Why this reached this point undetected: **`pat-scope-coverage.integration.spec.ts`, `pat-scope-rollout.integration.spec.ts`, and `tenant-isolation.integration.spec.ts` do not run anywhere in `.github/workflows/*.yml`.** Confirmed by reading all four workflow files (`ci.yml`, `docs.yml`, `e2e.yml`, `images.yml`) — none references `jest.integration.config.js` or the `test:isolation` npm script that runs them; `ci.yml`'s "Unit tests" step is `pnpm -r test` only, which is explicitly the DB-free, mocked-Prisma lane (per that file's own header comment: "Fast, DB-free regression net ... PrismaService is mocked, so no Postgres/Redis is needed"). The three integration specs require a real Postgres (`HAS_DB` gate) and are apparently intended to be run manually/locally before merge — which the Pages pillar's 15+ commits evidently didn't do, or did before the coverage spec existed for the routes added at the very end of the pillar (the `search/pages` split and `links`/`pageIssues`/`issuePages` routes landed across several late commits per `git log`, and the matrix rows were never added for any of them). This is the same shape of failure this document has flagged before (Pass 13's Risk 1: a correct, tested-in-isolation piece of work that's silently inert in the path that actually protects production) but one level removed — here it's not the *feature* that's inert, it's the *test that verifies the feature* that's inert.
+- Impact/likelihood: **High impact** (a real, live-reproduced confidentiality break reachable by any token holder, undermining the specific "scope down an agent's token" trust story the agent-native positioning depends on — this is exactly the kind of gap a self-hoster minting a narrow-scope token for a third-party integration or agent would not expect and could not detect), **certain likelihood** (reproducible on demand, no race/timing required, works on the very first request).
+- Files: `apps/api/src/search/search.service.ts:67-114` (the response-shape leak), `apps/api/src/search/search.controller.ts:15-30` (the scope gate), `apps/api/src/pat-scope-matrix.fixture.ts` (4 missing rows), `.github/workflows/ci.yml` (missing integration lane).
+- Fix: (a) immediate — either split `search()`'s response so the `pages` array is only populated/returned when the caller's token also carries `pages:read` (mirroring the `admin:read`-gated-field pattern likely already used elsewhere for scope-sensitive nested fields — check for precedent), or simplest: gate the combined `GET /search`/`GET /projects/:id/search` routes on **both** `issues:read` AND `pages:read` is too restrictive (breaks the issues-only-token common case) — the correct fix is conditionally omitting `pages`/`issues` from the response based on which scopes the caller's token actually has (empty array, not an error, preserving today's UX for unrestricted/JWT-session callers). (b) add the 4 missing rows to `pat-scope-matrix.fixture.ts` so `pat-scope-coverage` goes green again. (c) — the real structural closer — add a `test:isolation`-equivalent job to `ci.yml` (needs a `postgres:16` + `redis:7` service container, which GitHub Actions supports natively) so these three integration specs, including the PAT-scope drift guard that just proved its own value, run on every PR instead of only when a human remembers to run them locally. Size: S (a+b) + M (c, the CI wiring — needs service containers, migrate-deploy step, and probably a dedicated job to keep the fast DB-free lane fast).
+
+**[Risk 2 — P2] Uncapped wiki-link/issue-key parsing on every page save — a 256 KiB page body can drive an unbounded `IN`/`OR` predicate list into Postgres**
+- What: `syncWikiLinks`/`syncIssueLinks` (`apps/api/src/pages/pages.service.ts:847-971`), called from every `create()`/`update()`/`restoreVersion()`, parse the entire (up to 256 KiB, `PAGE_CONTENT_MAX_BYTES`) page body for `[[wiki-links]]`/issue keys with no cap on how many distinct matches are processed. `syncWikiLinks` builds `candidates = await tx.page.findMany({ where: { OR: uniqueTitles.map(...) } })` — a page whose body is densely packed with `[[A]][[B]][[C]]...` can produce tens of thousands of `OR` predicates in one query; `syncIssueLinks` builds `tx.issue.findMany({ where: { number: { in: numbers } } })` similarly unbounded. Every *read* endpoint in this same file (`graph`, `links`, `pageIssues`, `issuePages`) is carefully capped with an explicit `MAX_*` constant and `truncated` flag (documented inline, citing prior code-review findings) — this write-path pair is the one place in the module that doesn't follow that same discipline.
+- Impact/likelihood: Medium impact (self-tenant DoS — any project MEMBER, not just an admin, can degrade write latency for their own project's page saves, and an oversized parameter list risks a raw Postgres/driver error surfacing as an unhandled 500 rather than a clean 400), medium likelihood (doesn't require malice to trigger accidentally — a large auto-generated index/glossary page with many links is a plausible real workflow, not just an attack).
+- Files: `apps/api/src/pages/pages.service.ts:847-904` (`syncWikiLinks`), `apps/api/src/pages/pages.service.ts:933-971` (`syncIssueLinks`).
+- Fix: cap `uniqueTitles`/`numbers` at a fixed ceiling (e.g. 500, matching the module's existing `MAX_OUTGOING_LINKS` posture) before building the `findMany` predicate, silently ignoring extra matches past the cap (consistent with how `parseWikiLinks`' own module doc already treats an unresolved link as a non-error). Size: S.
+
+**[Risk 3 — P3] Stale `PAT_SCOPES` doc comment says the Pages scopes are "reserved... not yet gating any route"**
+- What: `packages/shared/src/types.ts:1539-1553`'s doc comment for `pages:read`/`pages:write` still reads "Reserved now (no routes exist yet)" / "not yet gating any route" — both scopes have gated real routes since this pillar shipped. Purely a documentation-accuracy nit (the runtime enforcement itself is correct), but it's exactly the kind of stale doc `CLAUDE.md` calls out as a standing defect class, and it sits right next to the scope vocabulary a future engineer will read before adding the next route.
+- Impact/likelihood: Low/Low — cosmetic, but easy to fix in the same pass as Risk 1's matrix update.
+- Files: `packages/shared/src/types.ts:1539-1553`.
+- Fix: update the comment to reflect that the routes are live and reference `pat-scope-matrix.fixture.ts`'s pages rows as the source of truth for exact coverage. Size: S (trivial).
+
+**[Risk 4 — P3, informational] Page-delete's `orphanedBacklinks` count is read outside the delete transaction (minor TOCTOU on a display-only number)**
+- What: `PagesService.remove()` (`pages.service.ts:259-293`) counts `PageLink` rows targeting the page being deleted, then deletes the page in a separate statement (relying on the FK `onDelete: Cascade` to clean up the link rows). Between the count and the delete, a concurrent save on another page could add a new backlink to the page about to be deleted; the reported `orphanedBacklinks` count would then undercount by one. The actual link cleanup is unaffected (Postgres's cascade handles it correctly regardless of the race) — this only affects the informational number shown in the pre-delete confirmation dialog.
+- Impact/likelihood: Low/Low — cosmetic, requires a real concurrent edit in the same narrow window, and the consequence is a slightly-wrong advisory count, not a correctness or security issue.
+- Files: `apps/api/src/pages/pages.service.ts:259-293`.
+- Fix: wrap the count + delete in a single `$transaction` (the module already uses this pattern everywhere else in the file). Size: S.
+
+### Debugging & QA-discipline audit (Pass 14 — mandatory)
+
+This pass's headline finding is a new variant of the project's own named failure
+mode, one layer removed from every prior instance in this document. Pass
+1 through 13 repeatedly found *features* that were correct in isolation but
+silently inert in the artifact that actually reaches the user (CSP blocking
+login in the real Docker image, SMTP/CORS env vars never forwarded by
+`docker-compose.yml`, etc.). This pass found the same shape of bug applied to
+the **safety net itself**: `pat-scope-coverage.integration.spec.ts` is a
+well-designed, well-documented regression guard, built in direct response to
+this document's own Pass 13 recommendation, and it is *correct* — running it
+against this branch's HEAD immediately and precisely identifies the real gap
+(4 unrostered routes) with an actionable error message. But because it (along
+with its two siblings `pat-scope-rollout` and `tenant-isolation`) requires a
+real Postgres and is wired into nothing but a manual `pnpm test:isolation`
+invocation, it never got the chance to block the Pages pillar's merge. A test
+that is right but never runs provides exactly the same protection as no test
+at all — arguably less, since its presence in the repo creates false
+confidence ("we have a PAT-scope regression guard") without the CI receipt to
+back it up. Every prior audit pass's "close the gap structurally" recommendation
+has focused on writing the right test; this pass's is the first to focus on
+**making sure a correct test actually runs**, which is the missing half of the
+same lesson.
+
+On diagnosability: verified live this pass — Pino correctly redacts the
+`Authorization` header (`"[REDACTED]"`) on every logged request, including the
+PAT-authenticated ones exercised during the live reproduction above; `/health`
+correctly reports live DB connectivity. No new diagnosability gaps found in
+the Pages/Search pillar itself (no unhandled-exception paths, no raw Prisma
+errors observed reaching the client — `P2003`/`P2025` mapping verified still
+correct via `all-exceptions.filter.spec.ts`). No regression from Pass 13's
+findings; this pass did not re-verify Risk 6 (Pass 13's silent-catch nit) or
+Risk 3 (SSRF TOCTOU, already marked RESOLVED) as they're outside this pass's
+Pages/Search/PAT-scope focus area.
+
+### Ideation — technical investments for the backlog (mandatory, every pass)
+
+1. **Wire the integration-test lane into CI with real service containers.** This is the direct structural fix for Risk 1's root cause, not just its symptom. GitHub Actions natively supports `services: postgres:16` + `redis:7` containers; add a job (or extend `docker-build` in `ci.yml`) that runs `prisma migrate deploy` against the ephemeral DB, then `pnpm --filter @next-lane/api exec jest --config jest.integration.config.js`. This turns `tenant-isolation`, `pat-scope-rollout`, and `pat-scope-coverage` — three specs this pass proved all currently pass except one, and that one for a real reason — from "trust the last person who remembered to run this locally" into an automatic per-PR gate. Given how much of this project's own hardening narrative (Pass 13's entire PAT-scope sweep) leans on these specific specs, this is the single highest-leverage investment available right now. Size: M.
+2. **A response-shape scope-leak linter/test pattern, not just a route-shape one.** `pat-scope-coverage` proves every *route* maps to the right scope, but Risk 1 shows a route can have the right scope and still leak a field that belongs to a *different* scope in its response body. Worth a lightweight follow-up convention: any DTO/response type that mixes fields gated by more than one PAT scope (here, `SearchResultsDto` mixing `issues`/`pages`/`projects`) gets a dedicated integration-test row asserting the response is scope-filtered, not just scope-gated. Start with `SearchResultsDto` as the first (and currently only known) instance, then watch for the next multi-scope response shape as the API grows. Size: S to start (one test), M to formalize as a pattern/lint.
+3. **A resource-exhaustion review pass specifically for write-path parsers.** Risk 2 is a narrow instance of a broader pattern worth checking systematically: any endpoint that parses free-form user content into a DB predicate (wiki-links, issue-keys, and future candidates like `@mentions` in comments, label auto-suggest, etc.) should have the same `MAX_*`-and-truncate discipline this module already applies to its *read* paths. A focused audit of every `content`-derived `findMany`/`IN`/`OR` build across `apps/api/src/**` (mentions, comments, activity feed) would likely surface a couple more instances of the same gap before they're user-reported. Size: S (audit) + S per fix found.
+4. **Structured "scope coverage" badge/report as a build artifact.** `pat-scope-coverage.integration.spec.ts` already computes exactly the data needed (every route, its scope, whether it's matrixed/exempted) — emitting that as a small JSON/markdown artifact on each CI run (even just in the test output, or written to a workflow summary) would make PAT-scope drift visible to a human reviewer without needing to know the spec exists, complementing Ideation #1's automatic-gate fix with a human-visible one. Size: S, and cheap to bundle with #1's CI wiring.
+
+### Backlog-groomer feed (Pass 14 — compact)
+
+- **Fix the `/search` PAT-scope leak: an `issues:read`-only token can read Page search hits** · P0 · S · Live-reproduced this pass; `GET /search`/`GET /projects/:id/search` return a `pages` array without requiring `pages:read`; `apps/api/src/search/search.service.ts:67-114`, `apps/api/src/search/search.controller.ts:15-30`
+- **Add the 4 missing routes to `pat-scope-matrix.fixture.ts`: `GET /search/pages`, `GET /pages/:id/links`, `GET /pages/:id/issues`, `GET /issues/:id/pages`** · P0 · S · `pat-scope-coverage.integration.spec.ts` is currently failing on this branch's HEAD because of exactly these 4 rows; `apps/api/src/pat-scope-matrix.fixture.ts`
+- **Wire `tenant-isolation`/`pat-scope-rollout`/`pat-scope-coverage` integration specs into CI with real Postgres+Redis service containers** · P1 · M · Root cause of Risk 1 — a correct regression guard that never runs provides no protection; none of `.github/workflows/*.yml` runs `jest.integration.config.js` today; `.github/workflows/ci.yml`
+- **Cap `syncWikiLinks`/`syncIssueLinks`'s parsed-match count before building the DB predicate** · P2 · S · Uncapped `OR`/`IN` list built from up to 256 KiB of page content on every save, inconsistent with every read-path cap already in the same file; `apps/api/src/pages/pages.service.ts:847-971`
+- **Wrap page-delete's `orphanedBacklinks` count + delete in one transaction** · P3 · S · Minor TOCTOU on a display-only advisory count; `apps/api/src/pages/pages.service.ts:259-293`
+- **Fix the stale `pages:read`/`pages:write` "reserved, not yet gating any route" doc comment** · P3 · S · `packages/shared/src/types.ts:1539-1553`
+- **Add a response-shape scope-filter test convention for multi-scope DTOs, starting with `SearchResultsDto`** · P2 · S · Structural follow-up so the next mixed-scope response shape doesn't repeat Risk 1; `apps/api/src/search/`
+- **Audit other content-derived `findMany`/`IN`/`OR` builds (mentions, comments, activity) for the same uncapped-parse pattern as Risk 2** · P3 · S (audit) · `apps/api/src/**`
+- **Emit a scope-coverage report artifact from `pat-scope-coverage.integration.spec.ts`'s CI run** · P3 · S · Pairs with the CI-wiring item above; makes PAT-scope drift visible without reading test source
+
+### Direction
+
+The Pages/Search pillar's *code* is some of the most carefully hardened in the
+repository — the read paths are capped, the FTS queries are cleanly
+parameterized, the wiki-link render pipeline is properly sanitized, and tenant
+isolation held under live attack simulation without a single gap. The actual
+risk this pass surfaces is not in that code; it's in the fact that the safety
+net built specifically to catch PAT-scope drift (Pass 13's `pat-scope-coverage`
+spec) is sitting disconnected from CI, so a real gap shipped past it anyway.
+The single most important investment next is closing that wiring gap — Ideation
+#1 — because it upgrades every future pass's PAT-scope hardening from "audited
+once, hope it stays true" to "continuously enforced," and it's cheap relative
+to the confidentiality bug it would have caught automatically had it been in
+place for this pillar's 15+ commits. Fix the two P0s (the `/search` leak
+itself and the matrix rows) immediately since they're small and already fully
+diagnosed; then land the CI wiring so this class of finding stops recurring
+pass over pass.
+
+---
+
 ## 2026-07-06 — Pass 13 (Hardening Night — GitLab v1, agent-context, PR-status/auto-transition, AX Round 2, Dashboards Phase 2)
 
 Scope: everything since Pass 12 — GitLab integration v1 (`apps/api/src/gitlab/**`,
