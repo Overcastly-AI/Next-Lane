@@ -1540,18 +1540,17 @@ export interface SavedFilterDto {
  *                       tree/list, a single page's live content, its version
  *                       history, its page<->issue links (`PageIssueLink`),
  *                       and its page<->page wiki-links / graph view / "what
- *                       links here" backlinks panel (`PageLink`). Reserved
- *                       now (no routes exist yet) so the schema and the PAT
- *                       vocabulary land together; the backend slice that
- *                       adds the Pages controllers gates its GET routes on
- *                       this scope and adds the matching
- *                       `pat-scope-matrix.fixture.ts` rows.
+ *                       links here" backlinks panel (`PageLink`), plus the
+ *                       pages-only full-text search route (`GET /search/pages`).
+ *                       Live and enforced on every Pages GET route — see the
+ *                       `pages` rows in `pat-scope-matrix.fixture.ts` for the
+ *                       authoritative route↔scope coverage.
  * - `pages:write`    — POST/PATCH/DELETE on pages (create, edit — which also
  *                       writes a new `PageVersion` snapshot — move/reparent,
  *                       archive, delete) and mutations to page substructure:
- *                       page<->issue links and page<->page wiki-links.
- *                       Reserved now alongside `pages:read`; not yet gating
- *                       any route.
+ *                       page<->issue links and page<->page wiki-links. Live
+ *                       and enforced alongside `pages:read`; see the same
+ *                       fixture for exact coverage.
  *
  * An empty `scopes` array on a token means "unrestricted" (same as a browser
  * JWT session — all routes are accessible). Only non-empty scopes arrays are

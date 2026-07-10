@@ -269,25 +269,29 @@ export class PagesService {
       Role.MEMBER,
     );
 
-    const childCount = await this.prisma.page.count({
-      where: { parentId: id },
-    });
-    if (childCount > 0) {
-      throw new BadRequestException(
-        `This page has ${childCount} child page${childCount === 1 ? '' : 's'} — move or delete them first before deleting this page.`,
-      );
-    }
+    // Child-count guard, backlink count, and the delete run in ONE transaction
+    // so the guard is atomic with the delete (no child added between check and
+    // delete) and `orphanedBacklinks` can't undercount a backlink added by a
+    // concurrent save in the window between the count and the cascade.
+    const orphanedBacklinks = await this.prisma.$transaction(async (tx) => {
+      const childCount = await tx.page.count({ where: { parentId: id } });
+      if (childCount > 0) {
+        throw new BadRequestException(
+          `This page has ${childCount} child page${childCount === 1 ? '' : 's'} — move or delete them first before deleting this page.`,
+        );
+      }
 
-    // Informed-consent signal (MCP-QA pass 3, P2): deleting a page other
-    // pages link to is legitimate (Obsidian-style, never blocked), but the
-    // caller should KNOW those pages' [[links]] just became unresolved.
-    // Counted before the delete (the cascade removes the rows), reported in
-    // the response, and surfaced pre-delete in the web confirm dialog.
-    const orphanedBacklinks = await this.prisma.pageLink.count({
-      where: { targetPageId: id },
+      // Informed-consent signal (MCP-QA pass 3, P2): deleting a page other
+      // pages link to is legitimate (Obsidian-style, never blocked), but the
+      // caller should KNOW those pages' [[links]] just became unresolved.
+      // Counted inside the tx before the delete (the cascade removes the rows),
+      // reported in the response, and surfaced pre-delete in the web confirm
+      // dialog.
+      const backlinks = await tx.pageLink.count({ where: { targetPageId: id } });
+      await tx.page.delete({ where: { id } });
+      return backlinks;
     });
 
-    await this.prisma.page.delete({ where: { id } });
     this.emitUpdated(existing.projectId, id);
     return { id, orphanedBacklinks };
   }
