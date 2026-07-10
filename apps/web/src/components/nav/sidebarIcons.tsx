@@ -184,3 +184,13 @@ export function SystemThemeIcon({ className }: { className?: string }) {
     </svg>
   );
 }
+
+/** Pages knowledge base — a document sheet with a folded corner. */
+export function ViewPagesIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M6 2h8l4 4v16H6z" />
+      <path d="M14 2v4h4M9 13h6M9 17h6" />
+    </svg>
+  );
+}

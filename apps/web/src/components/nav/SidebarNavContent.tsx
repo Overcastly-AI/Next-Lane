@@ -40,6 +40,7 @@ import {
   ViewBacklogIcon,
   ViewBoardIcon,
   ViewDashboardsIcon,
+  ViewPagesIcon,
   ViewReportsIcon,
   ViewRoadmapIcon,
 } from './sidebarIcons';
@@ -152,6 +153,7 @@ function ProjectRow({
 const PROJECT_VIEWS = [
   { to: 'board', label: 'Board', Icon: ViewBoardIcon },
   { to: 'backlog', label: 'Backlog', Icon: ViewBacklogIcon },
+  { to: 'pages', label: 'Pages', Icon: ViewPagesIcon },
   { to: 'dashboards', label: 'Dashboards', Icon: ViewDashboardsIcon },
   { to: 'roadmap', label: 'Roadmap', Icon: ViewRoadmapIcon },
   { to: 'reports', label: 'Reports', Icon: ViewReportsIcon },

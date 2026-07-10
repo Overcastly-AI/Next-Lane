@@ -49,7 +49,8 @@ test.describe('Pages knowledge base', () => {
       projectName: 'Pages Nav QA',
     });
 
-    await page.getByRole('button', { name: /^more/i }).click();
+    // Pages is a first-class primary tab (promoted from the "More" menu —
+    // the founder couldn't find the wiki there).
     await page.getByTestId('nav-pages').click();
     await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/pages`));
   });

@@ -41,17 +41,19 @@ import { cn } from '@/lib/cn';
 // ---------------------------------------------------------------------------
 
 const PRIMARY_TABS = [
-  { to: 'board',       label: 'Board'    },
-  { to: 'backlog',     label: 'Backlog'  },
-  { to: 'triage',      label: 'Triage'   },
-  { to: 'reports',     label: 'Reports'  },
+  { to: 'board',       label: 'Board'   },
+  { to: 'backlog',     label: 'Backlog' },
+  { to: 'triage',      label: 'Triage'  },
+  // Pages is a flagship pillar (project wiki + knowledge graph) — a
+  // first-class tab, not a "More" item (the founder couldn't find it there).
+  { to: 'pages',       label: 'Pages',    testId: 'nav-pages' as const },
+  { to: 'reports',     label: 'Reports' },
 ] as const;
 
 const MORE_TABS = [
   { to: 'analytics',   label: 'Analytics'  },
   { to: 'dashboards',  label: 'Dashboards' },
   { to: 'roadmap',     label: 'Roadmap'    },
-  { to: 'pages',       label: 'Pages',      testId: 'nav-pages' as const },
   { to: 'poker',       label: 'Poker'      },
   { to: 'standups',    label: 'Standup'    },
   { to: 'automations', label: 'Automation', testId: 'nav-automation' as const },
@@ -273,6 +275,7 @@ export function ProjectNav({ projectId }: { projectId: string }) {
           <NavLink
             key={tab.to}
             to={`/projects/${projectId}/${tab.to}`}
+            data-testid={'testId' in tab ? tab.testId : undefined}
             className={({ isActive }) =>
               cn(tabBaseCls, isActive ? activeTabCls : inactiveTabCls)
             }
