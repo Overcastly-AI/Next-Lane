@@ -157,22 +157,35 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
 
   const pageItems = useMemo<PaletteItem[]>(() => {
     if (!results) return [];
-    return results.pages.map((page: SearchPageDto) => ({
-      id: `page-${page.id}`,
-      group: 'Pages',
-      label: (
-        <span className="flex min-w-0 items-center gap-2">
-          <span className="shrink-0 font-mono text-xs text-ink-400">{page.projectKey}</span>
-          <span className={cn('truncate', page.archived && 'text-ink-400 line-through')}>
-            {page.title}
+    return results.pages.map((page: SearchPageDto) => {
+      // `projectId: null` = a workspace-level docs page (not attached to any
+      // single project) — labeled "Docs" instead of a project key, and
+      // opened at the workspace Docs route rather than a project one (a
+      // `/projects/null/...` URL would be a dead link).
+      const isWorkspacePage = page.projectId === null;
+      const scopeLabel = isWorkspacePage ? 'Docs' : page.projectKey;
+      return {
+        id: `page-${page.id}`,
+        group: 'Pages',
+        label: (
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="shrink-0 font-mono text-xs text-ink-400">{scopeLabel}</span>
+            <span className={cn('truncate', page.archived && 'text-ink-400 line-through')}>
+              {page.title}
+            </span>
           </span>
-        </span>
-      ),
-      text: `${page.projectKey} ${page.title}`,
-      hint: page.archived ? 'Archived' : undefined,
-      icon: <GlyphPage />,
-      onSelect: () => go(`/projects/${page.projectId}/pages/${page.id}`),
-    }));
+        ),
+        text: `${scopeLabel} ${page.title}`,
+        hint: page.archived ? 'Archived' : undefined,
+        icon: <GlyphPage />,
+        onSelect: () =>
+          go(
+            isWorkspacePage
+              ? `/workspaces/${page.workspaceId}/docs/${page.id}`
+              : `/projects/${page.projectId}/pages/${page.id}`,
+          ),
+      };
+    });
   }, [results]);
 
   const projectItems = useMemo<PaletteItem[]>(() => {

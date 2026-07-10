@@ -8,6 +8,7 @@
 import { useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { usePageVersion, usePageVersions, useRestorePageVersion } from '@/api/pages';
+import type { PagesScope } from '@/api/keys';
 import { Button } from '@/components/ui/Button';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { ErrorState, LoadingState, Spinner } from '@/components/ui/States';
@@ -19,7 +20,7 @@ import { cn } from '@/lib/cn';
 import { PageContent } from './PageContent';
 
 export interface VersionHistoryDrawerProps {
-  projectId: string;
+  scope: PagesScope;
   pageId: string;
   titleIndex: Map<string, string>;
   onClose: () => void;
@@ -27,7 +28,7 @@ export interface VersionHistoryDrawerProps {
 }
 
 export function VersionHistoryDrawer({
-  projectId,
+  scope,
   pageId,
   titleIndex,
   onClose,
@@ -38,7 +39,7 @@ export function VersionHistoryDrawer({
   useOverlay({ open: true, onClose, containerRef: panelRef });
 
   const versionsQuery = usePageVersions(pageId);
-  const restore = useRestorePageVersion(projectId);
+  const restore = useRestorePageVersion(scope);
   const [expandedVersion, setExpandedVersion] = useState<number | null>(null);
   const [restoreTarget, setRestoreTarget] = useState<number | null>(null);
 

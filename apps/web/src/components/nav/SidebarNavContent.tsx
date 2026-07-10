@@ -45,6 +45,10 @@ import {
   ViewRoadmapIcon,
 } from './sidebarIcons';
 
+// Reused verbatim from the project Pages nav (`ProjectViewsSubNav`, below) —
+// the workspace Docs entry is the same "knowledge base" concept one level
+// up, so it wears the identical icon rather than minting a new glyph.
+
 // ---------------------------------------------------------------------------
 // Active-row rail tick — the one signature accent element
 // ---------------------------------------------------------------------------
@@ -412,6 +416,21 @@ export function SidebarNavContent({ collapsed, onNavigate }: SidebarNavContentPr
 
       {activeWorkspace && (
         <div className="space-y-0.5 border-t border-ink-100 px-2 py-2">
+          {/* Docs — the workspace's org-wide docs space (handbook/runbooks/
+              ADRs that aren't project-specific), NOT a project tab. Visible
+              to every workspace member (VIEWER-readable), same gate as the
+              row itself (`activeWorkspace` implies membership). Placed above
+              Settings/Branding so it reads as a daily-use destination, not
+              buried under admin chrome. */}
+          <SidebarRow
+            to={`/workspaces/${activeWorkspace.id}/docs`}
+            active={location.pathname.startsWith(`/workspaces/${activeWorkspace.id}/docs`)}
+            icon={<ViewPagesIcon className="h-4 w-4" />}
+            label="Docs"
+            collapsed={collapsed}
+            onNavigate={onNavigate}
+            testId="nav-sidebar-workspace-docs"
+          />
           <SidebarRow
             to={`/workspaces/${activeWorkspace.id}/settings`}
             active={location.pathname === `/workspaces/${activeWorkspace.id}/settings`}

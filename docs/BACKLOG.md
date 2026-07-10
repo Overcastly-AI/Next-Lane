@@ -397,24 +397,54 @@ prevent exactly that, reusing the already-shipped `assertWorkspaceMember`/
     **Territory:** `apps/api/src/pages/**`. **MCP:** `get_workspace_page_graph`/
     `get_workspace_page_backlinks` (bundled with item 13's MCP batch).
     [ROADMAP Phase 11 continuation item 16]
-12. **Frontend — workspace Docs nav + reused tree/editor/backlinks/graph
-    components** (P2, M, depends on #9/#11) — a new **workspace-level** nav
-    destination (persistent left sidebar, alongside Members/Audit log — NOT
-    a project tab) opens the org's docs space using the SAME tree-nav/
+12. ✅ **Frontend — workspace Docs nav + reused tree/editor/backlinks/graph
+    components** — shipped 2026-07-10 (frontend-builder, org-docs epic
+    "slice 5"), built ahead of #10/#11 landing (founder/orchestrator
+    explicitly greenlit building the frontend against the narrower
+    already-shipped slice-2 backend rather than waiting) — see the
+    ticked `docs/ROADMAP.md` Phase 11 continuation item 17 entry for full
+    detail. (P2, M) — a new **workspace-level** nav destination: a
+    persistent-sidebar `Docs` row (alongside `Workspace settings`/
+    `Branding`) PLUS a `Docs` tab on `WorkspaceSettingsNav` (the strip that
+    also holds Members/Audit log/Settings) — NOT a project tab — opens
+    `/workspaces/:id/docs(/graph|/:pageId)` using the SAME tree-nav/
     markdown-editor/version-history/backlinks-panel/graph-view components
-    Phase 11 already shipped, parameterized by workspace scope instead of
-    project scope — no new component stack. Any page's editor gains a small
-    scope indicator ("this page lives in Project B" / "in the workspace
-    docs space") for cross-project/workspace-docs link legibility; the
-    existing per-project Pages nav and tree are unchanged. **Acceptance
-    criteria:** the workspace Docs nav entry is reachable only by workspace
-    members (hidden/404 otherwise, matching the Members/Audit log pattern);
-    a `[[link]]` correctly routes to a cross-project or workspace-docs
-    target; an unresolved cross-workspace-collision link (#10) renders
-    identically to a plain unresolved link, no "restricted" tell.
-    **Territory:** `apps/web/src/components/pages/**`,
-    `apps/web/src/components/layout/**` (sidebar nav entry). **MCP:** n/a
-    (frontend only). [ROADMAP Phase 11 continuation item 17]
+    Phase 11 already shipped: implemented via a new scope-parameterized
+    `PagesSurface` component (`apps/web/src/components/pages/
+    PagesSurface.tsx`, `{kind: 'project'|'workspace'; id}`) shared verbatim
+    by both `PagesPage` (project route, now a thin wrapper) and the new
+    `WorkspaceDocsPage` — zero component-tree duplication. New
+    workspace-scoped hooks (`useWorkspacePagesTree`/`useCreateWorkspacePage`/
+    `useWorkspacePageGraph` in `api/pages.ts`) plus a generalized
+    `PagesScope`-aware `invalidatePagesFamily` (`api/keys.ts`) so the
+    existing by-id hooks (update/delete/move/restore) invalidate the right
+    tree/graph cache regardless of scope. "Linked issues" is hidden on a
+    workspace page (no owning project — matches the shipped backend, which
+    skips issue-key sync for workspace pages entirely). **Acceptance
+    criteria met:** the nav entry is reachable only by workspace members
+    (the sidebar's workspace section is itself gated on `activeWorkspace`,
+    which implies membership, same pattern as Settings/Branding; the
+    underlying `/workspaces/:id/pages/*` routes 403 for a non-member,
+    surfacing as the tree's `ErrorState`, mirroring Members/Audit log).
+    **Acceptance criteria explicitly NOT built this slice (by design):** the
+    cross-project "scope indicator" / cross-project `[[link]]` routing this
+    item originally described — the shipped backend doesn't yet implement
+    cross-project wiki-link resolution or a project-unioning graph
+    (`PagesService.scopeWhere`/`buildGraph` verified still project-only /
+    workspace-docs-only, not a union), so there's nothing real for that UI
+    to route to yet; it follows #10/#11 once those land. A live drive-by fix
+    rode along: a workspace page surfaced by the command-palette search
+    previously opened the dead `/projects/null/pages/:id` — now routes to
+    `/workspaces/:id/docs/:id`. **Verified:** new `workspace-docs.spec.ts`
+    (6 cases, desktop+mobile) + the full existing Pages e2e suite (42
+    cases) + the workspace-switcher chip-sync class guard (now sweeping
+    `docs` too) all green; `tsc --noEmit` + `pnpm build` clean. **Territory:**
+    `apps/web/src/components/pages/**`, `apps/web/src/pages/PagesPage.tsx`,
+    `apps/web/src/pages/WorkspaceDocsPage.tsx`, `apps/web/src/components/
+    nav/**`, `apps/web/src/components/WorkspaceSettingsNav.tsx`,
+    `apps/web/src/api/pages.ts`, `apps/web/src/api/keys.ts`. **MCP:** n/a
+    (frontend only — the matching MCP surface is item 13, below).
+    [ROADMAP Phase 11 continuation item 17]
 13. **Search + MCP — workspace-wide search scoping and cross-project/
     workspace-docs traversal tools** (P2, M, depends on #9/#10/#11) —
     extends the shipped `Page.searchVector` FTS and the `canReadPages`/
@@ -442,6 +472,16 @@ prevent exactly that, reusing the already-shipped `assertWorkspaceMember`/
     just-fixed `/search` regression test shape exactly. **Territory:**
     `apps/api/src/search/**`, `apps/mcp/src/tools/**`. [ROADMAP Phase 11
     continuation item 18]
+
+**Build update (2026-07-10, same day): item 12 (frontend workspace Docs
+surface) shipped** — see the ticked entry above for full detail. Built
+ahead of #10/#11 (cross-workspace-safe link resolution + the true
+workspace-wide graph) on explicit direction, against the narrower
+already-shipped slice-2 backend — the cross-project scope-indicator/routing
+half of item 12's original scope now correctly waits on #10/#11. Remaining
+in this epic: #10 (cross-workspace-safe `[[wiki-link]]` resolution), #11
+(workspace-wide graph unioning every project), #13 (search scoping + MCP
+traversal tools) — all still ⬜, unblocked to build next.
 
 **Shipped through this queue (kept for reference):**
 

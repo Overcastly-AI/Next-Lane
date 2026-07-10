@@ -228,7 +228,7 @@ test.describe('Workspace switcher — multi-workspace coherence', () => {
       'standups',
       'poker',
     ].map((p) => `/projects/${ctx.bravo.projectId}/${p}`);
-    const workspaceRoutes = ['settings', 'members', 'audit-log', 'branding'].map(
+    const workspaceRoutes = ['settings', 'members', 'audit-log', 'branding', 'docs'].map(
       (p) => `/workspaces/${ctx.bravo.id}/${p}`,
     );
 

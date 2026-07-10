@@ -269,7 +269,7 @@ live.
 - ✅ **Personal & team analytics backend** — `AnalyticsModule` (`apps/api/src/analytics/`): `GET /me/analytics?days=N` → `PersonalAnalyticsDto` (open/completed/overdue assigned issues, per-day throughput flow series, avg cycle time, byType/byPriority CategoryCountDto groups, personal board stats); `GET /projects/:projectId/analytics?days=N` → `ProjectAnalyticsDto` (per-day flow series, createdTotal/completedTotal, avg cycle time, all-5-bucket CycleTimeBucketDto distribution with en-dash labels, WorkloadRowDto by assignee busiest-first + Unassigned row); both endpoints use ActivityLog completion-date reconstruction identical to reports.service; `days` defaults to 30, clamped to [1, 366]; 25 unit tests (analytics.service.spec.ts); build + typecheck clean; registered in AppModule. (2026-06-28)
 - ✅ **Personal & team analytics frontend** (2026-06-28) — `PersonalAnalyticsPage` at `/me/analytics` (14/30/90-day window selector, headline stat cards, hand-rolled SVG throughput chart, type/priority horizontal bar breakdowns, personal board mini-stats); `ProjectAnalyticsPage` at `/projects/:projectId/analytics` (window selector, headline stats, flow chart, cycle-time distribution, workload bars by assignee); "Analytics" tab in `ProjectNav`; "Insights" link in `AppHeader`; WCAG-AA, accessible charts with visually-hidden summaries; full data-testid coverage; Playwright e2e (desktop + mobile); build green.
 
-## Phase 11 — Pages: a Confluence × Obsidian hybrid, agent-traversable 🚧 (schema + backend module + MCP tools shipped 2026-07-09; org-wide docs schema + workspace-scoped backend shipped 2026-07-10 — founder directive 2026-07-06, scope sharpened 2026-07-09, org-wide 2026-07-10)
+## Phase 11 — Pages: a Confluence × Obsidian hybrid, agent-traversable 🚧 (schema + backend module + MCP tools shipped 2026-07-09; org-wide docs schema + workspace-scoped backend + workspace Docs frontend surface shipped 2026-07-10 — founder directive 2026-07-06, scope sharpened 2026-07-09, org-wide 2026-07-10)
 
 **Founder directive, verbatim (2026-07-06): "How can we add a confluence type
 section?"** **Sharpened same-week (2026-07-09): "Could it be hybrid of
@@ -548,25 +548,45 @@ chokepoint, mirroring `assertProjectRole`'s role as the project-level one.
     with a two-workspace fixture (same class of test as slice 15's).
     **Territory:** `apps/api/src/pages/**`. **Size:** S (mostly query
     composition once 14/15 land).
-17. ⬜ **Frontend — workspace Docs nav + reused tree/editor/backlinks/graph
-    components** — a new **workspace-level** nav destination (persistent
-    left sidebar, alongside Members/Audit log — NOT a project tab, since it
-    is explicitly not project-scoped) opens the org's docs space using the
-    SAME tree-nav/markdown-editor/version-history/backlinks-panel/graph-view
-    components Phase 11 already shipped, parameterized by workspace scope
-    instead of project scope (no new component stack). Any page's editor
-    gains a small scope indicator so a cross-project or workspace-docs link
-    result is legible ("this page lives in Project B" / "this page lives in
-    the workspace docs space") — the existing per-project Pages nav is
-    unchanged; a project's page tree still only shows that project's own
-    pages. **Acceptance criteria:** the workspace Docs nav entry is
-    reachable only by workspace members (hidden/404 otherwise, matching the
-    Members/Audit log pattern); a `[[link]]` rendered inside a page
-    correctly routes to a cross-project or workspace-docs target and opens
-    it; an unresolved cross-workspace-collision link (slice 15) renders
-    identically to a plain unresolved link, with no "restricted" tell.
+17. ✅ **Frontend — workspace Docs nav + reused tree/editor/backlinks/graph
+    components** — shipped 2026-07-10 (frontend-builder, org-docs epic
+    slice 5) — a new **workspace-level** nav destination (persistent left
+    sidebar `Docs` row, alongside `Workspace settings`/`Branding`, PLUS a
+    `Docs` tab on the `WorkspaceSettingsNav` strip that also holds Members/
+    Audit log/Settings — NOT a project tab) opens the org's docs space at
+    `/workspaces/:id/docs(/graph|/:pageId)`, using the SAME tree-nav/
+    markdown-editor/version-history/backlinks-panel/graph-view components
+    Phase 11 already shipped. Implemented by extracting the shared
+    orchestration into a new scope-parameterized `PagesSurface` component
+    (`{ kind: 'project' | 'workspace'; id }`) that both `PagesPage` (project
+    route) and the new `WorkspaceDocsPage` (workspace route) compose —
+    zero component-tree duplication, one `PagesScope`-aware invalidation
+    path in `api/keys.ts`/`api/pages.ts` (`useWorkspacePagesTree`,
+    `useCreateWorkspacePage`, `useWorkspacePageGraph`, plus the existing
+    by-id hooks generalized to take a `PagesScope`). The "Linked issues"
+    panel is hidden on a workspace page (no owning project to sync issue
+    mentions against, matching the shipped backend). **Scope actually
+    shipped vs. this item's original acceptance criteria:** the backend's
+    slice-2 cut (see items 13/14 above) only resolves `[[wiki-link]]`s
+    among workspace-scoped pages themselves and only graphs workspace-scoped
+    pages (`PagesService.scopeWhere`/`buildGraph` are still strictly
+    project-only for a project page, workspace-docs-only for a workspace
+    page — NOT a cross-project union) — so the cross-project "scope
+    indicator" / cross-project link routing this item originally described
+    depends on items 15/16 below, which have NOT shipped. Deliberately not
+    attempted this slice (per the org-docs epic's explicit scope note) so
+    as not to build ahead of an unshipped backend contract. A live
+    `command-palette`/search fix rode along: a workspace-scoped page search
+    result now opens `/workspaces/:id/docs/:pageId` instead of the
+    previously-broken `/projects/null/pages/:id`. **Verified:** new
+    `apps/web/e2e/workspace-docs.spec.ts` (desktop + mobile, 6/6) plus the
+    full existing Pages regression suite (42/42) and the workspace-switcher
+    chip-sync "class guard" (now sweeping the `docs` route too) all green.
     **Territory:** `apps/web/src/components/pages/**`,
-    `apps/web/src/components/layout/**` (sidebar nav entry). **Size:** M.
+    `apps/web/src/pages/PagesPage.tsx`, `apps/web/src/pages/
+    WorkspaceDocsPage.tsx`, `apps/web/src/components/nav/**`,
+    `apps/web/src/components/WorkspaceSettingsNav.tsx`, `apps/web/src/api/
+    pages.ts`, `apps/web/src/api/keys.ts`. **Size:** M.
 18. ⬜ **Search + MCP — workspace-wide search scoping and cross-project/
     workspace-docs traversal tools** — extends the existing
     `Page.searchVector` FTS (shipped 2026-07-09) and the
@@ -850,6 +870,31 @@ explicit note. Next up: item 15 (cross-workspace-safe `[[wiki-link]]`
 resolution broadening project pages beyond same-project) and item 16
 (a true workspace-WIDE graph unioning every project's pages, distinct from
 this slice's workspace-root-only tree/graph).
+
+**Build update (2026-07-10, same day): Slice 5 shipped — the workspace Docs
+frontend surface.** Item 17 above is done (see its entry for full detail):
+a new `WorkspaceDocsPage` (`/workspaces/:id/docs`) opens the org-wide docs
+tree via a scope-parameterized `PagesSurface` shared verbatim with the
+project Pages route — zero component-tree duplication. Reachable from the
+persistent sidebar (`Docs` row, `nav-sidebar-workspace-docs`) and the
+`WorkspaceSettingsNav` tab strip (`Docs` tab, alongside Members/Audit
+log/Settings/Branding). `apps/web/e2e/workspace-docs.spec.ts` (6 cases,
+desktop+mobile) covers nav discovery, the empty state, create→edit→
+`[[wiki-link]]`→resolve→backlinks→graph, and confirms "Linked issues" is
+absent on a workspace page; the full existing Pages e2e suite (42 cases)
+and the workspace-switcher chip-sync class guard (now sweeping `docs` too)
+re-verified green; `tsc --noEmit` + `pnpm build` clean. Deliberately did
+NOT build the cross-project scope-indicator/link-routing UI item 17
+originally described — the shipped backend (slice 2, above) doesn't yet
+implement cross-project `[[wiki-link]]` resolution or a project-unioning
+graph (`PagesService.scopeWhere`/`buildGraph` confirmed still project-only
+/ workspace-docs-only), so that UI has nothing real to route to yet; it
+follows items 15/16 once those land. A live drive-by fix: a workspace
+page surfaced by the command palette's search previously opened the
+dead `/projects/null/pages/:id` URL — now routes to
+`/workspaces/:id/docs/:id`. Next up: items 15/16 (backend), then the
+cross-project scope-indicator/link-routing this item's original acceptance
+criteria described.
 
 *(Note to backlog-groomer: this is the intended Ready-queue order for the next
 build-loop pass; `docs/BACKLOG.md` itself is unchanged by this vision-steward

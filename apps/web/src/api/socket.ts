@@ -164,7 +164,7 @@ export function useBoardRealtime(
           // own detail/version-history caches so an open Pages surface never
           // shows stale content when a teammate (or an agent) edits elsewhere.
           const p = payload as { pageId?: string } | null;
-          invalidatePagesFamily(qc, projectId, p?.pageId);
+          invalidatePagesFamily(qc, { kind: 'project', id: projectId }, p?.pageId);
         }
         if (event === SocketEvents.DashboardUpdated) {
           // A dashboard's metadata changed or a gadget was added/edited/

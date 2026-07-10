@@ -37,7 +37,8 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { createForceSimulation, type Point } from '@/lib/forceLayout';
 import { usePrefersReducedMotion } from '@/lib/usePrefersReducedMotion';
 import { EmptyState, ErrorState, LoadingState } from '@/components/ui/States';
-import { usePageGraph } from '@/api/pages';
+import { usePageGraph, useWorkspacePageGraph } from '@/api/pages';
+import type { PagesScope } from '@/api/keys';
 import { cn } from '@/lib/cn';
 
 const MIN_SCALE = 0.35;
@@ -61,7 +62,7 @@ const DOT_MIN = 9;
 const DOT_MAX = 26;
 
 export interface KnowledgeGraphViewProps {
-  projectId: string;
+  scope: PagesScope;
   onOpenPage: (pageId: string) => void;
 }
 
@@ -100,8 +101,13 @@ function clamp(v: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, v));
 }
 
-export function KnowledgeGraphView({ projectId, onOpenPage }: KnowledgeGraphViewProps) {
-  const graphQuery = usePageGraph(projectId);
+export function KnowledgeGraphView({ scope, onOpenPage }: KnowledgeGraphViewProps) {
+  // Exactly one of these is enabled (the other's `enabled: !!id` guard is
+  // `false`, so it never fetches) — the graph data source depends on scope,
+  // but hooks must still be called unconditionally every render.
+  const projectGraphQuery = usePageGraph(scope.kind === 'project' ? scope.id : undefined);
+  const workspaceGraphQuery = useWorkspacePageGraph(scope.kind === 'workspace' ? scope.id : undefined);
+  const graphQuery = scope.kind === 'project' ? projectGraphQuery : workspaceGraphQuery;
   const [containerRef, { width, height }] = useContainerSize<HTMLDivElement>();
   const svgRef = useRef<SVGSVGElement>(null);
   const reducedMotion = usePrefersReducedMotion();
@@ -192,11 +198,11 @@ export function KnowledgeGraphView({ projectId, onOpenPage }: KnowledgeGraphView
     // restart the settle animation) on every unrelated re-render.
   }, [graphQuery.data, width, height, reducedMotion]);
 
-  // Reset the camera whenever a fresh graph is loaded (new project, or the
+  // Reset the camera whenever a fresh graph is loaded (new scope, or the
   // node set materially changed) so the user isn't left panned off-canvas.
   useEffect(() => {
     setCamera({ x: 0, y: 0, scale: 1 });
-  }, [projectId]);
+  }, [scope.kind, scope.id]);
 
   // ── Pan / zoom (pointer events unify mouse + touch) ───────────────────────
   const pointers = useRef(new Map<number, { x: number; y: number }>());

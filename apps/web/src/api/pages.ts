@@ -12,7 +12,7 @@ import type {
   UpdatePageDto,
 } from '@next-lane/shared';
 import { request } from './client';
-import { qk, invalidatePagesFamily } from './keys';
+import { qk, invalidatePagesFamily, pagesTreeKey, type PagesScope } from './keys';
 import { optimisticallyReorderTree } from './pages.reorder';
 
 // ---------------------------------------------------------------------------
@@ -34,6 +34,31 @@ export function usePageGraph(projectId: string | undefined) {
     queryKey: qk.pageGraph(projectId ?? ''),
     enabled: !!projectId,
     queryFn: () => request<PageGraphDto>(`/projects/${projectId}/pages/graph`),
+  });
+}
+
+/**
+ * A workspace's org-wide docs tree — the workspace Docs surface's sidebar
+ * nav (`GET /workspaces/:id/pages/tree`, mirrors `usePageTree`'s shape but a
+ * page here always has `projectId: null`).
+ */
+export function useWorkspacePagesTree(workspaceId: string | undefined) {
+  return useQuery({
+    queryKey: qk.workspacePageTree(workspaceId ?? ''),
+    enabled: !!workspaceId,
+    queryFn: () => request<PageTreeNode[]>(`/workspaces/${workspaceId}/pages/tree`),
+  });
+}
+
+/**
+ * A workspace's org-wide page<->page wiki-link graph — the workspace Docs
+ * surface's Graph view (`GET /workspaces/:id/pages/graph`).
+ */
+export function useWorkspacePageGraph(workspaceId: string | undefined) {
+  return useQuery({
+    queryKey: qk.workspacePageGraph(workspaceId ?? ''),
+    enabled: !!workspaceId,
+    queryFn: () => request<PageGraphDto>(`/workspaces/${workspaceId}/pages/graph`),
   });
 }
 
@@ -116,12 +141,37 @@ export function useCreatePage(projectId: string) {
     mutationFn: (dto: CreatePageDto) =>
       request<PageDto>(`/projects/${projectId}/pages`, { method: 'POST', body: dto }),
     onSuccess: () => {
-      invalidatePagesFamily(qc, projectId);
+      invalidatePagesFamily(qc, { kind: 'project', id: projectId });
     },
   });
 }
 
-export function useUpdatePage(projectId: string) {
+/**
+ * Create a workspace-level page (`projectId: null`) — the workspace Docs
+ * surface's "New page" entry point (`POST /workspaces/:id/pages`). Mirrors
+ * `useCreatePage` exactly, just a different scope/endpoint.
+ */
+export function useCreateWorkspacePage(workspaceId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (dto: CreatePageDto) =>
+      request<PageDto>(`/workspaces/${workspaceId}/pages`, { method: 'POST', body: dto }),
+    onSuccess: () => {
+      invalidatePagesFamily(qc, { kind: 'workspace', id: workspaceId });
+    },
+  });
+}
+
+/**
+ * By-id mutations below (update/delete/move/restore) operate on `/pages/:id`
+ * unchanged regardless of whether the target page is project- or
+ * workspace-scoped — the server branches internally. They take a `PagesScope`
+ * (not a bare `projectId`) purely so they invalidate the RIGHT tree/graph
+ * cache family: `PagesSurface` passes `{ kind: 'project', id }` when mounted
+ * under a project's Pages route and `{ kind: 'workspace', id }` under the
+ * workspace Docs route.
+ */
+export function useUpdatePage(scope: PagesScope) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, patch }: { id: string; patch: UpdatePageDto }) =>
@@ -143,18 +193,18 @@ export function useUpdatePage(projectId: string) {
     },
     onSuccess: (data) => {
       qc.setQueryData(qk.page(data.id), data);
-      invalidatePagesFamily(qc, projectId, data.id);
+      invalidatePagesFamily(qc, scope, data.id);
     },
   });
 }
 
-export function useDeletePage(projectId: string) {
+export function useDeletePage(scope: PagesScope) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => request<void>(`/pages/${id}`, { method: 'DELETE' }),
     onSuccess: (_data, id) => {
       qc.removeQueries({ queryKey: qk.page(id) });
-      invalidatePagesFamily(qc, projectId, id);
+      invalidatePagesFamily(qc, scope, id);
     },
   });
 }
@@ -175,8 +225,9 @@ export interface MovePageVars {
  * Optimistically reorders the cached tree so an up/down move (or a future
  * drag) feels instant, then reconciles from the server response.
  */
-export function useMovePage(projectId: string) {
+export function useMovePage(scope: PagesScope) {
   const qc = useQueryClient();
+  const treeKey = pagesTreeKey(scope);
   return useMutation({
     mutationFn: ({ id, parentId, beforeId, afterId }: MovePageVars) =>
       request<PageDto>(`/pages/${id}/move`, {
@@ -184,26 +235,26 @@ export function useMovePage(projectId: string) {
         body: { parentId, beforeId, afterId },
       }),
     onMutate: async (vars) => {
-      await qc.cancelQueries({ queryKey: qk.pageTree(projectId) });
-      const previous = qc.getQueryData<PageTreeNode[]>(qk.pageTree(projectId));
+      await qc.cancelQueries({ queryKey: treeKey });
+      const previous = qc.getQueryData<PageTreeNode[]>(treeKey);
       if (previous) {
         qc.setQueryData<PageTreeNode[]>(
-          qk.pageTree(projectId),
+          treeKey,
           optimisticallyReorderTree(previous, vars),
         );
       }
       return { previous };
     },
     onError: (_err, _vars, ctx) => {
-      if (ctx?.previous) qc.setQueryData(qk.pageTree(projectId), ctx.previous);
+      if (ctx?.previous) qc.setQueryData(treeKey, ctx.previous);
     },
     onSettled: () => {
-      invalidatePagesFamily(qc, projectId);
+      invalidatePagesFamily(qc, scope);
     },
   });
 }
 
-export function useRestorePageVersion(projectId: string) {
+export function useRestorePageVersion(scope: PagesScope) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ pageId, versionNumber }: { pageId: string; versionNumber: number }) =>
@@ -212,7 +263,7 @@ export function useRestorePageVersion(projectId: string) {
       }),
     onSuccess: (data) => {
       qc.setQueryData(qk.page(data.id), data);
-      invalidatePagesFamily(qc, projectId, data.id);
+      invalidatePagesFamily(qc, scope, data.id);
     },
   });
 }

@@ -50,6 +50,7 @@ import { WorkspaceSettingsPage } from '@/pages/WorkspaceSettingsPage';
 import { NotificationsPage } from '@/pages/NotificationsPage';
 import { AdminSsoSettingsPage } from '@/pages/AdminSsoSettingsPage';
 import { PagesPage } from '@/pages/PagesPage';
+import { WorkspaceDocsPage } from '@/pages/WorkspaceDocsPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -241,6 +242,9 @@ export default function App() {
               <Route path="members" element={<WorkspaceMembersPage />} />
               <Route path="branding" element={<WorkspaceBrandingPage />} />
               <Route path="settings" element={<WorkspaceSettingsPage />} />
+              <Route path="docs" element={<WorkspaceDocsPage />} />
+              <Route path="docs/graph" element={<WorkspaceDocsPage />} />
+              <Route path="docs/:pageId" element={<WorkspaceDocsPage />} />
             </Route>
 
             <Route path="*" element={<Navigate to="/" replace />} />

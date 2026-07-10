@@ -91,6 +91,16 @@ export const qk = {
   pageTree: (projectId: string) => ['pageTree', projectId] as const,
   /** A project's whole page<->page wiki-link graph (the graph view). */
   pageGraph: (projectId: string) => ['pageGraph', projectId] as const,
+  /**
+   * A workspace's org-wide page tree (not tied to any single project — the
+   * workspace Docs surface's sidebar nav). Deliberately a DIFFERENT key
+   * family from `pageTree` (not just `pageTree(workspaceId)`) — the two are
+   * fetched from different REST endpoints (`/workspaces/:id/pages/tree` vs
+   * `/projects/:id/pages/tree`) and must never collide or cross-invalidate.
+   */
+  workspacePageTree: (workspaceId: string) => ['workspacePageTree', workspaceId] as const,
+  /** A workspace's org-wide page<->page wiki-link graph (the workspace Docs graph view). */
+  workspacePageGraph: (workspaceId: string) => ['workspacePageGraph', workspaceId] as const,
   /** A single page's full detail (title/content/metadata). */
   page: (pageId: string) => ['page', pageId] as const,
   /** A page's version history (cursor-paginated, newest-first). */
@@ -107,20 +117,43 @@ export const qk = {
 };
 
 /**
+ * A page surface's scope — either a project's own page tree or a
+ * workspace's org-wide docs space (`Page.projectId: null`). Threaded through
+ * the pages hooks/`invalidatePagesFamily` so the SAME by-id mutations
+ * (update/delete/move/restore) can invalidate the right tree/graph cache
+ * family regardless of which surface (`PagesPage` or `WorkspaceDocsPage`)
+ * is mounted — see `apps/web/src/components/pages/PagesSurface.tsx`.
+ */
+export type PagesScope =
+  | { kind: 'project'; id: string }
+  | { kind: 'workspace'; id: string };
+
+/** The page-tree query key for a given scope. */
+export function pagesTreeKey(scope: PagesScope) {
+  return scope.kind === 'project' ? qk.pageTree(scope.id) : qk.workspacePageTree(scope.id);
+}
+
+/** The page-graph query key for a given scope. */
+export function pagesGraphKey(scope: PagesScope) {
+  return scope.kind === 'project' ? qk.pageGraph(scope.id) : qk.workspacePageGraph(scope.id);
+}
+
+/**
  * Invalidate every cache entry a `PageUpdated` realtime event (or a local
  * mutation) can affect. Mirrors `invalidateBoardFamily`'s "invalidate the
- * whole family" shape: the tree/graph are project-wide, `pageBacklinks` is
- * keyed by the LINKED-TO page (which the mutating page doesn't know), so a
- * broad prefix-match invalidation on `['pageBacklinks']` is the same
- * pragmatic tradeoff already made for `['boardView']`/`['dashboardData']`.
+ * whole family" shape: the tree/graph are scope-wide (project OR workspace),
+ * `pageBacklinks` is keyed by the LINKED-TO page (which the mutating page
+ * doesn't know), so a broad prefix-match invalidation on `['pageBacklinks']`
+ * is the same pragmatic tradeoff already made for
+ * `['boardView']`/`['dashboardData']`.
  */
 export function invalidatePagesFamily(
   qc: import('@tanstack/react-query').QueryClient,
-  projectId: string,
+  scope: PagesScope,
   pageId?: string,
 ): void {
-  void qc.invalidateQueries({ queryKey: qk.pageTree(projectId) });
-  void qc.invalidateQueries({ queryKey: qk.pageGraph(projectId) });
+  void qc.invalidateQueries({ queryKey: pagesTreeKey(scope) });
+  void qc.invalidateQueries({ queryKey: pagesGraphKey(scope) });
   if (pageId) {
     void qc.invalidateQueries({ queryKey: qk.page(pageId) });
     void qc.invalidateQueries({ queryKey: qk.pageVersions(pageId) });
@@ -129,7 +162,7 @@ export function invalidatePagesFamily(
     void qc.invalidateQueries({ queryKey: qk.pageIssues(pageId) });
   }
   void qc.invalidateQueries({ queryKey: ['pageBacklinks'] });
-  // An issue mention anywhere in this project's pages can appear/disappear on
+  // An issue mention anywhere in this scope's pages can appear/disappear on
   // any save; broad-invalidate the whole family the same pragmatic way
   // `pageBacklinks` already does above (we don't know which OTHER pages'
   // "Linked issues" panels might be affected by cross-references).
