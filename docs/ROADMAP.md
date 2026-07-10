@@ -394,14 +394,222 @@ each lives in `docs/BACKLOG.md` § Ready):**
     (119 tools). e2e authored (`issue-linked-pages.spec.ts`); independent
     QA run queued. Layering issue nodes into the knowledge graph is a
     separate design decision (issues aren't page nodes) and stays deferred.
-11. ⬜ **Full-text search** — Pages join the existing Postgres
-    `tsvector`/GIN search infrastructure (issues today); surfaced in the
-    command palette and cross-project search, visually distinguished from
-    issue results.
-12. 🔭 **Later (not v1)** — page comments, page templates, workspace-level
-    "spaces" (grouping projects' page trees under a workspace), and public
-    page share links (reuse `ShareToken`, mirroring the dashboard/board
-    share-link pattern).
+11. ✅ **Full-text search** (shipped 2026-07-09 — this item was stale ⬜
+    until this pass; corrected against `git log`/code, no re-build needed)
+    — `Page.searchVector` tsvector generated column + GIN index (migration
+    `20260709120000_add_pages_fts`); `SearchService` page FTS/ILIKE,
+    tenant-scoped; `SearchPageDto` + `pages` in `SearchResultsDto`; Cmd-K
+    palette "Pages" group with a distinct page glyph, archived-muted; e2e
+    `pages-search.spec.ts` 2/2 green desktop+mobile. See the ticked
+    `docs/BACKLOG.md` § Already Done entry for full detail.
+12. 🔭 **Later (not v1)** — page comments, page templates, and public page
+    share links (reuse `ShareToken`, mirroring the dashboard/board
+    share-link pattern). (Workspace-level "spaces" — formerly bundled here
+    as one deferred idea — is promoted OUT of this later-bucket below: the
+    founder confirmed org-level docs on 2026-07-10; see items 13-18.)
+
+### Phase 11 continuation — Org-wide Pages: cross-project links + a workspace docs space (founder-approved 2026-07-10, no longer decision-gated)
+
+**Founder directive, verbatim (2026-07-10): "Both."** — asked to choose
+between (a) cross-project `[[wiki-link]]`s (a page in project A links to a
+page in project B; backlinks/graph can span projects) and (b) a
+workspace-level docs space not tied to any single project (company
+handbook, runbooks, ADRs that aren't project-specific), the founder
+confirmed both. This promotes and supersedes the "workspace-level 'spaces'"
+idea previously bundled into item 12's Later-not-v1 grab-bag and the
+matching `docs/BACKLOG.md` decision-gated item — that decision is now made.
+See `docs/VISION.md` § The pillars, item 7, for the updated framing (open &
+extensible + AI-native/agent-native: an org-wide knowledge graph an agent
+can traverse, not just a per-project one).
+
+**Everything Pages built for the per-project boundary (tenant isolation,
+RBAC, PAT scopes, fractional ranking, full-text search) was just
+re-hardened by the engineering audit (2026-07-10, `4d3a43a` — closed a live
+`/search` PAT-scope leak of page content to an `issues:read`-only PAT).
+Moving the boundary up to the workspace MUST preserve that isolation story,
+not reopen it** — every slice below states its authz decision explicitly
+rather than leaving it to build-time judgment.
+
+**Key finding that shapes the whole design** (verified against
+`apps/api/src/common/membership.util.ts`): a workspace member already has
+at least VIEWER on every project in that workspace by default
+(`getEffectiveProjectRole` falls back to the workspace `Membership.role`
+absent a `ProjectMembership` override, and an override can only range
+MEMBER↔ADMIN↔VIEWER — there is no "no access" state). That means a
+`[[link]]` between two projects in the SAME workspace introduces no NEW
+leak surface under today's model — the caller could already read both
+projects. **The actual boundary that must never be crossed is
+cross-WORKSPACE** (the same class of leak the just-fixed `/search` bug
+was) — every slice below is scoped to prevent exactly that, using the
+already-existing `assertWorkspaceMember`/`assertWorkspaceRole` helpers
+(same file, already used by `WorkspacesController`) as the workspace-level
+chokepoint, mirroring `assertProjectRole`'s role as the project-level one.
+
+13. ⬜ **Schema — nullable `Page.projectId` + always-present
+    `Page.workspaceId`** (flagged for a **schema-architect design pass**,
+    not a mechanical migration) — recommended shape: add
+    `Page.workspaceId String` (non-nullable, backfilled for every existing
+    row from `project.workspaceId` in the same migration) and relax
+    `Page.projectId` to nullable. A page is **project-scoped** when
+    `projectId` is set (today's behavior, byte-for-byte unchanged for
+    existing rows) and **workspace-scoped** ("lives in the org docs space,
+    not any one project") when `projectId` is null. **Rejected
+    alternative:** a discriminated-union-style separate `WorkspacePage`
+    table — rejected because it would fork `PagesService`, `PageVersion`,
+    `PageLink`, `syncWikiLinks`, the graph endpoint, the tree/rank UI, and
+    all 12+ MCP page tools into two parallel implementations; a nullable FK
+    on the existing `Page` table lets every one of those reuse the same
+    code path with one added branch. **Back-compat/migration implications
+    to flag explicitly for whoever builds this:** every existing query that
+    assumes `page.projectId` is non-null (`PagesService` CRUD/tree/move/
+    version methods, `syncWikiLinks`'s title-candidate query, the
+    `GET /projects/:id/pages/graph` + `/pages/:id/backlinks` endpoints,
+    `PagesController`'s `assertProjectRole` gate, the Cmd-K/`/search` page
+    results, and all 12 existing MCP page tools) must add an explicit
+    `projectId === null` branch or a workspace-scoped sibling method — this
+    is NOT a transparent migration, it is a second code path in every one
+    of those call sites, sized accordingly (see slice 14). **Acceptance
+    criteria:** migration is additive-only (no existing `Page` row's
+    `projectId` changes), `prisma migrate diff` shows zero drift for
+    pre-existing data, every pre-existing project-page test still passes
+    unmodified. **Territory:** `apps/api/prisma/schema.prisma` + migration.
+    **Size:** S (schema is small; the real work is slice 14).
+14. ⬜ **Backend — workspace-scoped page CRUD/tree/move/version history** —
+    mirrors `PagesService`'s existing project-scoped methods, branching on
+    `projectId === null`. **Authz decision (explicit):** workspace-scoped
+    pages are gated by `assertWorkspaceMember`/`assertWorkspaceRole`
+    (`apps/api/src/common/membership.util.ts`, already shipped and used by
+    `WorkspacesController`) directly against `Page.workspaceId` — VIEWER
+    read / MEMBER+ write, the identical role shape project pages already
+    use, resolved one level up (no per-project role override applies —
+    there is no owning project). **PAT scopes stay `pages:read`/
+    `pages:write`, unchanged and un-split** (see the scope-wide
+    recommendation below) — the scope check is orthogonal to which
+    membership chokepoint (`assertProjectRole` vs `assertWorkspaceRole`)
+    actually authorizes the call. Reuses the same tree/`rankBetween`/
+    fractional-rank sibling-ordering scheme, version-on-save semantics, and
+    delete-blocked-by-children rule project pages already have — this is
+    the SAME `Page` model, just with `projectId` null and `workspaceId`
+    set. New nav-facing REST surface: `GET/POST /workspaces/:id/pages`
+    (list/create at the workspace root); `PATCH/DELETE /pages/:id`
+    unchanged (branches internally). **Acceptance criteria:** a workspace
+    VIEWER can read but not write a workspace page; a workspace MEMBER can
+    create/edit; a user who is a member of a DIFFERENT workspace gets
+    403/404 (tenant-isolation-matrix rows added, mirroring the pattern that
+    caught the `/search` leak); every existing project-page
+    tenant-isolation row still passes unmodified. **Territory:**
+    `apps/api/src/pages/**`. **Size:** M.
+15. ⬜ **Backend — cross-workspace-safe `[[wiki-link]]` resolution** —
+    `syncWikiLinks`'s title-candidate query is rescoped from `projectId` to
+    `workspaceId` (derived from the page's own project, or its direct
+    `workspaceId` for a workspace page) — the candidate set becomes "every
+    page (project-scoped OR workspace-scoped) in the SAME workspace,"
+    matching the "already-visible by default" finding above. **The
+    explicit authz decision for the founder's exact question — "what
+    happens when a viewer can see the source but not the target?":** given
+    a page is only ever readable by workspace members, and every workspace
+    member can already read every page in that workspace, this case cannot
+    occur WITHIN one workspace under today's model. It CAN occur across
+    workspaces (a multi-tenant self-hosted instance) via a `[[Title]]` that
+    happens to collide with a page title existing only in a workspace the
+    viewer isn't a member of. **Decision: treat a same-title match in a
+    foreign workspace exactly like a non-existent title — render it as an
+    unresolved link (Obsidian's existing "not-yet-created page" state),
+    never as a distinguishable "restricted" state.** A "restricted" state
+    would itself leak the target's existence/title to a non-member, a new
+    information-disclosure surface "unresolved" doesn't have (an agent or
+    user genuinely cannot tell "no such page" from "a page exists but you
+    can't see it," which is the conservative default and matches how the
+    just-fixed `/search` leak was closed — suppress, don't half-reveal).
+    **Acceptance criteria:** a `[[link]]` between two pages in the same
+    workspace (project A → project B, project → workspace docs space, or
+    workspace docs space → project) resolves and creates a `PageLink` edge
+    exactly like same-project links do today; a `[[link]]` whose only title
+    match lives in a different workspace produces zero `PageLink` row and
+    renders identically to a genuinely nonexistent title — a
+    live-reproduced adversarial test (two workspaces, colliding page
+    titles, one viewer only a member of workspace A) is the acceptance
+    gate, mirroring how the `4d3a43a` search-leak fix was verified.
+    **Territory:** `apps/api/src/pages/pages.service.ts` (`syncWikiLinks`).
+    **Size:** M.
+16. ⬜ **Backend — workspace-wide graph + backlinks endpoint** —
+    `GET /workspaces/:id/pages/graph` returns the union of every project's
+    page graph plus the workspace docs space, scoped by the same
+    `assertWorkspaceRole(VIEWER)` chokepoint as slice 14, with edges only
+    included when BOTH endpoints resolve within that same workspace (an
+    edge to/from a foreign-workspace page literally cannot exist per slice
+    15, so this is enforced by construction, not a runtime filter) — same
+    `MAX_GRAPH_NODES`/`truncated` cap pattern as the existing per-project
+    graph endpoint. The existing `GET /projects/:id/pages/graph` is
+    UNCHANGED (still project-scoped, for anyone who wants that narrower
+    view). **Acceptance criteria:** the workspace graph for workspace X
+    never contains a node or edge belonging to workspace Y, live-verified
+    with a two-workspace fixture (same class of test as slice 15's).
+    **Territory:** `apps/api/src/pages/**`. **Size:** S (mostly query
+    composition once 14/15 land).
+17. ⬜ **Frontend — workspace Docs nav + reused tree/editor/backlinks/graph
+    components** — a new **workspace-level** nav destination (persistent
+    left sidebar, alongside Members/Audit log — NOT a project tab, since it
+    is explicitly not project-scoped) opens the org's docs space using the
+    SAME tree-nav/markdown-editor/version-history/backlinks-panel/graph-view
+    components Phase 11 already shipped, parameterized by workspace scope
+    instead of project scope (no new component stack). Any page's editor
+    gains a small scope indicator so a cross-project or workspace-docs link
+    result is legible ("this page lives in Project B" / "this page lives in
+    the workspace docs space") — the existing per-project Pages nav is
+    unchanged; a project's page tree still only shows that project's own
+    pages. **Acceptance criteria:** the workspace Docs nav entry is
+    reachable only by workspace members (hidden/404 otherwise, matching the
+    Members/Audit log pattern); a `[[link]]` rendered inside a page
+    correctly routes to a cross-project or workspace-docs target and opens
+    it; an unresolved cross-workspace-collision link (slice 15) renders
+    identically to a plain unresolved link, with no "restricted" tell.
+    **Territory:** `apps/web/src/components/pages/**`,
+    `apps/web/src/components/layout/**` (sidebar nav entry). **Size:** M.
+18. ⬜ **Search + MCP — workspace-wide search scoping and cross-project/
+    workspace-docs traversal tools** — extends the existing
+    `Page.searchVector` FTS (shipped 2026-07-09) and the
+    `canReadPages`/`includePages` pattern (the exact mechanism the
+    2026-07-10 `/search` leak fix introduced) to workspace-scoped pages: a
+    search result NEVER surfaces a page — project- or workspace-scoped —
+    from a workspace the caller isn't a member of, and a PAT scoped without
+    `pages:read` sees zero page results, project or workspace, matching the
+    just-hardened contract exactly. **MCP:** new `list_workspace_pages`/
+    `get_workspace_page_graph`/`get_workspace_page_backlinks` tools
+    mirroring the existing `list_pages`/`get_page_graph`/`get_page_backlinks`
+    shape (same `pages:read`/`pages:write` PAT scopes, same compact/
+    verbose/pagination envelope), plus a `workspaceId`-aware traversal note
+    in the tool descriptions so an agent understands "walk the backlinks
+    from this page" may now cross project boundaries within one workspace
+    — this is the crown-jewel payoff the founder's framing calls out: an
+    agent asking "what's connected to this handbook page across every
+    project?" in one call, something neither Confluence's per-space wiki
+    nor Obsidian's single-vault graph can answer at all. **Acceptance
+    criteria:** a live-reproduced two-workspace fixture proves a
+    `pages:read`-scoped PAT in workspace A never sees a workspace-B page
+    via search OR any of the three new MCP tools; an `issues:read`-only PAT
+    (no `pages:read`) sees zero pages from either scope, mirroring the
+    just-fixed `/search` regression test shape exactly. **Territory:**
+    `apps/api/src/search/**`, `apps/mcp/src/tools/**`. **Size:** M.
+
+**PAT-scope recommendation (applies to slices 14/16/18, stated once here
+rather than per-slice):** keep `pages:read`/`pages:write` as the single
+scope pair for ALL page operations, project- or workspace-scoped — do NOT
+introduce a separate `workspace-docs:read`/`workspace-docs:write` pair.
+Reasoning: from a PAT-consumer's perspective "pages" is one conceptual
+resource regardless of which container it lives in (the same precedent as
+`projects:read`/`projects:write`, which the Hardening Night PAT rollout
+already "extended in practice" to cover every project-scoped structural
+resource rather than minting a new scope per sub-resource); the REAL
+authorization boundary for a workspace page is `assertWorkspaceRole`,
+exactly as the boundary for a project page is `assertProjectRole` — the
+scope grants "may operate on pages," the membership check decides "on
+WHICH pages," and splitting the scope pair would only add PAT-configuration
+complexity without adding any enforceable distinction a self-hoster would
+actually want (a PAT trusted to write project docs but not the handbook is
+a real-sounding ask, but is better solved later by a page-level ACL, if
+ever needed, than by a scope split now — flagged as a deliberately deferred
+idea, not a decision).
 
 ## Phase 12 — Systems Map: lightweight, agent-native architecture & dependency mapping 🔭 (future pillar — GATED, not current work)
 
@@ -574,6 +782,17 @@ graph/backlinks becoming human-visible in the web app.
 **PAT-scope route-coverage guard + GitLab auto-transition e2e parity — ✅ shipped 2026-07-06 (Ready queue #2/#3, bundled).** Two hardening items closing regression-guard gaps on already-shipped features. (1) A new `pat-scope-coverage.integration.spec.ts` walks every registered controller route at runtime via Nest's `DiscoveryService`/`MetadataScanner` and asserts each either carries `@RequireScope` or is on an explicit, reasoned `EXEMPTIONS` allowlist (categories: auth/oidc/health/public/me/personal-boards-private/webhook-receivers, mirroring the in-code exemption docs from `4aec12a`); the route↔scope matrix itself was extracted from `pat-scope-rollout.integration.spec.ts` into a shared `pat-scope-matrix.fixture.ts` (one exported constant, imported by both specs — no duplication). Writing the guard caught **real, pre-existing drift**: `github.controller.ts`/`gitlab.controller.ts` had been `@RequireScope`-gated since before the Hardening Night rollout but were never added to the matrix (12 rows added), `GET /projects/:id/activity` was scoped but missing from the matrix (1 row added), and `GET /workspaces/:id/logo` (a `@Public()` branding-asset route) had no exemption entry (added) — all three fixed in the same commit. Matrix grew 143→190 rows; full integration suite 307→393 tests, all green. Proved the guard actually guards: temporarily removing `@RequireScope('issues:write')` from `IssuesController#create` made the spec fail naming the exact route (and the now-orphaned matrix row); reverting made it pass again. (2) `gitlab-auto-transition.spec.ts` mirrors `pr-auto-transition.spec.ts`'s GitHub depth for GitLab: enable `gitlab-auto-transition-toggle` targeting Done via the Settings UI, persist across reload, POST a correctly-`X-Gitlab-Token`-tokened `Merge Request Hook` webhook (`state: 'merged'`, GitLab's merge signal — no HMAC, unlike GitHub), assert the shared `issue-pr-badge`/`data-pr-state` board-card badge flips open→merged, the issue's real `statusId` transitions via REST (not just a UI observation), the MR link renders in the issue drawer's `gitlab-links-section`, disabled-by-default regression, and mobile (390px) no-overflow — 6 new e2e cases, desktop + mobile-chrome projects, all green; zero egress, zero app-code changes (the feature already shipped for both providers). MCP: not applicable — this is test-coverage-only work with no new API surface; noted per the DoD convention. See the ticked `docs/BACKLOG.md` entries for full detail.
 
 **SSO/OIDC — Phase 2: SAML + multi-provider + JIT provisioning — ✅ shipped 2026-07-06 (Ready queue #1).** Closes the last "Admin controls" Better-than-Jira lever: SAML 2.0 support (`@node-saml/node-saml`) alongside the shipped generic-OIDC provider, N simultaneously-configured providers (new additive `SsoProvider` table, `/admin/sso-providers` REST + UI — the Phase-1 `OidcConfig` singleton stays entirely unmigrated), and just-in-time workspace/role provisioning on a brand-new SSO identity's first login (conservative default: `VIEWER`, off unless an admin sets a JIT default workspace). SAML assertion validation is strict and documented: signature required (never admin-configurable off), audience always enforced, single-use replay protection (Redis-backed when available, else in-memory) with a 5-minute window, timestamp checks always active. Proven end-to-end against the REAL `@node-saml/node-saml` library with a locally-generated self-signed certificate (zero network, zero real IdP) — accept-valid plus 7 forged/tampered/expired/replayed rejection cases, all live-verified via a real HTTP round-trip (register → promote to instance admin → create workspace → create SAML provider → real AuthnRequest → real signed assertion POST → session issued → JIT membership confirmed in the DB; replay confirmed rejected). 68 new API unit tests (1931→1999, 90→95 suites); full integration suite still green (401 tests, 3 suites, 4 new pat-scope-matrix rows + a new `sso` exemption category). `tsc --noEmit` clean across api/web/shared/mcp; no new env vars (SAML config is fully DB/admin-UI-driven). MCP: deliberately not exposed, same reasoning as Phase 1 — every write carries a secret/certificate, and the runtime login/callback routes have no agent-appropriate shape. See the ticked `docs/BACKLOG.md` entry for full detail.
+
+**Founder directive (2026-07-10): Pages goes org-wide — "Both."** Confirmed
+both cross-project `[[wiki-link]]`s and a workspace-level docs space (see
+the new "Phase 11 continuation" section above, items 13-18). This is
+sequenced as a continuation of Phase 11, not a new phase — it reuses
+Pages' entire existing stack (tenant isolation, RBAC, PAT scopes,
+fractional ranking, full-text search, the graph engine), and lands right
+after Phase 11's v1 slices (all shipped as of this pass) rather than
+waiting behind anything else, since it directly extends the "Knowledge /
+Docs" Better-than-Jira row's *beyond-both-incumbents* target. See
+`docs/BACKLOG.md` § Ready for the six sequenced, authz-explicit build items.
 
 *(Note to backlog-groomer: this is the intended Ready-queue order for the next
 build-loop pass; `docs/BACKLOG.md` itself is unchanged by this vision-steward

@@ -244,10 +244,13 @@ and the two pre-existing decision-gated items renumber from #6/#7 to
    **Size:** S.
 
 **Later (not v1 — filed in § Later (P3) below, referenced here for the
-epic's full shape):** page comments, page templates, workspace-level
-"spaces" (grouping projects' page trees under a workspace), public page
-share links (reuse `ShareToken`, mirroring the dashboard/board share-link
-pattern already shipped).
+epic's full shape):** page comments, page templates, public page share
+links (reuse `ShareToken`, mirroring the dashboard/board share-link pattern
+already shipped). (Workspace-level "spaces" — formerly listed here as a
+single deferred, decision-gated idea — is PROMOTED out of this Later
+bucket: the founder confirmed org-level docs 2026-07-10 ("Both" — see
+§ Ready items 8-13 below and `docs/VISION.md` § pillar 7 / `docs/ROADMAP.md`
+Phase 11's "Org-wide Pages" continuation).)
 
 6. **Product decision + implementation: distinct "switch workspace" vs.
    "view workspace page" affordance** (P2, S, decision-needed) — since the
@@ -274,6 +277,167 @@ pattern already shipped).
    history) exposed both as a web-UI action and an MCP tool. Filed as a
    decision-needed item rather than blocking on speculative scope. [MCP-QA
    pass 1, finding 4; product-auditor cross-project gap]
+
+**Org-wide Pages — cross-project links + a workspace docs space (P1, epic,
+founder-approved 2026-07-10, no longer decision-gated).** Founder directive,
+verbatim: **"Both."** — asked to choose between cross-project
+`[[wiki-link]]`s and a dedicated workspace-level docs space, the founder
+confirmed both. **This supersedes and closes the formerly decision-gated
+"Workspace-level 'spaces'" item** (previously filed in § Later (P3), see the
+removed entry) — the product decision is made; what follows is the
+buildable, dependency-sequenced slice breakdown, each with its authz
+decision made explicit in the acceptance criteria per this epic's own risk
+(Pages' per-project tenant-isolation story was just re-hardened by the
+engineering audit the same day, 2026-07-10, `4d3a43a` — a live `/search`
+PAT-scope page-content leak, closed — moving the ownership boundary up to
+the workspace must not reopen that class of bug). Full framing:
+`docs/VISION.md` § The pillars item 7 (extended 2026-07-10); full slice
+detail: `docs/ROADMAP.md` Phase 11's "Org-wide Pages" continuation (items
+13-18, which these six queue items mirror 1:1). Sequenced strictly by
+dependency: schema → workspace-scoped CRUD → cross-workspace-safe link
+resolution → workspace graph endpoint → frontend nav/reuse → search + MCP
+traversal.
+
+**Key finding underpinning every authz decision below** (verified against
+`apps/api/src/common/membership.util.ts`): a workspace member already has
+at least VIEWER on every project in that workspace by default (no
+per-project override can reduce a member below VIEWER — there is no "no
+access" state). A `[[link]]` between two projects in the SAME workspace
+therefore introduces no new leak surface under today's model. The boundary
+that must never be crossed is cross-**WORKSPACE** — the same class of leak
+the just-fixed `/search` bug was — and every slice below is scoped to
+prevent exactly that, reusing the already-shipped `assertWorkspaceMember`/
+`assertWorkspaceRole` helpers (same file, already used by
+`WorkspacesController`) as the workspace-level chokepoint.
+
+8. **Schema — nullable `Page.projectId` + always-present `Page.workspaceId`**
+   (P1, S, **needs a schema-architect design pass**, not a mechanical
+   migration) — recommended shape: add `Page.workspaceId String`
+   (non-nullable, backfilled for every existing row from
+   `project.workspaceId` in the same migration) and relax `Page.projectId`
+   to nullable; `projectId` set = project-scoped page (unchanged behavior),
+   `projectId` null = workspace-scoped page (org docs space). **Rejected
+   alternative:** a separate `WorkspacePage` table — rejected because it
+   forks `PagesService`/`PageVersion`/`PageLink`/`syncWikiLinks`/the graph
+   endpoint/the tree UI/all 12+ MCP page tools into two parallel
+   implementations; a nullable FK lets every one reuse the same code path
+   with one added branch. **Migration/back-compat implications (flag
+   explicitly, do not treat as transparent):** every existing query
+   assuming `page.projectId` is non-null — `PagesService`'s CRUD/tree/move/
+   version methods, `syncWikiLinks`'s title-candidate query, the graph +
+   backlinks endpoints, `PagesController`'s `assertProjectRole` gate, the
+   Cmd-K/`/search` page results, and all 12 existing MCP page tools — needs
+   an explicit `projectId === null` branch or a workspace-scoped sibling
+   method; this is a second code path everywhere, not a one-line schema
+   change (the real work is item 9). **Acceptance criteria:** additive-only
+   migration, zero `prisma migrate diff` drift for existing data, every
+   pre-existing project-page test passes unmodified. **Territory:**
+   `apps/api/prisma/schema.prisma` + migration. **MCP:** n/a (schema only).
+   [ROADMAP Phase 11 continuation item 13; founder directive 2026-07-10]
+9. **Backend — workspace-scoped page CRUD/tree/move/version history** (P1,
+   M, depends on #8) — mirrors `PagesService`'s existing project-scoped
+   methods, branching on `projectId === null`. **Authz decision (explicit):**
+   gated by `assertWorkspaceMember`/`assertWorkspaceRole` directly against
+   `Page.workspaceId` — VIEWER read / MEMBER+ write, the same role shape
+   project pages use, resolved one level up (no per-project role override
+   applies — there is no owning project). **PAT scopes stay `pages:read`/
+   `pages:write`, unchanged and un-split** — see the scope-wide
+   recommendation in `docs/ROADMAP.md` Phase 11 continuation (the
+   authorization boundary is `assertWorkspaceRole` vs `assertProjectRole`,
+   orthogonal to the scope check). New REST: `GET/POST /workspaces/:id/pages`
+   (list/create at the workspace root); `PATCH/DELETE /pages/:id` branches
+   internally. **Acceptance criteria:** workspace VIEWER reads but can't
+   write; workspace MEMBER creates/edits; a user in a DIFFERENT workspace
+   gets 403/404 (new tenant-isolation-matrix rows, mirroring the pattern
+   that caught the `/search` leak); every existing project-page
+   tenant-isolation row unchanged. **Territory:** `apps/api/src/pages/**`.
+   **MCP:** `list_workspace_pages`/`get_workspace_page`/`create_workspace_page`/
+   `update_workspace_page`/`move_workspace_page`/`delete_workspace_page`
+   mirroring the existing project-page tool set (deferred to item 13 with
+   the graph/backlink tools, so all workspace-page MCP surface ships
+   together). [ROADMAP Phase 11 continuation item 14]
+10. **Backend — cross-workspace-safe `[[wiki-link]]` resolution** (P1, M,
+    depends on #9) — `syncWikiLinks`'s title-candidate query rescoped from
+    `projectId` to `workspaceId`; candidates become "every page (project- or
+    workspace-scoped) in the SAME workspace." **Authz decision — the
+    founder's exact question, "what happens when a viewer can see the
+    source but not the target?":** given every workspace member can already
+    read every page in that workspace, this can't occur WITHIN one
+    workspace. It CAN occur ACROSS workspaces via a `[[Title]]` colliding
+    with a page that exists only in a workspace the viewer isn't a member
+    of. **Decision: treat a foreign-workspace title collision exactly like
+    a non-existent title — render as an unresolved link (Obsidian's
+    existing "not-yet-created page" state), never a distinguishable
+    "restricted" state**, since "restricted" would itself leak the target's
+    existence/title to a non-member — the same suppress-don't-half-reveal
+    principle the `4d3a43a` search-leak fix used. **Acceptance criteria:** a
+    same-workspace cross-project (or project↔workspace-docs) `[[link]]`
+    resolves and creates a `PageLink` edge exactly like same-project links
+    do today; a cross-workspace title collision produces zero `PageLink`
+    row and is indistinguishable from a genuinely nonexistent title — gate
+    is a live-reproduced adversarial test (two workspaces, colliding
+    titles, one viewer in only workspace A), mirroring how the `4d3a43a`
+    fix was verified. **Territory:** `apps/api/src/pages/pages.service.ts`
+    (`syncWikiLinks`). **MCP:** n/a (parsing/resolution only; surfaced via
+    the existing/new page tools). [ROADMAP Phase 11 continuation item 15]
+11. **Backend — workspace-wide graph + backlinks endpoint** (P2, S, depends
+    on #9/#10) — `GET /workspaces/:id/pages/graph` unions every project's
+    page graph plus the workspace docs space, gated by the same
+    `assertWorkspaceRole(VIEWER)` chokepoint as #9, edges only present when
+    BOTH endpoints resolve within that workspace (enforced by construction
+    via #10, not a runtime filter); same `MAX_GRAPH_NODES`/`truncated` cap
+    pattern as the existing per-project endpoint, which stays UNCHANGED
+    (still project-scoped, for anyone wanting the narrower view).
+    **Acceptance criteria:** the workspace-X graph never contains a
+    workspace-Y node/edge, live-verified with a two-workspace fixture.
+    **Territory:** `apps/api/src/pages/**`. **MCP:** `get_workspace_page_graph`/
+    `get_workspace_page_backlinks` (bundled with item 13's MCP batch).
+    [ROADMAP Phase 11 continuation item 16]
+12. **Frontend — workspace Docs nav + reused tree/editor/backlinks/graph
+    components** (P2, M, depends on #9/#11) — a new **workspace-level** nav
+    destination (persistent left sidebar, alongside Members/Audit log — NOT
+    a project tab) opens the org's docs space using the SAME tree-nav/
+    markdown-editor/version-history/backlinks-panel/graph-view components
+    Phase 11 already shipped, parameterized by workspace scope instead of
+    project scope — no new component stack. Any page's editor gains a small
+    scope indicator ("this page lives in Project B" / "in the workspace
+    docs space") for cross-project/workspace-docs link legibility; the
+    existing per-project Pages nav and tree are unchanged. **Acceptance
+    criteria:** the workspace Docs nav entry is reachable only by workspace
+    members (hidden/404 otherwise, matching the Members/Audit log pattern);
+    a `[[link]]` correctly routes to a cross-project or workspace-docs
+    target; an unresolved cross-workspace-collision link (#10) renders
+    identically to a plain unresolved link, no "restricted" tell.
+    **Territory:** `apps/web/src/components/pages/**`,
+    `apps/web/src/components/layout/**` (sidebar nav entry). **MCP:** n/a
+    (frontend only). [ROADMAP Phase 11 continuation item 17]
+13. **Search + MCP — workspace-wide search scoping and cross-project/
+    workspace-docs traversal tools** (P2, M, depends on #9/#10/#11) —
+    extends the shipped `Page.searchVector` FTS and the `canReadPages`/
+    `includePages` pattern (the exact mechanism the 2026-07-10 `/search`
+    leak fix introduced) to workspace-scoped pages: a search result NEVER
+    surfaces a page — project- or workspace-scoped — from a workspace the
+    caller isn't a member of, and a PAT without `pages:read` sees zero page
+    results from either scope, matching the just-hardened contract exactly.
+    **MCP (bundles this item's tools with items 9/11's deferred tools):**
+    `list_workspace_pages`/`get_workspace_page`/`create_workspace_page`/
+    `update_workspace_page`/`move_workspace_page`/`delete_workspace_page`/
+    `get_workspace_page_graph`/`get_workspace_page_backlinks` — mirroring
+    the existing project-page tool shape exactly (same `pages:read`/
+    `pages:write` scopes, same compact/verbose/pagination envelope), plus a
+    `workspaceId`-aware traversal note in tool descriptions so an agent
+    understands "walk the backlinks from this page" may now cross project
+    boundaries within one workspace — the crown-jewel payoff: an agent
+    answering "what's connected to this handbook page across every
+    project?" in one call, something neither Confluence's per-space wiki
+    nor Obsidian's single-vault graph can do at all. **Acceptance
+    criteria:** a live-reproduced two-workspace fixture proves a
+    `pages:read`-scoped PAT in workspace A never sees a workspace-B page
+    via search OR any new MCP tool; an `issues:read`-only PAT (no
+    `pages:read`) sees zero pages from either scope, mirroring the
+    just-fixed `/search` regression test shape exactly. **Territory:**
+    `apps/api/src/search/**`, `apps/mcp/src/tools/**`. [ROADMAP Phase 11
+    continuation item 18]
 
 **Shipped through this queue (kept for reference):**
 
@@ -819,7 +983,15 @@ Confluence×Obsidian directive; the v1 epic itself (schema through search,
 11 items) is at the TOP of § Ready, not here:_
 - [ ] (P3, M) **Page comments** — threaded discussion on a Page, mirroring the existing flat issue-comment model (`CommentsPanel`) rather than inventing a second comment system. [ROADMAP Phase 11 item #12; VISION.md § pillar 7]
 - [ ] (P3, M) **Page templates** — one-click-installable starting structures for common page types (meeting notes, RFC/design doc, runbook), mirroring the existing issue-template mechanism's shape (list + "create from template"). [ROADMAP Phase 11 item #12]
-- [ ] (P3, L) **Workspace-level "spaces"** — a grouping layer above per-project page trees so a workspace-wide page tree (not just per-project) becomes possible; needs its own schema/RBAC design pass (does a space inherit workspace membership or need its own?) before scoping build work — decision-gated, similar in shape to the two existing decision-gated Ready items. [ROADMAP Phase 11 item #12]
+- [x] (P1, L→epic) **"Workspace-level 'spaces'" — PROMOTED 2026-07-10** (was
+  decision-gated here) — founder confirmed "Both" (cross-project
+  `[[wiki-link]]`s AND a workspace-level docs space) on 2026-07-10; no
+  longer decision-gated. Full buildable epic filed in § Ready above as
+  items 8-13 ("Org-wide Pages — cross-project links + a workspace docs
+  space"), with the schema/RBAC design pass this item flagged now scoped
+  out per-slice (see item 8's explicit schema-architect note and item 9's
+  `assertWorkspaceRole`-based authz decision). [ROADMAP Phase 11
+  continuation items 13-18; vision-steward 2026-07-10, founder directive]
 - [ ] (P3, M) **Public page share links** — reuse `ShareToken` (mirrors the board and dashboard public-share-link pattern already shipped), publish a page (or a page + its sub-tree) read-only, no-login, to a bookmarkable URL. [ROADMAP Phase 11 item #12]
 
 _SSO Phase 2 security-review follow-ups (2026-07-06, from the 5e0fe6c review; the must-fix InResponseTo replay bypass + the cheap hardening items were fixed same-day — these are the deferred deeper ones):_

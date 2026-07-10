@@ -210,6 +210,33 @@ prioritized; it is no longer open work.
    Phase 11 for the sequenced v1 slices; the former one-line "Docs / wiki"
    stub under Phase 8 (The Unbundle) is promoted here rather than
    duplicated.
+   **Extended 2026-07-10 (founder directive, verbatim: "Both") — Pages goes
+   org-wide.** Asked whether the knowledge base should support cross-project
+   `[[wiki-link]]`s (a page in project A links to a page in project B;
+   backlinks/graph span projects) or a workspace-level docs space not tied
+   to any single project (company handbook, runbooks, ADRs that aren't
+   project-specific), the founder confirmed **both**. This sharpens, not
+   dilutes, the "open & extensible" and "AI-native/agent-native" advantages
+   the graph already exploits: today's graph is a genuinely strong
+   differentiator *per project*; an **org-wide** knowledge graph — spanning
+   every project's docs plus a dedicated workspace docs space, and
+   agent-traversable across all of it in one call — is a strictly bigger
+   moat neither incumbent can follow into. Confluence's "spaces" concept is
+   the closest incumbent analogue and still has no graph and no agent API;
+   Obsidian's graph is a single local vault with no concept of "project"
+   boundaries at all, so it has nothing to even call "cross-project." Next
+   Lane's version is the only one where the graph is BOTH multi-project-aware
+   AND server-side agent-traversable. **The isolation stakes are real and
+   explicit, not hand-waved:** Pages' entire tenant-isolation story (PAT
+   scopes, per-project RBAC, full-text search scoping) was just re-hardened
+   by the engineering audit the same day (2026-07-10, `4d3a43a` — a live
+   `/search` PAT-scope page-content leak, closed) — moving the ownership
+   boundary up to the workspace must preserve that isolation story, not
+   reopen it; see the fully authz-explicit slice breakdown in
+   `docs/ROADMAP.md` Phase 11's "Org-wide Pages" continuation (items 13-18)
+   and the matching `docs/BACKLOG.md` § Ready entries. This supersedes the
+   formerly decision-gated "workspace-level 'spaces'" backlog item — the
+   founder has now made that call.
 8. **Systems Map — lightweight, agent-native architecture & dependency
    mapping** *(future pillar — explicitly sequenced AFTER Phase 11 Pages
    ships and the v1.0 release criteria are met; not current build work.
