@@ -52,7 +52,6 @@ a hot-reload dev setup are in [Quickstart](#-quickstart) below.
 - [Screenshots](#-screenshots)
 - [How Next Lane compares](#-how-next-lane-compares)
 - [Agent-native: your coding agent can run the tracker](#-agent-native-your-coding-agent-can-run-the-tracker)
-- [Built by AI, dogfooding itself](#-built-by-ai-dogfooding-itself)
 - [What's shipped](#-whats-shipped)
 - [Quick Start](#-quickstart)
 - [Local development](#-local-development-hot-reload-no-docker-for-app-code)
@@ -156,7 +155,7 @@ advantages** a cloud-first, per-seat, closed product can't match (full thesis in
 | 💸 | **Free & unlimited** | No per-seat pricing. Unlimited users, projects, automation runs, and (on the roadmap) AI — because it's your hardware. |
 | 🔒 | **Your data, your compute** | Fully self-hosted. No egress, direct SQL access to your own data, private by default — the one thing regulated teams can't buy from any cloud. |
 | 🧩 | **Open & extensible** | MIT licensed. No marketplace tax, code-level extensibility, and two-way links to self-hosted-friendly forges (GitHub, GitLab, and Gitea), not just the big clouds. |
-| 🤖 | **AI-native & agent-native** | An MCP server ships in the box with persistent per-project agent memory, and the product itself is built and dogfooded by a team of AI agents — see below. |
+| 🤖 | **AI-native & agent-native** | An MCP server ships in the box with persistent per-project agent memory — agents are first-class users of the tracker, not a bolt-on. See below. |
 
 ## 📊 How Next Lane compares
 
@@ -250,14 +249,6 @@ Now your agent can triage the backlog with a single NLQL query, summarize an epi
 with one call, move an issue across a gated workflow, file a bug from a stack
 trace, or pick up exactly where the last session left off — all from the terminal
 it's already in.
-
-## 🤖 Built by AI, dogfooding itself
-
-This isn't a marketing line — check the log. Every one of Next Lane's 300+ commits
-is authored by an autonomous Claude Code agent team (`.claude/agents/`: schema,
-backend, frontend, code-review, QA, and audit specialists) working off the tracker's
-own `docs/ROADMAP.md` and `docs/BACKLOG.md` — the same artifacts the MCP server
-exposes to any agent. The team that builds Next Lane runs Next Lane.
 
 ## ✨ What's shipped
 

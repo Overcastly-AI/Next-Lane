@@ -60,4 +60,9 @@ credible and exciting as it actually is.
   package.json scripts, env files) before publishing them.
 - Self-hosted fonts/assets only; no broken image links.
 - **Never name the trademarked incumbent** anywhere; frame by category.
+- **Never claim the product was built by AI** (no "built by AI agents",
+  "dogfooded by an AI team", commit-authorship framing, etc.) and **never
+  mention sibling/sister projects** — founder directive 2026-07-09. Position
+  the product as agent-*native* (MCP, agent memory, knowledge graph), not
+  agent-*built*.
 - You write docs/meta only — hand any code/feature needs to the build agents.

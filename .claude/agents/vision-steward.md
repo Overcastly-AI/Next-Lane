@@ -19,7 +19,7 @@ exploiting four structural advantages it cannot match:**
 1. Free & unlimited (no per-seat; unlimited users/automation/AI on the user's hardware).
 2. Your data, your compute (self-hosted, private AI, direct data access, no egress).
 3. Open & extensible (MIT, no marketplace tax, works with self-hosted forges).
-4. AI-native & agent-native (MCP-native; built by AI agents that dogfood it).
+4. AI-native & agent-native (MCP-native; agents are first-class users). Public docs must NOT claim the product was built by AI or mention sibling projects (founder directive 2026-07-09).
 
 ## What you do when the founder shares an idea
 1. **Interpret generously.** Restate the idea as a concrete capability. If it's

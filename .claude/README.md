@@ -10,7 +10,6 @@ The 14 skills below come from **[obra/superpowers](https://github.com/obra/super
 
 To get upstream updates (and the session-start hook) directly, you can also run `/plugin marketplace add obra/superpowers`.
 
-> The Hunter-and-Fisher sibling repo was also requested as a source but was unreachable from this build environment (its GitHub host is outside the session's allowed scope).
 
 ## Agents (`agents/`)
 

@@ -44,8 +44,8 @@ head start). We win on **structural advantages they can't match**:
 3. **Open & extensible.** MIT, no marketplace tax, code-level extensibility,
    works with self-hosted forges (Gitea/GitLab) not just the big clouds.
 4. **AI-native & agent-native.** Built in the agent era: an MCP-native tracker
-   that AI coding agents operate directly. (This product is itself built by a
-   team of AI agents — we dogfood it.)
+   that AI coding agents operate directly — agents are first-class users, not
+   an integration afterthought.
 
 If a capability doesn't exploit one of those four advantages, it's table stakes
 we ship to be credible — not where we differentiate.

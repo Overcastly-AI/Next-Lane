@@ -46,8 +46,8 @@ features:
     details: >
       Built for the agent era. MCP-native today — 120 tools let AI coding agents
       read and write issues, workflows, pages, and dashboards directly from the
-      IDE, with persistent per-project agent memory. Dogfooded by a team of AI
-      agents that build this very product.
+      IDE, with persistent per-project agent memory and an agent-traversable
+      knowledge graph.
 ---
 
 > Built by [Overcastly AI](https://overcastly.com) — open-source, MIT licensed, yours to self-host.
