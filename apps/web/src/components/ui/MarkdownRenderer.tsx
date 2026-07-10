@@ -7,6 +7,14 @@
  *    before insertion into the DOM.
  *  - External links get target=_blank + rel=noopener noreferrer.
  *  - No raw HTML passthrough — the DOMPurify allowlist only permits safe elements.
+ *  - Images (`<img>`) are allowed (see `ALLOWED_TAGS` below — a plain
+ *    `![alt](url)` markdown image was previously silently stripped, with no
+ *    error, on every page/issue-description/comment surface that uses this
+ *    renderer), but `src` is restricted post-sanitize to `http(s)://` or
+ *    `data:image/` URIs (an `afterSanitizeAttributes` hook below), and every
+ *    rendered `<img>` gets `referrerpolicy="no-referrer"` so a third-party
+ *    image host never sees the referring page's URL. Requires the deployment
+ *    CSP's `img-src` to permit the scheme in use — see `nginx.conf`.
  *
  * @mention tokens (e.g. `@user@example.com`) are preserved as-is by marked
  * (they appear inline in text nodes, not parsed as special syntax) and survive
@@ -43,6 +51,7 @@ const PURIFY_CONFIG: DOMPurifyConfig = {
     'strong', 'em', 'b', 'i', 'u', 's', 'del', 'ins',
     'ul', 'ol', 'li',
     'a',
+    'img',
     'code', 'pre',
     'blockquote',
     'table', 'thead', 'tbody', 'tr', 'th', 'td',
@@ -50,6 +59,7 @@ const PURIFY_CONFIG: DOMPurifyConfig = {
   ],
   ALLOWED_ATTR: [
     'href', 'title', 'target', 'rel',
+    'src', 'alt', 'width', 'height', 'referrerpolicy',
     'class',
   ],
   // Force any remaining on* attributes or javascript: hrefs to be stripped.
@@ -57,6 +67,26 @@ const PURIFY_CONFIG: DOMPurifyConfig = {
   // Do not allow any DOM clobbering.
   ALLOW_DATA_ATTR: false,
 };
+
+// Images are the one element whose "safe" attribute (`src`) can carry a URI —
+// DOMPurify's own href/src scheme allowlist already blocks javascript:/vbscript:
+// everywhere, and separately already permits `data:` URIs on <img> (it's one
+// of DOMPurify's default DATA_URI_TAGS), but doesn't restrict WHICH data: mime
+// type. Belt-and-suspenders: explicitly re-validate every rendered <img src>
+// against http(s)/data:image after DOMPurify's own pass, and strip anything
+// else (rather than trust the default permissiveness of `data:` URIs, which
+// covers other mime types too). Also strips the referrer for every image so a
+// third-party host embedded in a page never learns the page's URL.
+const SAFE_IMAGE_SRC = /^(https?:\/\/|data:image\/)/i;
+
+DOMPurify.addHook('afterSanitizeAttributes', (node) => {
+  if (node.tagName !== 'IMG') return;
+  const src = node.getAttribute('src');
+  if (!src || !SAFE_IMAGE_SRC.test(src)) {
+    node.removeAttribute('src');
+  }
+  node.setAttribute('referrerpolicy', 'no-referrer');
+});
 
 /**
  * Convert markdown text to sanitized HTML. Returns an empty string for

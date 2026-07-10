@@ -15,6 +15,7 @@ import { CommandPaletteProvider } from '@/components/CommandPaletteProvider';
 import { WorkspaceProvider } from '@/contexts/WorkspaceContext';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import { SidebarProvider } from '@/contexts/SidebarContext';
+import { UnsavedChangesGuardProvider } from '@/lib/unsavedChangesGuard';
 import { AppSidebar } from '@/components/nav/AppSidebar';
 import { MobileSidebarDrawer } from '@/components/nav/MobileSidebarDrawer';
 import { WorkspaceScopedLayout, ProjectScopedLayout } from '@/layouts/ScopedLayouts';
@@ -115,6 +116,7 @@ export default function App() {
           <ThemeProvider>
           <WorkspaceProvider>
           <SidebarProvider>
+          <UnsavedChangesGuardProvider>
           <CommandPaletteProvider>
           <AppShellFrame>
           <Routes>
@@ -245,6 +247,7 @@ export default function App() {
           </Routes>
           </AppShellFrame>
           </CommandPaletteProvider>
+          </UnsavedChangesGuardProvider>
           </SidebarProvider>
           </WorkspaceProvider>
           </ThemeProvider>

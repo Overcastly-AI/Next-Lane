@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/cn';
+import { useUnsavedChangesGuard } from '@/lib/unsavedChangesGuard';
 
 /**
  * Per-project sub-navigation shown under the app header.
@@ -137,9 +138,11 @@ interface MoreMenuProps {
   onClose: () => void;
   /** Ref so the menu container can be measured for positioning */
   menuRef: React.RefObject<HTMLDivElement>;
+  /** See `ProjectNav`'s `guardNavClick` — same unsaved-changes gate, applied per-item. */
+  guardNavClick: (to: string, andThen?: () => void) => (e: React.MouseEvent) => void;
 }
 
-function MoreMenu({ projectId, open, onClose, menuRef }: MoreMenuProps) {
+function MoreMenu({ projectId, open, onClose, menuRef, guardNavClick }: MoreMenuProps) {
   // Close on outside click / focus-out
   const handleBlur = useCallback(
     (e: React.FocusEvent) => {
@@ -172,7 +175,7 @@ function MoreMenu({ projectId, open, onClose, menuRef }: MoreMenuProps) {
           to={`/projects/${projectId}/${tab.to}`}
           data-testid={'testId' in tab ? tab.testId : undefined}
           role="menuitem"
-          onClick={onClose}
+          onClick={guardNavClick(`/projects/${projectId}/${tab.to}`, onClose)}
           className={({ isActive }) =>
             cn(
               'flex w-full items-center px-3 py-1.5 text-sm transition-colors duration-[120ms]',
@@ -210,6 +213,29 @@ export function ProjectNav({ projectId }: { projectId: string }) {
   const buttonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const navigate = useNavigate();
+  const { isBlocking, confirmDiscard } = useUnsavedChangesGuard();
+
+  // Guards every tab click against an in-progress unsaved edit elsewhere in
+  // the project (today: the Pages editor). When nothing is blocking this is
+  // a no-op and the `NavLink`'s own href navigates normally; when blocking,
+  // it intercepts the click, confirms via the same themed dialog every other
+  // destructive/discard flow uses, and only then performs the navigation.
+  const guardNavClick = useCallback(
+    (to: string, andThen?: () => void) => (e: React.MouseEvent) => {
+      if (!isBlocking) {
+        andThen?.();
+        return;
+      }
+      e.preventDefault();
+      void confirmDiscard().then((ok) => {
+        if (!ok) return;
+        navigate(to);
+        andThen?.();
+      });
+    },
+    [isBlocking, confirmDiscard, navigate],
+  );
 
   // Determine whether the current route is one of the collapsed (More) tabs.
   // useLocation is safe and stable; we derive active tab by inspecting pathname.
@@ -276,6 +302,7 @@ export function ProjectNav({ projectId }: { projectId: string }) {
             key={tab.to}
             to={`/projects/${projectId}/${tab.to}`}
             data-testid={'testId' in tab ? tab.testId : undefined}
+            onClick={guardNavClick(`/projects/${projectId}/${tab.to}`)}
             className={({ isActive }) =>
               cn(tabBaseCls, isActive ? activeTabCls : inactiveTabCls)
             }
@@ -328,6 +355,7 @@ export function ProjectNav({ projectId }: { projectId: string }) {
             open={moreOpen}
             onClose={() => setMoreOpen(false)}
             menuRef={menuRef}
+            guardNavClick={guardNavClick}
           />
         </div>
       </div>
@@ -336,6 +364,7 @@ export function ProjectNav({ projectId }: { projectId: string }) {
       <div className="ml-auto shrink-0 pl-2">
         <NavLink
           to={`/projects/${projectId}/settings`}
+          onClick={guardNavClick(`/projects/${projectId}/settings`)}
           className={({ isActive }) =>
             cn(
               'relative -mb-px flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-2.5 py-2 text-sm font-medium',

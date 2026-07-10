@@ -705,6 +705,10 @@ h1, h2, h3, h4, h5, h6,
 .markdown-body table { @apply mb-2 w-full border-collapse text-left text-sm; }
 .markdown-body th { @apply border border-ink-200 bg-ink-50 px-2 py-1 font-semibold; }
 .markdown-body td { @apply border border-ink-200 px-2 py-1; }
+.markdown-body img {
+  @apply mb-2 max-w-full rounded-md border border-ink-200 shadow-xs;
+  height: auto;
+}
 .markdown-body > *:first-child { @apply mt-0; }
 
 /* ── Pages: [[wiki-link]] rendering ───────────────────────────────────────

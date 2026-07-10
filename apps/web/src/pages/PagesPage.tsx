@@ -28,6 +28,7 @@ import { canEdit } from '@/lib/permissions';
 import { flattenPageTree, buildTitleIndex } from '@/lib/wikiLinks';
 import { errorMessage } from '@/lib/errorMessage';
 import { useOverlay } from '@/lib/useOverlay';
+import { useUnsavedChangesGuard } from '@/lib/unsavedChangesGuard';
 import { AppHeader } from '@/components/AppHeader';
 import { ProjectBreadcrumb } from '@/components/project/ProjectBreadcrumb';
 import { ProjectNav } from '@/components/project/ProjectNav';
@@ -37,6 +38,7 @@ import { useToast } from '@/components/ui/Toast';
 import { PageTree } from '@/components/pages/PageTree';
 import { PageEditor } from '@/components/pages/PageEditor';
 import { BacklinksPanel } from '@/components/pages/BacklinksPanel';
+import { PageLinkedIssuesSection } from '@/components/pages/PageLinkedIssuesSection';
 import { VersionHistoryDrawer } from '@/components/pages/VersionHistoryDrawer';
 import { KnowledgeGraphView } from '@/components/pages/KnowledgeGraphView';
 import { CreatePageModal } from '@/components/pages/CreatePageModal';
@@ -70,6 +72,12 @@ export function PagesPage() {
 
   const isGraphMode = pageId === undefined && location.pathname.endsWith('/pages/graph');
 
+  // The page editor registers itself here whenever it has unsaved edits
+  // (see `PageEditor.tsx`); every navigation this component itself drives —
+  // switching tree pages, toggling Document/Graph — goes through
+  // `confirmDiscard()` first so an in-progress edit is never silently lost.
+  const { confirmDiscard } = useUnsavedChangesGuard();
+
   const projectQuery = useProject(projectId);
   const myRole = useMyRole(projectQuery.data?.workspaceId);
   const editable = canEdit(myRole);
@@ -102,7 +110,9 @@ export function PagesPage() {
   const [editingPage, setEditingPage] = useState(false);
   const [createModal, setCreateModal] = useState<{ parentId: string | null; parentTitle?: string; initialTitle?: string } | null>(null);
 
-  function openPage(id: string) {
+  async function openPage(id: string) {
+    const ok = await confirmDiscard();
+    if (!ok) return;
     setMobileTreeOpen(false);
     navigate(`/projects/${projectId}/pages/${id}`);
   }
@@ -229,7 +239,11 @@ export function PagesPage() {
               <div className="flex items-center gap-1 rounded-md border border-ink-200 bg-ink-50 p-0.5 text-xs font-medium">
                 <button
                   type="button"
-                  onClick={() => navigate(`/projects/${projectId}/pages${pageId ? `/${pageId}` : ''}`)}
+                  onClick={async () => {
+                    const ok = await confirmDiscard();
+                    if (!ok) return;
+                    navigate(`/projects/${projectId}/pages${pageId ? `/${pageId}` : ''}`);
+                  }}
                   data-testid="pages-view-document"
                   aria-pressed={!isGraphMode}
                   className={cn(
@@ -241,7 +255,11 @@ export function PagesPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => navigate(`/projects/${projectId}/pages/graph`)}
+                  onClick={async () => {
+                    const ok = await confirmDiscard();
+                    if (!ok) return;
+                    navigate(`/projects/${projectId}/pages/graph`);
+                  }}
                   data-testid="pages-view-graph"
                   aria-pressed={isGraphMode}
                   className={cn(
@@ -320,7 +338,12 @@ export function PagesPage() {
                       onCreatePage={handleCreateFromWikiLink}
                       onEditingChange={setEditingPage}
                     />
-                    {!editingPage && <BacklinksPanel pageId={page.id} onOpenPage={openPage} />}
+                    {!editingPage && (
+                      <>
+                        <BacklinksPanel pageId={page.id} onOpenPage={openPage} />
+                        <PageLinkedIssuesSection pageId={page.id} projectId={projectId} />
+                      </>
+                    )}
                   </div>
                 );
               })()

@@ -102,6 +102,8 @@ export const qk = {
   pageBacklinks: (pageId: string) => ['pageBacklinks', pageId] as const,
   /** Knowledge-base pages that reference a given issue (issue drawer's "Linked pages"). */
   issuePages: (issueId: string) => ['issuePages', issueId] as const,
+  /** Issues a given page's body references (the page reading view's "Linked issues" panel). */
+  pageIssues: (pageId: string) => ['pageIssues', pageId] as const,
 };
 
 /**
@@ -122,8 +124,16 @@ export function invalidatePagesFamily(
   if (pageId) {
     void qc.invalidateQueries({ queryKey: qk.page(pageId) });
     void qc.invalidateQueries({ queryKey: qk.pageVersions(pageId) });
+    // The saved page's own body may have gained/lost issue-key mentions —
+    // refresh its "Linked issues" panel too.
+    void qc.invalidateQueries({ queryKey: qk.pageIssues(pageId) });
   }
   void qc.invalidateQueries({ queryKey: ['pageBacklinks'] });
+  // An issue mention anywhere in this project's pages can appear/disappear on
+  // any save; broad-invalidate the whole family the same pragmatic way
+  // `pageBacklinks` already does above (we don't know which OTHER pages'
+  // "Linked issues" panels might be affected by cross-references).
+  void qc.invalidateQueries({ queryKey: ['pageIssues'] });
 }
 
 /**

@@ -18,6 +18,7 @@ import { Input } from '@/components/ui/Input';
 import { useToast } from '@/components/ui/Toast';
 import { errorMessage } from '@/lib/errorMessage';
 import { countUnresolvedWikiLinks, type FlatPageOption } from '@/lib/wikiLinks';
+import { useUnsavedChangesGuard } from '@/lib/unsavedChangesGuard';
 import { PageContent } from './PageContent';
 import { WikiLinkTextarea } from './WikiLinkTextarea';
 
@@ -83,6 +84,23 @@ export function PageEditor({
   const dirty = editing && (title !== page.title || content !== page.content);
   const unresolvedCount = editing ? countUnresolvedWikiLinks(content, titleIndex) : 0;
 
+  // App-wide unsaved-changes protection (see `unsavedChangesGuard.tsx`): a
+  // `beforeunload` warning on reload/tab-close, plus a themed confirm before
+  // any in-app navigation the app itself drives (page-tree clicks, the
+  // Document/Graph toggle, ProjectNav tabs — see those call sites for the
+  // `confirmDiscard()` gate). Registered/unregistered purely off `dirty` so
+  // it's automatically cleared by a successful save (which flips `editing`
+  // to false, making `dirty` false) and never fires when there's nothing to
+  // lose.
+  const { setBlocking, confirmDiscard } = useUnsavedChangesGuard();
+  useEffect(() => {
+    setBlocking(dirty);
+  }, [dirty, setBlocking]);
+  // Defensive: clear the guard if this editor instance unmounts entirely
+  // (e.g. the whole Pages route unmounts) so a stale guard can never outlive
+  // the component that owns it.
+  useEffect(() => () => setBlocking(false), [setBlocking]);
+
   // Synchronous in-flight guard: the `saving` prop reflects the mutation's
   // async state, which hasn't flipped yet when a fast double-click fires two
   // clicks in the same tick — both would PATCH and create a duplicate version.
@@ -107,7 +125,13 @@ export function PageEditor({
     }
   }
 
-  function handleCancel() {
+  async function handleCancel() {
+    // Cancel is itself a "leave the editor" action — confirm if it would
+    // discard real edits, same as clicking away.
+    if (dirty) {
+      const ok = await confirmDiscard();
+      if (!ok) return;
+    }
     setTitle(page.title);
     setContent(page.content);
     setEditing(false);

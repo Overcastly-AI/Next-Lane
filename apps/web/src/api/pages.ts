@@ -5,6 +5,7 @@ import type {
   PageBacklinkDto,
   PageDto,
   PageGraphDto,
+  PageLinkedIssuesDto,
   PageTreeNode,
   PageVersionDto,
   PaginatedPageVersionsDto,
@@ -45,6 +46,19 @@ export function useIssuePages(issueId: string | undefined) {
     queryKey: qk.issuePages(issueId ?? ''),
     enabled: !!issueId,
     queryFn: () => request<IssueLinkedPagesDto>(`/issues/${issueId}/pages`),
+  });
+}
+
+/**
+ * Issues a given page's body references — the page reading view's "Linked
+ * issues" panel (the reverse of `useIssuePages`, populated server-side on
+ * every page save, same as backlinks).
+ */
+export function usePageIssues(pageId: string | undefined) {
+  return useQuery({
+    queryKey: qk.pageIssues(pageId ?? ''),
+    enabled: !!pageId,
+    queryFn: () => request<PageLinkedIssuesDto>(`/pages/${pageId}/issues`),
   });
 }
 

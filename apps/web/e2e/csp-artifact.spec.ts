@@ -32,7 +32,7 @@ const DIST_DIR = path.resolve(__dirname, '..', 'dist');
 // 'self'). script-src is the directive under test — deliberately strict,
 // with no 'unsafe-inline'/nonce/hash, matching production.
 const CSP =
-  "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'self'; base-uri 'self'; form-action 'self'; object-src 'none'";
+  "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'self'; base-uri 'self'; form-action 'self'; object-src 'none'";
 
 const MIME_TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
