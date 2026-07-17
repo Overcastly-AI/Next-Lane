@@ -19,7 +19,18 @@
  *    (keyboard/screen-reader reachable — wheel/pinch alone wouldn't be).
  *  - Hover/focus a node: dims everything except that node and its direct
  *    neighbors, so a dense graph's local structure is readable at a glance.
- *  - Click/Enter a node: opens that page.
+ *  - Click/Enter a node: opens that page — in the WORKSPACE-wide graph
+ *    (org-level-docs epic, BACKLOG #12b), a node can belong to any project
+ *    in the workspace or the workspace-docs space, so it must route to
+ *    that node's OWN scope, not stay under the current workspace-docs
+ *    route. The graph payload's nodes don't carry scope fields
+ *    (`PageGraphNode` is just `{id, title}`, unlike
+ *    `PageBacklinkDto`/`PageResolvedLinkDto`), so a click in workspace mode
+ *    resolves the target's scope on demand via `fetchPageScope` before
+ *    navigating (cache-backed, so effectively free once a page has been
+ *    viewed once this session). Project-scope clicks skip that round trip
+ *    entirely — the per-project graph's nodes are guaranteed to all belong
+ *    to that same project (`buildGraph`, server-side).
  *
  * The SVG's `viewBox` is sized to the container's ACTUAL measured pixel
  * dimensions (not a fixed large "world" that gets shrunk to fit) — so node
@@ -34,11 +45,15 @@
  * published, so the user sees no incremental motion.
  */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { createForceSimulation, type Point } from '@/lib/forceLayout';
 import { usePrefersReducedMotion } from '@/lib/usePrefersReducedMotion';
 import { EmptyState, ErrorState, LoadingState } from '@/components/ui/States';
-import { usePageGraph, useWorkspacePageGraph } from '@/api/pages';
+import { useToast } from '@/components/ui/Toast';
+import { usePageGraph, useWorkspacePageGraph, fetchPageScope } from '@/api/pages';
 import type { PagesScope } from '@/api/keys';
+import type { PageScopeRef } from '@/lib/pageRoute';
+import { errorMessage } from '@/lib/errorMessage';
 import { cn } from '@/lib/cn';
 
 const MIN_SCALE = 0.35;
@@ -63,7 +78,7 @@ const DOT_MAX = 26;
 
 export interface KnowledgeGraphViewProps {
   scope: PagesScope;
-  onOpenPage: (pageId: string) => void;
+  onOpenPage: (ref: PageScopeRef) => void;
 }
 
 /**
@@ -111,6 +126,30 @@ export function KnowledgeGraphView({ scope, onOpenPage }: KnowledgeGraphViewProp
   const [containerRef, { width, height }] = useContainerSize<HTMLDivElement>();
   const svgRef = useRef<SVGSVGElement>(null);
   const reducedMotion = usePrefersReducedMotion();
+  const qc = useQueryClient();
+  const toast = useToast();
+
+  /**
+   * Route a clicked node to its OWN scope — see the header doc comment.
+   * Project scope: every node is guaranteed to be this same project, so no
+   * round trip is needed. Workspace scope: resolve the node's real scope on
+   * demand (cache-backed) before navigating.
+   */
+  const openNode = useCallback(
+    async (nodeId: string) => {
+      if (scope.kind === 'project') {
+        onOpenPage({ id: nodeId, projectId: scope.id, workspaceId: '' });
+        return;
+      }
+      try {
+        const page = await fetchPageScope(qc, nodeId);
+        onOpenPage({ id: nodeId, projectId: page.projectId, workspaceId: page.workspaceId });
+      } catch (err) {
+        toast.error(errorMessage(err, 'Could not open that page.'));
+      }
+    },
+    [scope, onOpenPage, qc, toast],
+  );
 
   const nodes = useMemo(() => graphQuery.data?.nodes ?? [], [graphQuery.data]);
   const edges = useMemo(() => graphQuery.data?.edges ?? [], [graphQuery.data]);
@@ -381,7 +420,7 @@ export function KnowledgeGraphView({ scope, onOpenPage }: KnowledgeGraphViewProp
                       type="button"
                       data-testid={`page-graph-node-${n.id}`}
                       aria-label={`Open page ${n.title}`}
-                      onClick={() => onOpenPage(n.id)}
+                      onClick={() => openNode(n.id)}
                       onMouseEnter={() => setHoveredId(n.id)}
                       onMouseLeave={() => setHoveredId((h2) => (h2 === n.id ? null : h2))}
                       onFocus={() => setHoveredId(n.id)}

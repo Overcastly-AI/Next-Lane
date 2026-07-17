@@ -1,4 +1,4 @@
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import type {
   CreatePageDto,
   IssueLinkedPagesDto,
@@ -6,6 +6,7 @@ import type {
   PageDto,
   PageGraphDto,
   PageLinkedIssuesDto,
+  PageOutgoingLinksDto,
   PageTreeNode,
   PageVersionDto,
   PaginatedPageVersionsDto,
@@ -128,6 +129,40 @@ export function usePageBacklinks(pageId: string | undefined) {
     queryKey: qk.pageBacklinks(pageId ?? ''),
     enabled: !!pageId,
     queryFn: () => request<PageBacklinkDto[]>(`/pages/${pageId}/backlinks`),
+  });
+}
+
+/**
+ * This page's own outgoing `[[wiki-link]]` edges, resolved authoritatively
+ * server-side (org-level-docs epic, BACKLOG #12b) — the "Links out" panel,
+ * outgoing companion to `usePageBacklinks`. `resolved[]` entries now carry
+ * the target's own scope (`targetProjectId`/`targetProjectKey`/
+ * `targetWorkspaceId`) since a link can resolve to a page in a different
+ * project, or the workspace-docs space — see `lib/pageRoute.ts`.
+ */
+export function usePageOutgoingLinks(pageId: string | undefined) {
+  return useQuery({
+    queryKey: qk.pageOutgoingLinks(pageId ?? ''),
+    enabled: !!pageId,
+    queryFn: () => request<PageOutgoingLinksDto>(`/pages/${pageId}/links`),
+  });
+}
+
+/**
+ * Fetch a page's own scope (`projectId`/`workspaceId`) by id, imperatively —
+ * NOT a `use*` hook. Used when a caller only has a bare page id and needs to
+ * resolve where that page actually lives before routing to it: the
+ * workspace-wide knowledge graph's nodes (`PageGraphNode`) don't carry scope
+ * fields, unlike `PageBacklinkDto`/`PageResolvedLinkDto`, so a node click in
+ * `KnowledgeGraphView`'s workspace mode resolves scope on demand via this.
+ * Goes through the query client's cache (same key `usePage` reads/writes)
+ * so it's a no-op network call when the page is already cached, and it warms
+ * that cache for the page view that opens immediately after.
+ */
+export function fetchPageScope(qc: QueryClient, pageId: string): Promise<PageDto> {
+  return qc.fetchQuery({
+    queryKey: qk.page(pageId),
+    queryFn: () => request<PageDto>(`/pages/${pageId}`),
   });
 }
 

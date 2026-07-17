@@ -10,6 +10,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import type { SearchIssueDto, SearchPageDto, SearchProjectDto } from '@next-lane/shared';
 import { useSearch } from '@/api/search';
 import { useDebouncedValue } from '@/lib/useDebouncedValue';
+import { pageRefPath } from '@/lib/pageRoute';
 import { Spinner } from '@/components/ui/States';
 import { cn } from '@/lib/cn';
 
@@ -178,12 +179,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
         text: `${scopeLabel} ${page.title}`,
         hint: page.archived ? 'Archived' : undefined,
         icon: <GlyphPage />,
-        onSelect: () =>
-          go(
-            isWorkspacePage
-              ? `/workspaces/${page.workspaceId}/docs/${page.id}`
-              : `/projects/${page.projectId}/pages/${page.id}`,
-          ),
+        onSelect: () => go(pageRefPath(page)),
       };
     });
   }, [results]);

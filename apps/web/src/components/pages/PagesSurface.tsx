@@ -38,12 +38,14 @@ import { flattenPageTree, buildTitleIndex } from '@/lib/wikiLinks';
 import { errorMessage } from '@/lib/errorMessage';
 import { useOverlay } from '@/lib/useOverlay';
 import { useUnsavedChangesGuard } from '@/lib/unsavedChangesGuard';
+import { pageRefPath, type PageScopeRef } from '@/lib/pageRoute';
 import { Button } from '@/components/ui/Button';
 import { EmptyState, ErrorState, LoadingState } from '@/components/ui/States';
 import { useToast } from '@/components/ui/Toast';
 import { PageTree } from './PageTree';
 import { PageEditor } from './PageEditor';
 import { BacklinksPanel } from './BacklinksPanel';
+import { OutgoingLinksPanel } from './OutgoingLinksPanel';
 import { PageLinkedIssuesSection } from './PageLinkedIssuesSection';
 import { VersionHistoryDrawer } from './VersionHistoryDrawer';
 import { KnowledgeGraphView } from './KnowledgeGraphView';
@@ -146,6 +148,22 @@ export function PagesSurface({
     if (!ok) return;
     setMobileTreeOpen(false);
     navigate(`${basePath}/${id}`);
+  }
+
+  /**
+   * Open a page reference by its OWN scope (org-level-docs epic, BACKLOG
+   * #12b) — used wherever the target might live in a DIFFERENT project (or
+   * the workspace-docs space) than `scope`: backlinks, outgoing links, and
+   * workspace-graph nodes. `openPage` above stays basePath-relative for
+   * same-scope-guaranteed call sites (the tree, the create-from-wiki-link
+   * flow, per-project graph nodes) — `pageRefPath` computes the identical
+   * route for those anyway, so nothing regresses by having both.
+   */
+  async function openPageRef(ref: PageScopeRef) {
+    const ok = await confirmDiscard();
+    if (!ok) return;
+    setMobileTreeOpen(false);
+    navigate(pageRefPath(ref));
   }
 
   function handleCreate(title: string) {
@@ -319,7 +337,7 @@ export function PagesSurface({
         <div className="min-h-0 flex-1 overflow-y-auto">
           {isGraphMode ? (
             <div className="p-3 sm:p-5">
-              <KnowledgeGraphView scope={scope} onOpenPage={openPage} />
+              <KnowledgeGraphView scope={scope} onOpenPage={openPageRef} />
             </div>
           ) : !pageId ? (
             treeQuery.isLoading ? (
@@ -368,7 +386,8 @@ export function PagesSurface({
                   />
                   {!editingPage && (
                     <>
-                      <BacklinksPanel pageId={page.id} onOpenPage={openPage} />
+                      <BacklinksPanel pageId={page.id} scope={scope} onOpenPage={openPageRef} />
+                      <OutgoingLinksPanel pageId={page.id} scope={scope} onOpenPage={openPageRef} />
                       {showLinkedIssues && scope.kind === 'project' && (
                         <PageLinkedIssuesSection pageId={page.id} projectId={scope.id} />
                       )}

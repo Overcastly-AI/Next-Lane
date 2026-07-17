@@ -114,6 +114,12 @@ export const qk = {
   issuePages: (issueId: string) => ['issuePages', issueId] as const,
   /** Issues a given page's body references (the page reading view's "Linked issues" panel). */
   pageIssues: (pageId: string) => ['pageIssues', pageId] as const,
+  /**
+   * This page's own outgoing `[[wiki-link]]` edges, resolved authoritatively
+   * server-side (org-level-docs epic, BACKLOG #12b "Links out" panel) — the
+   * outgoing companion to `pageBacklinks`.
+   */
+  pageOutgoingLinks: (pageId: string) => ['pageOutgoingLinks', pageId] as const,
 };
 
 /**
@@ -160,6 +166,8 @@ export function invalidatePagesFamily(
     // The saved page's own body may have gained/lost issue-key mentions —
     // refresh its "Linked issues" panel too.
     void qc.invalidateQueries({ queryKey: qk.pageIssues(pageId) });
+    // ...and its own "Links out" panel — see `pageOutgoingLinks` above.
+    void qc.invalidateQueries({ queryKey: qk.pageOutgoingLinks(pageId) });
   }
   void qc.invalidateQueries({ queryKey: ['pageBacklinks'] });
   // An issue mention anywhere in this scope's pages can appear/disappear on
@@ -167,6 +175,11 @@ export function invalidatePagesFamily(
   // `pageBacklinks` already does above (we don't know which OTHER pages'
   // "Linked issues" panels might be affected by cross-references).
   void qc.invalidateQueries({ queryKey: ['pageIssues'] });
+  // Renaming THIS page can resolve/unresolve `[[title]]` references in OTHER
+  // pages' bodies (workspace-wide resolution, `c1b51b8`), changing THEIR
+  // outgoing-links list even though their content didn't change — same
+  // broad-invalidate tradeoff as `pageBacklinks`/`pageIssues` above.
+  void qc.invalidateQueries({ queryKey: ['pageOutgoingLinks'] });
 }
 
 /**

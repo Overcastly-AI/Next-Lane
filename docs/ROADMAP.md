@@ -269,7 +269,7 @@ live.
 - ✅ **Personal & team analytics backend** — `AnalyticsModule` (`apps/api/src/analytics/`): `GET /me/analytics?days=N` → `PersonalAnalyticsDto` (open/completed/overdue assigned issues, per-day throughput flow series, avg cycle time, byType/byPriority CategoryCountDto groups, personal board stats); `GET /projects/:projectId/analytics?days=N` → `ProjectAnalyticsDto` (per-day flow series, createdTotal/completedTotal, avg cycle time, all-5-bucket CycleTimeBucketDto distribution with en-dash labels, WorkloadRowDto by assignee busiest-first + Unassigned row); both endpoints use ActivityLog completion-date reconstruction identical to reports.service; `days` defaults to 30, clamped to [1, 366]; 25 unit tests (analytics.service.spec.ts); build + typecheck clean; registered in AppModule. (2026-06-28)
 - ✅ **Personal & team analytics frontend** (2026-06-28) — `PersonalAnalyticsPage` at `/me/analytics` (14/30/90-day window selector, headline stat cards, hand-rolled SVG throughput chart, type/priority horizontal bar breakdowns, personal board mini-stats); `ProjectAnalyticsPage` at `/projects/:projectId/analytics` (window selector, headline stats, flow chart, cycle-time distribution, workload bars by assignee); "Analytics" tab in `ProjectNav`; "Insights" link in `AppHeader`; WCAG-AA, accessible charts with visually-hidden summaries; full data-testid coverage; Playwright e2e (desktop + mobile); build green.
 
-## Phase 11 — Pages: a Confluence × Obsidian hybrid, agent-traversable 🚧 (schema + backend module + MCP tools shipped 2026-07-09; org-wide docs schema + workspace-scoped backend + workspace Docs frontend surface shipped 2026-07-10; cross-workspace-safe wiki-link resolution + workspace-wide graph shipped 2026-07-17 — founder directive 2026-07-06, scope sharpened 2026-07-09, org-wide 2026-07-10)
+## Phase 11 — Pages: a Confluence × Obsidian hybrid, agent-traversable 🚧 (schema + backend module + MCP tools shipped 2026-07-09; org-wide docs schema + workspace-scoped backend + workspace Docs frontend surface shipped 2026-07-10; cross-workspace-safe wiki-link resolution + workspace-wide graph shipped 2026-07-17; cross-project scope-indicator/link-routing frontend shipped 2026-07-17 — founder directive 2026-07-06, scope sharpened 2026-07-09, org-wide 2026-07-10; only item 18 — search scoping + MCP traversal tools — remains ⬜)
 
 **Founder directive, verbatim (2026-07-06): "How can we add a confluence type
 section?"** **Sharpened same-week (2026-07-09): "Could it be hybrid of
@@ -614,7 +614,17 @@ chokepoint, mirroring `assertProjectRole`'s role as the project-level one.
     cross-project scope fields) — the frontend cross-project "scope
     indicator" / cross-project link routing this item originally described
     is now unblocked but NOT yet implemented; see `docs/BACKLOG.md` for the
-    follow-up frontend item. A live
+    follow-up frontend item. **Update 2026-07-17 (later same day, BACKLOG
+    #12b):** the cross-project-routing follow-on has now shipped too — the
+    backlinks panel, a new "Links out" panel (`GET /pages/:id/links` finally
+    has a frontend consumer), and the workspace graph's node click all route
+    a cross-project/workspace-docs reference to its OWN scope
+    (`/projects/:id/pages/:pageId` vs `/workspaces/:id/docs/:pageId`, via one
+    centralized `pageRefPath` helper the `CommandPalette` was also
+    refactored onto) and render a quiet project-key/"Workspace" badge only
+    when the target's scope differs from the page being viewed. This closes
+    the org-wide Pages epic's frontend surface; see the ticked
+    `docs/BACKLOG.md` entry for full detail. A live
     `command-palette`/search fix rode along: a workspace-scoped page search
     result now opens `/workspaces/:id/docs/:pageId` instead of the
     previously-broken `/projects/null/pages/:id`. **Verified:** new
@@ -974,6 +984,33 @@ fields; a client-side "cross-project badge" affordance is a follow-up, see
 `docs/BACKLOG.md`). Frontend cross-project scope-indicator/link-routing
 (item 17's original acceptance criteria) is now unblocked by a real backend
 contract but not yet built — filed to `docs/BACKLOG.md` § Ready.
+
+**Build update (2026-07-17, same day): item 17's cross-project-routing
+follow-on shipped (BACKLOG #12b) — the org-wide Pages epic's frontend
+surface is now complete.** A new centralized helper (`apps/web/src/lib/
+pageRoute.ts`: `pageRefPath`/`isDifferentPageScope`/`pageScopeBadgeLabel`)
+routes any page reference to its OWN scope regardless of what's currently
+being viewed — `BacklinksPanel` and a brand-new `OutgoingLinksPanel`
+("Links out", the previously-unbuilt frontend consumer of `GET /pages/:id/
+links`) both use it, as does `KnowledgeGraphView`'s workspace-mode node
+click (resolving a node's scope on demand via a new `fetchPageScope` since
+`PageGraphNode` carries no scope fields itself) and the `CommandPalette`'s
+page-result routing (refactored onto the same helper, replacing its
+inline ternary). A quiet `PageScopeBadge` (project key, or "Workspace")
+renders on a backlink/outgoing-link row only when that target's scope
+differs from the page being viewed — verified absent on same-scope rows by
+a dedicated negative-case e2e test. New `pages-cross-project-links.spec.ts`
+(2 tests × desktop+mobile = 4/4): two projects in one workspace, a
+cross-project `[[wiki-link]]`, asserting the outgoing-link/backlink/graph-
+node routing + badge in both directions, plus the same-project no-badge
+control. Full Pages regression suite (`pages.spec.ts`,
+`pages-p1-fixes.spec.ts`, `workspace-docs.spec.ts`,
+`issue-linked-pages.spec.ts`, `pages-adversarial.spec.ts`,
+`pages-qa-extra.spec.ts`, `pages-search.spec.ts`) re-verified green desktop
++mobile, zero regressions; `tsc --noEmit` + `pnpm build` clean. See the
+ticked `docs/BACKLOG.md` § Already Done entry for full detail. **Territory:**
+`apps/web/src` only. Item 18 (search scoping + MCP traversal tools) is now
+the epic's last remaining piece.
 
 *(Note to backlog-groomer: this is the intended Ready-queue order for the next
 build-loop pass; `docs/BACKLOG.md` itself is unchanged by this vision-steward
