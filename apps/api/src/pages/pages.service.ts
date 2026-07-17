@@ -736,9 +736,26 @@ export class PagesService {
     if (!page) throw new NotFoundException('Page not found');
     await this.assertPageRole(userId, this.scopeOf(page), Role.VIEWER);
 
+    // Since Slice 15, a source page can legitimately live in a DIFFERENT
+    // project than `id` (or in the workspace-docs space) — pull enough of
+    // its scope (projectId/project.key/workspaceId) for the client to route
+    // to it and label it with a cross-project badge (see `PageBacklinkDto`'s
+    // doc). This never leaks a foreign WORKSPACE's page: every row here is
+    // already guaranteed same-workspace-as-`id` by construction (Slice 15
+    // never creates a cross-workspace `PageLink`).
     const rows = await this.prisma.pageLink.findMany({
       where: { targetPageId: id },
-      include: { sourcePage: { select: { id: true, title: true } } },
+      include: {
+        sourcePage: {
+          select: {
+            id: true,
+            title: true,
+            projectId: true,
+            workspaceId: true,
+            project: { select: { key: true } },
+          },
+        },
+      },
       orderBy: { createdAt: 'desc' },
     });
 
@@ -746,6 +763,9 @@ export class PagesService {
       id: row.id,
       sourcePageId: row.sourcePageId,
       sourcePageTitle: row.sourcePage.title,
+      sourceProjectId: row.sourcePage.projectId,
+      sourceProjectKey: row.sourcePage.project?.key ?? null,
+      sourceWorkspaceId: row.sourcePage.workspaceId,
       createdAt: row.createdAt.toISOString(),
     }));
   }
@@ -767,9 +787,23 @@ export class PagesService {
     if (!page) throw new NotFoundException('Page not found');
     await this.assertPageRole(userId, this.scopeOf(page), Role.VIEWER);
 
+    // Since Slice 15, a target page can legitimately live in a DIFFERENT
+    // project than `id` (or in the workspace-docs space) — see `backlinks()`
+    // above for why the extra scope fields are pulled and why this never
+    // leaks a foreign workspace's page.
     const rows = await this.prisma.pageLink.findMany({
       where: { sourcePageId: id },
-      include: { targetPage: { select: { id: true, title: true } } },
+      include: {
+        targetPage: {
+          select: {
+            id: true,
+            title: true,
+            projectId: true,
+            workspaceId: true,
+            project: { select: { key: true } },
+          },
+        },
+      },
       orderBy: { createdAt: 'asc' },
       take: MAX_OUTGOING_LINKS + 1,
     });
@@ -777,6 +811,9 @@ export class PagesService {
     const resolved = (truncated ? rows.slice(0, MAX_OUTGOING_LINKS) : rows).map((row) => ({
       targetPageId: row.targetPage.id,
       targetPageTitle: row.targetPage.title,
+      targetProjectId: row.targetPage.projectId,
+      targetProjectKey: row.targetPage.project?.key ?? null,
+      targetWorkspaceId: row.targetPage.workspaceId,
     }));
 
     // Unresolved = parsed [[titles]] (self excluded) whose lowercase doesn't
@@ -882,10 +919,27 @@ export class PagesService {
     return this.buildGraph({ projectId });
   }
 
-  /** Workspace-level docs graph: workspace-level pages only (`projectId: null`). */
+  /**
+   * Workspace-wide docs graph (org-level-docs epic, Slice 16) — the UNION of
+   * every project's page graph in this workspace PLUS the workspace-docs
+   * space: nodes are every `Page` whose `workspaceId` matches (project pages
+   * across ALL of the workspace's projects, and workspace-level pages),
+   * edges are the `PageLink` rows between them. An edge to/from a
+   * foreign-workspace page cannot exist by construction (`syncWikiLinks`,
+   * Slice 15, only ever resolves within `workspaceId`) — `buildGraph` still
+   * scopes the edge query to the retained node-id set below, same as the
+   * per-project graph, so this holds even under the node-count cap (never a
+   * dangling edge to a node that got truncated out).
+   *
+   * The per-project `graph()` method above is UNCHANGED — still narrowed to
+   * one project's own pages, for anyone who wants that tighter view; its
+   * edge query is scoped to that project's node-id list, so a cross-project
+   * edge Slice 15 can now create is naturally excluded from it (the target
+   * id is never in that project's node list).
+   */
   async workspaceGraph(userId: string, workspaceId: string): Promise<PageGraphDto> {
     await assertWorkspaceRole(this.prisma, userId, workspaceId, Role.VIEWER);
-    return this.buildGraph({ workspaceId, projectId: null });
+    return this.buildGraph({ workspaceId });
   }
 
   private async buildGraph(where: Prisma.PageWhereInput): Promise<PageGraphDto> {
@@ -933,19 +987,44 @@ export class PagesService {
 
   /**
    * Parse `content` for `[[wiki-link]]` references (via the shared
-   * `parseWikiLinks`), resolve each title to a page in the SAME scope
+   * `parseWikiLinks`), resolve each title to a page in the SAME WORKSPACE
    * (case-insensitive exact match, self excluded), and reconcile this page's
    * outgoing `PageLink` rows to match — add missing edges, remove stale
    * ones. An unresolved `[[link]]` (no matching title) is simply skipped;
    * see `parseWikiLinks`'s module doc for why that's not an error.
    *
-   * Scope-of-resolution: a PROJECT page resolves `[[titles]]` among that
-   * project's OTHER project pages only — unchanged from before this scope
-   * split, and deliberately NOT broadened to cross-project resolution here
-   * (a later slice's job, per the org-level-docs epic plan). A WORKSPACE page
-   * resolves `[[titles]]` among that workspace's OTHER workspace-level pages
-   * only (`workspaceId` match, `projectId: null`) — it can never link to (or
-   * be linked from) a project page in this slice.
+   * Scope-of-resolution (org-level-docs epic, Slice 15 — cross-workspace-safe
+   * `[[wiki-link]]` resolution): the candidate set is EVERY page — project-
+   * scoped (any project) OR workspace-scoped — that shares this page's
+   * `workspaceId`. This is what makes a project-A page able to link to a
+   * page in project B, or to/from the workspace-docs space, within the same
+   * workspace. It is deliberately NOT broadened past `workspaceId`: the
+   * candidate query below is filtered to `scope.workspaceId` and nothing
+   * wider, so a `[[Title]]` whose only match lives in a DIFFERENT workspace
+   * resolves to NOTHING — zero `PageLink` row, rendered identically to a
+   * genuinely nonexistent title (Obsidian's "not-yet-created page" state),
+   * never a distinguishable "restricted" state. This is safe because every
+   * workspace member already holds at least VIEWER on every project in that
+   * workspace (`getEffectiveProjectRole`), so a cross-project link WITHIN one
+   * workspace never crosses a visibility boundary — but a foreign workspace's
+   * page is never even visible to begin with, and "resolved but you can't
+   * open it" would itself leak that page's existence/title to a non-member.
+   * See ROADMAP.md Phase 11 continuation item 15 for the full authz writeup
+   * (same suppress-don't-half-reveal posture as the `4d3a43a` /search fix).
+   *
+   * Tie-break when a title matches more than one page in the workspace
+   * (to NOT regress pre-slice-15 same-project/same-scope links): a match in
+   * the SAME scope as the linking page — same `projectId` for a project
+   * page, or another workspace-docs page (`projectId: null`) for a
+   * workspace page — is preferred over a match in a different project;
+   * within a tier, resolution is deterministic oldest-page-wins
+   * (`createdAt` ascending). Concretely: candidates are fetched ordered by
+   * `createdAt` ascending, then reduced to `title -> id` in TWO passes —
+   * same-scope candidates first (so a same-project title always beats an
+   * other-project one, preserving exactly what every pre-slice-15 test
+   * asserts), then a second pass over ALL candidates fills in any title
+   * that had no same-scope match at all, falling back to the oldest
+   * workspace-wide match.
    *
    * Must run inside the SAME transaction as the page/version write that
    * triggered it (all three call sites — create/update/restore — already do
@@ -972,21 +1051,34 @@ export class PagesService {
 
     let resolvedTargetIds = new Set<string>();
     if (uniqueTitles.length > 0) {
+      // Candidate set = every page (project-scoped OR workspace-scoped) in
+      // THIS workspace — see the method doc above for why `workspaceId` (not
+      // `scopeWhere(scope)`) is the authz-relevant boundary here.
       const candidates = await tx.page.findMany({
         where: {
-          ...this.scopeWhere(scope),
+          workspaceId: scope.workspaceId,
           id: { not: sourcePageId }, // self-links excluded
           OR: uniqueTitles.map((title) => ({
             title: { equals: title, mode: 'insensitive' as const },
           })),
         },
-        select: { id: true, title: true, createdAt: true },
+        select: { id: true, title: true, createdAt: true, projectId: true },
         orderBy: { createdAt: 'asc' },
       });
-      // Deterministic resolution when multiple pages share a case-insensitive
-      // title within the scope: the oldest page wins (first in creation
-      // order — `orderBy: createdAt asc` above, first-wins-on-insert below).
+      const inSameScope = (candidate: { projectId: string | null }): boolean =>
+        candidate.projectId === scope.projectId;
+
       const byLowerTitle = new Map<string, string>();
+      // Pass 1: same-scope candidates only, oldest-wins within the pass
+      // (candidates are already createdAt-asc) — a same-project (or
+      // same-workspace-docs) title match always beats an other-project one.
+      for (const candidate of candidates) {
+        if (!inSameScope(candidate)) continue;
+        const key = candidate.title.toLowerCase();
+        if (!byLowerTitle.has(key)) byLowerTitle.set(key, candidate.id);
+      }
+      // Pass 2: fall back to any candidate in the workspace (other scopes
+      // included) for titles with no same-scope match, still oldest-wins.
       for (const candidate of candidates) {
         const key = candidate.title.toLowerCase();
         if (!byLowerTitle.has(key)) byLowerTitle.set(key, candidate.id);

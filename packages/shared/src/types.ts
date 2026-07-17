@@ -2487,22 +2487,51 @@ export interface PageGraphDto {
   truncated: boolean;
 }
 
-/** Compact page reference — used by the "what links here" backlinks panel. */
+/**
+ * Compact page reference — used by the "what links here" backlinks panel.
+ *
+ * `sourceProjectId`/`sourceProjectKey`/`sourceWorkspaceId` (org-level-docs
+ * epic, Slice 16) let a client route to AND label the source page even when
+ * it lives in a DIFFERENT project than the page being queried, or in the
+ * workspace-docs space — a real possibility now that `[[wiki-link]]`
+ * resolution is workspace-wide (see `pages.service.ts`'s `syncWikiLinks`,
+ * Slice 15). `sourceProjectId`/`sourceProjectKey` are null when the source
+ * page is itself workspace-level (not attached to a single project).
+ */
 export interface PageBacklinkDto {
   /** The `PageLink` row id. */
   id: string;
   /** The page that links TO the page being queried. */
   sourcePageId: string;
   sourcePageTitle: string;
+  /** Null when the source page is a workspace-level page (no owning project). */
+  sourceProjectId: string | null;
+  /** Null when the source page is a workspace-level page. Present alongside `sourceProjectId` for cross-project labeling ("NL-Docs" style badges) without a second round-trip. */
+  sourceProjectKey: string | null;
+  /** Always present — every page belongs to exactly one workspace. */
+  sourceWorkspaceId: string;
   createdAt: string;
 }
 
-/** One resolved outgoing `[[wiki-link]]` — points at a real target page. */
+/**
+ * One resolved outgoing `[[wiki-link]]` — points at a real target page.
+ *
+ * `targetProjectId`/`targetProjectKey`/`targetWorkspaceId` (org-level-docs
+ * epic, Slice 16) mirror `PageBacklinkDto`'s cross-project fields for the
+ * outgoing direction — see that type's doc for why they're needed and when
+ * `targetProjectId`/`targetProjectKey` are null.
+ */
 export interface PageResolvedLinkDto {
   /** The target page this link resolves to. */
   targetPageId: string;
   /** The target page's current title. */
   targetPageTitle: string;
+  /** Null when the target page is a workspace-level page (no owning project). */
+  targetProjectId: string | null;
+  /** Null when the target page is a workspace-level page. */
+  targetProjectKey: string | null;
+  /** Always present — every page belongs to exactly one workspace. */
+  targetWorkspaceId: string;
 }
 
 /**

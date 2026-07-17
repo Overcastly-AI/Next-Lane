@@ -22,7 +22,20 @@ import type { RealtimeService } from '../realtime/realtime.service';
 
 const WORKSPACE_ID = 'ws-1';
 const PROJECT_ID = 'proj-1';
+/**
+ * A DIFFERENT workspace's project — used by pre-existing tests that assert
+ * cross-workspace rejection (e.g. "rejects a parentId belonging to another
+ * project"). Its `workspaceId` is `OTHER_WORKSPACE_ID`, NOT `WORKSPACE_ID`.
+ */
 const OTHER_PROJECT_ID = 'proj-2';
+const OTHER_WORKSPACE_ID = 'ws-2';
+/**
+ * A SECOND project in the SAME workspace as `PROJECT_ID` (org-level-docs
+ * epic, Slice 15/16) — used to exercise cross-project-but-same-workspace
+ * `[[wiki-link]]` resolution and the unioned workspace graph, distinct from
+ * `OTHER_PROJECT_ID` which is deliberately in a different workspace.
+ */
+const SIBLING_PROJECT_ID = 'proj-3';
 const ADMIN = 'user-admin';
 const MEMBER = 'user-member';
 const VIEWER = 'user-viewer';
@@ -148,11 +161,21 @@ class Harness {
   links = new Map<string, FakeLinkRow>();
   issues = new Map<string, FakeIssueRow>();
   issueLinks = new Map<string, FakePageIssueLinkRow>();
+  /** Legacy single-workspace role map — implicitly scoped to WORKSPACE_ID (pre-existing tests). */
   roles = new Map<string, Role>();
+  /** Per-workspace role map, keyed by workspaceId -> userId -> Role — needed for the adversarial cross-workspace fixture (a user who is a member of ONE workspace but not another). */
+  rolesByWorkspace = new Map<string, Map<string, Role>>();
   /** Per-project issue-key prefix (defaults to 'NL' for PROJECT_ID). */
   projectKeys = new Map<string, string>([
     [PROJECT_ID, 'NL'],
     [OTHER_PROJECT_ID, 'OTHER'],
+    [SIBLING_PROJECT_ID, 'SIB'],
+  ]);
+  /** Per-project owning workspace (defaults applied in `project.findUnique` below). */
+  projectWorkspaces = new Map<string, string>([
+    [PROJECT_ID, WORKSPACE_ID],
+    [OTHER_PROJECT_ID, OTHER_WORKSPACE_ID],
+    [SIBLING_PROJECT_ID, WORKSPACE_ID],
   ]);
   private seq = 0;
 
@@ -163,6 +186,16 @@ class Harness {
 
   setRole(userId: string, role: Role): void {
     this.roles.set(userId, role);
+  }
+
+  /** Grant `userId` `role` membership in a SPECIFIC workspace (multi-workspace fixtures). */
+  setRoleInWorkspace(workspaceId: string, userId: string, role: Role): void {
+    let perWorkspace = this.rolesByWorkspace.get(workspaceId);
+    if (!perWorkspace) {
+      perWorkspace = new Map<string, Role>();
+      this.rolesByWorkspace.set(workspaceId, perWorkspace);
+    }
+    perWorkspace.set(userId, role);
   }
 
   addPage(partial: Partial<FakePageRow> & { id?: string }): FakePageRow {
@@ -222,13 +255,14 @@ class Harness {
     const fake = {
       project: {
         findUnique: ({ where }: { where: { id: string } }) => {
-          if (where.id === PROJECT_ID) {
-            return Promise.resolve({ id: PROJECT_ID, key: self.projectKeys.get(PROJECT_ID), workspaceId: WORKSPACE_ID, workspace: { id: WORKSPACE_ID } });
-          }
-          if (where.id === OTHER_PROJECT_ID) {
-            return Promise.resolve({ id: OTHER_PROJECT_ID, key: self.projectKeys.get(OTHER_PROJECT_ID), workspaceId: 'ws-2', workspace: { id: 'ws-2' } });
-          }
-          return Promise.resolve(null);
+          const workspaceId = self.projectWorkspaces.get(where.id);
+          if (!workspaceId) return Promise.resolve(null);
+          return Promise.resolve({
+            id: where.id,
+            key: self.projectKeys.get(where.id),
+            workspaceId,
+            workspace: { id: workspaceId },
+          });
         },
       },
       membership: {
@@ -238,8 +272,11 @@ class Harness {
           where: { userId_workspaceId: { userId: string; workspaceId: string } };
         }) => {
           const { userId, workspaceId } = where.userId_workspaceId;
-          if (workspaceId !== WORKSPACE_ID) return Promise.resolve(null);
-          const role = self.roles.get(userId);
+          // Roles are keyed by workspace via `self.rolesByWorkspace` (falls back
+          // to `self.roles`/WORKSPACE_ID for every pre-existing single-workspace
+          // test) — see `setRole`/`setRoleInWorkspace`.
+          const perWorkspace = self.rolesByWorkspace.get(workspaceId);
+          const role = perWorkspace ? perWorkspace.get(userId) : workspaceId === WORKSPACE_ID ? self.roles.get(userId) : undefined;
           return Promise.resolve(role ? { role } : null);
         },
       },
@@ -366,11 +403,20 @@ class Harness {
           );
           sortRows(rows, orderBy);
           if (typeof take === 'number') rows = rows.slice(0, take);
+          // Mirrors the service's `select: { ..., project: { select: { key } } }`
+          // on the included source/target page — `project` is `{ key }` when
+          // the page is project-scoped, undefined (-> null in the service
+          // mapper via `?.key`) for a workspace-level page.
+          const withProject = (pageId: string) => {
+            const p = self.pages.get(pageId);
+            if (!p) return null;
+            return { ...p, project: p.projectId ? { key: self.projectKeys.get(p.projectId) ?? null } : undefined };
+          };
           return Promise.resolve(
             rows.map((r) => {
               let out: Record<string, unknown> = { ...r };
-              if (include?.sourcePage) out = { ...out, sourcePage: self.pages.get(r.sourcePageId) ?? null };
-              if (include?.targetPage) out = { ...out, targetPage: self.pages.get(r.targetPageId) ?? null };
+              if (include?.sourcePage) out = { ...out, sourcePage: withProject(r.sourcePageId) };
+              if (include?.targetPage) out = { ...out, targetPage: withProject(r.targetPageId) };
               return out;
             }),
           );
@@ -956,7 +1002,15 @@ describe('PagesService.links', () => {
 
     const result = await service.links(VIEWER, source.id);
 
-    expect(result.resolved).toEqual([{ targetPageId: target.id, targetPageTitle: 'Target' }]);
+    expect(result.resolved).toEqual([
+      {
+        targetPageId: target.id,
+        targetPageTitle: 'Target',
+        targetProjectId: PROJECT_ID,
+        targetProjectKey: 'NL',
+        targetWorkspaceId: WORKSPACE_ID,
+      },
+    ]);
     expect(result.unresolvedTitles).toEqual(['Ghost']);
     expect(result.truncated).toBe(false);
   });
@@ -1349,10 +1403,17 @@ describe('PagesService workspace-level pages (org-level-docs epic, Slice 2)', ()
       expect(links[0]).toMatchObject({ sourcePageId: page.id, targetPageId: target.id });
     });
 
-    it('does NOT resolve a [[link]] to a PROJECT page with a matching title (cross-scope isolation)', async () => {
+    // Pre-Slice-15, resolution was scoped strictly to `projectId`/`workspaceId
+    // + projectId: null`, so a workspace page could never link to a project
+    // page and vice versa even within the SAME workspace. Slice 15 rescopes
+    // the candidate query to the page's `workspaceId` (see `syncWikiLinks`'s
+    // doc), so these two now DO resolve — this is the intended broadening,
+    // not a regression. Cross-workspace isolation (the thing that must NEVER
+    // resolve) is covered separately below.
+    it('DOES resolve a [[link]] from a workspace page to a PROJECT page in the same workspace (Slice 15)', async () => {
       const h = new Harness();
       h.setRole(MEMBER, Role.MEMBER);
-      h.addPage({ title: 'Runbook' }); // a PROJECT page, same title
+      const target = h.addPage({ title: 'Runbook' }); // a PROJECT page, same workspace
       const service = makeService(h);
 
       const page = await service.createWorkspacePage(MEMBER, WORKSPACE_ID, {
@@ -1360,14 +1421,15 @@ describe('PagesService workspace-level pages (org-level-docs epic, Slice 2)', ()
         content: 'See [[Runbook]].',
       });
 
-      expect(h.links.size).toBe(0);
-      expect(page).toBeDefined();
+      const links = [...h.links.values()];
+      expect(links).toHaveLength(1);
+      expect(links[0]).toMatchObject({ sourcePageId: page.id, targetPageId: target.id });
     });
 
-    it('a PROJECT page does NOT resolve a [[link]] to a workspace-level page with a matching title', async () => {
+    it('DOES resolve a [[link]] from a PROJECT page to a workspace-level page in the same workspace (Slice 15)', async () => {
       const h = new Harness();
       h.setRole(MEMBER, Role.MEMBER);
-      h.addPage({ projectId: null, title: 'Runbook' }); // a WORKSPACE page, same title
+      const target = h.addPage({ projectId: null, title: 'Runbook' }); // a WORKSPACE page, same workspace
       const service = makeService(h);
 
       const page = await service.create(MEMBER, PROJECT_ID, {
@@ -1375,8 +1437,168 @@ describe('PagesService workspace-level pages (org-level-docs epic, Slice 2)', ()
         content: 'See [[Runbook]].',
       });
 
+      const links = [...h.links.values()];
+      expect(links).toHaveLength(1);
+      expect(links[0]).toMatchObject({ sourcePageId: page.id, targetPageId: target.id });
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Cross-workspace-safe [[wiki-link]] resolution + workspace-wide graph
+  // (org-level-docs epic, Slices 15 + 16 — ROADMAP.md Phase 11 continuation).
+  // ---------------------------------------------------------------------------
+  describe('cross-project [[wiki-link]] resolution within one workspace (Slice 15)', () => {
+    it('a project-A page [[link]] resolves to a project-B page in the SAME workspace, and appears in B-page backlinks with cross-project scope fields', async () => {
+      const h = new Harness();
+      h.setRole(MEMBER, Role.MEMBER);
+      const target = h.addPage({ projectId: SIBLING_PROJECT_ID, title: 'Deploy Runbook' });
+      const service = makeService(h);
+
+      const source = await service.create(MEMBER, PROJECT_ID, {
+        title: 'Incident Postmortem',
+        content: 'See [[Deploy Runbook]] for the response steps.',
+      });
+
+      const links = [...h.links.values()];
+      expect(links).toHaveLength(1);
+      expect(links[0]).toMatchObject({ sourcePageId: source.id, targetPageId: target.id });
+
+      const backlinks = await service.backlinks(MEMBER, target.id);
+      expect(backlinks).toHaveLength(1);
+      expect(backlinks[0]).toMatchObject({
+        sourcePageId: source.id,
+        sourcePageTitle: 'Incident Postmortem',
+        sourceProjectId: PROJECT_ID,
+        sourceProjectKey: 'NL',
+        sourceWorkspaceId: WORKSPACE_ID,
+      });
+
+      const outgoing = await service.links(MEMBER, source.id);
+      expect(outgoing.resolved).toEqual([
+        {
+          targetPageId: target.id,
+          targetPageTitle: 'Deploy Runbook',
+          targetProjectId: SIBLING_PROJECT_ID,
+          targetProjectKey: 'SIB',
+          targetWorkspaceId: WORKSPACE_ID,
+        },
+      ]);
+    });
+
+    it('a same-project title match is PREFERRED over an other-project match (tie-break)', async () => {
+      const h = new Harness();
+      h.setRole(MEMBER, Role.MEMBER);
+      // Same title exists in BOTH the sibling project (created first, so it
+      // would win a pure oldest-wins tie-break) and the linking page's OWN
+      // project (created second). The same-scope match must still win.
+      const otherProjectMatch = h.addPage({
+        projectId: SIBLING_PROJECT_ID,
+        title: 'Runbook',
+        createdAt: new Date('2026-01-01'),
+      });
+      const sameProjectMatch = h.addPage({
+        projectId: PROJECT_ID,
+        title: 'Runbook',
+        createdAt: new Date('2026-02-01'),
+      });
+      const service = makeService(h);
+
+      const source = await service.create(MEMBER, PROJECT_ID, {
+        title: 'Source',
+        content: 'See [[Runbook]].',
+      });
+
+      const links = [...h.links.values()];
+      expect(links).toHaveLength(1);
+      expect(links[0].targetPageId).toBe(sameProjectMatch.id);
+      expect(links[0].targetPageId).not.toBe(otherProjectMatch.id);
+    });
+
+    it('existing same-project links are unaffected when NO other-project match exists (no regression)', async () => {
+      const h = new Harness();
+      h.setRole(MEMBER, Role.MEMBER);
+      const target = h.addPage({ projectId: PROJECT_ID, title: 'Runbook' });
+      const service = makeService(h);
+
+      const source = await service.create(MEMBER, PROJECT_ID, {
+        title: 'Source',
+        content: 'See [[Runbook]].',
+      });
+
+      const links = [...h.links.values()];
+      expect(links).toHaveLength(1);
+      expect(links[0].targetPageId).toBe(target.id);
+    });
+
+    it('a [[link]] whose only title match lives in a DIFFERENT workspace resolves to ZERO PageLink rows (indistinguishable from a nonexistent title)', async () => {
+      const h = new Harness();
+      h.setRole(MEMBER, Role.MEMBER);
+      // A page in a DIFFERENT workspace with a colliding title. Not reachable
+      // via any project this harness models as belonging to WORKSPACE_ID.
+      h.addPage({
+        id: 'foreign-page',
+        workspaceId: OTHER_WORKSPACE_ID,
+        projectId: null,
+        title: 'Secret Runbook',
+      });
+      const service = makeService(h);
+
+      const source = await service.create(MEMBER, PROJECT_ID, {
+        title: 'Source',
+        content: 'See [[Secret Runbook]] and [[Genuinely Nonexistent]].',
+      });
+
+      // Zero PageLink rows created for EITHER title — the foreign-workspace
+      // match and the genuinely-nonexistent title are indistinguishable.
       expect(h.links.size).toBe(0);
-      expect(page).toBeDefined();
+
+      const outgoing = await service.links(MEMBER, source.id);
+      expect(outgoing.resolved).toEqual([]);
+      // Both titles surface identically as "unresolved" — no separate
+      // "restricted"/"exists but hidden" state leaks the foreign page.
+      expect(outgoing.unresolvedTitles.sort()).toEqual(
+        ['Genuinely Nonexistent', 'Secret Runbook'].sort(),
+      );
+    });
+  });
+
+  describe('workspace-wide page graph (Slice 16)', () => {
+    it('unions pages across every project in the workspace PLUS the workspace-docs space, and their cross-scope edges', async () => {
+      const h = new Harness();
+      h.setRole(VIEWER, Role.VIEWER);
+      const a = h.addPage({ projectId: PROJECT_ID, title: 'A' });
+      const b = h.addPage({ projectId: SIBLING_PROJECT_ID, title: 'B' });
+      const c = h.addPage({ projectId: null, title: 'C (workspace docs)' });
+      h.addPage({ id: 'foreign', workspaceId: OTHER_WORKSPACE_ID, projectId: null, title: 'Foreign' });
+      h.links.set('l1', { id: 'l1', sourcePageId: a.id, targetPageId: b.id, createdAt: new Date() });
+      h.links.set('l2', { id: 'l2', sourcePageId: b.id, targetPageId: c.id, createdAt: new Date() });
+      const service = makeService(h);
+
+      const graph = await service.workspaceGraph(VIEWER, WORKSPACE_ID);
+
+      expect(graph.nodes.map((n) => n.id).sort()).toEqual([a.id, b.id, c.id].sort());
+      expect(graph.edges.sort((x, y) => x.sourceId.localeCompare(y.sourceId))).toEqual([
+        { sourceId: a.id, targetId: b.id },
+        { sourceId: b.id, targetId: c.id },
+      ]);
+      expect(graph.truncated).toBe(false);
+    });
+
+    it('a project-scoped graph() is unchanged: still narrowed to that project, dropping cross-project edges to non-retained nodes', async () => {
+      const h = new Harness();
+      h.setRole(VIEWER, Role.VIEWER);
+      const a = h.addPage({ projectId: PROJECT_ID, title: 'A' });
+      const b = h.addPage({ projectId: SIBLING_PROJECT_ID, title: 'B (other project)' });
+      h.links.set('l1', { id: 'l1', sourcePageId: a.id, targetPageId: b.id, createdAt: new Date() });
+      const service = makeService(h);
+
+      const graph = await service.graph(VIEWER, PROJECT_ID);
+
+      // Only project A's own page is a node; the cross-project edge is
+      // dropped because its target isn't in this project's node set — never
+      // a dangling edge.
+      expect(graph.nodes.map((n) => n.id)).toEqual([a.id]);
+      expect(graph.edges).toEqual([]);
     });
   });
 
@@ -1440,19 +1662,25 @@ describe('PagesService workspace-level pages (org-level-docs epic, Slice 2)', ()
   });
 
   describe('workspaceGraph', () => {
-    it('returns workspace-level pages as nodes and their PageLink edges, excluding project pages', async () => {
+    // Pre-Slice-16 this endpoint returned workspace-level pages ONLY. Slice
+    // 16 broadens it to the union of every project's pages plus the
+    // workspace-docs space (see the dedicated "workspace-wide page graph
+    // (Slice 16)" describe block above for the full union + cross-workspace
+    // isolation coverage) — this test now asserts a PROJECT page IS
+    // included, which is the intended behavior change, not a regression.
+    it('returns workspace-level AND project pages as nodes, unioned, plus their PageLink edges (Slice 16)', async () => {
       const h = new Harness();
       h.setRole(VIEWER, Role.VIEWER);
       const a = h.addPage({ projectId: null, title: 'A' });
       const b = h.addPage({ projectId: null, title: 'B' });
-      h.addPage({ title: 'Project page (excluded)' });
+      const projectPage = h.addPage({ title: 'Project page (now included)' });
       h.links.set('l1', { id: 'l1', sourcePageId: a.id, targetPageId: b.id, createdAt: new Date() });
       const service = makeService(h);
 
       const graph = await service.workspaceGraph(VIEWER, WORKSPACE_ID);
 
-      expect(graph.nodes).toHaveLength(2);
-      expect(graph.nodes.map((n) => n.id).sort()).toEqual([a.id, b.id].sort());
+      expect(graph.nodes).toHaveLength(3);
+      expect(graph.nodes.map((n) => n.id).sort()).toEqual([a.id, b.id, projectPage.id].sort());
       expect(graph.edges).toEqual([{ sourceId: a.id, targetId: b.id }]);
     });
   });

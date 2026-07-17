@@ -1636,6 +1636,211 @@ function buildMatrix(a: Tenant): Array<MatrixRow & { resolvedPath: string; resol
         expect(result.status).toBe(200);
       });
     });
+
+    // ── Org-level-docs epic, Slices 15+16 ─────────────────────────────────────
+    //
+    // Cross-workspace-safe `[[wiki-link]]` resolution (Slice 15) + the
+    // workspace-wide page graph (Slice 16). This is the "live-reproduced
+    // adversarial test" acceptance gate ROADMAP.md Phase 11 continuation
+    // items 15/16 call for, mirroring how the `4d3a43a` /search page-data
+    // leak fix was verified: two independent tenants (workspaces) with
+    // COLLIDING page titles, a positive control proving legitimate
+    // same-workspace/cross-project resolution still works, and a negative
+    // control proving a title match that only exists in the OTHER tenant's
+    // workspace resolves to nothing — no PageLink row, no leaked id, no
+    // distinguishable "restricted" state.
+    describe('org-level-docs epic — cross-workspace-safe [[wiki-link]] resolution + workspace graph (Slices 15+16)', () => {
+      const SHARED_TITLE = `Shared-Runbook-${Date.now()}`;
+      const FOREIGN_TITLE = `Foreign-Runbook-${Date.now()}`;
+
+      let projectA2Id: string;
+      let sharedTitlePageId: string; // in projectA2 — a SECOND project in tenant A's OWN workspace
+      let crossProjectLinkerPageId: string; // in tenantA.projectId, links to sharedTitlePageId's title
+      let foreignTitlePageId: string; // in TENANT B's workspace — the adversarial fixture
+      let adversarialLinkerPageId: string; // in tenantA.projectId, links to the foreign title
+
+      beforeAll(async () => {
+        // ── Positive control: a second project WITHIN tenant A's own workspace ──
+        const projResp = await req(server, 'POST', '/projects', tenantA.token, {
+          name: 'Project A2 (cross-project docs fixture)',
+          key: `PA2${Date.now().toString().slice(-6)}`,
+          workspaceId: tenantA.workspaceId,
+        });
+        expect(projResp.status).toBe(201);
+        projectA2Id = (JSON.parse(projResp.body) as { id: string }).id;
+
+        const sharedPageResp = await req(
+          server,
+          'POST',
+          `/projects/${projectA2Id}/pages`,
+          tenantA.token,
+          { title: SHARED_TITLE, content: 'Runbook body.' },
+        );
+        expect(sharedPageResp.status).toBe(201);
+        sharedTitlePageId = (JSON.parse(sharedPageResp.body) as { id: string }).id;
+
+        const linkerResp = await req(
+          server,
+          'POST',
+          `/projects/${tenantA.projectId}/pages`,
+          tenantA.token,
+          { title: 'Cross-Project Linker', content: `See [[${SHARED_TITLE}]] for details.` },
+        );
+        expect(linkerResp.status).toBe(201);
+        crossProjectLinkerPageId = (JSON.parse(linkerResp.body) as { id: string }).id;
+
+        // ── Adversarial fixture: a colliding title that only exists in TENANT B's workspace ──
+        const foreignPageResp = await req(
+          server,
+          'POST',
+          `/projects/${tenantB.projectId}/pages`,
+          tenantB.token,
+          { title: FOREIGN_TITLE, content: 'Should never be reachable from tenant A.' },
+        );
+        expect(foreignPageResp.status).toBe(201);
+        foreignTitlePageId = (JSON.parse(foreignPageResp.body) as { id: string }).id;
+
+        const adversarialResp = await req(
+          server,
+          'POST',
+          `/projects/${tenantA.projectId}/pages`,
+          tenantA.token,
+          { title: 'Adversarial Linker', content: `See [[${FOREIGN_TITLE}]] if you can find it.` },
+        );
+        expect(adversarialResp.status).toBe(201);
+        adversarialLinkerPageId = (JSON.parse(adversarialResp.body) as { id: string }).id;
+      }, 30_000);
+
+      it('POSITIVE CONTROL: a same-workspace, cross-project [[link]] resolves and both directions carry cross-project scope fields', async () => {
+        const linksResp = await req(
+          server,
+          'GET',
+          `/pages/${crossProjectLinkerPageId}/links`,
+          tenantA.token,
+        );
+        expect(linksResp.status).toBe(200);
+        const links = JSON.parse(linksResp.body) as {
+          resolved: Array<{ targetPageId: string; targetProjectId: string | null }>;
+          unresolvedTitles: string[];
+        };
+        expect(links.resolved).toHaveLength(1);
+        expect(links.resolved[0].targetPageId).toBe(sharedTitlePageId);
+        expect(links.resolved[0].targetProjectId).toBe(projectA2Id);
+        expect(links.unresolvedTitles).toEqual([]);
+
+        const backlinksResp = await req(
+          server,
+          'GET',
+          `/pages/${sharedTitlePageId}/backlinks`,
+          tenantA.token,
+        );
+        expect(backlinksResp.status).toBe(200);
+        const backlinks = JSON.parse(backlinksResp.body) as Array<{
+          sourcePageId: string;
+          sourceProjectId: string | null;
+        }>;
+        expect(backlinks).toHaveLength(1);
+        expect(backlinks[0].sourcePageId).toBe(crossProjectLinkerPageId);
+        expect(backlinks[0].sourceProjectId).toBe(tenantA.projectId);
+      });
+
+      it('ADVERSARIAL (acceptance gate): a [[link]] whose only match lives in a DIFFERENT workspace resolves to NOTHING — zero PageLink, indistinguishable from a nonexistent title, no id leak', async () => {
+        const linksResp = await req(
+          server,
+          'GET',
+          `/pages/${adversarialLinkerPageId}/links`,
+          tenantA.token,
+        );
+        expect(linksResp.status).toBe(200);
+        const links = JSON.parse(linksResp.body) as {
+          resolved: unknown[];
+          unresolvedTitles: string[];
+        };
+        // Zero resolved edges; the foreign title renders exactly like a
+        // genuinely nonexistent title — no separate "restricted" state.
+        expect(links.resolved).toEqual([]);
+        expect(links.unresolvedTitles).toContain(FOREIGN_TITLE);
+        // No leak: neither tenant B's page id nor its workspace id ever
+        // appears in the response body.
+        expect(linksResp.body).not.toContain(foreignTitlePageId);
+        expect(linksResp.body).not.toContain(tenantB.workspaceId);
+
+        // Confirm from tenant B's OWN side too: no inbound PageLink exists at
+        // all (not merely hidden from tenant A) — the resolution genuinely
+        // never happened, it's not a filtered read.
+        const foreignBacklinksResp = await req(
+          server,
+          'GET',
+          `/pages/${foreignTitlePageId}/backlinks`,
+          tenantB.token,
+        );
+        expect(foreignBacklinksResp.status).toBe(200);
+        expect(JSON.parse(foreignBacklinksResp.body) as unknown[]).toEqual([]);
+      });
+
+      it("the workspace-A graph unions tenant A's OWN projects but contains NO node/edge from tenant B (adversarial acceptance gate)", async () => {
+        const graphResp = await req(
+          server,
+          'GET',
+          `/workspaces/${tenantA.workspaceId}/pages/graph`,
+          tenantA.token,
+        );
+        expect(graphResp.status).toBe(200);
+        const graph = JSON.parse(graphResp.body) as {
+          nodes: Array<{ id: string }>;
+          edges: Array<{ sourceId: string; targetId: string }>;
+        };
+
+        const nodeIds = graph.nodes.map((n) => n.id);
+        // Union: tenant A's original project's pages AND project A2's pages
+        // are both present as nodes in ONE workspace-wide graph.
+        expect(nodeIds).toEqual(
+          expect.arrayContaining([
+            sharedTitlePageId,
+            crossProjectLinkerPageId,
+            adversarialLinkerPageId,
+            tenantA.pageId,
+          ]),
+        );
+        // No node/edge from tenant B, anywhere in the response.
+        expect(nodeIds).not.toContain(foreignTitlePageId);
+        expect(graphResp.body).not.toContain(tenantB.workspaceId);
+        expect(graphResp.body).not.toContain(foreignTitlePageId);
+
+        // The legitimate cross-project edge from the positive control IS
+        // present (by construction, not a runtime filter)...
+        expect(graph.edges).toContainEqual({
+          sourceId: crossProjectLinkerPageId,
+          targetId: sharedTitlePageId,
+        });
+        // ...but nothing touches the foreign/adversarial page — there is no
+        // edge to drop because `syncWikiLinks` never created one.
+        expect(
+          graph.edges.some(
+            (e) => e.sourceId === foreignTitlePageId || e.targetId === foreignTitlePageId,
+          ),
+        ).toBe(false);
+      });
+
+      it("tenant B's own workspace graph is unaffected — still contains only tenant B's own pages", async () => {
+        const graphResp = await req(
+          server,
+          'GET',
+          `/workspaces/${tenantB.workspaceId}/pages/graph`,
+          tenantB.token,
+        );
+        expect(graphResp.status).toBe(200);
+        const graph = JSON.parse(graphResp.body) as { nodes: Array<{ id: string }> };
+        const nodeIds = graph.nodes.map((n) => n.id);
+
+        expect(nodeIds).toContain(foreignTitlePageId);
+        // None of tenant A's fixture pages leaked into B's graph either.
+        expect(nodeIds).not.toContain(sharedTitlePageId);
+        expect(nodeIds).not.toContain(crossProjectLinkerPageId);
+        expect(nodeIds).not.toContain(adversarialLinkerPageId);
+        expect(nodeIds).not.toContain(tenantA.pageId);
+      });
+    });
   },
 );
 

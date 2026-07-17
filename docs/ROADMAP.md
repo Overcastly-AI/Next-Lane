@@ -269,7 +269,7 @@ live.
 - ✅ **Personal & team analytics backend** — `AnalyticsModule` (`apps/api/src/analytics/`): `GET /me/analytics?days=N` → `PersonalAnalyticsDto` (open/completed/overdue assigned issues, per-day throughput flow series, avg cycle time, byType/byPriority CategoryCountDto groups, personal board stats); `GET /projects/:projectId/analytics?days=N` → `ProjectAnalyticsDto` (per-day flow series, createdTotal/completedTotal, avg cycle time, all-5-bucket CycleTimeBucketDto distribution with en-dash labels, WorkloadRowDto by assignee busiest-first + Unassigned row); both endpoints use ActivityLog completion-date reconstruction identical to reports.service; `days` defaults to 30, clamped to [1, 366]; 25 unit tests (analytics.service.spec.ts); build + typecheck clean; registered in AppModule. (2026-06-28)
 - ✅ **Personal & team analytics frontend** (2026-06-28) — `PersonalAnalyticsPage` at `/me/analytics` (14/30/90-day window selector, headline stat cards, hand-rolled SVG throughput chart, type/priority horizontal bar breakdowns, personal board mini-stats); `ProjectAnalyticsPage` at `/projects/:projectId/analytics` (window selector, headline stats, flow chart, cycle-time distribution, workload bars by assignee); "Analytics" tab in `ProjectNav`; "Insights" link in `AppHeader`; WCAG-AA, accessible charts with visually-hidden summaries; full data-testid coverage; Playwright e2e (desktop + mobile); build green.
 
-## Phase 11 — Pages: a Confluence × Obsidian hybrid, agent-traversable 🚧 (schema + backend module + MCP tools shipped 2026-07-09; org-wide docs schema + workspace-scoped backend + workspace Docs frontend surface shipped 2026-07-10 — founder directive 2026-07-06, scope sharpened 2026-07-09, org-wide 2026-07-10)
+## Phase 11 — Pages: a Confluence × Obsidian hybrid, agent-traversable 🚧 (schema + backend module + MCP tools shipped 2026-07-09; org-wide docs schema + workspace-scoped backend + workspace Docs frontend surface shipped 2026-07-10; cross-workspace-safe wiki-link resolution + workspace-wide graph shipped 2026-07-17 — founder directive 2026-07-06, scope sharpened 2026-07-09, org-wide 2026-07-10)
 
 **Founder directive, verbatim (2026-07-06): "How can we add a confluence type
 section?"** **Sharpened same-week (2026-07-09): "Could it be hybrid of
@@ -500,7 +500,7 @@ chokepoint, mirroring `assertProjectRole`'s role as the project-level one.
     caught the `/search` leak); every existing project-page
     tenant-isolation row still passes unmodified. **Territory:**
     `apps/api/src/pages/**`. **Size:** M.
-15. ⬜ **Backend — cross-workspace-safe `[[wiki-link]]` resolution** —
+15. ✅ **Backend — cross-workspace-safe `[[wiki-link]]` resolution** — shipped 2026-07-17 —
     `syncWikiLinks`'s title-candidate query is rescoped from `projectId` to
     `workspaceId` (derived from the page's own project, or its direct
     `workspaceId` for a workspace page) — the candidate set becomes "every
@@ -532,8 +532,26 @@ chokepoint, mirroring `assertProjectRole`'s role as the project-level one.
     titles, one viewer only a member of workspace A) is the acceptance
     gate, mirroring how the `4d3a43a` search-leak fix was verified.
     **Territory:** `apps/api/src/pages/pages.service.ts` (`syncWikiLinks`).
-    **Size:** M.
-16. ⬜ **Backend — workspace-wide graph + backlinks endpoint** —
+    **Size:** M. **Implementation note:** the candidate query is rescoped
+    from `scopeWhere(scope)` to a flat `workspaceId: scope.workspaceId`
+    filter — the exact authz boundary specified above. Tie-break when a
+    title matches more than one page in the workspace: candidates are
+    fetched once (`createdAt asc`), then reduced to `title -> id` in TWO
+    passes — same-scope candidates first (a same-project, or same
+    workspace-docs, match always wins — proven by a dedicated regression
+    test), then a second pass over all candidates fills in any
+    still-unresolved title from another scope in the same workspace, oldest
+    wins either way. Verified live: an
+    **adversarial cross-workspace integration test**
+    (`apps/api/src/tenant-isolation.integration.spec.ts`, "org-level-docs
+    epic — cross-workspace-safe `[[wiki-link]]` resolution + workspace
+    graph") — two independent tenants (workspaces) with a COLLIDING page
+    title, tenant A's `[[link]]` to it resolves to zero `PageLink` rows,
+    renders identically to a nonexistent title, and leaks neither the
+    foreign page id nor workspace id in the response body; a same-run
+    positive control (a second project inside tenant A's OWN workspace)
+    proves the legitimate cross-project case still resolves.
+16. ✅ **Backend — workspace-wide graph + backlinks endpoint** — shipped 2026-07-17 —
     `GET /workspaces/:id/pages/graph` returns the union of every project's
     page graph plus the workspace docs space, scoped by the same
     `assertWorkspaceRole(VIEWER)` chokepoint as slice 14, with edges only
@@ -547,7 +565,22 @@ chokepoint, mirroring `assertProjectRole`'s role as the project-level one.
     never contains a node or edge belonging to workspace Y, live-verified
     with a two-workspace fixture (same class of test as slice 15's).
     **Territory:** `apps/api/src/pages/**`. **Size:** S (mostly query
-    composition once 14/15 land).
+    composition once 14/15 land). **Implementation note:** `workspaceGraph`
+    now calls `buildGraph({ workspaceId })` (dropped the `projectId: null`
+    filter) — nodes are every page whose `workspaceId` matches, edges are
+    scoped to that retained node-id set exactly like the per-project graph
+    (no dangling edges under the node cap). The per-project `graph()` is
+    untouched and verified to still drop a cross-project edge to a
+    non-retained node (regression test added). `PageBacklinkDto` and
+    `PageResolvedLinkDto` (`packages/shared`) were widened with
+    `source-`/`targetProjectId` (nullable), `source-`/`targetProjectKey`
+    (nullable), and `source-`/`targetWorkspaceId` so `GET /pages/:id/
+    backlinks` and `GET /pages/:id/links` — which can now legitimately
+    return a page in a different project or the workspace-docs space — carry
+    enough scope for a client to route to and label the other page.
+    Live-verified with the same two-tenant fixture as slice 15: tenant A's
+    workspace graph unions both of tenant A's own projects' pages with no
+    node/edge from tenant B, and tenant B's own graph is symmetric.
 17. ✅ **Frontend — workspace Docs nav + reused tree/editor/backlinks/graph
     components** — shipped 2026-07-10 (frontend-builder, org-docs epic
     slice 5) — a new **workspace-level** nav destination (persistent left
@@ -575,7 +608,13 @@ chokepoint, mirroring `assertProjectRole`'s role as the project-level one.
     indicator" / cross-project link routing this item originally described
     depends on items 15/16 below, which have NOT shipped. Deliberately not
     attempted this slice (per the org-docs epic's explicit scope note) so
-    as not to build ahead of an unshipped backend contract. A live
+    as not to build ahead of an unshipped backend contract. **Update
+    2026-07-17:** items 15/16 have now shipped (backend-only — resolution is
+    workspace-wide and the workspace graph/backlinks/links DTOs carry
+    cross-project scope fields) — the frontend cross-project "scope
+    indicator" / cross-project link routing this item originally described
+    is now unblocked but NOT yet implemented; see `docs/BACKLOG.md` for the
+    follow-up frontend item. A live
     `command-palette`/search fix rode along: a workspace-scoped page search
     result now opens `/workspaces/:id/docs/:pageId` instead of the
     previously-broken `/projects/null/pages/:id`. **Verified:** new
@@ -895,6 +934,46 @@ dead `/projects/null/pages/:id` URL — now routes to
 `/workspaces/:id/docs/:id`. Next up: items 15/16 (backend), then the
 cross-project scope-indicator/link-routing this item's original acceptance
 criteria described.
+
+**Build update (2026-07-17): Slices 15+16 shipped — cross-workspace-safe
+`[[wiki-link]]` resolution + the workspace-wide page graph (backend only).**
+Items 15 and 16 above are done (see their entries for full detail).
+`syncWikiLinks`'s candidate query is rescoped from `projectId`/workspace-docs
+to a flat `workspaceId` filter, so a `[[wiki-link]]` can now resolve across
+projects (and to/from the workspace-docs space) within one workspace, with a
+same-scope-first, then-oldest-wins tie-break that provably doesn't regress
+any pre-existing same-project link. `GET /workspaces/:id/pages/graph` is
+broadened to the union of every project's pages plus the workspace-docs
+space; the per-project `GET /projects/:id/pages/graph` is unchanged and
+still drops cross-project edges (verified). `PageBacklinkDto`/
+`PageResolvedLinkDto` (`packages/shared`) widened with nullable
+`projectId`/`projectKey` + `workspaceId` on the "other page" so
+`GET /pages/:id/backlinks`/`GET /pages/:id/links` can label and route a
+now-legitimately-cross-project ref. **Authz (verbatim per the founder's exact
+question):** a `[[Title]]` whose only match lives in a DIFFERENT workspace
+resolves to NOTHING — zero `PageLink`, indistinguishable from a genuinely
+nonexistent title, never a distinguishable "restricted" state (same
+suppress-don't-half-reveal posture as the `4d3a43a` /search fix) — a live
+two-tenant adversarial fixture in `tenant-isolation.integration.spec.ts`
+("org-level-docs epic — cross-workspace-safe `[[wiki-link]]` resolution +
+workspace graph") is the acceptance gate: a colliding title across two real
+workspaces produces zero cross-workspace `PageLink`/node/edge and leaks no
+foreign id, alongside a positive control (a second project inside the same
+tenant's own workspace) proving the legitimate cross-project case still
+resolves and both tenants' own graphs stay symmetric. Gates: pages-service
+unit tests net +6 (2 pre-existing tests deliberately inverted to assert the
+new cross-scope resolution instead of the old isolation; 70/70 in that file;
+2081/2081 across all 96 API unit suites) + 4 new integration tests (441/441
+across 3 integration suites, run against a
+throwaway `nextlane_slice3` DB, never touching the shared dev DB/API);
+`tsc --noEmit` clean api/web/mcp/shared. **Deliberately backend-only** — no
+new MCP tool was needed (existing `get_page_graph`/`get_page_backlinks`/
+`get_page_links`/workspace-graph MCP tools already call these same REST
+routes and transparently inherit the broader resolution and the new DTO
+fields; a client-side "cross-project badge" affordance is a follow-up, see
+`docs/BACKLOG.md`). Frontend cross-project scope-indicator/link-routing
+(item 17's original acceptance criteria) is now unblocked by a real backend
+contract but not yet built — filed to `docs/BACKLOG.md` § Ready.
 
 *(Note to backlog-groomer: this is the intended Ready-queue order for the next
 build-loop pass; `docs/BACKLOG.md` itself is unchanged by this vision-steward
