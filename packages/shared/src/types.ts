@@ -2459,6 +2459,19 @@ export interface PageLinkDto {
 export interface PageGraphNode {
   id: string;
   title: string;
+  /**
+   * The node's owning project, or `null` for a workspace-level docs page.
+   * Lets the graph view color/group nodes by project in the workspace-wide
+   * graph and route a click to the node's own scope without a follow-up fetch.
+   */
+  projectId: string | null;
+  /** The owning project's key (e.g. "NL"), or `null` for a workspace page. */
+  projectKey: string | null;
+  /**
+   * ISO timestamp of the page's last edit — lets the graph dim/desaturate
+   * stale pages (not touched in a while) so recency reads visually.
+   */
+  updatedAt: string;
 }
 
 /** One directed edge in a project's page graph view (one page -> page wiki-link). */

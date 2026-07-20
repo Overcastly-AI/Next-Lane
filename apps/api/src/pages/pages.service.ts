@@ -947,7 +947,13 @@ export class PagesService {
     // separate COUNT query (same pattern as ROADMAP_EPICS_CAP).
     const fetched = await this.prisma.page.findMany({
       where,
-      select: { id: true, title: true },
+      select: {
+        id: true,
+        title: true,
+        projectId: true,
+        updatedAt: true,
+        project: { select: { key: true } },
+      },
       orderBy: { createdAt: 'asc' },
       take: MAX_GRAPH_NODES + 1,
     });
@@ -977,7 +983,13 @@ export class PagesService {
     );
 
     return {
-      nodes: nodes.map((n) => ({ id: n.id, title: n.title })),
+      nodes: nodes.map((n) => ({
+        id: n.id,
+        title: n.title,
+        projectId: n.projectId,
+        projectKey: n.project?.key ?? null,
+        updatedAt: n.updatedAt.toISOString(),
+      })),
       edges,
       truncated: nodesTruncated || edgesTruncated,
     };
