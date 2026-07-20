@@ -143,7 +143,9 @@ test.describe('Pages knowledge base', () => {
       await expect(page.getByTestId('page-title')).toHaveText('Hub Page');
     });
 
-    // ── The knowledge graph renders nodes + the edge, legibly on mobile ───
+    // ── The full-page knowledge graph renders nodes + the edge, legibly on
+    //    mobile, and clicking a node opens the side rail rather than
+    //    navigating straight away (observatory redesign) ────────────────────
     await test.step('the graph view renders nodes + edges', async () => {
       await page.getByTestId('pages-view-graph').click();
       const graph = page.getByTestId('page-graph-view');
@@ -167,8 +169,15 @@ test.describe('Pages knowledge base', () => {
       expect(box).not.toBeNull();
       expect(box!.height).toBeGreaterThan(20);
 
-      // Clicking a node navigates to that page.
+      // Selecting a node opens the side rail (focus/orbit) — it does NOT
+      // navigate away immediately.
       await targetNode.click();
+      const rail = page.getByTestId('page-graph-rail');
+      await expect(rail).toBeVisible();
+      await expect(page.getByTestId('page-graph-rail-title')).toHaveText('Target');
+
+      // The rail's explicit "Open page" action navigates there.
+      await page.getByTestId('page-graph-rail-open').click();
       await expect(page.getByTestId('page-title')).toHaveText('Target');
     });
 

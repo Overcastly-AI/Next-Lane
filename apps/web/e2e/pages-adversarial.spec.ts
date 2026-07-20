@@ -289,23 +289,15 @@ test.describe('Pages adversarial QA', () => {
     await expect(scope.getByTestId(`page-tree-item-${hubId}`)).toHaveCount(0);
   });
 
-  // DEFECT (filed to dev team): graph node boxes can render PARTIALLY
-  // OUTSIDE the canvas and get clipped by the container's `overflow-hidden`,
-  // truncating the visible label — e.g. "Onboarding" renders as "nboarding"
-  // with the leading glyph cut off at the edge. Root cause: the force layout
-  // clamps each node's CENTER to `[margin, size - margin]` where
-  // `margin = Math.min(30, Math.min(width, height) / 6)` (apps/web/src/lib/
-  // forceLayout.ts:141,203-204), but KnowledgeGraphView renders each node as
-  // a 132×40px box centered on that point (apps/web/src/components/pages/
-  // KnowledgeGraphView.tsx:326-327, `w = 132`). Half the node width (66px)
-  // is more than double the 30px clamp margin, so a node clamped to the
-  // boundary can render up to 36px outside the canvas — confirmed via
-  // boundingBox() instrumentation: ~35px overflow past the right edge on
-  // BOTH a 390px mobile viewport and a 1280px desktop viewport with a
-  // realistic 5-page/5-edge graph (2-node graphs, as in pages.spec.ts,
-  // rarely trigger it because there's little pressure to push a node to the
-  // clamp boundary). Fix needs either a bigger margin (>= half the node's
-  // rendered width) or clamping the node's rendered EDGES, not its center.
+  // FIXED (observatory redesign, 2026-07-20): graph node boxes used to be
+  // able to render PARTIALLY OUTSIDE the canvas and get clipped by the
+  // container's `overflow-hidden`, truncating the visible label — the force
+  // layout's own margin math wasn't guaranteed to exceed half the rendered
+  // node box's width. `KnowledgeGraphView` now clamps every node's rendered
+  // CENTER a second time at render time (`clampCenter`, independent of the
+  // simulation's own margins) so a box can never be pushed past the canvas
+  // edge, regardless of simulation internals — this test now asserts the
+  // real (fixed) behavior instead of tracking the old defect.
   test('graph view: node boxes must not render clipped outside the canvas on a realistic multi-page graph', async ({
     page,
     request,
@@ -336,7 +328,7 @@ test.describe('Pages adversarial QA', () => {
     await expect(graph).toBeVisible();
     await page.waitForTimeout(600);
 
-    const containerBox = (await graph.locator('div.relative').boundingBox())!;
+    const containerBox = (await graph.getByTestId('page-graph-canvas').boundingBox())!;
     const overflows: string[] = [];
     for (const [title, id] of Object.entries(ids)) {
       const box = await page.getByTestId(`page-graph-node-${id}`).boundingBox();
@@ -346,9 +338,6 @@ test.describe('Pages adversarial QA', () => {
       if (leftOverflow > 1) overflows.push(`${title}: ${Math.round(leftOverflow)}px past the left edge`);
       if (rightOverflow > 1) overflows.push(`${title}: ${Math.round(rightOverflow)}px past the right edge`);
     }
-    // KNOWN DEFECT: currently non-empty (see comment above). Asserted empty
-    // on purpose so this test stays red until the layout/render mismatch is
-    // fixed.
     expect(overflows, 'no graph node should render clipped past the canvas edge').toEqual([]);
   });
 });

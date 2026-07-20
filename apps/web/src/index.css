@@ -597,6 +597,23 @@ h1, h2, h3, h4, h5, h6,
   }
 }
 
+/* ── Knowledge graph observatory: the constellation-ignition signature ───────
+   A single light pulse travels a filament connecting the focused/selected
+   node to each of its neighbors — `KnowledgeGraphView`'s one spent-boldness
+   moment. Rendered only when `prefers-reduced-motion` allows motion (the
+   component skips the element entirely otherwise, so this rule never needs
+   a reduced-motion override of its own). `--nl-edge-len` is set per-element
+   (each filament's own pixel length) so the dash travels the FULL edge
+   regardless of how long it is. */
+@keyframes nl-graph-pulse {
+  from { stroke-dashoffset: 0; }
+  to   { stroke-dashoffset: calc(-1 * var(--nl-edge-len, 200px)); }
+}
+.nl-graph-pulse-line {
+  stroke-dasharray: 9 9999;
+  animation: nl-graph-pulse 1.15s linear infinite;
+}
+
 /* ── Reduced-motion — kill all animations ─────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   [data-toast],

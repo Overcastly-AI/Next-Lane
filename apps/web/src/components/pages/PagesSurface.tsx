@@ -48,9 +48,56 @@ import { BacklinksPanel } from './BacklinksPanel';
 import { OutgoingLinksPanel } from './OutgoingLinksPanel';
 import { PageLinkedIssuesSection } from './PageLinkedIssuesSection';
 import { VersionHistoryDrawer } from './VersionHistoryDrawer';
-import { KnowledgeGraphView } from './KnowledgeGraphView';
+import { KnowledgeGraphView } from './graph/KnowledgeGraphView';
 import { CreatePageModal } from './CreatePageModal';
 import { cn } from '@/lib/cn';
+
+/**
+ * The Document/Graph segmented control — shared verbatim between the
+ * Document view's own toolbar row and the Graph view's full-bleed top bar
+ * (`KnowledgeGraphView`'s `viewToggle` prop) so "back to Document" is always
+ * one click away no matter which surface is currently mounted. Only ONE of
+ * the two call sites is ever mounted at a time (they're mutually exclusive
+ * on `isGraphMode`), so the `data-testid`s below never collide in the DOM.
+ */
+function ViewToggle({
+  isGraphMode,
+  onDocument,
+  onGraph,
+}: {
+  isGraphMode: boolean;
+  onDocument: () => void;
+  onGraph: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-1 rounded-md border border-ink-200 bg-ink-50 p-0.5 text-xs font-medium">
+      <button
+        type="button"
+        onClick={onDocument}
+        data-testid="pages-view-document"
+        aria-pressed={!isGraphMode}
+        className={cn(
+          'rounded px-2.5 py-1 transition-colors duration-[120ms]',
+          !isGraphMode ? 'bg-surface text-ink-900 shadow-xs' : 'text-ink-500 hover:text-ink-800',
+        )}
+      >
+        Document
+      </button>
+      <button
+        type="button"
+        onClick={onGraph}
+        data-testid="pages-view-graph"
+        aria-pressed={isGraphMode}
+        className={cn(
+          'rounded px-2.5 py-1 transition-colors duration-[120ms]',
+          isGraphMode ? 'bg-surface text-ink-900 shadow-xs' : 'text-ink-500 hover:text-ink-800',
+        )}
+      >
+        Graph
+      </button>
+    </div>
+  );
+}
 
 /** Find the id of the FIRST page in tree order (depth-first, top-level-first). */
 function firstPageId(tree: PageTreeNode[]): string | undefined {
@@ -212,36 +259,61 @@ export function PagesSurface({
     setCreateModal({ parentId: null, initialTitle: title });
   }
 
+  // Shared Document/Graph segmented control — rendered in the Document
+  // toolbar OR handed to `KnowledgeGraphView` for its own full-bleed top bar
+  // (see `ViewToggle`'s doc comment; the two call sites are mutually
+  // exclusive, so this single element never renders twice at once).
+  const viewToggle = (
+    <ViewToggle
+      isGraphMode={isGraphMode}
+      onDocument={async () => {
+        const ok = await confirmDiscard();
+        if (!ok) return;
+        navigate(`${basePath}${pageId ? `/${pageId}` : ''}`);
+      }}
+      onGraph={async () => {
+        const ok = await confirmDiscard();
+        if (!ok) return;
+        navigate(`${basePath}/graph`);
+      }}
+    />
+  );
+
   return (
     <div className="flex h-full min-h-0">
-      {/* Desktop tree sidebar */}
-      <div className="hidden w-64 shrink-0 border-r border-ink-200 bg-surface sm:block">
-        {treeQuery.isLoading ? (
-          <LoadingState label="Loading pages…" />
-        ) : treeQuery.isError ? (
-          <div className="p-3">
-            <ErrorState error={treeQuery.error} onRetry={() => treeQuery.refetch()} />
-          </div>
-        ) : (
-          <PageTree
-            tree={tree}
-            activePageId={pageId}
-            editable={editable}
-            onOpen={openPage}
-            onCreateRoot={() => setCreateModal({ parentId: null })}
-            onCreateChild={(parentId) => {
-              const parent = pageOptions.find((p) => p.id === parentId);
-              setCreateModal({ parentId, parentTitle: parent?.title });
-            }}
-            onMoveUp={(id) => handleMove(id, 'up')}
-            onMoveDown={(id) => handleMove(id, 'down')}
-            onDelete={handleDelete}
-          />
-        )}
-      </div>
+      {/* Desktop tree sidebar — Graph mode is a distinct full-bleed surface
+          (founder directive: "a distinct full-page feel, better than
+          Obsidian"), so the tree/History chrome below is Document-only. */}
+      {!isGraphMode && (
+        <div className="hidden w-64 shrink-0 border-r border-ink-200 bg-surface sm:block">
+          {treeQuery.isLoading ? (
+            <LoadingState label="Loading pages…" />
+          ) : treeQuery.isError ? (
+            <div className="p-3">
+              <ErrorState error={treeQuery.error} onRetry={() => treeQuery.refetch()} />
+            </div>
+          ) : (
+            <PageTree
+              tree={tree}
+              activePageId={pageId}
+              editable={editable}
+              onOpen={openPage}
+              onCreateRoot={() => setCreateModal({ parentId: null })}
+              onCreateChild={(parentId) => {
+                const parent = pageOptions.find((p) => p.id === parentId);
+                setCreateModal({ parentId, parentTitle: parent?.title });
+              }}
+              onMoveUp={(id) => handleMove(id, 'up')}
+              onMoveDown={(id) => handleMove(id, 'down')}
+              onDelete={handleDelete}
+            />
+          )}
+        </div>
+      )}
 
       {/* Mobile tree drawer */}
-      {mobileTreeOpen &&
+      {!isGraphMode &&
+        mobileTreeOpen &&
         createPortal(
           <MobileTreeDrawer onClose={() => setMobileTreeOpen(false)}>
             <PageTree
@@ -268,136 +340,105 @@ export function PagesSurface({
 
       {/* Main pane */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex shrink-0 items-center justify-between gap-2 border-b border-ink-100 bg-surface px-3 py-2 sm:px-4">
-          <div className="flex min-w-0 items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setMobileTreeOpen(true)}
-              aria-label="Show page tree"
-              data-testid="page-tree-mobile-toggle"
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-ink-200 text-ink-600 hover:bg-ink-50 sm:hidden"
-            >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
-            </button>
+        {isGraphMode ? (
+          <KnowledgeGraphView scope={scope} onOpenPage={openPageRef} viewToggle={viewToggle} />
+        ) : (
+          <>
+            <div className="flex shrink-0 items-center justify-between gap-2 border-b border-ink-100 bg-surface px-3 py-2 sm:px-4">
+              <div className="flex min-w-0 items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setMobileTreeOpen(true)}
+                  aria-label="Show page tree"
+                  data-testid="page-tree-mobile-toggle"
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-ink-200 text-ink-600 hover:bg-ink-50 sm:hidden"
+                >
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+                  </svg>
+                </button>
 
-            <div className="flex items-center gap-1 rounded-md border border-ink-200 bg-ink-50 p-0.5 text-xs font-medium">
-              <button
-                type="button"
-                onClick={async () => {
-                  const ok = await confirmDiscard();
-                  if (!ok) return;
-                  navigate(`${basePath}${pageId ? `/${pageId}` : ''}`);
-                }}
-                data-testid="pages-view-document"
-                aria-pressed={!isGraphMode}
-                className={cn(
-                  'rounded px-2.5 py-1 transition-colors duration-[120ms]',
-                  !isGraphMode ? 'bg-surface text-ink-900 shadow-xs' : 'text-ink-500 hover:text-ink-800',
-                )}
-              >
-                Document
-              </button>
-              <button
-                type="button"
-                onClick={async () => {
-                  const ok = await confirmDiscard();
-                  if (!ok) return;
-                  navigate(`${basePath}/graph`);
-                }}
-                data-testid="pages-view-graph"
-                aria-pressed={isGraphMode}
-                className={cn(
-                  'rounded px-2.5 py-1 transition-colors duration-[120ms]',
-                  isGraphMode ? 'bg-surface text-ink-900 shadow-xs' : 'text-ink-500 hover:text-ink-800',
-                )}
-              >
-                Graph
-              </button>
-            </div>
-          </div>
-
-          {!isGraphMode && pageQuery.data && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setVersionsOpen(true)}
-              data-testid="page-open-version-history"
-            >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                <circle cx="12" cy="12" r="9" />
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 7v5l3 3" />
-              </svg>
-              <span className="hidden sm:inline">History</span>
-            </Button>
-          )}
-        </div>
-
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          {isGraphMode ? (
-            <div className="p-3 sm:p-5">
-              <KnowledgeGraphView scope={scope} onOpenPage={openPageRef} />
-            </div>
-          ) : !pageId ? (
-            treeQuery.isLoading ? (
-              <LoadingState label="Loading pages…" />
-            ) : (
-              <div className="p-6">
-                <EmptyState
-                  title={emptyTitle}
-                  description={emptyDescription}
-                  action={
-                    editable ? (
-                      <Button size="sm" onClick={() => setCreateModal({ parentId: null })} data-testid="page-create-first">
-                        New page
-                      </Button>
-                    ) : undefined
-                  }
-                />
+                {viewToggle}
               </div>
-            )
-          ) : pageQuery.isLoading ? (
-            <LoadingState label="Loading page…" />
-          ) : pageQuery.isError || !pageQuery.data ? (
-            <div className="p-6">
-              <ErrorState error={pageQuery.error ?? new Error('Page not found')} onRetry={() => pageQuery.refetch()} />
+
+              {pageQuery.data && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setVersionsOpen(true)}
+                  data-testid="page-open-version-history"
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                    <circle cx="12" cy="12" r="9" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 7v5l3 3" />
+                  </svg>
+                  <span className="hidden sm:inline">History</span>
+                </Button>
+              )}
             </div>
-          ) : (
-            (() => {
-              const page = pageQuery.data;
-              return (
-                // min-h-full (not h-full) so the editor can flex-fill the
-                // pane for full-page editing while long read-mode content
-                // still grows and scrolls naturally.
-                <div className="flex min-h-full flex-col">
-                  <PageEditor
-                    page={page}
-                    titleIndex={titleIndex}
-                    pageOptions={pageOptions}
-                    editable={editable}
-                    saving={updatePage.isPending}
-                    onSave={({ title, content }) =>
-                      updatePage.mutateAsync({ id: page.id, patch: { title, content } })
-                    }
-                    onOpenPage={openPage}
-                    onCreatePage={handleCreateFromWikiLink}
-                    onEditingChange={setEditingPage}
-                  />
-                  {!editingPage && (
-                    <>
-                      <BacklinksPanel pageId={page.id} scope={scope} onOpenPage={openPageRef} />
-                      <OutgoingLinksPanel pageId={page.id} scope={scope} onOpenPage={openPageRef} />
-                      {showLinkedIssues && scope.kind === 'project' && (
-                        <PageLinkedIssuesSection pageId={page.id} projectId={scope.id} />
-                      )}
-                    </>
-                  )}
+
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              {!pageId ? (
+                treeQuery.isLoading ? (
+                  <LoadingState label="Loading pages…" />
+                ) : (
+                  <div className="p-6">
+                    <EmptyState
+                      title={emptyTitle}
+                      description={emptyDescription}
+                      action={
+                        editable ? (
+                          <Button size="sm" onClick={() => setCreateModal({ parentId: null })} data-testid="page-create-first">
+                            New page
+                          </Button>
+                        ) : undefined
+                      }
+                    />
+                  </div>
+                )
+              ) : pageQuery.isLoading ? (
+                <LoadingState label="Loading page…" />
+              ) : pageQuery.isError || !pageQuery.data ? (
+                <div className="p-6">
+                  <ErrorState error={pageQuery.error ?? new Error('Page not found')} onRetry={() => pageQuery.refetch()} />
                 </div>
-              );
-            })()
-          )}
-        </div>
+              ) : (
+                (() => {
+                  const page = pageQuery.data;
+                  return (
+                    // min-h-full (not h-full) so the editor can flex-fill the
+                    // pane for full-page editing while long read-mode content
+                    // still grows and scrolls naturally.
+                    <div className="flex min-h-full flex-col">
+                      <PageEditor
+                        page={page}
+                        titleIndex={titleIndex}
+                        pageOptions={pageOptions}
+                        editable={editable}
+                        saving={updatePage.isPending}
+                        onSave={({ title, content }) =>
+                          updatePage.mutateAsync({ id: page.id, patch: { title, content } })
+                        }
+                        onOpenPage={openPage}
+                        onCreatePage={handleCreateFromWikiLink}
+                        onEditingChange={setEditingPage}
+                      />
+                      {!editingPage && (
+                        <>
+                          <BacklinksPanel pageId={page.id} scope={scope} onOpenPage={openPageRef} />
+                          <OutgoingLinksPanel pageId={page.id} scope={scope} onOpenPage={openPageRef} />
+                          {showLinkedIssues && scope.kind === 'project' && (
+                            <PageLinkedIssuesSection pageId={page.id} projectId={scope.id} />
+                          )}
+                        </>
+                      )}
+                    </div>
+                  );
+                })()
+              )}
+            </div>
+          </>
+        )}
       </div>
 
       {versionsOpen && pageQuery.data && (

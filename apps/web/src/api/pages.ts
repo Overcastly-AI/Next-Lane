@@ -150,14 +150,15 @@ export function usePageOutgoingLinks(pageId: string | undefined) {
 
 /**
  * Fetch a page's own scope (`projectId`/`workspaceId`) by id, imperatively —
- * NOT a `use*` hook. Used when a caller only has a bare page id and needs to
- * resolve where that page actually lives before routing to it: the
- * workspace-wide knowledge graph's nodes (`PageGraphNode`) don't carry scope
- * fields, unlike `PageBacklinkDto`/`PageResolvedLinkDto`, so a node click in
- * `KnowledgeGraphView`'s workspace mode resolves scope on demand via this.
- * Goes through the query client's cache (same key `usePage` reads/writes)
- * so it's a no-op network call when the page is already cached, and it warms
- * that cache for the page view that opens immediately after.
+ * NOT a `use*` hook. For a caller that only has a bare page id and needs to
+ * resolve where that page actually lives before routing to it. (Historical
+ * note: `KnowledgeGraphView` used to call this for every workspace-graph
+ * node click before `PageGraphNode` carried `projectId` — since it does
+ * now, that call site routes directly instead. Kept here as a general
+ * utility for any future caller in the same situation.) Goes through the
+ * query client's cache (same key `usePage` reads/writes) so it's a no-op
+ * network call when the page is already cached, and it warms that cache for
+ * the page view that opens immediately after.
  */
 export function fetchPageScope(qc: QueryClient, pageId: string): Promise<PageDto> {
   return qc.fetchQuery({

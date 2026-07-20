@@ -175,7 +175,8 @@ test.describe('Workspace Docs (org-wide pages)', () => {
       await expect(page.getByTestId('page-title')).toHaveText('Handbook');
     });
 
-    // ── The knowledge graph renders both nodes + the edge between them ────
+    // ── The knowledge graph renders both nodes + the edge between them, and
+    //    the workspace-docs entry (`projectId: null`) shows in the legend ──
     await test.step('the graph view renders nodes + edges', async () => {
       await page.getByTestId('pages-view-graph').click();
       const graph = page.getByTestId('page-graph-view');
@@ -188,10 +189,19 @@ test.describe('Workspace Docs (org-wide pages)', () => {
       await expect(handbookNode).toContainText('Handbook');
       await expect(runbookNode).toContainText('Runbook');
 
+      // Both pages are workspace-docs (projectId: null) — the legend shows
+      // the single neutral "Workspace docs" entry, no project color needed.
+      await expect(page.getByTestId('page-graph-legend')).toBeVisible();
+      await expect(page.getByTestId('page-graph-legend-item-workspace')).toContainText('Workspace docs');
+
       // At least one edge line was drawn between the two nodes.
       await expect(page.locator('[data-testid="page-graph-view"] svg line')).toHaveCount(1);
 
+      // Selecting a node opens the side rail (focus/orbit); "Open page" navigates.
       await runbookNode.click();
+      await expect(page.getByTestId('page-graph-rail')).toBeVisible();
+      await expect(page.getByTestId('page-graph-rail-title')).toHaveText('Runbook');
+      await page.getByTestId('page-graph-rail-open').click();
       await expect(page.getByTestId('page-title')).toHaveText('Runbook');
       await expect(page).toHaveURL(new RegExp(`/workspaces/.*/docs/${runbookId}`));
     });

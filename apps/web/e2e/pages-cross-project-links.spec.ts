@@ -137,10 +137,25 @@ test.describe('Cross-project wiki-links', () => {
       await expect(alphaNode).toBeVisible();
       await expect(betaNode).toBeVisible();
 
+      // The workspace-wide graph colors nodes by owning project — the legend
+      // names both projects by key, unioned from the loaded nodes.
+      await expect(page.getByTestId('page-graph-legend')).toBeVisible();
+      await expect(page.getByTestId(`page-graph-legend-item-${projectA.id}`)).toContainText(projectA.key);
+      await expect(page.getByTestId(`page-graph-legend-item-${projectB.id}`)).toContainText(projectB.key);
+
       // At least one edge line was drawn between the two cross-project nodes.
       await expect(page.locator('[data-testid="page-graph-view"] svg line')).toHaveCount(1);
 
+      // Selecting the cross-project node opens the side rail scoped to ITS
+      // OWN project (routed directly off `PageGraphNode.projectId`, no
+      // `fetchPageScope` round trip) — "Open page" lands on project B's route.
       await betaNode.click();
+      const rail = page.getByTestId('page-graph-rail');
+      await expect(rail).toBeVisible();
+      await expect(page.getByTestId('page-graph-rail-title')).toHaveText('Beta Landing');
+      await expect(rail).toContainText(projectB.key);
+
+      await page.getByTestId('page-graph-rail-open').click();
       await expect(page.getByTestId('page-title')).toHaveText('Beta Landing');
       await expect(page).toHaveURL(
         new RegExp(`/projects/${projectB.id}/pages/${betaPageId}`),

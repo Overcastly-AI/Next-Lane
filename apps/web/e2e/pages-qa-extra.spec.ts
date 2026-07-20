@@ -229,15 +229,18 @@ test.describe('Pages QA extra: hierarchy, reorder correctness, title validation,
     await expect(zoomLabel).toHaveText('100%');
 
     // Pan: drag on the canvas background (not on a node button) should move
-    // the group's transform. Read the <g> transform before/after.
-    const svg = graph.locator('svg');
+    // the group's transform. Read the <g> transform before/after. Scoped to
+    // the canvas (`page-graph-canvas`) specifically — the top bar's search
+    // field also has its own small `<svg>` icon.
+    const canvas = page.getByTestId('page-graph-canvas');
+    const svg = canvas.locator('svg');
     const box = (await svg.boundingBox())!;
-    const groupBefore = await graph.locator('svg > g').getAttribute('transform');
+    const groupBefore = await canvas.locator('svg > g').getAttribute('transform');
     await page.mouse.move(box.x + box.width / 2, box.y + 10);
     await page.mouse.down();
     await page.mouse.move(box.x + box.width / 2 + 80, box.y + 60, { steps: 5 });
     await page.mouse.up();
-    const groupAfter = await graph.locator('svg > g').getAttribute('transform');
+    const groupAfter = await canvas.locator('svg > g').getAttribute('transform');
     expect(groupAfter).not.toEqual(groupBefore);
   });
 });
