@@ -43,13 +43,13 @@ function currentPageId(page: Page): string {
 }
 
 test.describe('Pages knowledge base', () => {
-  test('reaches the Pages tab from the project nav', async ({ page, request }) => {
+  test('reaches the Docs tab from the project nav', async ({ page, request }) => {
     const { project } = await setupIsolatedProject(page, request, {
       label: 'pages-nav',
       projectName: 'Pages Nav QA',
     });
 
-    // Pages is a first-class primary tab (promoted from the "More" menu —
+    // Docs is a first-class primary tab (promoted from the "More" menu —
     // the founder couldn't find the wiki there).
     await page.getByTestId('nav-pages').click();
     await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/pages`));

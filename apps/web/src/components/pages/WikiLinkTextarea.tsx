@@ -13,10 +13,25 @@
  * `element.setSelectionRange` — never `.focus()` — so the textarea never
  * loses focus mid-edit (the codebase's documented focus-loss lesson).
  */
-import { forwardRef, useCallback, useImperativeHandle, useRef, useState } from 'react';
+import {
+  forwardRef,
+  useCallback,
+  useImperativeHandle,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
 import { Textarea } from '@/components/ui/Textarea';
 import { detectWikiLinkTrigger, type FlatPageOption } from '@/lib/wikiLinks';
+import { getCaretCoordinates, type CaretCoords } from '@/lib/textareaCaretCoords';
 import { cn } from '@/lib/cn';
+
+/** Vertical gap (px) between the caret's line and the picker dropdown. */
+const PICKER_GAP = 6;
+/** Below this fraction of viewport height, the caret is "low enough" that the
+ * picker must flip to open ABOVE the caret instead of below (else it would
+ * render partly or fully off-screen). */
+const FLIP_VIEWPORT_THRESHOLD = 0.6;
 
 export interface WikiLinkTextareaProps {
   value: string;
@@ -54,9 +69,21 @@ export const WikiLinkTextarea = forwardRef<WikiLinkTextareaHandle, WikiLinkTexta
     ref,
   ) {
     const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const listRef = useRef<HTMLUListElement>(null);
     const [query, setQuery] = useState<string | null>(null);
     const [startIndex, setStartIndex] = useState(0);
     const [selectedIndex, setSelectedIndex] = useState(0);
+    // Caret position (relative to the textarea's own top-left, already
+    // scroll-adjusted) — recomputed on every keystroke while the picker is
+    // open, and on textarea scroll, so the dropdown tracks the caret instead
+    // of sitting pinned to the bottom of a (possibly very tall) textarea.
+    const [caretCoords, setCaretCoords] = useState<CaretCoords>({ top: 0, left: 0, height: 20 });
+    // Resolved on-screen placement for the picker: `top` when it opens below
+    // the caret, `bottom` when flipped above it (never both).
+    const [pickerPos, setPickerPos] = useState<{ left: number; top?: number; bottom?: number }>({
+      left: 0,
+      top: 0,
+    });
 
     useImperativeHandle(ref, () => ({
       focus() {
@@ -79,12 +106,25 @@ export const WikiLinkTextarea = forwardRef<WikiLinkTextareaHandle, WikiLinkTexta
           setQuery(trigger.query);
           setStartIndex(trigger.startIndex);
           setSelectedIndex(0);
+          // Recompute on every keystroke while the trigger is open so the
+          // dropdown follows the caret as the user types (line wraps,
+          // newlines, etc. all shift its position).
+          setCaretCoords(getCaretCoordinates(e.target, caret));
         } else {
           setQuery(null);
         }
       },
       [onChange],
     );
+
+    /** Keeps the picker glued to the caret when the (possibly very tall,
+     * scrollable) textarea itself is scrolled while the picker is open. */
+    const handleScroll = useCallback(() => {
+      const el = textareaRef.current;
+      if (!el || query === null) return;
+      const caret = el.selectionStart ?? el.value.length;
+      setCaretCoords(getCaretCoordinates(el, caret));
+    }, [query]);
 
     const insertPage = useCallback(
       (page: FlatPageOption) => {
@@ -142,6 +182,36 @@ export const WikiLinkTextarea = forwardRef<WikiLinkTextareaHandle, WikiLinkTexta
     const isOpen = query !== null;
     const hasResults = filtered.length > 0;
 
+    // Resolve the picker's on-screen placement from the caret's coordinates:
+    // anchor just below the caret's line by default, clamp horizontally so
+    // it never overflows the textarea's right edge, and flip to open ABOVE
+    // the caret when the caret sits low enough in the viewport that opening
+    // below would push the dropdown (partly) off-screen. Runs synchronously
+    // before paint (`useLayoutEffect`) so there's no visible jump.
+    useLayoutEffect(() => {
+      if (!isOpen) return;
+      const textarea = textareaRef.current;
+      const list = listRef.current;
+      if (!textarea) return;
+
+      const wrapperWidth = textarea.offsetWidth;
+      const wrapperHeight = textarea.offsetHeight;
+      const dropdownWidth = list?.offsetWidth || 320;
+
+      let left = caretCoords.left;
+      const maxLeft = Math.max(0, wrapperWidth - dropdownWidth);
+      left = Math.min(Math.max(left, 0), maxLeft);
+
+      const caretViewportTop = textarea.getBoundingClientRect().top + caretCoords.top;
+      const openAbove = caretViewportTop > window.innerHeight * FLIP_VIEWPORT_THRESHOLD;
+
+      setPickerPos(
+        openAbove
+          ? { left, bottom: wrapperHeight - caretCoords.top + PICKER_GAP }
+          : { left, top: caretCoords.top + caretCoords.height + PICKER_GAP },
+      );
+    }, [isOpen, caretCoords]);
+
     return (
       // flex/min-h-0 so a parent can stretch the textarea into a full-page
       // editing canvas (PageEditor's edit mode) — inert when not stretched.
@@ -151,6 +221,7 @@ export const WikiLinkTextarea = forwardRef<WikiLinkTextareaHandle, WikiLinkTexta
           value={value}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
+          onScroll={handleScroll}
           onBlur={(e) => {
             parentOnBlur?.(e);
           }}
@@ -168,12 +239,14 @@ export const WikiLinkTextarea = forwardRef<WikiLinkTextareaHandle, WikiLinkTexta
 
         {isOpen && (
           <ul
+            ref={listRef}
             id="wikilink-picker"
             role="listbox"
             data-testid="wikilink-picker"
             aria-label="Insert a wiki-link"
+            style={{ left: pickerPos.left, top: pickerPos.top, bottom: pickerPos.bottom }}
             className={cn(
-              'absolute top-full left-0 z-50 mt-1 w-80 max-w-[90vw]',
+              'absolute z-50 w-80 max-w-[90vw]',
               'max-h-56 overflow-y-auto rounded-lg border border-ink-200 bg-surface shadow-cardHover',
               'motion-safe:animate-nl-fade-in',
             )}

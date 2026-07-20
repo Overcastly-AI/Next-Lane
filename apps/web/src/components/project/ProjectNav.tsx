@@ -45,9 +45,10 @@ const PRIMARY_TABS = [
   { to: 'board',       label: 'Board'   },
   { to: 'backlog',     label: 'Backlog' },
   { to: 'triage',      label: 'Triage'  },
-  // Pages is a flagship pillar (project wiki + knowledge graph) — a
-  // first-class tab, not a "More" item (the founder couldn't find it there).
-  { to: 'pages',       label: 'Pages',    testId: 'nav-pages' as const },
+  // Docs (route: /pages — unchanged for deep-link/MCP stability) is a
+  // flagship pillar (project wiki + knowledge graph) — a first-class tab,
+  // not a "More" item (the founder couldn't find it there).
+  { to: 'pages',       label: 'Docs',     testId: 'nav-pages' as const },
   { to: 'reports',     label: 'Reports' },
 ] as const;
 

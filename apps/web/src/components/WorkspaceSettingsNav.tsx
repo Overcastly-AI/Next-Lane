@@ -1,16 +1,19 @@
 /**
- * Shared sub-navigation bar for all workspace-level pages (settings AND the
- * org-wide docs space — the workspace's persistent nav "group", not a
- * project tab).
+ * Shared sub-navigation bar for the workspace *settings* pages.
  *
- * Tabs: General / Members / Audit log / Branding / Docs
+ * Tabs: General / Members / Audit log / Branding
+ *
+ * Docs is deliberately NOT a tab here — it isn't a workspace setting, it's a
+ * daily-use content surface, so its one home is the persistent sidebar's
+ * workspace section (`SidebarNavContent`, `/workspaces/:id/docs`). An entry
+ * used to live in this strip too, which buried a primary knowledge-base
+ * surface inside "Settings".
  *
  * Used by:
  *  - WorkspaceSettingsPage  (/workspaces/:id/settings)
  *  - WorkspaceMembersPage   (/workspaces/:id/members)
  *  - WorkspaceAuditLogPage  (/workspaces/:id/audit-log)
  *  - WorkspaceBrandingPage  (/workspaces/:id/branding)
- *  - WorkspaceDocsPage      (/workspaces/:id/docs)
  */
 import { NavLink } from 'react-router-dom';
 
@@ -55,13 +58,6 @@ export function WorkspaceSettingsNav({ workspaceId }: WorkspaceSettingsNavProps)
         className={navLinkClass}
       >
         Branding
-      </NavLink>
-      <NavLink
-        to={`/workspaces/${workspaceId}/docs`}
-        className={navLinkClass}
-        data-testid="workspace-settings-nav-docs"
-      >
-        Docs
       </NavLink>
     </nav>
   );

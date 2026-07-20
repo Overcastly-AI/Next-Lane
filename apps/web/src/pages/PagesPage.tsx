@@ -64,7 +64,7 @@ function Shell({
   return (
     <div className="flex h-screen flex-col overflow-x-clip">
       <AppHeader>
-        <ProjectBreadcrumb primary={projectName} secondary={[{ label: 'Pages' }]} />
+        <ProjectBreadcrumb primary={projectName} secondary={[{ label: 'Docs' }]} />
       </AppHeader>
       <ProjectNav projectId={projectId} />
       <main className="min-h-0 flex-1 overflow-hidden bg-surface">{children}</main>

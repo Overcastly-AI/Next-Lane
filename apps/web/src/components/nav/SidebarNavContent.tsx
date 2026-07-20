@@ -45,7 +45,7 @@ import {
   ViewRoadmapIcon,
 } from './sidebarIcons';
 
-// Reused verbatim from the project Pages nav (`ProjectViewsSubNav`, below) —
+// Reused verbatim from the project Docs nav (`ProjectViewsSubNav`, below) —
 // the workspace Docs entry is the same "knowledge base" concept one level
 // up, so it wears the identical icon rather than minting a new glyph.
 
@@ -157,7 +157,7 @@ function ProjectRow({
 const PROJECT_VIEWS = [
   { to: 'board', label: 'Board', Icon: ViewBoardIcon },
   { to: 'backlog', label: 'Backlog', Icon: ViewBacklogIcon },
-  { to: 'pages', label: 'Pages', Icon: ViewPagesIcon },
+  { to: 'pages', label: 'Docs', Icon: ViewPagesIcon },
   { to: 'dashboards', label: 'Dashboards', Icon: ViewDashboardsIcon },
   { to: 'roadmap', label: 'Roadmap', Icon: ViewRoadmapIcon },
   { to: 'reports', label: 'Reports', Icon: ViewReportsIcon },

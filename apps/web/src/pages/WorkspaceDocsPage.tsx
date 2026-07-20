@@ -9,9 +9,11 @@
  *        /workspaces/:workspaceId/docs/graph
  *        /workspaces/:workspaceId/docs/:pageId
  *
- * Reachable from the persistent sidebar's workspace section and the
- * workspace settings tab strip (`WorkspaceSettingsNav`) — the same nav
- * group that holds Members / Audit log / Settings, NOT a project tab (a
+ * Reachable from a single entry point: the persistent sidebar's workspace
+ * section (`SidebarNavContent`, "Docs" row) — NOT a workspace *setting* (it
+ * used to also live as a tab in `WorkspaceSettingsNav`, which buried a
+ * daily-use surface inside "Settings" and read as a second, differently
+ * named feature; that tab has been removed) and NOT a project tab (a
  * workspace page has no owning project). VIEWER-readable / MEMBER-writable,
  * resolved via the workspace membership the same way Members/Audit log are —
  * a non-member simply has no `activeWorkspace` entry pointing here (see
@@ -30,7 +32,6 @@ import { Link, useParams } from 'react-router-dom';
 import { useMyRole, useWorkspaces } from '@/api/workspaces';
 import { canEdit } from '@/lib/permissions';
 import { AppHeader } from '@/components/AppHeader';
-import { WorkspaceSettingsNav } from '@/components/WorkspaceSettingsNav';
 import { PagesSurface } from '@/components/pages/PagesSurface';
 
 export function WorkspaceDocsPage() {
@@ -46,7 +47,7 @@ export function WorkspaceDocsPage() {
   );
 
   return (
-    <Shell workspaceId={workspaceId} workspaceName={workspaceName}>
+    <Shell workspaceName={workspaceName}>
       <PagesSurface
         scope={{ kind: 'workspace', id: workspaceId }}
         basePath={`/workspaces/${workspaceId}/docs`}
@@ -65,11 +66,9 @@ export function WorkspaceDocsPage() {
 
 function Shell({
   children,
-  workspaceId,
   workspaceName,
 }: {
   children: React.ReactNode;
-  workspaceId: string;
   workspaceName: string | undefined;
 }) {
   return (
@@ -91,7 +90,6 @@ function Shell({
           <span className="shrink-0 text-sm font-semibold text-ink-900">Docs</span>
         </div>
       </AppHeader>
-      <WorkspaceSettingsNav workspaceId={workspaceId} />
       <main className="min-h-0 flex-1 overflow-hidden bg-surface">{children}</main>
     </div>
   );

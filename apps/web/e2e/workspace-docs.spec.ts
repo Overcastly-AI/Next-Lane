@@ -6,9 +6,11 @@ import { registerNewUser, createWorkspace, login } from './helpers';
  *
  * End-to-end coverage for the workspace-level Docs surface (org-wide Pages
  * epic, Phase 11 continuation item 17): a page tree not tied to any single
- * project, reached from the workspace-level nav (persistent sidebar +
- * workspace settings tab strip), reusing the exact same tree/editor/
- * backlinks/graph component stack as the per-project Pages surface.
+ * project, reached from the persistent sidebar's workspace section — its
+ * single entry point (the redundant tab that used to also live in the
+ * workspace settings strip has been removed; docs are not a workspace
+ * setting) — reusing the exact same tree/editor/backlinks/graph component
+ * stack as the per-project Docs surface.
  *
  * Runs on BOTH configured Playwright projects (chromium-desktop +
  * mobile-chrome, see playwright.config.ts) — the nav-entry helper below
@@ -72,9 +74,10 @@ test.describe('Workspace Docs (org-wide pages)', () => {
 
     await openWorkspaceDocsViaNav(page);
     await expect(page).toHaveURL(new RegExp(`/workspaces/${workspaceId}/docs`));
-    // The workspace settings tab strip also carries a Docs entry — the "same
-    // nav group that holds Members / Audit log / Settings" (task acceptance).
-    await expect(page.getByTestId('workspace-settings-nav-docs')).toBeVisible();
+    // Docs is not a workspace *setting* — the settings tab strip must NOT
+    // carry a Docs entry (that redundant second entry point was removed);
+    // the sidebar row above is the single, correct way in.
+    await expect(page.getByTestId('workspace-settings-nav-docs')).toHaveCount(0);
   });
 
   test('empty state invites creating the first workspace page', async ({ page, request }) => {

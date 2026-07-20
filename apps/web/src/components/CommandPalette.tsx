@@ -167,7 +167,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
       const scopeLabel = isWorkspacePage ? 'Docs' : page.projectKey;
       return {
         id: `page-${page.id}`,
-        group: 'Pages',
+        group: 'Docs',
         label: (
           <span className="flex min-w-0 items-center gap-2">
             <span className="shrink-0 font-mono text-xs text-ink-400">{scopeLabel}</span>

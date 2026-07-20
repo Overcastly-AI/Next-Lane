@@ -6,7 +6,7 @@ import { setupIsolatedProject, API_URL } from './helpers';
  *
  * Full-text search over pages: a page's title/content is findable via the
  * same Cmd-K command palette that already searches issues + projects, under a
- * distinct "Pages" group, and selecting it opens the page. Runs desktop +
+ * distinct "Docs" group, and selecting it opens the page. Runs desktop +
  * mobile.
  */
 test.describe('Pages full-text search (Cmd-K)', () => {
@@ -37,8 +37,8 @@ test.describe('Pages full-text search (Cmd-K)', () => {
     // Search by the unique body word — proves content (not just title) is indexed.
     await dialog.getByRole('combobox').fill(uniqueWord);
 
-    // The "Pages" group appears with our page.
-    await expect(dialog.getByText('Pages', { exact: true })).toBeVisible({ timeout: 10_000 });
+    // The "Docs" group appears with our page.
+    await expect(dialog.getByText('Docs', { exact: true })).toBeVisible({ timeout: 10_000 });
     const pageOption = dialog.getByRole('option', { name: /Incident Runbook/ });
     await expect(pageOption).toBeVisible();
 
