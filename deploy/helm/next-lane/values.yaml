@@ -32,11 +32,11 @@ image:
   # Pull secrets for private registries (list of {name: my-regcred}).
   pullSecrets: []
   api:
-    repository: ghcr.io/next-lane/next-lane-api
+    repository: ghcr.io/overcastly-ai/next-lane-api
     tag: ""          # defaults to .Chart.AppVersion when empty
     pullPolicy: IfNotPresent
   web:
-    repository: ghcr.io/next-lane/next-lane-web
+    repository: ghcr.io/overcastly-ai/next-lane-web
     tag: ""          # defaults to .Chart.AppVersion when empty
     pullPolicy: IfNotPresent
 

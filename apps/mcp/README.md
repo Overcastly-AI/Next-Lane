@@ -121,18 +121,24 @@ it directly:
 NEXT_LANE_TOKEN=nlp_xxx NEXT_LANE_API_URL=http://localhost:4000 node /absolute/path/to/Next-Lane/apps/mcp/dist/index.js
 ```
 
-### Run without cloning (once published)
+### Run without cloning (from v0.1.0)
 
-The package is publish-ready (`publishConfig.access: public`, no `workspace:*`
-runtime deps). After a maintainer runs `npm publish` from `apps/mcp`, anyone can
-run it with **no clone or build**:
+The package is standalone-publishable (`publishConfig.access: public`, no
+`workspace:*` runtime deps) and is published **automatically by the release
+pipeline** — pushing a `vX.Y.Z` tag builds it, runs its tests, and publishes it
+to npm with [provenance](https://docs.npmjs.com/generating-provenance-statements)
+(see [`RELEASING.md`](../../RELEASING.md)). Nothing has been published yet: the
+repo has no tags. Once `v0.1.0` is out, anyone can run it with **no clone or
+build**:
 
 ```bash
-NEXT_LANE_TOKEN=nlp_xxx NEXT_LANE_API_URL=https://your-next-lane.example.com npx @next-lane/mcp
+NEXT_LANE_TOKEN=nlp_xxx NEXT_LANE_API_URL=https://your-next-lane.example.com npx -y @next-lane/mcp
 ```
 
 …and the Claude Desktop / Claude Code configs below become `"command": "npx"`,
-`"args": ["-y", "@next-lane/mcp"]`.
+`"args": ["-y", "@next-lane/mcp"]`. Pin a version in production
+(`@next-lane/mcp@0.1.0`) — the package version always matches the Next Lane
+release it shipped with.
 
 ## Connect to Claude Desktop
 

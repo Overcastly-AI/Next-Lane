@@ -13,6 +13,68 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Cheap guard (node only, no install) for the release pipeline's core
+  # invariant: a `vX.Y.Z` tag must match the version committed in EVERY
+  # artifact — root/api/web/mcp/shared package.json plus the Helm chart's
+  # `version` AND `appVersion`. Catching drift here (on every push) means
+  # `release.yml`'s identical check can never be the first time anyone notices.
+  versions:
+    name: Version consistency
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: All artifact versions agree
+        run: node scripts/sync-versions.mjs --check
+
+  # Conventional Commits guard. The repo already writes them consistently
+  # (`feat(pages):`, `fix(api):`, `docs(audit):`, `vision:`); enforcing the
+  # format keeps automated versioning (semantic-release / Changesets) adoptable
+  # later without changing conventions — RELEASING.md § Versioning. Today the
+  # version number is still chosen by a human.
+  #
+  # The PR TITLE is the blocking check because squash-merge makes it the commit
+  # message. The PR's own commits are linted too, but ADVISORILY
+  # (continue-on-error) — work-in-progress commits get squashed away, and this
+  # must never block a good PR. Cheap: node only, no pnpm install.
+  commit-lint:
+    name: Conventional commits
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: PR title follows Conventional Commits
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: printf '%s\n' "$PR_TITLE" | node scripts/lint-commit-subject.mjs --stdin
+
+      - name: Commits in this PR (advisory)
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          gh api "repos/${{ github.repository }}/pulls/${PR_NUMBER}/commits?per_page=100" \
+            --jq '.[].commit.message | split("\n")[0]' \
+            | node scripts/lint-commit-subject.mjs --stdin
+
   build-test:
     name: Build, typecheck & unit test
     runs-on: ubuntu-latest
