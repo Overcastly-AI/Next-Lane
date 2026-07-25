@@ -21,8 +21,20 @@ teams find it — that's the only ask.**
 [![Unit tests](https://img.shields.io/badge/unit%20tests-1999-brightgreen.svg)](./docs/ROADMAP.md)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6.svg?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Docker](https://img.shields.io/badge/Docker-compose%20up-2496ED.svg?logo=docker&logoColor=white)](#-quickstart)
+[![Install](https://img.shields.io/badge/install-Compose%20%C2%B7%20Helm%20%C2%B7%20npx-4C1D95.svg)](#-install)
 [![Self-hosted](https://img.shields.io/badge/self--hosted-your%20data-success.svg)](#why-next-lane)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING.md)
+
+<!--
+  Registry badges are intentionally ABSENT until the first release actually
+  publishes (there are no tags yet — see RELEASING.md). Add these to the row
+  above the moment `v0.1.0` is out, and not one minute before:
+
+  [![npm](https://img.shields.io/npm/v/@next-lane/mcp.svg?logo=npm)](https://www.npmjs.com/package/@next-lane/mcp)
+  [![GHCR](https://img.shields.io/badge/ghcr.io-next--lane--api-2496ED.svg?logo=docker&logoColor=white)](https://github.com/Overcastly-AI/Next-Lane/pkgs/container/next-lane-api)
+  [![Release](https://github.com/Overcastly-AI/Next-Lane/actions/workflows/release.yml/badge.svg)](https://github.com/Overcastly-AI/Next-Lane/actions/workflows/release.yml)
+-->
+
 
 Built by [Overcastly AI](https://overcastly.com?utm_source=github&utm_medium=readme&utm_campaign=next-lane&utm_content=hero)
 
@@ -54,6 +66,7 @@ a hot-reload dev setup are in [Quickstart](#-quickstart) below.
 - [Agent-native: your coding agent can run the tracker](#-agent-native-your-coding-agent-can-run-the-tracker)
 - [What's shipped](#-whats-shipped)
 - [Quick Start](#-quickstart)
+- [Install](#-install)
 - [Local development](#-local-development-hot-reload-no-docker-for-app-code)
 - [Architecture at a glance](#-architecture-at-a-glance)
 - [On the roadmap](#-on-the-roadmap)
@@ -334,6 +347,81 @@ Stop the stack with `docker compose down` (add `-v` to also wipe the database vo
 
 > Deploying to Kubernetes? See [`docs/DEPLOY-KUBERNETES.md`](./docs/DEPLOY-KUBERNETES.md)
 > for the Helm chart, Kustomize overlays, and an HA topology guide.
+
+## 📦 Install
+
+Three supported ways to run Next Lane. All of them work **today from a clone**;
+the prebuilt-artifact variants light up with the first tagged release
+(`v0.1.0` — see [`RELEASING.md`](./RELEASING.md), which is honest about the fact
+that nothing is published yet).
+
+### 1 · Docker Compose — the whole app
+
+From source (works right now, and is what the [Quickstart](#-quickstart) does):
+
+```bash
+git clone https://github.com/Overcastly-AI/Next-Lane.git && cd Next-Lane
+cp .env.example .env && echo "JWT_SECRET=$(openssl rand -hex 32)" >> .env
+docker compose up -d --build
+```
+
+Prefer prebuilt multi-arch images over a local build (no toolchain, faster
+start) — available from `v0.1.0`:
+
+```bash
+docker pull ghcr.io/overcastly-ai/next-lane-api:0.1.0
+docker pull ghcr.io/overcastly-ai/next-lane-web:0.1.0
+# then point your compose file's api/web services at those tags
+```
+
+### 2 · Kubernetes — Helm
+
+From the repo (works right now):
+
+```bash
+helm install next-lane deploy/helm/next-lane \
+  --namespace next-lane --create-namespace \
+  --set secrets.jwtSecret="$(openssl rand -hex 32)" \
+  --set postgresql.auth.password="$(openssl rand -hex 24)" \
+  --set ingress.host=tracker.example.com
+```
+
+From the chart registry — no clone needed, available from `v0.1.0`:
+
+```bash
+helm install next-lane oci://ghcr.io/overcastly-ai/charts/next-lane --version 0.1.0 \
+  --namespace next-lane --create-namespace \
+  --set secrets.jwtSecret="$(openssl rand -hex 32)" \
+  --set postgresql.auth.password="$(openssl rand -hex 24)"
+```
+
+Full production guidance (external DB/Redis, HA, TLS, Kustomize overlays) is in
+[`docs/DEPLOY-KUBERNETES.md`](./docs/DEPLOY-KUBERNETES.md).
+
+### 3 · MCP server — give your agent the tracker
+
+`@next-lane/mcp` is a standalone stdio MCP server (120 tools). It talks to a
+running Next Lane over its REST API with a Personal Access Token — published to
+npm from `v0.1.0`:
+
+```jsonc
+// Claude Desktop / Claude Code MCP config
+{
+  "mcpServers": {
+    "next-lane": {
+      "command": "npx",
+      "args": ["-y", "@next-lane/mcp"],
+      "env": {
+        "NEXT_LANE_API_URL": "http://localhost:4000",
+        "NEXT_LANE_TOKEN": "nlp_your_personal_access_token"
+      }
+    }
+  }
+}
+```
+
+Until then (and for development), run it from the clone — see
+[`apps/mcp/README.md`](./apps/mcp/README.md).
 
 ## 🛠️ Local development (hot reload, no Docker for app code)
 

@@ -1,0 +1,453 @@
+# Next Lane release pipeline — ONE tag drives every published artifact.
+#
+# Trigger:
+#   - push of a SemVer tag `v*` (e.g. v0.1.0)  -> the real release
+#   - workflow_dispatch (version input)        -> full DRY RUN: everything is
+#     built, linted, packed and validated, but nothing is pushed/published and
+#     no GitHub release is created.
+#
+# What a tag publishes (see RELEASING.md for the maintainer runbook):
+#   1. ghcr.io/<owner>/next-lane-api|web   (multi-arch, always — GITHUB_TOKEN)
+#   2. docker.io/<ns>/next-lane-api|web    (ONLY if DOCKERHUB_* secrets exist)
+#   3. npm @next-lane/mcp with provenance  (ONLY if NPM_TOKEN exists)
+#   4. oci://ghcr.io/<owner>/charts/next-lane  (Helm chart, always)
+#   5. A GitHub Release whose notes are the matching CHANGELOG.md section
+#
+# Deliberate design notes:
+#   - `.github/workflows/images.yml` builds the DEFAULT-BRANCH ("edge") images
+#     and runs the web CSP smoke test on every branch/PR. It no longer triggers
+#     on tags, so a tag is published by exactly ONE workflow (this one) — no
+#     double publish, no race for the `latest` tag.
+#   - Optional publishers degrade gracefully: a maintainer with no Docker Hub
+#     or npm account still gets a complete GHCR + Helm + GitHub release. Secrets
+#     can't be referenced from `if:`, so they're surfaced through job-level
+#     `env` and tested there (the documented GitHub workaround).
+#   - Nothing publishes unless the version guard, the test gates AND the image
+#     build have all passed.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to dry-run, e.g. 0.1.0 (nothing is published)'
+        required: true
+        type: string
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  REGISTRY: ghcr.io
+  PNPM_VERSION: '9.12.0'
+  NODE_VERSION: '20'
+
+jobs:
+  # ─────────────────────────── 1. version + notes guard ──────────────────────
+  # Fails the release BEFORE anything is built if the tag disagrees with the
+  # committed versions (root/api/web/mcp/shared package.json + Helm
+  # Chart.yaml version & appVersion) or if CHANGELOG.md has no section for it.
+  verify:
+    name: Verify version & changelog
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      major_minor: ${{ steps.v.outputs.major_minor }}
+      prerelease: ${{ steps.v.outputs.prerelease }}
+      dry_run: ${{ steps.v.outputs.dry_run }}
+      owner_lc: ${{ steps.v.outputs.owner_lc }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: v
+        # Ref/input values go through `env`, never straight into the script
+        # body — a tag name is attacker-shaped text in the general case.
+        env:
+          EVENT: ${{ github.event_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+          REF_NAME: ${{ github.ref_name }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            raw="$INPUT_VERSION"
+            dry=true
+          else
+            raw="$REF_NAME"
+            dry=false
+          fi
+          version="${raw#v}"
+          # Guard the whole pipeline's inputs at the front door.
+          if ! echo "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+            echo "::error title=Bad version::'$raw' is not a SemVer version (expected vX.Y.Z or X.Y.Z)"
+            exit 1
+          fi
+          {
+            echo "dry_run=$dry"
+            echo "version=$version"
+            echo "major_minor=$(echo "$version" | cut -d. -f1,2)"
+            # A prerelease (1.2.3-rc.1) must never move the `latest` image tag.
+            case "$version" in *-*) echo "prerelease=true" ;; *) echo "prerelease=false" ;; esac
+            # GHCR paths must be lowercase; the owner may not be.
+            echo "owner_lc=$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')"
+          } >>"$GITHUB_OUTPUT"
+          echo "Releasing $version (dry run: $dry)"
+
+      - name: Setup Node ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Tag must match every committed version
+        env:
+          VERSION: ${{ steps.v.outputs.version }}
+        run: node scripts/sync-versions.mjs --check "$VERSION"
+
+      - name: Extract release notes from CHANGELOG.md
+        env:
+          VERSION: ${{ steps.v.outputs.version }}
+        run: node scripts/changelog-extract.mjs "$VERSION" --out release-notes.md
+
+      - name: Upload release notes
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-notes
+          path: release-notes.md
+          if-no-files-found: error
+
+  # ─────────────────────────────── 2. test gates ─────────────────────────────
+  # ci.yml only runs on branch pushes/PRs, so a TAG push would otherwise
+  # publish without a single test running. This is the same DB-free lane.
+  gates:
+    name: Build, typecheck & unit test
+    runs-on: ubuntu-latest
+    needs: verify
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm --filter @next-lane/api exec prisma generate
+
+      - name: Build all packages
+        run: pnpm -r build
+
+      - name: Unit tests
+        run: pnpm -r test
+
+      - name: Typecheck API
+        run: pnpm --filter @next-lane/api exec tsc --noEmit
+
+      - name: Typecheck web
+        run: pnpm --filter @next-lane/web exec tsc --noEmit
+
+  # ─────────────────────────── 3. container images ───────────────────────────
+  images:
+    name: Images — ${{ matrix.app }}
+    runs-on: ubuntu-latest
+    needs: [verify, gates]
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - app: api
+            image: next-lane-api
+            dockerfile: apps/api/Dockerfile
+          - app: web
+            image: next-lane-web
+            dockerfile: apps/web/Dockerfile
+    env:
+      # Secrets cannot be used in `if:` conditions — surface them as env and
+      # test THAT. Empty (unset secret) => Docker Hub is skipped entirely.
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+      # Org accounts can publish under a namespace that isn't the login user;
+      # set the optional DOCKERHUB_NAMESPACE secret for that. Defaults to the
+      # login user, which is what a personal Docker Hub account wants.
+      DOCKERHUB_NAMESPACE: ${{ secrets.DOCKERHUB_NAMESPACE || secrets.DOCKERHUB_USERNAME }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU (multi-arch emulation)
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to Docker Hub (optional)
+        if: env.DOCKERHUB_USERNAME != '' && env.DOCKERHUB_TOKEN != ''
+        uses: docker/login-action@v3
+        with:
+          username: ${{ env.DOCKERHUB_USERNAME }}
+          password: ${{ env.DOCKERHUB_TOKEN }}
+
+      - name: Note — Docker Hub skipped
+        if: env.DOCKERHUB_USERNAME == '' || env.DOCKERHUB_TOKEN == ''
+        run: |
+          echo "::notice title=Docker Hub skipped::DOCKERHUB_USERNAME/DOCKERHUB_TOKEN not configured — publishing to GHCR only. See RELEASING.md."
+
+      - name: Extract image metadata (tags + labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          # Tags are derived from the RESOLVED version rather than the git ref
+          # so the dry run produces exactly the same tag set as a real release.
+          images: |
+            name=${{ env.REGISTRY }}/${{ needs.verify.outputs.owner_lc }}/${{ matrix.image }}
+            name=docker.io/${{ env.DOCKERHUB_NAMESPACE }}/${{ matrix.image }},enable=${{ env.DOCKERHUB_USERNAME != '' && env.DOCKERHUB_TOKEN != '' }}
+          tags: |
+            type=raw,value=${{ needs.verify.outputs.version }}
+            type=raw,value=${{ needs.verify.outputs.major_minor }}
+            type=raw,value=latest,enable=${{ needs.verify.outputs.prerelease == 'false' }}
+            type=sha,format=short
+          labels: |
+            org.opencontainers.image.version=${{ needs.verify.outputs.version }}
+            org.opencontainers.image.licenses=MIT
+
+      - name: Build & push (multi-arch)
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/amd64,linux/arm64
+          push: ${{ needs.verify.outputs.dry_run == 'false' }}
+          provenance: true
+          sbom: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # The web image must NOT bake an API URL — runtime /config.js handles
+          # it. Passing an empty build-arg is a no-op for the api image.
+          build-args: |
+            VITE_API_URL=
+          cache-from: type=gha,scope=${{ matrix.app }}
+          cache-to: type=gha,scope=${{ matrix.app }},mode=max
+
+      - name: Generate SBOM (SPDX)
+        if: needs.verify.outputs.dry_run == 'false'
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ env.REGISTRY }}/${{ needs.verify.outputs.owner_lc }}/${{ matrix.image }}@${{ steps.build.outputs.digest }}
+          format: spdx-json
+          artifact-name: sbom-${{ matrix.app }}.spdx.json
+          output-file: ${{ runner.temp }}/sbom-${{ matrix.app }}.spdx.json
+
+      - name: Upload SBOM artifact
+        if: needs.verify.outputs.dry_run == 'false'
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ matrix.app }}
+          path: ${{ runner.temp }}/sbom-${{ matrix.app }}.spdx.json
+          if-no-files-found: warn
+
+  # ───────────────────────────── 4. npm — @next-lane/mcp ─────────────────────
+  # Gated on `images` so a broken image build never leaves a published npm
+  # package pointing at a release that doesn't exist.
+  npm:
+    name: npm publish @next-lane/mcp
+    runs-on: ubuntu-latest
+    needs: [verify, gates, images]
+    permissions:
+      contents: read
+      id-token: write # required for npm provenance (sigstore OIDC)
+    env:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build @next-lane/mcp
+        run: pnpm --filter @next-lane/mcp build
+
+      - name: Test @next-lane/mcp
+        run: pnpm --filter @next-lane/mcp test
+
+      - name: Inspect tarball contents
+        working-directory: apps/mcp
+        run: npm pack --dry-run
+
+      - name: Note — npm publish skipped
+        if: env.NPM_TOKEN == ''
+        run: |
+          echo "::notice title=npm publish skipped::NPM_TOKEN not configured — @next-lane/mcp was built, tested and packed but not published. See RELEASING.md."
+
+      - name: Publish to npm (with provenance)
+        # `npm publish` (not `pnpm publish`) so --provenance is guaranteed
+        # supported; @next-lane/mcp deliberately has NO workspace:* deps, so it
+        # is standalone-publishable. Its prepublishOnly runs `pnpm build`.
+        if: env.NPM_TOKEN != '' && needs.verify.outputs.dry_run == 'false'
+        working-directory: apps/mcp
+        run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish (dry run)
+        if: needs.verify.outputs.dry_run == 'true'
+        working-directory: apps/mcp
+        run: npm publish --access public --dry-run
+
+  # ─────────────────────────── 5. Helm chart -> GHCR (OCI) ───────────────────
+  helm:
+    name: Helm chart
+    runs-on: ubuntu-latest
+    needs: [verify, gates, images]
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+
+      # The chart intentionally REFUSES to render without a JWT secret and a
+      # non-default DB password (fail-closed by design), so lint/template must
+      # supply throwaway values. These are never published — the packaged chart
+      # contains values.yaml as committed.
+      - name: Lint chart
+        run: |
+          helm lint deploy/helm/next-lane \
+            --set secrets.jwtSecret=ci-lint-not-a-real-secret \
+            --set postgresql.auth.password=ci-lint-not-a-real-password
+
+      - name: Render templates (catches template errors lint alone misses)
+        run: |
+          helm template next-lane deploy/helm/next-lane \
+            --set secrets.jwtSecret=ci-lint-not-a-real-secret \
+            --set postgresql.auth.password=ci-lint-not-a-real-password >/dev/null
+
+      - name: Package chart
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          helm package deploy/helm/next-lane \
+            --version "${{ needs.verify.outputs.version }}" \
+            --app-version "${{ needs.verify.outputs.version }}" \
+            --destination dist
+          ls -l dist
+
+      - name: Log in to GHCR (OCI registry)
+        if: needs.verify.outputs.dry_run == 'false'
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ${{ env.REGISTRY }} \
+            --username "${{ github.actor }}" --password-stdin
+
+      - name: Push chart to oci://ghcr.io/${{ needs.verify.outputs.owner_lc }}/charts
+        if: needs.verify.outputs.dry_run == 'false'
+        run: |
+          helm push "dist/next-lane-${{ needs.verify.outputs.version }}.tgz" \
+            "oci://${{ env.REGISTRY }}/${{ needs.verify.outputs.owner_lc }}/charts"
+
+      - name: Upload packaged chart
+        uses: actions/upload-artifact@v4
+        with:
+          name: helm-chart
+          path: dist/*.tgz
+          if-no-files-found: error
+
+  # ──────────────────────────── 6. GitHub Release ────────────────────────────
+  github-release:
+    name: GitHub Release
+    runs-on: ubuntu-latest
+    needs: [verify, gates, images, npm, helm]
+    if: needs.verify.outputs.dry_run == 'false'
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download release notes
+        uses: actions/download-artifact@v4
+        with:
+          name: release-notes
+          path: notes
+
+      - name: Download packaged chart
+        uses: actions/download-artifact@v4
+        with:
+          name: helm-chart
+          path: assets
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.verify.outputs.version }}
+          PRERELEASE: ${{ needs.verify.outputs.prerelease }}
+        run: |
+          set -euo pipefail
+          flags=(--verify-tag --title "v${VERSION}" --notes-file notes/release-notes.md)
+          if [ "$PRERELEASE" = "true" ]; then flags+=(--prerelease); fi
+          gh release create "v${VERSION}" "${flags[@]}" assets/*.tgz
+
+  # ───────────────────────────────── summary ─────────────────────────────────
+  summary:
+    name: Release summary
+    runs-on: ubuntu-latest
+    needs: [verify, images, npm, helm]
+    if: always()
+    steps:
+      - name: Write summary
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+          DRY: ${{ needs.verify.outputs.dry_run }}
+        run: |
+          {
+            echo "## Next Lane ${VERSION}"
+            echo ""
+            [ "$DRY" = "true" ] && echo "**DRY RUN** — nothing was published." || true
+            echo "| Artifact | Job |"
+            echo "|---|---|"
+            echo "| Container images (GHCR ± Docker Hub) | ${{ needs.images.result }} |"
+            echo "| npm @next-lane/mcp | ${{ needs.npm.result }} |"
+            echo "| Helm chart (OCI) | ${{ needs.helm.result }} |"
+          } >>"$GITHUB_STEP_SUMMARY"
