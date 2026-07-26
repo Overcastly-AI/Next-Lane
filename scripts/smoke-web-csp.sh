@@ -44,14 +44,50 @@ fail() {
   exit 1
 }
 
-# Wait until nginx answers on the given port, dumping container logs on timeout.
+# Wait until nginx answers on the given port, dumping diagnostics on timeout.
+#
+# Two things the previous implementation got wrong, both of which surface as
+# the SAME misleading "nginx never became ready" message even when nginx is
+# demonstrably up (2026-07-26 CI failure: the container logged "start worker
+# process" and was then declared not ready):
+#
+#   1. It probed `localhost`. `docker run -p` publishes on 0.0.0.0 (IPv4) by
+#      default, while `localhost` on the GitHub runners can resolve to ::1
+#      first. We probe 127.0.0.1 explicitly — there is no CORS or Origin
+#      semantics here (plain curl, not a browser), so the literal IP is safe.
+#      (The Playwright suite must keep using `localhost` — the API's CORS
+#      allowlist is origin-sensitive. That constraint does not apply here.)
+#
+#   2. It used `curl -f` with `--retry`. `--retry` does NOT retry HTTP error
+#      responses — only transient/connection failures — so a `/` that answered
+#      404 or 403 failed instantly and was reported as a readiness timeout.
+#      Connectivity and HTTP status are now checked separately, and the actual
+#      status code is printed.
 wait_ready() {
   local port="$1" name="$2"
-  if ! curl --retry 10 --retry-delay 1 --retry-connrefused -sf "http://localhost:${port}/" >/dev/null; then
-    echo "----- docker logs ${name} -----" >&2
-    docker logs "$name" >&2 2>&1 || true
-    fail "nginx never became ready on port ${port} (container ${name})"
-  fi
+  local i code=000
+  for i in $(seq 1 30); do
+    # -o /dev/null + %{http_code}: never fails on HTTP status, so a reachable
+    # server that answers 4xx/5xx is distinguishable from an unreachable one.
+    code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
+      "http://127.0.0.1:${port}/" 2>/dev/null || echo 000)"
+    case "$code" in
+      2??) return 0 ;;
+      000) : ;;  # not reachable yet — keep waiting
+      *)   # Reachable but unhappy: that is a real failure, not a timeout.
+           echo "----- docker ps -----" >&2; docker ps -a --filter "name=${name}" >&2 || true
+           echo "----- docker logs ${name} -----" >&2; docker logs "$name" >&2 2>&1 || true
+           fail "nginx answered HTTP ${code} (not 2xx) on port ${port} (container ${name})" ;;
+    esac
+    sleep 1
+  done
+  echo "----- docker ps -----" >&2
+  docker ps -a --filter "name=${name}" >&2 || true
+  echo "----- docker port ${name} -----" >&2
+  docker port "$name" >&2 2>&1 || true
+  echo "----- docker logs ${name} -----" >&2
+  docker logs "$name" >&2 2>&1 || true
+  fail "nginx unreachable on 127.0.0.1:${port} after 30s (last curl code=${code}, container ${name})"
 }
 
 echo "==> Smoke test image: ${IMAGE}"
@@ -61,8 +97,8 @@ echo "==> [mode 1] external API origin (API_URL=${API_ORIGIN})"
 docker run -d --name "$NAME_EXT" -e "API_URL=${API_ORIGIN}" -p "${PORT_EXT}:80" "$IMAGE" >/dev/null
 wait_ready "$PORT_EXT" "$NAME_EXT"
 
-HEADERS_EXT="$(curl -sI "http://localhost:${PORT_EXT}/")"
-CONFIG_EXT="$(curl -sf "http://localhost:${PORT_EXT}/config.js")"
+HEADERS_EXT="$(curl -sI "http://127.0.0.1:${PORT_EXT}/")"
+CONFIG_EXT="$(curl -sf "http://127.0.0.1:${PORT_EXT}/config.js")"
 
 echo "--- response headers (mode 1) ---"
 echo "$HEADERS_EXT"
@@ -95,8 +131,8 @@ echo "==> [mode 2] same-origin (API_URL= empty)"
 docker run -d --name "$NAME_SAME" -e "API_URL=" -p "${PORT_SAME}:80" "$IMAGE" >/dev/null
 wait_ready "$PORT_SAME" "$NAME_SAME"
 
-HEADERS_SAME="$(curl -sI "http://localhost:${PORT_SAME}/")"
-HTML_SAME="$(curl -sf "http://localhost:${PORT_SAME}/")"
+HEADERS_SAME="$(curl -sI "http://127.0.0.1:${PORT_SAME}/")"
+HTML_SAME="$(curl -sf "http://127.0.0.1:${PORT_SAME}/")"
 
 echo "--- response headers (mode 2) ---"
 echo "$HEADERS_SAME"
