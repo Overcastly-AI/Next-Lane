@@ -157,6 +157,16 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # ts-jest compiles the API from source, and the API imports
+      # `@next-lane/shared`, whose package.json points at ./dist/index.d.ts —
+      # a build artifact that is NOT committed. Without this step every spec
+      # fails with TS2307 "Cannot find module '@next-lane/shared'". The
+      # build-test job gets this for free via `pnpm -r build`; this job runs
+      # on a separate runner and must build it explicitly. Only `shared` is
+      # needed (not a full `-r build`) since ts-jest handles the API itself.
+      - name: Build shared package (emits the .d.ts the API imports)
+        run: pnpm --filter @next-lane/shared build
+
       - name: Generate Prisma client
         run: pnpm --filter @next-lane/api exec prisma generate
 
