@@ -173,6 +173,13 @@ jobs:
     # and web Dockerfiles install with --frozen-lockfile, so a new workspace
     # package or an out-of-sync lockfile would break `docker compose build`
     # even when the fast unit job above is green. Build only (no DB/services).
+    #
+    # docker-compose.yml declares JWT_SECRET as REQUIRED (`${JWT_SECRET:?…}`),
+    # and compose interpolates the whole file up-front — so even a build-only
+    # invocation fails without it. This is a throwaway CI value: nothing here
+    # starts a container or signs a token, it only satisfies interpolation.
+    env:
+      JWT_SECRET: ci-build-only-not-a-real-secret
     steps:
       - name: Checkout
         uses: actions/checkout@v4
