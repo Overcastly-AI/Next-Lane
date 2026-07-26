@@ -262,7 +262,11 @@ export class AttachmentsService {
     const issue = await this.getIssue(attachment.issueId);
     await assertProjectMember(this.prisma, userId, issue.projectId);
 
-    const filePath = path.join(getUploadsDir(), attachment.storageKey);
+    // MUST be absolute — see the identical fix in workspaces.service.ts.
+    // getUploadsDir() defaults to the RELATIVE './uploads', and the controller
+    // resolves this against the filesystem root, so a relative path here made
+    // every attachment download stat '/uploads/<key>' and 500 with ENOENT.
+    const filePath = path.resolve(getUploadsDir(), attachment.storageKey);
     if (!fs.existsSync(filePath)) {
       throw new NotFoundException('File not found on disk');
     }

@@ -186,6 +186,10 @@ export class WorkspacesController {
     // Public branding asset: allow shared caches (CDN/proxy) to cache for 5
     // minutes; allow clients to cache for 1 hour.
     res.setHeader('Cache-Control', 'public, max-age=3600, s-maxage=300');
-    res.sendFile(filePath, { root: '/' });
+    // `filePath` is absolute (resolveLogo path.resolve's it). Passing it
+    // directly is both correct and safer than the previous `{ root: '/' }`,
+    // which re-rooted a relative path at the filesystem root (the ENOENT/500
+    // bug) and made every path the server could name reachable in principle.
+    res.sendFile(filePath);
   }
 }

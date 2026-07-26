@@ -111,7 +111,9 @@ export class AttachmentsController {
     // Allow browsers to cache for a short window; ETag would require hashing
     res.setHeader('Cache-Control', 'private, max-age=300');
     void ext; // suppress unused var
-    res.sendFile(filePath, { root: '/' });
+    // Absolute path from resolveDownload — see workspaces.controller.ts for
+    // why `{ root: '/' }` was both broken and a traversal footgun.
+    res.sendFile(filePath);
   }
 
   /** DELETE /attachments/:id — remove an attachment (uploader or project admin). */
