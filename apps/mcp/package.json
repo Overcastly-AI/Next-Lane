@@ -4,12 +4,36 @@
   "private": false,
   "description": "Model Context Protocol (MCP) server for Next Lane — read & write a project's workflows/SDLC and core entities from external agents (Claude Desktop, Claude Code, etc.).",
   "license": "MIT",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "modelcontextprotocol",
+    "claude",
+    "ai-agent",
+    "issue-tracker",
+    "project-management",
+    "kanban",
+    "agile",
+    "jira-alternative",
+    "self-hosted",
+    "next-lane"
+  ],
+  "homepage": "https://github.com/Overcastly-AI/Next-Lane/tree/main/apps/mcp#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Overcastly-AI/Next-Lane.git",
+    "directory": "apps/mcp"
+  },
+  "bugs": {
+    "url": "https://github.com/Overcastly-AI/Next-Lane/issues"
+  },
+  "author": "Overcastly AI (https://overcastly.com)",
   "type": "commonjs",
   "main": "./dist/index.js",
   "bin": {
     "next-lane-mcp": "./dist/index.js"
   },
-  "files": ["dist", "README.md"],
+  "files": ["dist", "README.md", "LICENSE"],
   "engines": {
     "node": ">=18"
   },

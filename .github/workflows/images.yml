@@ -1,8 +1,14 @@
-# Publish multi-arch container images for the api + web apps to GHCR.
+# Publish multi-arch "edge" container images for the api + web apps to GHCR.
 #
 # Triggers:
 #   - push to the default branch  -> tags: edge, sha-<short>, branch name
-#   - push of a semver tag v*     -> tags: <version>, <major.minor>, latest, sha
+#
+# RELEASE TAGS ARE NOT BUILT HERE. `.github/workflows/release.yml` owns every
+# `v*` tag (images + npm + Helm chart + GitHub release) so a version is
+# published by exactly one workflow — two workflows racing for the same
+# `latest`/`<version>` tag is a real double-publish hazard. This workflow stays
+# as the continuous edge build plus the web-image CSP smoke test that gates
+# every branch and PR.
 #
 # Auth uses the built-in GITHUB_TOKEN (no PAT needed) with packages:write.
 # Image names are derived from the repo OWNER at runtime and lowercased, so
@@ -15,7 +21,6 @@ name: Publish images
 on:
   push:
     branches: [main]
-    tags: ['v*']
   workflow_dispatch:
 
 concurrency:
@@ -74,13 +79,11 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ steps.ref.outputs.image }}
+          # No semver/latest tags here — release.yml owns those (see header).
           tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
             type=sha,format=short
             type=ref,event=branch
             type=edge,branch=main
-            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
 
       - name: Build & push (multi-arch)
         id: build

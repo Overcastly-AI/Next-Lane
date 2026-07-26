@@ -10,9 +10,57 @@ Next Lane uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-This section summarizes the major capabilities delivered in the pre-1.0
-development phase. A versioned release will be tagged once the v1 criteria in
-[`docs/ROADMAP.md`](./docs/ROADMAP.md) are complete.
+_Nothing yet — changes land here and move into a version section when a
+release is cut (see [`RELEASING.md`](./RELEASING.md))._
+
+---
+
+## [0.1.0] — 2026-07-25
+
+**First published release.** Everything below was built in the pre-release
+development phase and is being tagged and published for the first time:
+
+| Artifact | Where it lands |
+| --- | --- |
+| `next-lane-api`, `next-lane-web` container images (multi-arch) | `ghcr.io/overcastly-ai/…` (+ Docker Hub if the maintainer configures it) |
+| `@next-lane/mcp` (120-tool MCP server) | npm, published with provenance |
+| `next-lane` Helm chart | `oci://ghcr.io/overcastly-ai/charts` |
+
+Versioned `0.1.0` rather than `1.0.0` deliberately: the product is
+feature-complete against the v1 criteria in
+[`docs/ROADMAP.md`](./docs/ROADMAP.md), but this is the first time anyone
+outside the repo can install it, and the public interfaces most likely to move
+in response to that feedback — the MCP tool schemas, the Helm values, the REST
+surface — should be free to change on a minor bump. `1.0.0` is the compatibility
+promise, and it follows once the published artifacts have been installed and
+verified from the outside.
+
+### Added — 2026-07-18 (Release & publish automation)
+
+- **`.github/workflows/release.yml`** — one `v*` tag publishes every artifact:
+  multi-arch images to GHCR (and Docker Hub when its secrets exist),
+  `@next-lane/mcp` to npm with **provenance**, the Helm chart as an OCI
+  artifact to GHCR, and a GitHub Release whose notes are this file's matching
+  section. Optional publishers **skip gracefully** when their secrets are
+  absent instead of failing the release; nothing publishes unless the version
+  guard, the unit/typecheck gates and the image build all pass.
+  `workflow_dispatch` runs the whole pipeline as a **dry run**.
+- **`scripts/sync-versions.mjs`** — one source of truth for the version across
+  root/api/web/mcp/shared `package.json` and the Helm chart's `version` **and**
+  `appVersion`, with a `--check` mode wired into CI (`versions` job) and into
+  the release pipeline, so a tag can never ship mismatched artifacts. Writing
+  the guard immediately caught the chart shipping `version: 0.1.0` with
+  `appVersion: "1.0.0"`.
+- **`RELEASING.md`** — the maintainer runbook: required vs. optional accounts
+  and secrets, how to cut a release, what publishes where, verification, and
+  rollback.
+- `apps/mcp` npm-page metadata (`repository`/`homepage`/`bugs`/`keywords`) and
+  the MIT `LICENSE` now ship inside the published tarball.
+- Fixed: the Helm chart's default image repositories and `home`/`sources` URLs
+  pointed at a `next-lane/next-lane` namespace that does not exist — they now
+  match what CI actually publishes (`ghcr.io/overcastly-ai/…`).
+- `images.yml` no longer triggers on tags (it stays the default-branch "edge"
+  build + CSP smoke test), so exactly one workflow publishes a version.
 
 ### Added — 2026-07-09 (Agent-side knowledge-base support: search_pages tool, server instructions, distributable skill)
 
@@ -1122,4 +1170,5 @@ Experience Round 2):**
 
 ---
 
-[Unreleased]: https://github.com/Overcastly-AI/Next-Lane/compare/HEAD...HEAD
+[Unreleased]: https://github.com/Overcastly-AI/Next-Lane/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/Overcastly-AI/Next-Lane/releases/tag/v0.1.0

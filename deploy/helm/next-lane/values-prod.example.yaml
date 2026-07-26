@@ -14,10 +14,10 @@
 
 image:
   api:
-    repository: ghcr.io/next-lane/next-lane-api
+    repository: ghcr.io/overcastly-ai/next-lane-api
     tag: "1.0.0"            # pin an exact tag in prod
   web:
-    repository: ghcr.io/next-lane/next-lane-web
+    repository: ghcr.io/overcastly-ai/next-lane-web
     tag: "1.0.0"
 
 api:
