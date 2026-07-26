@@ -12,9 +12,15 @@
 # the webhook spec delivers to a localhost mock).
 name: E2E
 
+# Triggers: PRs and the default branch only. This used to be
+# `push: branches: ['**']` PLUS `pull_request`, which meant (a) every PR ran
+# the whole suite TWICE — once for the push, once for the PR — and (b) every
+# push to any of the ~38 transient `worktree-agent-*` agent branches fired a
+# full ~20-minute run nobody read. Coverage is unchanged: e2e still gates
+# every PR and every commit that lands on main.
 on:
   push:
-    branches: ['**']
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
@@ -24,8 +30,22 @@ concurrency:
 
 jobs:
   e2e:
-    name: Playwright (desktop + mobile)
+    name: Playwright ${{ matrix.shard }}/4 (desktop + mobile)
     runs-on: ubuntu-latest
+
+    # ~560 tests × 2 projects (desktop + mobile) = ~1120 executions in one
+    # serial job. Split across 4 shards; Playwright's --shard partitions by
+    # test so each shard is an independent slice of the SAME suite (no
+    # coverage dropped, nothing deduplicated away).
+    #
+    # Note the setup (install/build/migrate/seed/boot API+web) is repeated per
+    # shard and does NOT parallelize away, so this is roughly a 2x wall-clock
+    # win, not 4x. fail-fast is off so one red shard doesn't mask failures in
+    # the others — you want the whole picture in one run.
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
 
     services:
       postgres:
@@ -146,8 +166,8 @@ jobs:
       - name: Install Playwright browser (chromium)
         run: pnpm --filter @next-lane/web exec playwright install --with-deps chromium
 
-      - name: Run Playwright e2e (desktop + mobile)
-        run: pnpm --filter @next-lane/web exec playwright test
+      - name: Run Playwright e2e (desktop + mobile, shard ${{ matrix.shard }}/4)
+        run: pnpm --filter @next-lane/web exec playwright test --shard=${{ matrix.shard }}/4
 
       - name: Dump server logs on failure
         if: failure()
@@ -159,7 +179,9 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report
+          # Must be shard-scoped: upload-artifact@v4 ERRORS if two concurrent
+          # jobs upload the same artifact name (v3 merged them silently).
+          name: playwright-report-shard-${{ matrix.shard }}
           path: apps/web/playwright-report
           retention-days: 14
           if-no-files-found: warn
