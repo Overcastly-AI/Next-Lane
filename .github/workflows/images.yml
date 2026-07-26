@@ -51,7 +51,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # GHCR (and image refs) must be lowercase; ${{ github.repository_owner }}
       # may contain uppercase, so normalise it here.
@@ -62,13 +62,13 @@ jobs:
           echo "image=${REGISTRY}/${owner_lc}/${{ matrix.image }}" >>"$GITHUB_OUTPUT"
 
       - name: Set up QEMU (multi-arch emulation)
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -76,7 +76,7 @@ jobs:
 
       - name: Extract image metadata (tags + labels)
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ steps.ref.outputs.image }}
           # No semver/latest tags here — release.yml owns those (see header).
@@ -87,7 +87,7 @@ jobs:
 
       - name: Build & push (multi-arch)
         id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ${{ matrix.dockerfile }}
@@ -116,14 +116,14 @@ jobs:
           output-file: ${{ runner.temp }}/sbom-${{ matrix.app }}.spdx.json
 
       - name: Upload SBOM artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: sbom-${{ matrix.app }}
           path: ${{ runner.temp }}/sbom-${{ matrix.app }}.spdx.json
           if-no-files-found: warn
 
       - name: Trivy image scan
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ steps.ref.outputs.image }}@${{ steps.build.outputs.digest }}
           format: sarif
@@ -134,7 +134,7 @@ jobs:
           ignore-unfixed: true
 
       - name: Upload Trivy SARIF
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: trivy-${{ matrix.app }}
@@ -157,13 +157,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Build web image (amd64, load into local daemon)
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: apps/web/Dockerfile
