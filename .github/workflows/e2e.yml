@@ -169,11 +169,17 @@ jobs:
       - name: Run Playwright e2e (desktop + mobile, shard ${{ matrix.shard }}/4)
         run: pnpm --filter @next-lane/web exec playwright test --shard=${{ matrix.shard }}/4
 
-      - name: Dump server logs on failure
+      # TAIL, never `cat`. The API logs every request via pino at ~2.2 KB/line,
+      # so a full dump appended ~19,000 lines AFTER the Playwright output and
+      # blew past the per-job log ceiling — which made the actual test-failure
+      # summary permanently unretrievable through the Actions API. The suite
+      # was red for 25 days partly because nobody (human or agent) could read
+      # WHY. A bounded tail keeps the Playwright report reachable.
+      - name: Dump server logs on failure (tail only — see comment)
         if: failure()
         run: |
-          echo "===== API log ====="; cat "$RUNNER_TEMP/api.log" || true
-          echo "===== Web log ====="; cat "$RUNNER_TEMP/web.log" || true
+          echo "===== API log (last 300 lines) ====="; tail -n 300 "$RUNNER_TEMP/api.log" || true
+          echo "===== Web log (last 100 lines) ====="; tail -n 100 "$RUNNER_TEMP/web.log" || true
 
       - name: Upload Playwright HTML report
         if: failure()
