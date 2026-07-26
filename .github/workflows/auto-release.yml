@@ -1,0 +1,145 @@
+# Merge to `main` → a release happens. No version picking, no manual tagging.
+#
+# HOW IT FITS TOGETHER
+#   1. `version` job — semantic-release reads the Conventional Commits since the
+#      last `v*` tag, decides the next version, rewrites CHANGELOG.md, runs
+#      `scripts/sync-versions.mjs` (all 7 version records in lockstep), commits
+#      that back to `main` and pushes the `vX.Y.Z` tag.
+#      Nothing is published here. See `release.config.mjs`.
+#   2. `release` job — calls `.github/workflows/release.yml` (the existing,
+#      unchanged publish pipeline) as a REUSABLE workflow with that version.
+#
+# ⚠ WHY A REUSABLE WORKFLOW AND NOT "just push the tag and let release.yml fire"
+#   A tag or commit pushed with the built-in GITHUB_TOKEN deliberately does NOT
+#   trigger any workflow (GitHub's recursion guard). So release.yml's
+#   `push: tags: ['v*']` trigger would silently never run, and the release would
+#   look green while publishing nothing. The alternatives are a PAT (a
+#   long-lived, org-wide credential nobody wants to own) or `workflow_call` —
+#   which runs the exact same jobs inside THIS run, with `secrets: inherit` so
+#   NPM_TOKEN / DOCKERHUB_* still reach them. That is what happens below.
+#   The same guard is what makes a release loop impossible: the release commit
+#   this workflow pushes cannot re-trigger this workflow. `[skip ci]` in that
+#   commit's subject (release.config.mjs) is the belt to that braces.
+#
+# NOTHING TO RELEASE: a merge of only docs/chore/ci/test/refactor/style commits
+# makes semantic-release exit 0 without a version; `released` stays empty, the
+# `release` job is skipped, and the run is green. No empty tag, no empty release.
+name: Auto Release
+
+on:
+  push:
+    branches: [main]
+  # Re-run the automatic logic by hand (e.g. after fixing a failed publish).
+  # It is NOT a "force a release" button: with no releasable commits since the
+  # last tag it is still a clean no-op.
+  workflow_dispatch:
+
+# Must NOT collide with release.yml's group: the reusable workflow runs inside
+# this run, so a shared group would have the callee queue behind its own caller.
+# `cancel-in-progress: false` — never cancel a half-published release.
+concurrency:
+  group: auto-release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    name: Compute version, changelog & tag
+    runs-on: ubuntu-latest
+    outputs:
+      released: ${{ steps.semantic.outputs.released }}
+      version: ${{ steps.semantic.outputs.version }}
+      tag: ${{ steps.semantic.outputs.tag }}
+    permissions:
+      contents: write # push the release commit + the vX.Y.Z tag
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # semantic-release needs the FULL history and every tag to find the
+          # last release and the commits since it.
+          fetch-depth: 0
+          # semantic-release authenticates with GITHUB_TOKEN itself; leaving
+          # checkout's persisted credential in place makes the two fight over
+          # the same remote (the documented semantic-release + Actions recipe).
+          persist-credentials: false
+
+      - name: Require a baseline v* tag
+        # semantic-release's "no previous release" default is 1.0.0. This repo
+        # sits at 0.1.0 with ZERO tags, so without a baseline the very first
+        # automatic run would publish 1.0.0 — an npm version that cannot be
+        # unpublished after 72h and a compatibility promise we have not made.
+        # Fail loudly instead. One-time fix, see RELEASING.md § First release.
+        run: |
+          set -euo pipefail
+          if [ -z "$(git tag --list 'v*')" ]; then
+            current=$(node scripts/sync-versions.mjs --print)
+            echo "::error title=No baseline tag::This repository has no v* tag, so semantic-release would treat the next release as 1.0.0. Create the baseline once: git tag -a v${current} -m \"v${current}\" <commit-that-is-version-${current}> && git push origin v${current}. See RELEASING.md."
+            exit 1
+          fi
+          echo "Baseline tags present: $(git tag --list 'v*' | tr '\n' ' ')"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: '9.12.0'
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: semantic-release (version + changelog + tag; publishes nothing)
+        id: semantic
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # `scripts/emit-release-outputs.mjs` (wired as the exec plugin's
+        # publishCmd) writes released/version/tag to $GITHUB_OUTPUT for this
+        # step — it runs only after the tag has been created and pushed.
+        run: pnpm exec semantic-release
+
+      - name: Summary
+        if: always()
+        env:
+          RELEASED: ${{ steps.semantic.outputs.released }}
+          VERSION: ${{ steps.semantic.outputs.version }}
+        run: |
+          {
+            if [ "${RELEASED:-}" = "true" ]; then
+              echo "## Releasing v${VERSION}"
+              echo ""
+              echo "Version, CHANGELOG.md and the \`v${VERSION}\` tag are on \`main\`. Publishing follows."
+            else
+              echo "## No release"
+              echo ""
+              echo "No \`feat:\`/\`fix:\`/\`perf:\`/\`security:\`/breaking commit since the last tag — nothing to publish."
+            fi
+          } >>"$GITHUB_STEP_SUMMARY"
+
+  release:
+    name: Publish
+    needs: version
+    if: needs.version.outputs.released == 'true'
+    # The EXISTING pipeline, reused verbatim — images (GHCR ± Docker Hub),
+    # @next-lane/mcp on npm with provenance, the Helm chart, the GitHub Release.
+    uses: ./.github/workflows/release.yml
+    with:
+      version: ${{ needs.version.outputs.version }}
+      # Build the tag semantic-release just pushed, NOT this run's github.sha —
+      # that commit predates the version bump and the CHANGELOG section.
+      ref: ${{ needs.version.outputs.tag }}
+      dry_run: false
+    # A called workflow's GITHUB_TOKEN can never exceed the caller's grant, so
+    # everything release.yml's jobs ask for must be granted here too.
+    permissions:
+      contents: write # create the GitHub Release
+      packages: write # GHCR images + the Helm OCI chart
+      id-token: write # npm provenance (sigstore OIDC)
+    # NPM_TOKEN / DOCKERHUB_* — absent ones arrive as '' and skip gracefully.
+    secrets: inherit
