@@ -26,6 +26,7 @@ import {
   createWorkspace,
   createProject,
   API_URL,
+  trackApiWrites,
 } from './helpers';
 
 interface StatusRow {
@@ -295,6 +296,7 @@ test.describe('Dashboards Phase 2', () => {
       projectName: 'Reorder Test',
       openBoard: false,
     });
+    const writes = trackApiWrites(page);
 
     await page.goto(`/projects/${ctx.project.id}/dashboards`);
     await expect(page.getByTestId('dashboard-page')).toBeVisible({ timeout: 15_000 });
@@ -313,6 +315,15 @@ test.describe('Dashboards Phase 2', () => {
     // "Open issues" and "Status overview" should have swapped places.
     await expect(cards.nth(0)).toContainText('Status overview', { timeout: 10_000 });
     await expect(cards.nth(1)).toContainText('Open issues', { timeout: 10_000 });
+
+    // The gadget reorder is optimistic (`useReorderGadget`'s `onMutate`), so
+    // the swap above proves nothing about the server. Wait for the PATCHes to
+    // be acknowledged before reloading, or the reload can abort them and the
+    // "persists server-side" assertion below becomes a coin flip.
+    await writes.settle({
+      match: (w) => w.method === 'PATCH' && /^\/api\/gadgets\/[^/]+$/.test(w.path),
+      atLeast: 1,
+    });
 
     // Persists server-side, not just an optimistic client reorder.
     await page.reload();
@@ -447,6 +458,7 @@ test.describe('Dashboards Phase 2 — mobile (393px)', () => {
       projectName: 'Reorder Mobile Test',
       openBoard: false,
     });
+    const writes = trackApiWrites(page);
 
     await page.goto(`/projects/${ctx.project.id}/dashboards`);
     await expect(page.getByTestId('dashboard-page')).toBeVisible({ timeout: 15_000 });
@@ -462,6 +474,15 @@ test.describe('Dashboards Phase 2 — mobile (393px)', () => {
 
     await expect(cards.nth(0)).toContainText('Status overview', { timeout: 10_000 });
     await expect(cards.nth(1)).toContainText('Open issues', { timeout: 10_000 });
+
+    // The gadget reorder is optimistic (`useReorderGadget`'s `onMutate`), so
+    // the swap above proves nothing about the server. Wait for the PATCHes to
+    // be acknowledged before reloading, or the reload can abort them and the
+    // "persists server-side" assertion below becomes a coin flip.
+    await writes.settle({
+      match: (w) => w.method === 'PATCH' && /^\/api\/gadgets\/[^/]+$/.test(w.path),
+      atLeast: 1,
+    });
 
     await page.reload();
     await expect(page.getByTestId('dashboard-page')).toBeVisible({ timeout: 15_000 });

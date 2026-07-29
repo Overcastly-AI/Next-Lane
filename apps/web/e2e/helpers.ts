@@ -286,6 +286,129 @@ export async function paintedDistinctColorCount(
   return distinctColors;
 }
 
+// ---------------------------------------------------------------------------
+// Waiting for the page's OWN writes before reloading
+// ---------------------------------------------------------------------------
+
+/** One completed non-GET call from the browser to the API. */
+export interface ApiWrite {
+  method: string;
+  /** Pathname only, e.g. `/api/pages/abc/move`. */
+  path: string;
+  status: number;
+}
+
+export interface ApiWriteTracker {
+  /** Completed writes, in the order their responses arrived. */
+  readonly completed: readonly ApiWrite[];
+  /** Number of writes issued but not yet answered. */
+  readonly inFlight: number;
+  /**
+   * Resolve once the browser has no write in flight — and, when `atLeast` is
+   * given, once at least that many *matching* writes have been answered.
+   * Then assert none of them failed.
+   */
+  settle(opts?: {
+    /** Restrict `atLeast` / the status check to writes matching this. */
+    match?: (w: ApiWrite) => boolean;
+    /** Minimum number of matching writes that must have been answered. */
+    atLeast?: number;
+    timeout?: number;
+  }): Promise<void>;
+}
+
+/**
+ * Record every non-GET request the page makes to the API so a spec can wait
+ * for its OWN mutations to be acknowledged by the server before doing
+ * something that would abort them — in practice, `page.reload()`.
+ *
+ * WHY THIS EXISTS (and why `page.waitForLoadState('networkidle')` is not it):
+ * Playwright's lifecycle events are sticky per document. In
+ * `playwright-core/lib/server/frames.js`, `_startNetworkIdleTimer()` returns
+ * immediately when `_firedLifecycleEvents` already contains `networkidle`,
+ * and that entry is only ever *removed* by `_recalculateNetworkIdle()` — which
+ * only runs from the idle timer itself, never when a new XHR starts.
+ * `waitForLoadState()` in turn returns straight away if the state has already
+ * fired. So on a page that has been open for a while (every one of these
+ * specs), `await page.waitForLoadState('networkidle')` waits for exactly
+ * nothing while reading like a wait. That no-op is what let three specs race
+ * their own writes on CI's slower I/O.
+ *
+ * This does NOT weaken the "it persisted" claim: waiting for the server to
+ * answer, then reloading, then re-reading from the server is a strictly
+ * stronger test than reloading mid-flight and hoping. `atLeast` makes it
+ * stronger still — a swallowed click now fails as "5 of 6 writes acked"
+ * instead of an opaque ordering diff.
+ *
+ * Install it before the mutations you care about (right after page setup).
+ */
+export function trackApiWrites(page: Page): ApiWriteTracker {
+  const apiOrigin = new URL(API_URL).origin;
+  const completed: ApiWrite[] = [];
+  const inFlight = new Set<unknown>();
+
+  const isApiWrite = (url: string, method: string): boolean => {
+    if (method === 'GET') return false;
+    try {
+      const u = new URL(url);
+      // REST calls only. Socket.io's HTTP long-polling transport also POSTs
+      // (to /socket.io/) and a poll can sit open indefinitely, which would
+      // make "no write in flight" unreachable.
+      return u.origin === apiOrigin && u.pathname.startsWith('/api/');
+    } catch {
+      return false;
+    }
+  };
+
+  page.on('request', (req) => {
+    if (isApiWrite(req.url(), req.method())) inFlight.add(req);
+  });
+  page.on('requestfailed', (req) => inFlight.delete(req));
+  page.on('requestfinished', (req) => inFlight.delete(req));
+  page.on('response', (res) => {
+    const req = res.request();
+    if (!isApiWrite(req.url(), req.method())) return;
+    inFlight.delete(req);
+    completed.push({
+      method: req.method(),
+      path: new URL(res.url()).pathname,
+      status: res.status(),
+    });
+  });
+
+  return {
+    get completed() {
+      return completed;
+    },
+    get inFlight() {
+      return inFlight.size;
+    },
+    async settle(opts = {}) {
+      const { match, atLeast = 0, timeout = 15_000 } = opts;
+      const matching = () => (match ? completed.filter(match) : completed);
+      await expect
+        .poll(
+          () =>
+            inFlight.size === 0 && matching().length >= atLeast
+              ? 'settled'
+              : `in-flight=${inFlight.size} acked=${matching().length}/${atLeast}`,
+          {
+            timeout,
+            message:
+              'the page never finished the API writes it had started; ' +
+              `observed: ${JSON.stringify(completed)}`,
+          },
+        )
+        .toBe('settled');
+
+      const failed = matching().filter((w) => w.status >= 400);
+      expect(failed, `API write(s) rejected: ${JSON.stringify(failed)}`).toEqual(
+        [],
+      );
+    },
+  };
+}
+
 /** Navigate to a project board and wait for its columns to render. */
 export async function openProjectBoard(
   page: Page,

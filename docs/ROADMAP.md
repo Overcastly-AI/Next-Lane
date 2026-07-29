@@ -786,6 +786,15 @@ click. Phase status below is unchanged by this work — it was a quality/CI
 restoration, not a phase advance — but the phases it re-gates are now
 trustworthy again. See `docs/BACKLOG.md` § Already Done for the full account.
 
+A second pass then removed the residual **flakiness** that kept CI red with a
+different single failure each run while local stayed green: specs were
+reloading the page while their own mutation was still in flight (the guard
+they used, `page.waitForLoadState('networkidle')`, is a no-op on an
+already-loaded document), and two assertions named text that matched a second,
+unintended element. Specs now wait for the server to answer their writes via
+the new `trackApiWrites` helper. No test was weakened. Same § Already Done
+entry.
+
 **The bar: "Is this better than Jira?"** (founder mandate, `docs/VISION.md`
 § The operating question.) Not cheaper — *better*, on a daily-driver test: a
 team that has run the incumbent for years should prefer Next Lane within the

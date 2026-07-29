@@ -18,6 +18,7 @@ import {
   addWorkspaceMember,
   login,
   API_URL,
+  trackApiWrites,
 } from './helpers';
 
 // ---------------------------------------------------------------------------
@@ -136,6 +137,7 @@ test.describe('Inline card status transition (desktop)', () => {
     );
     expect(inProgress).toBeDefined();
 
+    const writes = trackApiWrites(page);
     await gotoBoard(page, ctx.project.id);
 
     // The card starts in "To Do".
@@ -165,6 +167,15 @@ test.describe('Inline card status transition (desktop)', () => {
     await expect(
       page.getByText(issue.key).first(),
     ).toBeVisible({ timeout: 5_000 });
+
+    // The board moves the card optimistically (`useMoveIssue`'s `onMutate`),
+    // so nothing above proves the server saw the write. Reloading here could
+    // abort the POST in flight — and the API check at the end of this test
+    // would then report a lost status change. Wait for the ack first.
+    await writes.settle({
+      match: (w) => w.method === 'POST' && /^\/api\/issues\/[^/]+\/move$/.test(w.path),
+      atLeast: 1,
+    });
 
     // Reload and confirm persistence.
     await page.reload();

@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { setupIsolatedProject } from './helpers';
+import { setupIsolatedProject, trackApiWrites } from './helpers';
 
 /**
  * pages-qa-extra.spec.ts
@@ -115,6 +115,12 @@ test.describe('Pages QA extra: hierarchy, reorder correctness, title validation,
     const betaId = await apiCreatePage('Beta');
     const gammaId = await apiCreatePage('Gamma');
 
+    // Record the browser's own writes so the reload at the end can't abort a
+    // move that hasn't reached the server yet (see `trackApiWrites`).
+    const writes = trackApiWrites(page);
+    const isMove = (w: { method: string; path: string }) =>
+      w.method === 'POST' && /^\/api\/pages\/[^/]+\/move$/.test(w.path);
+
     await page.goto(`/projects/${project.id}/pages`);
     await expect(page.getByTestId('page-title')).toBeVisible();
     await ensureTreeOpen(page);
@@ -148,13 +154,19 @@ test.describe('Pages QA extra: hierarchy, reorder correctness, title validation,
     await (await moveButton(page, alphaId, 'down')).click();
     await expect.poll(() => treeItemTitles(page)).toEqual(['Beta', 'Gamma', 'Alpha']);
 
-    // Let the last move's POST actually reach the server before reloading.
-    // Every assertion above polls the OPTIMISTIC cache, which updates before
-    // the write completes, so reloading straight after could abort our own
-    // in-flight request and then blame the app for "losing" the move. This
-    // waits for our requests, it does not weaken anything: the reload and the
-    // exact-order check below still prove the server persisted the order.
-    await page.waitForLoadState('networkidle');
+    // Every assertion above polls the OPTIMISTIC cache, which updates the
+    // moment the click is handled — well before the matching POST /move has
+    // been answered (they're queued one behind another by `movePageChain` in
+    // api/pages.ts). Reloading straight after therefore aborts the tail of
+    // that queue and then blames the app for "losing" the moves; on CI's
+    // slower I/O that is exactly what happened, and the post-reload order
+    // came back as the pristine seed order.
+    //
+    // So wait for the server to answer all SIX moves before reloading. This
+    // strengthens the test rather than weakening it: the reload + exact-order
+    // check below still prove server persistence, and a click the UI swallows
+    // now fails loudly as "acked=5/6" instead of an opaque ordering diff.
+    await writes.settle({ match: isMove, atLeast: 6 });
 
     // Reload — the server-persisted rank must match the last client state exactly
     // (proves this isn't just an optimistic client-side lie).

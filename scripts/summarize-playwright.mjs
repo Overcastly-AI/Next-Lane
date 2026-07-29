@@ -61,11 +61,19 @@ function collect(suite, out) {
       const bad = ['unexpected', 'timedOut'].includes(test.status);
       if (!bad) continue;
       const result = (test.results ?? []).find((r) => r.error) ?? {};
+      const loc = result.error?.location;
       out.push({
         project: test.projectName ?? '?',
         file: spec.file ?? suite.file ?? '?',
         line: spec.line ?? 0,
         title: spec.title ?? '?',
+        // WHICH assertion blew up, not just which test. A test that asserts
+        // the same expectation twice (e.g. the page-reorder spec checks the
+        // identical order before AND after its reload) is otherwise
+        // impossible to place from the tail of a CI log: the diff alone can
+        // be produced by either line, and those two lines mean completely
+        // different things.
+        at: loc ? `${loc.file?.split('/').pop() ?? '?'}:${loc.line}:${loc.column}` : null,
         error: result.error ? briefError(result.error) : '      (no error captured)',
       });
     }
@@ -107,6 +115,7 @@ for (const [file, items] of [...byFile.entries()].sort()) {
   console.log(`\n▸ ${file}  (${items.length})`);
   for (const it of items) {
     console.log(`  ✘ [${it.project}] ${file}:${it.line} › ${it.title}`);
+    if (it.at) console.log(`      ↳ failed at ${it.at}`);
     console.log(it.error);
   }
 }
