@@ -148,6 +148,14 @@ test.describe('Pages QA extra: hierarchy, reorder correctness, title validation,
     await (await moveButton(page, alphaId, 'down')).click();
     await expect.poll(() => treeItemTitles(page)).toEqual(['Beta', 'Gamma', 'Alpha']);
 
+    // Let the last move's POST actually reach the server before reloading.
+    // Every assertion above polls the OPTIMISTIC cache, which updates before
+    // the write completes, so reloading straight after could abort our own
+    // in-flight request and then blame the app for "losing" the move. This
+    // waits for our requests, it does not weaken anything: the reload and the
+    // exact-order check below still prove the server persisted the order.
+    await page.waitForLoadState('networkidle');
+
     // Reload — the server-persisted rank must match the last client state exactly
     // (proves this isn't just an optimistic client-side lie).
     await page.reload();

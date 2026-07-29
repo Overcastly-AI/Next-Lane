@@ -13,7 +13,13 @@ import type {
   UpdatePageDto,
 } from '@next-lane/shared';
 import { request } from './client';
-import { qk, invalidatePagesFamily, pagesTreeKey, type PagesScope } from './keys';
+import {
+  qk,
+  invalidatePagesFamily,
+  pagesTreeKey,
+  pagesGraphKey,
+  type PagesScope,
+} from './keys';
 import { optimisticallyReorderTree } from './pages.reorder';
 
 // ---------------------------------------------------------------------------
@@ -260,6 +266,25 @@ export interface MovePageVars {
 const MOVE_PAGE_MUTATION_KEY = ['pages', 'move'] as const;
 
 /**
+ * Serialises page-move requests.
+ *
+ * A move is expressed RELATIVE to siblings (`beforeId`/`afterId`) and the
+ * server derives the fractional rank from those neighbours' CURRENT ranks.
+ * The caller picks the neighbours from its optimistic tree, so each request
+ * assumes every earlier move has already been applied. Fired concurrently —
+ * which is what happens when a user clicks "move up" a few times quickly —
+ * they race: a later move is ranked against neighbours the server has not
+ * repositioned yet, and the order that survives a reload is a mid-sequence
+ * one with the trailing moves silently lost.
+ *
+ * Chaining the requests keeps them in intent order. The optimistic cache
+ * update still happens immediately in `onMutate`, so the UI stays instant;
+ * only the network writes queue. A failed request must not stall the chain,
+ * hence the `catch` on the stored tail.
+ */
+let movePageChain: Promise<unknown> = Promise.resolve();
+
+/**
  * Reorder/reparent a page relative to a sibling. The server computes the
  * fractional-index rank from `beforeId`/`afterId` — the client never touches
  * rank encoding directly (see `MovePageDto`).
@@ -273,11 +298,17 @@ export function useMovePage(scope: PagesScope) {
   return useMutation({
     // Shared key so concurrent moves can see each other in `onSettled`.
     mutationKey: MOVE_PAGE_MUTATION_KEY,
-    mutationFn: ({ id, parentId, beforeId, afterId }: MovePageVars) =>
-      request<PageDto>(`/pages/${id}/move`, {
-        method: 'POST',
-        body: { parentId, beforeId, afterId },
-      }),
+    mutationFn: ({ id, parentId, beforeId, afterId }: MovePageVars) => {
+      // Queue behind any move already in flight — see `movePageChain`.
+      const run = movePageChain.then(() =>
+        request<PageDto>(`/pages/${id}/move`, {
+          method: 'POST',
+          body: { parentId, beforeId, afterId },
+        }),
+      );
+      movePageChain = run.catch(() => undefined);
+      return run;
+    },
     onMutate: async (vars) => {
       await qc.cancelQueries({ queryKey: treeKey });
       const previous = qc.getQueryData<PageTreeNode[]>(treeKey);
@@ -291,20 +322,26 @@ export function useMovePage(scope: PagesScope) {
     },
     onError: (_err, _vars, ctx) => {
       if (ctx?.previous) qc.setQueryData(treeKey, ctx.previous);
+      // The move was rejected, so the optimistic tree is a lie — resync.
+      void qc.invalidateQueries({ queryKey: treeKey });
     },
-    // Only refetch once the LAST in-flight move has settled.
+    // Deliberately does NOT invalidate the tree on success.
     //
-    // Moving a page twice in quick succession used to lose the second move.
-    // Each move invalidated the tree immediately, and that refetch could
-    // resolve after a newer optimistic reorder had already been applied —
-    // overwriting the cache with a now-stale server tree. The next click then
-    // computed its `beforeId`/`afterId` from those stale siblings and asked
-    // the server for the WRONG position, so the order that survived a reload
-    // was a mid-sequence one. `isMutating` counts this mutation while it is
-    // still settling, so `=== 1` means "I am the last one".
+    // The optimistic reorder already encodes exactly the move the server was
+    // asked to perform, so a refetch can only return the same order — but it
+    // re-renders the tree, and THAT is what broke reordering: a refetch
+    // landing between two clicks swapped the rows underneath the user, so
+    // `handleMove` (which resolves the node's index in the tree it is holding)
+    // decided the next move was out of bounds and silently did nothing. A
+    // captured failing run shows six clicks producing only five requests —
+    // the last one was swallowed, and the reload exposed the missing move.
+    //
+    // The graph is derived from ranks, so it still needs refreshing; that is
+    // scoped to the last in-flight move (`isMutating(...) === 1`) so a burst
+    // of reorders refetches once rather than N times.
     onSettled: () => {
       if (qc.isMutating({ mutationKey: MOVE_PAGE_MUTATION_KEY }) === 1) {
-        invalidatePagesFamily(qc, scope);
+        void qc.invalidateQueries({ queryKey: pagesGraphKey(scope) });
       }
     },
   });
