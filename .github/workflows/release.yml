@@ -326,6 +326,18 @@ jobs:
           format: spdx-json
           artifact-name: sbom-${{ matrix.app }}.spdx.json
           output-file: ${{ runner.temp }}/sbom-${{ matrix.app }}.spdx.json
+          # MUST stay false. When the run is triggered by a tag that ALREADY
+          # has a GitHub Release attached — which is exactly what happens when
+          # a maintainer cuts the tag from the web UI, the only way to do it
+          # from a phone — this action tries to attach the SBOM to that
+          # release. That needs `contents: write`; this job intentionally has
+          # only `packages: write`, so it died with "Resource not accessible
+          # by integration" AFTER the images had already been pushed, taking
+          # the npm, Helm and GitHub Release jobs down with it (v0.1.0,
+          # 2026-07-29). The SBOM is still uploaded as a workflow artifact by
+          # the next step, and release assets are the `github-release` job's
+          # responsibility — not this one's.
+          upload-release-assets: false
 
       - name: Upload SBOM artifact
         if: needs.verify.outputs.dry_run == 'false'
