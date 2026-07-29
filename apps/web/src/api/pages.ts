@@ -254,6 +254,12 @@ export interface MovePageVars {
 }
 
 /**
+ * Shared mutation key for page moves, so that a burst of rapid reorders can
+ * be recognised as one batch and only the last one triggers a refetch.
+ */
+const MOVE_PAGE_MUTATION_KEY = ['pages', 'move'] as const;
+
+/**
  * Reorder/reparent a page relative to a sibling. The server computes the
  * fractional-index rank from `beforeId`/`afterId` — the client never touches
  * rank encoding directly (see `MovePageDto`).
@@ -265,6 +271,8 @@ export function useMovePage(scope: PagesScope) {
   const qc = useQueryClient();
   const treeKey = pagesTreeKey(scope);
   return useMutation({
+    // Shared key so concurrent moves can see each other in `onSettled`.
+    mutationKey: MOVE_PAGE_MUTATION_KEY,
     mutationFn: ({ id, parentId, beforeId, afterId }: MovePageVars) =>
       request<PageDto>(`/pages/${id}/move`, {
         method: 'POST',
@@ -284,8 +292,20 @@ export function useMovePage(scope: PagesScope) {
     onError: (_err, _vars, ctx) => {
       if (ctx?.previous) qc.setQueryData(treeKey, ctx.previous);
     },
+    // Only refetch once the LAST in-flight move has settled.
+    //
+    // Moving a page twice in quick succession used to lose the second move.
+    // Each move invalidated the tree immediately, and that refetch could
+    // resolve after a newer optimistic reorder had already been applied —
+    // overwriting the cache with a now-stale server tree. The next click then
+    // computed its `beforeId`/`afterId` from those stale siblings and asked
+    // the server for the WRONG position, so the order that survived a reload
+    // was a mid-sequence one. `isMutating` counts this mutation while it is
+    // still settling, so `=== 1` means "I am the last one".
     onSettled: () => {
-      invalidatePagesFamily(qc, scope);
+      if (qc.isMutating({ mutationKey: MOVE_PAGE_MUTATION_KEY }) === 1) {
+        invalidatePagesFamily(qc, scope);
+      }
     },
   });
 }
