@@ -89,7 +89,18 @@ jobs:
       - name: Setup Node 20
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          # 22, NOT the repo-wide 20. semantic-release requires
+          # `^22.14.0 || >= 24.10.0` and refuses to start otherwise:
+          #   [semantic-release]: node version ^22.14.0 || >= 24.10.0 is
+          #   required. Found v20.20.2.
+          # which failed this workflow on its first three runs before it could
+          # even decide whether a release was warranted.
+          #
+          # This affects THIS job only — it just runs semantic-release. The
+          # application is still built and tested on Node 20 everywhere else
+          # (ci.yml, e2e.yml, release.yml, the Dockerfiles); nothing about the
+          # shipped artifacts changes.
+          node-version: '22'
           cache: pnpm
 
       - name: Install dependencies
