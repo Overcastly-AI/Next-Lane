@@ -493,9 +493,26 @@ jobs:
           PRERELEASE: ${{ needs.verify.outputs.prerelease }}
         run: |
           set -euo pipefail
-          flags=(--verify-tag --title "v${VERSION}" --notes-file notes/release-notes.md)
-          if [ "$PRERELEASE" = "true" ]; then flags+=(--prerelease); fi
-          gh release create "v${VERSION}" "${flags[@]}" assets/*.tgz
+          # IDEMPOTENT on purpose. A tag can arrive with a Release already
+          # attached — most obviously when a maintainer creates it from the
+          # GitHub UI (Releases → "Create new tag on publish"), which is the
+          # only way to cut a tag from a phone. `gh release create` fails hard
+          # in that case, which would leave a red run even though the images,
+          # npm package and chart had all published fine in the jobs above.
+          # Create when absent, fill in when present; either way the notes and
+          # the chart asset end up attached.
+          if gh release view "v${VERSION}" >/dev/null 2>&1; then
+            echo "::notice title=Release exists::v${VERSION} already exists — updating notes and uploading assets."
+            gh release edit "v${VERSION}" \
+              --title "v${VERSION}" \
+              --notes-file notes/release-notes.md \
+              --prerelease="${PRERELEASE}"
+            gh release upload "v${VERSION}" assets/*.tgz --clobber
+          else
+            flags=(--verify-tag --title "v${VERSION}" --notes-file notes/release-notes.md)
+            if [ "$PRERELEASE" = "true" ]; then flags+=(--prerelease); fi
+            gh release create "v${VERSION}" "${flags[@]}" assets/*.tgz
+          fi
 
   # ───────────────────────────────── summary ─────────────────────────────────
   summary:
