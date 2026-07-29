@@ -114,6 +114,11 @@ jobs:
           format: spdx-json
           artifact-name: sbom-${{ matrix.app }}.spdx.json
           output-file: ${{ runner.temp }}/sbom-${{ matrix.app }}.spdx.json
+          # Latent here (this workflow no longer runs on tags, so there is
+          # never a release to attach to) but set explicitly so the trap can't
+          # come back if the triggers change. See the same option in
+          # release.yml for the failure it caused there.
+          upload-release-assets: false
 
       - name: Upload SBOM artifact
         uses: actions/upload-artifact@v4
