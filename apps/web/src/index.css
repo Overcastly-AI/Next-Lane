@@ -682,6 +682,23 @@ h1, h2, h3, h4, h5, h6,
   background: transparent;
 }
 
+/* ── Horizontal tab strip (ProjectNav) ───────────────────────────────────── */
+/* Lets the primary project tabs scroll sideways on narrow viewports instead
+   of overflowing the nav. Without this the tabs spilled under the
+   right-pinned Settings control, whose gear icon then intercepted pointer
+   events aimed at the "More" button (the app shell is `overflow-x-clip`, so
+   the spill was invisible AND unreachable). Scrollbar is hidden: a visible
+   one would add height to the strip and read as a defect on desktop, where
+   the tabs always fit and the element never scrolls. */
+.nl-tabstrip {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  overscroll-behavior-x: contain;
+}
+.nl-tabstrip::-webkit-scrollbar {
+  display: none;
+}
+
 /* ── Markdown prose styles ───────────────────────────────────────────────── */
 .markdown-body h1,
 .markdown-body h2,

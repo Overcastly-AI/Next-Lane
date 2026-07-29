@@ -134,6 +134,16 @@ export type PagesScope =
   | { kind: 'project'; id: string }
   | { kind: 'workspace'; id: string };
 
+/**
+ * Shared mutation key for page moves.
+ *
+ * Lives here (not in `api/pages.ts`) because BOTH the mutation and the
+ * `page.updated` socket handler need it: `useMovePage` tags its mutations
+ * with it, and `api/socket.ts` uses `isMutating` on it to tell "this echo is
+ * my own reorder coming back" from "a teammate really changed something".
+ */
+export const MOVE_PAGE_MUTATION_KEY = ['pages', 'move'] as const;
+
 /** The page-tree query key for a given scope. */
 export function pagesTreeKey(scope: PagesScope) {
   return scope.kind === 'project' ? qk.pageTree(scope.id) : qk.workspacePageTree(scope.id);
@@ -157,8 +167,13 @@ export function invalidatePagesFamily(
   qc: import('@tanstack/react-query').QueryClient,
   scope: PagesScope,
   pageId?: string,
+  opts?: { skipTree?: boolean },
 ): void {
-  void qc.invalidateQueries({ queryKey: pagesTreeKey(scope) });
+  // `skipTree` exists for ONE caller: the `page.updated` socket handler, when
+  // this client is itself mid-reorder. See MOVE_PAGE_MUTATION_KEY below.
+  if (!opts?.skipTree) {
+    void qc.invalidateQueries({ queryKey: pagesTreeKey(scope) });
+  }
   void qc.invalidateQueries({ queryKey: pagesGraphKey(scope) });
   if (pageId) {
     void qc.invalidateQueries({ queryKey: qk.page(pageId) });

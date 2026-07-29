@@ -20,7 +20,7 @@ test.describe('Reports', () => {
     await openDemoBoard(page);
 
     // Navigate via the ProjectNav "Reports" tab.
-    await page.getByRole('link', { name: 'Reports' }).click();
+    await page.locator('nav[aria-label="Project navigation"]').getByRole('link', { name: 'Reports' }).click();
     await expect(page).toHaveURL(/\/reports$/, { timeout: 15_000 });
     await expect(
       page.getByRole('heading', { name: 'Reports', level: 1 }),
@@ -67,7 +67,7 @@ test.describe('Reports', () => {
     await openDemoBoard(page);
 
     // Navigate to Reports.
-    await page.getByRole('link', { name: 'Reports' }).click();
+    await page.locator('nav[aria-label="Project navigation"]').getByRole('link', { name: 'Reports' }).click();
     await expect(page).toHaveURL(/\/reports$/, { timeout: 15_000 });
 
     // Cumulative Flow section heading.
@@ -104,7 +104,7 @@ test.describe('Reports', () => {
     page,
   }) => {
     await openDemoBoard(page);
-    await page.getByRole('link', { name: 'Reports' }).click();
+    await page.locator('nav[aria-label="Project navigation"]').getByRole('link', { name: 'Reports' }).click();
     await expect(page).toHaveURL(/\/reports$/, { timeout: 15_000 });
 
     // Wait for chart to load.

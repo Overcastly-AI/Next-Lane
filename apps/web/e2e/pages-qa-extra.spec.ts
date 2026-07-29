@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { setupIsolatedProject } from './helpers';
+import { setupIsolatedProject, trackApiWrites } from './helpers';
 
 /**
  * pages-qa-extra.spec.ts
@@ -115,6 +115,24 @@ test.describe('Pages QA extra: hierarchy, reorder correctness, title validation,
     const betaId = await apiCreatePage('Beta');
     const gammaId = await apiCreatePage('Gamma');
 
+    // Record the browser's own writes so the reload at the end can't abort a
+    // move that hasn't reached the server yet (see `trackApiWrites`).
+    const writes = trackApiWrites(page);
+    const isMove = (w: { method: string; path: string }) =>
+      w.method === 'POST' && /^\/api\/pages\/[^/]+\/move$/.test(w.path);
+
+    // Exactly WHAT each move asked for, so a failure names the request that
+    // produced the wrong order instead of leaving the array diff to be
+    // reverse-engineered from a CI tail.
+    const moveRequests: unknown[] = [];
+    page.on('request', (req) => {
+      if (!isMove({ method: req.method(), path: new URL(req.url()).pathname })) return;
+      moveRequests.push({
+        id: new URL(req.url()).pathname.split('/')[3],
+        body: req.postDataJSON() as unknown,
+      });
+    });
+
     await page.goto(`/projects/${project.id}/pages`);
     await expect(page.getByTestId('page-title')).toBeVisible();
     await ensureTreeOpen(page);
@@ -148,8 +166,45 @@ test.describe('Pages QA extra: hierarchy, reorder correctness, title validation,
     await (await moveButton(page, alphaId, 'down')).click();
     await expect.poll(() => treeItemTitles(page)).toEqual(['Beta', 'Gamma', 'Alpha']);
 
-    // Reload — the server-persisted rank must match the last client state exactly
-    // (proves this isn't just an optimistic client-side lie).
+    // Every assertion above polls the OPTIMISTIC cache, which updates the
+    // moment the click is handled — well before the matching POST /move has
+    // been answered (they're queued one behind another by `movePageChain` in
+    // api/pages.ts). Reloading straight after therefore aborts the tail of
+    // that queue and then blames the app for "losing" the moves; on CI's
+    // slower I/O that is exactly what happened, and the post-reload order
+    // came back as the pristine seed order.
+    //
+    // So wait for the server to answer all SIX moves before reloading. This
+    // strengthens the test rather than weakening it: the reload + exact-order
+    // check below still prove server persistence, and a click the UI swallows
+    // now fails loudly as "acked=5/6" instead of an opaque ordering diff.
+    await writes.settle({ match: isMove, atLeast: 6 });
+
+    // Server truth FIRST, read straight from the API rather than through the
+    // app. This splits the two things the single post-reload check used to
+    // conflate: "did the server persist the order" and "does a fresh client
+    // render it". When this suite went red they were indistinguishable — the
+    // reload came back with the pristine seed order and nothing said whether
+    // the ranks or the client was at fault.
+    async function serverOrder(): Promise<string[]> {
+      const res = await request.get(
+        `http://localhost:4000/api/projects/${project.id}/pages/tree`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      expect(res.ok(), `tree read failed: ${res.status()}`).toBeTruthy();
+      return ((await res.json()) as { title: string }[]).map((n) => n.title);
+    }
+    await expect
+      .poll(serverOrder, {
+        message:
+          `server-persisted page order after 6 acked moves. ids: alpha=${alphaId} ` +
+          `beta=${betaId} gamma=${gammaId}. requests: ${JSON.stringify(moveRequests)}. ` +
+          `responses: ${JSON.stringify(writes.completed.filter(isMove))}`,
+      })
+      .toEqual(['Beta', 'Gamma', 'Alpha']);
+
+    // Reload — a fresh client must render exactly that order (proves this
+    // isn't just an optimistic client-side lie).
     await page.reload();
     await ensureTreeOpen(page);
     await expect.poll(() => treeItemTitles(page)).toEqual(['Beta', 'Gamma', 'Alpha']);

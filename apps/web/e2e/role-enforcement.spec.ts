@@ -216,15 +216,37 @@ test.describe('workspace role enforcement', () => {
     request,
   }) => {
     const c = await setup(request);
-    // Re-adding the existing member is an idempotent upsert; proves the
-    // ADMIN path is allowed where the MEMBER path was rejected above.
+    // Add a BRAND-NEW user: `addMember` is not an idempotent upsert. It
+    // deliberately 409s when the target is already a member (see
+    // WorkspacesService.addMember — "change their role from the member list
+    // instead of re-inviting them", covered by workspaces.service.spec.ts).
+    // This test used to re-add `c.memberEmail` on the stale assumption that
+    // it upserted, so it asserted a 200 the API is designed never to return.
+    const newcomer = await registerUser(request, 'newcomer');
     const res = await request.post(
       `${API_URL}/api/workspaces/${c.workspaceId}/members`,
       {
         headers: c.adminHeaders,
-        data: { email: c.memberEmail, role: 'MEMBER' },
+        data: { email: newcomer.email, role: 'MEMBER' },
       },
     );
     expect(res.ok(), `ADMIN add member failed: ${res.status()}`).toBe(true);
+  });
+
+  test('re-adding an existing member is rejected with 409, not silently upserted', async ({
+    request,
+  }) => {
+    const c = await setup(request);
+    const res = await request.post(
+      `${API_URL}/api/workspaces/${c.workspaceId}/members`,
+      {
+        headers: c.adminHeaders,
+        data: { email: c.memberEmail, role: 'VIEWER' },
+      },
+    );
+    expect(
+      res.status(),
+      're-inviting an existing member must conflict',
+    ).toBe(409);
   });
 });

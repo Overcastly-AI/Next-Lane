@@ -707,42 +707,60 @@ export function BoardPage() {
     boardsQuery.isLoading ||
     (!!selectedBoardId && boardViewQuery.isLoading);
 
+  // EVERY branch below — loading, error, empty, and the loaded board — must
+  // return the SAME root element type (`CardFieldDefsProvider` > `Shell`).
+  //
+  // It used to return a bare `<Shell>` while loading and
+  // `<CardFieldDefsProvider><Shell>` once loaded. React compares element type
+  // by position, so that flip unmounted the whole shell and remounted a fresh
+  // one the moment the board data landed — taking `ProjectNav` with it and
+  // resetting its state. Open the "More" menu on a board that is still
+  // fetching and it silently closed itself a beat later; the analytics,
+  // automation, roadmap and standups e2e specs hung on exactly that.
   if (isLoading) {
     return (
-      <Shell projectId={projectId}>
-        <LoadingState label="Loading board…" />
-      </Shell>
+      <CardFieldDefsProvider value={cardFieldDefs}>
+        <Shell projectId={projectId}>
+          <LoadingState label="Loading board…" />
+        </Shell>
+      </CardFieldDefsProvider>
     );
   }
   if (boardViewQuery.isError || (selectedBoardId && !board)) {
     return (
-      <Shell projectId={projectId}>
-        <ErrorState
-          error={boardViewQuery.error ?? new Error('Board not found')}
-          onRetry={() => boardViewQuery.refetch()}
-        />
-      </Shell>
+      <CardFieldDefsProvider value={cardFieldDefs}>
+        <Shell projectId={projectId}>
+          <ErrorState
+            error={boardViewQuery.error ?? new Error('Board not found')}
+            onRetry={() => boardViewQuery.refetch()}
+          />
+        </Shell>
+      </CardFieldDefsProvider>
     );
   }
   // No boards at all — surface the boards list error or a generic empty state.
   if (!boards.length) {
     if (boardsQuery.isError) {
       return (
-        <Shell projectId={projectId}>
-          <ErrorState
-            error={boardsQuery.error ?? new Error('Could not load boards')}
-            onRetry={() => boardsQuery.refetch()}
-          />
-        </Shell>
+        <CardFieldDefsProvider value={cardFieldDefs}>
+          <Shell projectId={projectId}>
+            <ErrorState
+              error={boardsQuery.error ?? new Error('Could not load boards')}
+              onRetry={() => boardsQuery.refetch()}
+            />
+          </Shell>
+        </CardFieldDefsProvider>
       );
     }
     return (
-      <Shell projectId={projectId}>
-        <EmptyState
-          title="No boards yet"
-          description="This project has no boards. Contact an admin to create one."
-        />
-      </Shell>
+      <CardFieldDefsProvider value={cardFieldDefs}>
+        <Shell projectId={projectId}>
+          <EmptyState
+            title="No boards yet"
+            description="This project has no boards. Contact an admin to create one."
+          />
+        </Shell>
+      </CardFieldDefsProvider>
     );
   }
 
@@ -750,9 +768,11 @@ export function BoardPage() {
   // not started yet (selectedBoardId still null), fall back gracefully.
   if (!board) {
     return (
-      <Shell projectId={projectId}>
-        <LoadingState label="Loading board…" />
-      </Shell>
+      <CardFieldDefsProvider value={cardFieldDefs}>
+        <Shell projectId={projectId}>
+          <LoadingState label="Loading board…" />
+        </Shell>
+      </CardFieldDefsProvider>
     );
   }
 

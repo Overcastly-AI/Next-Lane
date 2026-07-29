@@ -522,7 +522,14 @@ export class WorkspacesService {
       throw new NotFoundException('This workspace has no logo');
     }
 
-    const filePath = path.join(getUploadsDir(), workspace.logoStorageKey);
+    // MUST be absolute. `getUploadsDir()` defaults to the RELATIVE './uploads',
+    // so path.join produced 'uploads/<key>'. fs.existsSync then happened to
+    // succeed (it resolves against cwd, where the file really is), so this
+    // returned a "valid" relative path that the controller went on to resolve
+    // against the filesystem root — stat '/uploads/<key>' → ENOENT → 500 on
+    // every logo request. path.resolve makes the contract in the doc comment
+    // above ("Returns the absolute file path") actually true.
+    const filePath = path.resolve(getUploadsDir(), workspace.logoStorageKey);
     if (!fs.existsSync(filePath)) {
       throw new NotFoundException('Logo file not found on disk');
     }

@@ -154,7 +154,15 @@ test.describe('Settings robustness — webhooks & GitHub format guards', () => {
       .pressSequentially('ghp_1234567890abcdefTESTTOKEN', { delay: 5 });
     await page.getByTestId('github-save').click();
 
-    await expect(page.getByText(/owner\/repo.*format/i)).toBeVisible({
+    // Assert on the error TOAST specifically ([data-variant="error"], role
+    // alert). A bare `getByText(/owner\/repo.*format/i)` was ambiguous and
+    // self-defeating: the Gitea section's static hint on this same settings
+    // page ('"owner/repo" format, e.g. "acme/widgets".') also matches, so the
+    // expectation was satisfied by a permanent hint before the real error ever
+    // rendered — and the moment the toast DID land first, strict mode failed
+    // the test with two matches. It now checks the surface it means.
+    const errorToast = page.locator('[data-toast][data-variant="error"]').first();
+    await expect(errorToast).toContainText(/owner\/repo.*format/i, {
       timeout: 10_000,
     });
     // No "Connected to ..." summary should ever appear.
@@ -223,7 +231,16 @@ test.describe('Settings robustness — project details persistence', () => {
       timeout: 15_000,
     });
     // Cross-page coherence: the breadcrumb reflects the rename too.
-    await expect(page.getByText(newName).first()).toBeVisible();
+    //
+    // Target the breadcrumb explicitly. A bare `getByText(newName).first()`
+    // is ambiguous here: the always-mounted `AppSidebar` (App.tsx) also lists
+    // the project by name and sits BEFORE the header in the DOM, so `.first()`
+    // resolved to the sidebar row — which is `hidden lg:flex`, i.e. genuinely
+    // display:none on mobile. That made this line pass on desktop and fail on
+    // mobile the moment the sidebar's own projects query happened to have
+    // landed, which is why it rotated in and out of CI. Nothing about the
+    // product is wrong; the assertion just has to name the surface it means.
+    await expect(page.getByTestId('project-breadcrumb-name')).toHaveText(newName);
   });
 
   test('a trailing-space-only edit does not falsely enable Save (trim-aware dirty check)', async ({

@@ -19,7 +19,11 @@
  * the status-select path in test 1.
  */
 import { test, expect, type Page } from '@playwright/test';
-import { setupIsolatedProject } from './helpers';
+import { setupIsolatedProject, trackApiWrites } from './helpers';
+
+/** Matches the drawer's inline field write: PATCH /api/issues/:id. */
+const isIssuePatch = (w: { method: string; path: string }) =>
+  w.method === 'PATCH' && /^\/api\/issues\/[^/]+$/.test(w.path);
 
 async function openDrawer(page: Page, issueTitle: string) {
   await page.getByText(issueTitle).first().click();
@@ -34,6 +38,7 @@ test.describe('Issue status change persists after reload', () => {
     page, request,
   }) => {
     await setupIsolatedProject(page, request, { label: 'reload-persist' });
+    const writes = trackApiWrites(page);
 
     const title = `Persist ${Date.now()}`;
     await page.getByRole('button', { name: /\+ Create issue/i }).click();
@@ -47,6 +52,18 @@ test.describe('Issue status change persists after reload', () => {
     await drawer.locator('#d-status').selectOption({ label: 'In Progress' });
     await page.keyboard.press('Escape');
     await expect(drawer).toBeHidden({ timeout: 5_000 });
+
+    // Let the status PATCH actually reach the server before reloading.
+    // Selecting a status fires the write immediately (no debounce — see
+    // IssueDetailDrawer's `onChange={... onPatch('statusId', ...)}`), but
+    // closing the drawer and reloading straight after could abort that
+    // request in flight and then blame the app for "not persisting".
+    //
+    // This used to be `waitForLoadState('networkidle')`, which is a no-op on
+    // an already-loaded document (see `trackApiWrites`) — hence the residual
+    // flake. Waiting for the response weakens nothing: the reload below still
+    // re-reads from the server and still asserts the status stuck.
+    await writes.settle({ match: isIssuePatch, atLeast: 1 });
 
     await page.reload();
     await expect(page.getByText(title).first()).toBeVisible({ timeout: 15_000 });
@@ -69,6 +86,7 @@ test.describe('Drag-and-drop move persists', () => {
     if (testInfo.project.name !== 'chromium-desktop') test.skip();
 
     await setupIsolatedProject(page, request, { label: 'dnd-drag' });
+    const writes = trackApiWrites(page);
 
     const title = `Drag ${Date.now()}`;
     await page.getByRole('button', { name: /\+ Create issue/i }).click();
@@ -114,7 +132,13 @@ test.describe('Drag-and-drop move persists', () => {
     await page.mouse.move(endX, endY);
     await page.waitForTimeout(400);
     await page.mouse.up();
-    await page.waitForTimeout(1500);
+    // Wait for the drop's own POST /api/issues/:id/move to be answered rather
+    // than guessing with a fixed sleep; the board updates optimistically, so
+    // a reload here would otherwise be able to abort the write in flight.
+    await writes.settle({
+      match: (w) => w.method === 'POST' && /^\/api\/issues\/[^/]+\/move$/.test(w.path),
+      atLeast: 1,
+    });
 
     await page.reload();
     await expect(page.getByText(title).first()).toBeVisible({ timeout: 15_000 });

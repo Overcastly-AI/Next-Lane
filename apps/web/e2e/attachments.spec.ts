@@ -70,8 +70,16 @@ test.describe('attachments', () => {
     });
     await openIssueDrawer(page, 'Issue with attachment');
 
-    // Scroll down to the Attachments section
-    const attachmentsSection = page.getByText('Attachments').first();
+    // Scroll down to the Attachments section.
+    // `exact: true` matters: getByText('Attachments') is a SUBSTRING match, so
+    // it also matched this project's own name ("Attachments Test") in the
+    // breadcrumb — which comes first in the DOM. On mobile that header node is
+    // not visible behind the open drawer, so `.first()` resolved to it and
+    // scrollIntoViewIfNeeded spun until the test timed out. Desktop only
+    // passed by luck (the breadcrumb happens to be visible there).
+    const attachmentsSection = page
+      .getByText('Attachments', { exact: true })
+      .first();
     await attachmentsSection.scrollIntoViewIfNeeded();
 
     // Verify the drop zone is visible for MEMBER (editable)

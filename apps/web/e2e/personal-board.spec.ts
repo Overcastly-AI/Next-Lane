@@ -11,7 +11,7 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { login, registerNewUser } from './helpers';
+import { login, registerNewUser, trackApiWrites } from './helpers';
 
 // ---------------------------------------------------------------------------
 // Desktop tests
@@ -216,6 +216,7 @@ test.describe('Personal board — desktop', () => {
   }) => {
     const user = await registerNewUser(request, 'pb-move');
     await login(page, { email: user.email, password: user.password });
+    const writes = trackApiWrites(page);
     await page.goto('/my-board');
 
     await expect(page.getByTestId('personal-board')).toBeVisible({
@@ -252,6 +253,15 @@ test.describe('Personal board — desktop', () => {
     await expect(
       page.getByTestId('personal-card-title').filter({ hasText: 'Card to move' }),
     ).toBeVisible({ timeout: 8_000 });
+
+    // The move is optimistic (`useUpdatePersonalCard`'s `onMutate`), so the
+    // card being on screen proves nothing about the server. Wait for the PATCH
+    // to land before reloading rather than racing our own write.
+    await writes.settle({
+      match: (w) =>
+        w.method === 'PATCH' && /^\/api\/me\/personal-cards\/[^/]+$/.test(w.path),
+      atLeast: 1,
+    });
 
     // Reload to confirm persistence.
     await page.reload();

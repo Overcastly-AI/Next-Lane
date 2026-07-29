@@ -46,9 +46,17 @@ test.describe('CSV export — API', () => {
 
     const body = await res.text();
     const lines = body.trim().split(/\r?\n/);
-    // Header row.
+    // Header row — the exact export contract documented on
+    // IssuesService.exportCsv. The Start Date / Description / Component /
+    // Fix Versions / Parent / Original Estimate columns were added to the
+    // export after this assertion was written; the spec, not the API, was
+    // stale. Kept as an exact match so a silent column change stays a
+    // failing test (this IS the CSV contract consumers depend on).
+    // Note: a project with custom-field definitions also gets one
+    // "CF: <name>" column each, before Created/Updated — this project has
+    // none, so the header is the base set.
     expect(lines[0]).toBe(
-      'Key,Title,Type,Status,Priority,Assignee,Reporter,Story Points,Sprint,Labels,Due Date,Created,Updated',
+      'Key,Title,Type,Status,Priority,Assignee,Reporter,Story Points,Sprint,Labels,Start Date,Due Date,Description,Component,Fix Versions,Parent,Original Estimate (minutes),Created,Updated',
     );
     // The tricky title is quoted with the inner quote doubled.
     expect(body).toContain('"Has, comma and ""quote"""');

@@ -10,8 +10,39 @@
  *
  * Uses isolated projects so the shared demo is never polluted.
  */
-import { test, expect, type APIRequestContext } from '@playwright/test';
+import {
+  test,
+  expect,
+  type APIRequestContext,
+  type Locator,
+  type Page,
+} from '@playwright/test';
 import { setupIsolatedProject, API_URL } from './helpers';
+
+/**
+ * Click "Save colors" and wait for the board PATCH it fires to be ANSWERED.
+ *
+ * Every test here closes the modal and reloads immediately after saving.
+ * `useUpdateBoard` has no optimistic path, so nothing on screen tells us the
+ * rules reached the server — and a `page.reload()` while the PATCH is still in
+ * flight aborts it, after which the post-reload accent assertions fail for a
+ * reason that has nothing to do with the product. Waiting for the response
+ * does not weaken anything: the reload still re-reads the board from the
+ * server and still proves the rules were persisted.
+ */
+async function saveColors(
+  page: Page,
+  scope: Page | Locator = page,
+): Promise<void> {
+  const saved = page.waitForResponse(
+    (r) =>
+      r.request().method() === 'PATCH' &&
+      /^\/api\/boards\/[^/]+$/.test(new URL(r.url()).pathname),
+  );
+  await scope.getByRole('button', { name: /save colors/i }).click();
+  const res = await saved;
+  expect(res.ok(), `save colors failed: ${res.status()}`).toBeTruthy();
+}
 
 // ---------------------------------------------------------------------------
 // Seed helper
@@ -114,7 +145,7 @@ test.describe('Card colors — desktop', () => {
     await labelInput.fill('High priority');
 
     // Save.
-    await page.getByRole('button', { name: /save colors/i }).click();
+    await saveColors(page);
 
     // Modal stays open (colors tab doesn't close on save); close it.
     await dialog.getByLabel('Close').click();
@@ -187,7 +218,7 @@ test.describe('Card colors — desktop', () => {
     await rule2.getByTestId('color-rule-color').getByRole('button', { name: /blue/i }).click();
 
     // Save.
-    await page.getByRole('button', { name: /save colors/i }).click();
+    await saveColors(page);
     await dialog.getByLabel('Close').click();
     await expect(dialog).toBeHidden({ timeout: 5_000 });
 
@@ -240,7 +271,7 @@ test.describe('Card colors — desktop', () => {
     await page.keyboard.press('Escape');
     await rule.getByTestId('color-rule-color').getByRole('button', { name: /red/i }).click();
 
-    await page.getByRole('button', { name: /save colors/i }).click();
+    await saveColors(page);
     await dialog.getByLabel('Close').click();
     await expect(dialog).toBeHidden({ timeout: 5_000 });
 
@@ -267,7 +298,7 @@ test.describe('Card colors — desktop', () => {
     await expect(dialog2.getByTestId('color-rule-row')).toHaveCount(0);
 
     // Save the empty rules array.
-    await dialog2.getByRole('button', { name: /save colors/i }).click();
+    await saveColors(page, dialog2);
     await dialog2.getByLabel('Close').click();
     await expect(dialog2).toBeHidden({ timeout: 5_000 });
 
@@ -323,7 +354,7 @@ test.describe('Card colors — mobile', () => {
     await rule.getByTestId('color-rule-color').getByRole('button', { name: /red/i }).click();
 
     // Save.
-    await page.getByRole('button', { name: /save colors/i }).click();
+    await saveColors(page);
     await dialog.getByLabel('Close').click();
     await expect(dialog).toBeHidden({ timeout: 5_000 });
 

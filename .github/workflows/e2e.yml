@@ -48,6 +48,14 @@ jobs:
         shard: [1, 2, 3, 4]
 
     services:
+      # DELIBERATELY the Debian `postgres:16` image, NOT `-alpine`. It runs
+      # initdb with LANG=en_US.utf8, i.e. a LINGUISTIC collation — the default
+      # for most managed Postgres and the setting under which fractional-index
+      # `rank` keys sort wrongly unless their columns are pinned to COLLATE "C"
+      # (see the 20260729160000_rank_columns_c_collation migration and
+      # packages/shared/src/rank.ts). This job is the only place that regression
+      # is caught, because a C-collation database cannot reproduce it. Do not
+      # "fix" a rank/ordering failure here by switching images.
       postgres:
         image: postgres:16
         env:
@@ -169,11 +177,17 @@ jobs:
       - name: Run Playwright e2e (desktop + mobile, shard ${{ matrix.shard }}/4)
         run: pnpm --filter @next-lane/web exec playwright test --shard=${{ matrix.shard }}/4
 
-      - name: Dump server logs on failure
+      # TAIL, never `cat`. The API logs every request via pino at ~2.2 KB/line,
+      # so a full dump appended ~19,000 lines AFTER the Playwright output and
+      # blew past the per-job log ceiling — which made the actual test-failure
+      # summary permanently unretrievable through the Actions API. The suite
+      # was red for 25 days partly because nobody (human or agent) could read
+      # WHY. A bounded tail keeps the Playwright report reachable.
+      - name: Dump server logs on failure (tail only — see comment)
         if: failure()
         run: |
-          echo "===== API log ====="; cat "$RUNNER_TEMP/api.log" || true
-          echo "===== Web log ====="; cat "$RUNNER_TEMP/web.log" || true
+          echo "===== API log (last 300 lines) ====="; tail -n 300 "$RUNNER_TEMP/api.log" || true
+          echo "===== Web log (last 100 lines) ====="; tail -n 100 "$RUNNER_TEMP/web.log" || true
 
       - name: Upload Playwright HTML report
         if: failure()
@@ -185,3 +199,15 @@ jobs:
           path: apps/web/playwright-report
           retention-days: 14
           if-no-files-found: warn
+
+      # DELIBERATELY THE LAST STEP IN THE JOB. `get_job_logs` (Actions API) is
+      # tail-only, so whatever prints last is the only output reliably readable
+      # without downloading artifacts — and only the runner's own post-job
+      # cleanup follows this. Everything earlier (Playwright's own output, the
+      # server-log dump, upload chatter) gets buried. Prints the failing test
+      # list as `file:line › title` plus the first lines of each error.
+      # Never fails the job: exits 0 even with a missing or invalid report, so
+      # a reporting hiccup can never mask the real failure.
+      - name: Failing-test summary (LAST — keeps red runs diagnosable)
+        if: failure()
+        run: node scripts/summarize-playwright.mjs apps/web/playwright-report/results.json

@@ -57,7 +57,7 @@ async function gotoBacklog(page: Page): Promise<void> {
   // names are now also rendered as sidebar nav links, a loose substring
   // match on "Backlog" resolves to dozens of elements; the ProjectNav tab's
   // accessible name is the exact, bare string "Backlog".
-  await page.getByRole('link', { name: 'Backlog', exact: true }).click();
+  await page.locator('nav[aria-label="Project navigation"]').getByRole('link', { name: 'Backlog', exact: true }).click();
   await expect(page).toHaveURL(/\/backlog/, { timeout: 15_000 });
   await expect(
     page.getByRole('heading', { level: 1, name: 'Backlog' }),
@@ -118,7 +118,7 @@ test.describe('Backlog & sprint planning', () => {
 
     // The issue now appears on the kanban board (active-sprint issues show there).
     // Use exact match: a "My Board" header link also exists.
-    await page.getByRole('link', { name: 'Board', exact: true }).click();
+    await page.locator('nav[aria-label="Project navigation"]').getByRole('link', { name: 'Board', exact: true }).click();
     await expect(page).toHaveURL(/\/board/, { timeout: 15_000 });
     await expect(page.getByText(issueKey!).first()).toBeVisible({
       timeout: 10_000,

@@ -44,20 +44,30 @@ function agentSection(page: Page) {
   return page.getByTestId('agent-context-section');
 }
 
-/** Log a user into a fresh browser context via a directly-injected JWT (no UI login). */
+/**
+ * Log a user into a fresh browser context via a directly-injected JWT (no UI login).
+ *
+ * The token is seeded with `addInitScript`, i.e. BEFORE any document script
+ * runs, so the app never boots unauthenticated. The previous version did
+ * `goto('/login')` and then `evaluate(...)`, which left a window where the app
+ * had already started and fired an unauthenticated request; when that 401 came
+ * back it cleared auth and took the just-injected token with it, landing the
+ * next navigation back on /login. (The client no longer clears auth on a 401
+ * for a request it sent without a token — but seeding before boot is the
+ * correct pattern regardless, and avoids the wasted unauthenticated round trip.)
+ */
 async function loginViaToken(
   ctx: BrowserContext,
   user: RegisteredUser,
 ): Promise<Page> {
-  const page = await ctx.newPage();
-  await page.goto('/login');
-  await page.evaluate(
+  await ctx.addInitScript(
     ({ token, key }) => {
-      localStorage.clear();
       localStorage.setItem(key, token);
     },
     { token: user.token, key: 'nl_token' },
   );
+  const page = await ctx.newPage();
+  await page.goto('/login');
   return page;
 }
 

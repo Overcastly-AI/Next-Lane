@@ -774,6 +774,36 @@ See `docs/BACKLOG.md` § Future for the filed (not-yet-Ready) epic entry.
 
 ### Current focus
 
+**Gate status (2026-07-29): the E2E suite is green again after 25 days red.**
+It had failed continuously since 2026-07-01 (~180 runs), which means nothing
+merged in that window was actually gated. Restoring it surfaced **four real
+user-visible bugs**, not just stale selectors: the project nav overflowed at
+mobile widths and rendered Settings on top of its own "More" button; the More
+menu unmounted itself whenever board data landed (a changing root element type
+in `BoardPage`); a 401 on a request sent *without* a token cleared auth and
+logged the user out; and reordering a page silently swallowed the following
+click. Phase status below is unchanged by this work — it was a quality/CI
+restoration, not a phase advance — but the phases it re-gates are now
+trustworthy again. See `docs/BACKLOG.md` § Already Done for the full account.
+
+A second pass then removed the residual **flakiness** that kept CI red with a
+different single failure each run while local stayed green: specs were
+reloading the page while their own mutation was still in flight (the guard
+they used, `page.waitForLoadState('networkidle')`, is a no-op on an
+already-loaded document), and two assertions named text that matched a second,
+unintended element. Specs now wait for the server to answer their writes via
+the new `trackApiWrites` helper. No test was weakened. Same § Already Done
+entry.
+
+That pass then exposed a **real P0 product bug** the flakiness had been
+masking: fractional-index `rank` keys are byte-ordered, but on a Postgres with
+a linguistic collation (`en_US.utf8` — the default for the Debian `postgres`
+image and most managed Postgres) `ORDER BY rank` returns a different order, so
+moving any board card, backlog item, personal-board card or page to the TOP of
+a list silently put it at the BOTTOM after a refresh. Fixed by pinning
+`COLLATE "C"` on those columns. CI had been reporting this correctly for four
+rounds while local — on a C-collation database — could not reproduce it.
+
 **The bar: "Is this better than Jira?"** (founder mandate, `docs/VISION.md`
 § The operating question.) Not cheaper — *better*, on a daily-driver test: a
 team that has run the incumbent for years should prefer Next Lane within the

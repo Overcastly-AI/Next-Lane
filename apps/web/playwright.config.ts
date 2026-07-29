@@ -28,7 +28,23 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
-  reporter: [['list'], ['html', { open: 'never' }]],
+  // On CI add the `github` reporter: it emits failures as workflow
+  // annotations, which surface on the PR and via the checks API. The HTML
+  // report is an artifact that can only be read by downloading it, so when a
+  // run goes red the annotations are the only machine-readable account of
+  // WHICH spec failed and why.
+  // The `json` report is what `scripts/summarize-playwright.mjs` turns into a
+  // compact failing-test list printed at the very END of the CI job — the only
+  // form of the results that survives a tail-only log read (see that script's
+  // header for why the html/github/annotation routes all fail us here).
+  reporter: process.env.CI
+    ? [
+        ['list'],
+        ['html', { open: 'never' }],
+        ['github'],
+        ['json', { outputFile: 'playwright-report/results.json' }],
+      ]
+    : [['list'], ['html', { open: 'never' }]],
   timeout: 30_000,
   use: {
     baseURL: BASE_URL,

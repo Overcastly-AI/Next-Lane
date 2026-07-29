@@ -7,10 +7,12 @@ import { useUnsavedChangesGuard } from '@/lib/unsavedChangesGuard';
  * Per-project sub-navigation shown under the app header.
  *
  * Layout:
- *  [Board] [Backlog] [Triage] [Reports]  [More ▾]       [Settings ⚙]
+ *  [Board] [Backlog] [Triage] [Docs] [Reports]  [More ▾]     [Settings ⚙]
  *
- * On any viewport (including 390 px mobile) the primary four tabs + More +
- * Settings always fit in one row with no horizontal overflow.
+ * The primary tabs live in a horizontally scrollable strip; More and Settings
+ * sit outside it and are therefore visible and clickable at every viewport
+ * width. Do NOT move More back inside the strip: an `overflow-x-auto`
+ * ancestor clips on both axes and would swallow its dropdown.
  *
  * "More" collapses: Analytics · Roadmap · Poker · Standup · Automation.
  * When the active route is one of those, the button reads "More · <label>"
@@ -73,9 +75,17 @@ const activeTabCls =
 const inactiveTabCls =
   'border-transparent text-ink-500 hover:text-ink-800 hover:border-ink-300';
 
-/** Base style shared by all primary NavLink tabs */
+/**
+ * Base style shared by all primary NavLink tabs.
+ *
+ * NOTE: the `-mb-px` that pulls the active underline onto the nav's own
+ * bottom border lives on the SCROLLER (see the render below), not here. On
+ * the tab it would make each tab 1px taller than its scroll container, and
+ * the container's `overflow-y` would clip exactly the 2px underline that
+ * marks the active tab.
+ */
 const tabBaseCls =
-  'relative -mb-px shrink-0 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium ' +
+  'relative shrink-0 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium ' +
   'transition-colors duration-[120ms] ' +
   'focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-300 focus-visible:ring-offset-1 rounded-t';
 
@@ -144,9 +154,22 @@ interface MoreMenuProps {
 }
 
 function MoreMenu({ projectId, open, onClose, menuRef, guardNavClick }: MoreMenuProps) {
-  // Close on outside click / focus-out
+  // Close on focus-out — but ONLY when focus actually lands somewhere else.
+  //
+  // `relatedTarget === null` means focus went nowhere (it fell back to the
+  // document body). That happens when a re-render replaces the currently
+  // focused node — and this menu focuses its first item on open, so a board
+  // still streaming in data would blur that item a beat later and the menu
+  // slammed shut on its own, before the user could pick anything. It made
+  // every "open More, choose a view" flow intermittently impossible, and it
+  // is why the analytics/automation/roadmap/standups e2e specs hung.
+  //
+  // A null relatedTarget is never a deliberate "user moved away": real
+  // click-away is handled by the document pointerdown listener below, and
+  // keyboard tab-away still reports the element being moved to.
   const handleBlur = useCallback(
     (e: React.FocusEvent) => {
+      if (e.relatedTarget === null) return;
       if (!menuRef.current?.contains(e.relatedTarget as Node)) {
         onClose();
       }
@@ -164,7 +187,12 @@ function MoreMenu({ projectId, open, onClose, menuRef, guardNavClick }: MoreMenu
       id="more-project-views-menu"
       onBlur={handleBlur}
       className={cn(
-        'absolute left-0 top-full z-50 mt-1',
+        // Right-anchored by default, left-anchored from `sm` up. Once the
+        // tabs scroll (narrow viewports) the More button sits near the right
+        // edge, and a left-anchored 176px menu ran off-screen — where the
+        // shell's `overflow-x-clip` silently cut it off. From `sm` the
+        // button is mid-nav, so the original left anchoring is preserved.
+        'absolute right-0 top-full z-50 mt-1 sm:left-0 sm:right-auto',
         'w-44 rounded-md border border-ink-200 bg-surface py-1',
         'shadow-dropdown',
         'motion-safe:animate-nl-fade-in',
@@ -296,8 +324,22 @@ export function ProjectNav({ projectId }: { projectId: string }) {
       aria-label="Project navigation"
       className="flex items-center border-b border-ink-200 bg-surface px-2 sm:px-4"
     >
-      {/* Primary tabs — always visible */}
-      <div className="flex min-w-0 flex-1 items-center">
+      {/*
+        Primary tabs — scroll sideways when they don't fit.
+
+        This used to be `flex-1` with `shrink-0` children and no overflow
+        handling, on the (since-broken) assumption that "the primary FOUR
+        tabs + More + Settings always fit in one row". Promoting Docs to a
+        first-class tab made five, and at 390px the row overflowed: because
+        the app shell is `overflow-x-clip`, the spilled tabs were invisible,
+        and the right-pinned Settings block rendered ON TOP of the "More"
+        button — Chromium reported the gear icon "intercepts pointer events"
+        and every "open More" test hung until it timed out.
+
+        Now only the tabs scroll; More and Settings sit outside the scroller
+        so both stay visible and hit-testable at any width.
+      */}
+      <div className="nl-tabstrip -mb-px flex min-w-0 items-center overflow-x-auto">
         {PRIMARY_TABS.map((tab) => (
           <NavLink
             key={tab.to}
@@ -311,9 +353,14 @@ export function ProjectNav({ projectId }: { projectId: string }) {
             {tab.label}
           </NavLink>
         ))}
+      </div>
 
-        {/* More button + dropdown */}
-        <div ref={containerRef} className="relative ml-0.5">
+      {/*
+        More button + dropdown — deliberately OUTSIDE the scroller above:
+        an `overflow-x-auto` ancestor also clips on the Y axis, which would
+        cut off this absolutely-positioned dropdown entirely.
+      */}
+      <div ref={containerRef} className="relative ml-0.5 shrink-0">
           <button
             ref={buttonRef}
             type="button"
@@ -358,7 +405,6 @@ export function ProjectNav({ projectId }: { projectId: string }) {
             menuRef={menuRef}
             guardNavClick={guardNavClick}
           />
-        </div>
       </div>
 
       {/* Settings — right-pinned, always reachable */}

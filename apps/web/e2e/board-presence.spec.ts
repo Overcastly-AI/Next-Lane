@@ -39,13 +39,15 @@ async function loginAndOpenBoard(
   user: RegisteredUser,
   projectId: string,
 ): Promise<Page> {
-  const page = await ctx.newPage();
   // Inject the JWT directly into localStorage so we skip the login UI.
-  await page.goto('/login');
-  await page.evaluate(
+  // `addInitScript` runs before the app's first script, so it never boots
+  // logged-out — injecting after `goto('/login')` raced the app's own
+  // unauthenticated request, whose 401 cleared the token we had just set.
+  await ctx.addInitScript(
     ({ token, key }) => localStorage.setItem(key, token),
     { token: user.token, key: 'nl_token' },
   );
+  const page = await ctx.newPage();
   await openProjectBoard(page, projectId);
   return page;
 }
