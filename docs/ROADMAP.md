@@ -795,6 +795,15 @@ unintended element. Specs now wait for the server to answer their writes via
 the new `trackApiWrites` helper. No test was weakened. Same § Already Done
 entry.
 
+That pass then exposed a **real P0 product bug** the flakiness had been
+masking: fractional-index `rank` keys are byte-ordered, but on a Postgres with
+a linguistic collation (`en_US.utf8` — the default for the Debian `postgres`
+image and most managed Postgres) `ORDER BY rank` returns a different order, so
+moving any board card, backlog item, personal-board card or page to the TOP of
+a list silently put it at the BOTTOM after a refresh. Fixed by pinning
+`COLLATE "C"` on those columns. CI had been reporting this correctly for four
+rounds while local — on a C-collation database — could not reproduce it.
+
 **The bar: "Is this better than Jira?"** (founder mandate, `docs/VISION.md`
 § The operating question.) Not cheaper — *better*, on a daily-driver test: a
 team that has run the incumbent for years should prefer Next Lane within the

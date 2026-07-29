@@ -48,6 +48,14 @@ jobs:
         shard: [1, 2, 3, 4]
 
     services:
+      # DELIBERATELY the Debian `postgres:16` image, NOT `-alpine`. It runs
+      # initdb with LANG=en_US.utf8, i.e. a LINGUISTIC collation — the default
+      # for most managed Postgres and the setting under which fractional-index
+      # `rank` keys sort wrongly unless their columns are pinned to COLLATE "C"
+      # (see the 20260729160000_rank_columns_c_collation migration and
+      # packages/shared/src/rank.ts). This job is the only place that regression
+      # is caught, because a C-collation database cannot reproduce it. Do not
+      # "fix" a rank/ordering failure here by switching images.
       postgres:
         image: postgres:16
         env:

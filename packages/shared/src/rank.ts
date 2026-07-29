@@ -6,6 +6,16 @@ import { generateKeyBetween, generateNKeysBetween } from 'fractional-indexing';
  * A rank is a short string key. To place an item between two neighbors, compute
  * a key that sorts lexicographically between them — updating ONE row, never
  * renumbering the rest.
+ *
+ * ⚠️  BYTE ORDER, NOT LINGUISTIC ORDER. These keys are drawn from [0-9A-Za-z]
+ * and are only correct under ASCII/byte comparison. Prepending to a list walks
+ * DOWN from "a0" into the uppercase range ("Zz", "Zy", "Zx", …) precisely
+ * because uppercase sorts before lowercase in ASCII — which is FALSE under a
+ * linguistic collation like en_US.utf8, where case is only a tertiary weight
+ * ('a0' < 'Zy' < 'Zz'). Any column storing one of these keys must therefore be
+ * declared `COLLATE "C"`; see the `20260729160000_rank_columns_c_collation`
+ * migration. Without it an item dragged to the top of a list silently reappears
+ * at the bottom on the next read, with no error anywhere.
  */
 
 /** Rank for an item placed between `before` and `after` (either may be null for ends). */

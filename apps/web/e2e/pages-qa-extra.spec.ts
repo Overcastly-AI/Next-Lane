@@ -121,6 +121,18 @@ test.describe('Pages QA extra: hierarchy, reorder correctness, title validation,
     const isMove = (w: { method: string; path: string }) =>
       w.method === 'POST' && /^\/api\/pages\/[^/]+\/move$/.test(w.path);
 
+    // Exactly WHAT each move asked for, so a failure names the request that
+    // produced the wrong order instead of leaving the array diff to be
+    // reverse-engineered from a CI tail.
+    const moveRequests: unknown[] = [];
+    page.on('request', (req) => {
+      if (!isMove({ method: req.method(), path: new URL(req.url()).pathname })) return;
+      moveRequests.push({
+        id: new URL(req.url()).pathname.split('/')[3],
+        body: req.postDataJSON() as unknown,
+      });
+    });
+
     await page.goto(`/projects/${project.id}/pages`);
     await expect(page.getByTestId('page-title')).toBeVisible();
     await ensureTreeOpen(page);
@@ -168,8 +180,31 @@ test.describe('Pages QA extra: hierarchy, reorder correctness, title validation,
     // now fails loudly as "acked=5/6" instead of an opaque ordering diff.
     await writes.settle({ match: isMove, atLeast: 6 });
 
-    // Reload — the server-persisted rank must match the last client state exactly
-    // (proves this isn't just an optimistic client-side lie).
+    // Server truth FIRST, read straight from the API rather than through the
+    // app. This splits the two things the single post-reload check used to
+    // conflate: "did the server persist the order" and "does a fresh client
+    // render it". When this suite went red they were indistinguishable — the
+    // reload came back with the pristine seed order and nothing said whether
+    // the ranks or the client was at fault.
+    async function serverOrder(): Promise<string[]> {
+      const res = await request.get(
+        `http://localhost:4000/api/projects/${project.id}/pages/tree`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      expect(res.ok(), `tree read failed: ${res.status()}`).toBeTruthy();
+      return ((await res.json()) as { title: string }[]).map((n) => n.title);
+    }
+    await expect
+      .poll(serverOrder, {
+        message:
+          `server-persisted page order after 6 acked moves. ids: alpha=${alphaId} ` +
+          `beta=${betaId} gamma=${gammaId}. requests: ${JSON.stringify(moveRequests)}. ` +
+          `responses: ${JSON.stringify(writes.completed.filter(isMove))}`,
+      })
+      .toEqual(['Beta', 'Gamma', 'Alpha']);
+
+    // Reload — a fresh client must render exactly that order (proves this
+    // isn't just an optimistic client-side lie).
     await page.reload();
     await ensureTreeOpen(page);
     await expect.poll(() => treeItemTitles(page)).toEqual(['Beta', 'Gamma', 'Alpha']);
