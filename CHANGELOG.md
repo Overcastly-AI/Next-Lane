@@ -16,6 +16,14 @@ staged here by hand (see [`RELEASING.md`](./RELEASING.md))._
 
 ---
 
+## [0.1.2] — 2026-07-29
+
+[Compare with v0.1.1](https://github.com/Overcastly-AI/Next-Lane/compare/v0.1.1...v0.1.2)
+
+### Bug Fixes
+
+* **web:** built index.html shipped a CSP-blocked inline script ([203b280](https://github.com/Overcastly-AI/Next-Lane/commit/203b280fcda9294d75a631b287ecc780137d4daa))
+
 ## [0.1.1] — 2026-07-29
 
 [Compare with v0.1.0](https://github.com/Overcastly-AI/Next-Lane/compare/v0.1.0...v0.1.1)
