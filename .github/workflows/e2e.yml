@@ -191,3 +191,15 @@ jobs:
           path: apps/web/playwright-report
           retention-days: 14
           if-no-files-found: warn
+
+      # DELIBERATELY THE LAST STEP IN THE JOB. `get_job_logs` (Actions API) is
+      # tail-only, so whatever prints last is the only output reliably readable
+      # without downloading artifacts — and only the runner's own post-job
+      # cleanup follows this. Everything earlier (Playwright's own output, the
+      # server-log dump, upload chatter) gets buried. Prints the failing test
+      # list as `file:line › title` plus the first lines of each error.
+      # Never fails the job: exits 0 even with a missing or invalid report, so
+      # a reporting hiccup can never mask the real failure.
+      - name: Failing-test summary (LAST — keeps red runs diagnosable)
+        if: failure()
+        run: node scripts/summarize-playwright.mjs apps/web/playwright-report/results.json
