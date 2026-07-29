@@ -774,6 +774,18 @@ See `docs/BACKLOG.md` § Future for the filed (not-yet-Ready) epic entry.
 
 ### Current focus
 
+**Gate status (2026-07-29): the E2E suite is green again after 25 days red.**
+It had failed continuously since 2026-07-01 (~180 runs), which means nothing
+merged in that window was actually gated. Restoring it surfaced **four real
+user-visible bugs**, not just stale selectors: the project nav overflowed at
+mobile widths and rendered Settings on top of its own "More" button; the More
+menu unmounted itself whenever board data landed (a changing root element type
+in `BoardPage`); a 401 on a request sent *without* a token cleared auth and
+logged the user out; and reordering a page silently swallowed the following
+click. Phase status below is unchanged by this work — it was a quality/CI
+restoration, not a phase advance — but the phases it re-gates are now
+trustworthy again. See `docs/BACKLOG.md` § Already Done for the full account.
+
 **The bar: "Is this better than Jira?"** (founder mandate, `docs/VISION.md`
 § The operating question.) Not cheaper — *better*, on a daily-driver test: a
 team that has run the incumbent for years should prefer Next Lane within the
