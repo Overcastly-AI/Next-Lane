@@ -16,6 +16,14 @@ staged here by hand (see [`RELEASING.md`](./RELEASING.md))._
 
 ---
 
+## [0.1.1] — 2026-07-29
+
+[Compare with v0.1.0](https://github.com/Overcastly-AI/Next-Lane/compare/v0.1.0...v0.1.1)
+
+### Bug Fixes
+
+* **ci:** auto-release needs Node 22 — semantic-release refuses Node 20 ([4506c12](https://github.com/Overcastly-AI/Next-Lane/commit/4506c126b2b2f7d450f72a56707389f9bd238baf))
+
 ## [0.1.0] — 2026-07-25
 
 **First published release.** Everything below was built in the pre-release
