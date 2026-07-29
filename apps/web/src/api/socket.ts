@@ -8,7 +8,13 @@ import {
   type ProjectDto,
 } from '@next-lane/shared';
 import { API_URL, getToken } from './client';
-import { qk, invalidateBoardFamily, invalidateDashboardDataFamily, invalidatePagesFamily } from './keys';
+import {
+  qk,
+  invalidateBoardFamily,
+  invalidateDashboardDataFamily,
+  invalidatePagesFamily,
+  MOVE_PAGE_MUTATION_KEY,
+} from './keys';
 
 let socket: Socket | null = null;
 
@@ -164,7 +170,23 @@ export function useBoardRealtime(
           // own detail/version-history caches so an open Pages surface never
           // shows stale content when a teammate (or an agent) edits elsewhere.
           const p = payload as { pageId?: string } | null;
-          invalidatePagesFamily(qc, { kind: 'project', id: projectId }, p?.pageId);
+          // A move this client just performed is echoed straight back to it.
+          // Refetching the tree on your OWN echo re-renders the rows while
+          // you are still clicking, and `handleMove` resolves a node's index
+          // in the tree it is holding — so the shuffle made the next move
+          // look out of bounds and the click was silently dropped (six
+          // clicks, five requests). While one of our own moves is in flight
+          // the optimistic tree is authoritative, so skip the TREE refetch
+          // only; everything else in the family still refreshes, and a
+          // genuine remote change still lands as soon as we stop reordering.
+          const reordering =
+            qc.isMutating({ mutationKey: MOVE_PAGE_MUTATION_KEY }) > 0;
+          invalidatePagesFamily(
+            qc,
+            { kind: 'project', id: projectId },
+            p?.pageId,
+            { skipTree: reordering },
+          );
         }
         if (event === SocketEvents.DashboardUpdated) {
           // A dashboard's metadata changed or a gadget was added/edited/

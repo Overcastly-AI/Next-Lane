@@ -18,6 +18,7 @@ import {
   invalidatePagesFamily,
   pagesTreeKey,
   pagesGraphKey,
+  MOVE_PAGE_MUTATION_KEY,
   type PagesScope,
 } from './keys';
 import { optimisticallyReorderTree } from './pages.reorder';
@@ -258,12 +259,6 @@ export interface MovePageVars {
   beforeId?: string;
   afterId?: string;
 }
-
-/**
- * Shared mutation key for page moves, so that a burst of rapid reorders can
- * be recognised as one batch and only the last one triggers a refetch.
- */
-const MOVE_PAGE_MUTATION_KEY = ['pages', 'move'] as const;
 
 /**
  * Serialises page-move requests.
