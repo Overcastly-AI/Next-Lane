@@ -10,8 +10,9 @@ Next Lane uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-_Nothing yet — changes land here and move into a version section when a
-release is cut (see [`RELEASING.md`](./RELEASING.md))._
+_Releases are automatic — every merge to `main` that contains a `feat:` or
+`fix:` commit publishes a version and writes its section below. Nothing is
+staged here by hand (see [`RELEASING.md`](./RELEASING.md))._
 
 ---
 

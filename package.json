@@ -4,6 +4,10 @@
   "private": true,
   "description": "Next Lane — an open-source, self-hosted issue & project tracker that runs locally via Docker.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Overcastly-AI/Next-Lane.git"
+  },
   "packageManager": "pnpm@9.12.0",
   "engines": {
     "node": ">=20"
@@ -14,6 +18,7 @@
     "lint": "pnpm -r lint",
     "test": "pnpm -r test",
     "format": "prettier --write \"**/*.{ts,tsx,js,json,md}\"",
+    "release:dry-run": "semantic-release --dry-run --no-ci",
     "db:migrate": "pnpm --filter @next-lane/api prisma migrate dev",
     "db:seed": "pnpm --filter @next-lane/api db:seed",
     "docker:up": "docker compose up -d --build",
@@ -21,7 +26,14 @@
     "docker:logs": "docker compose logs -f"
   },
   "devDependencies": {
-    "prettier": "^3.3.3"
+    "@semantic-release/changelog": "^7.0.0",
+    "@semantic-release/commit-analyzer": "^13.0.1",
+    "@semantic-release/exec": "^7.1.0",
+    "@semantic-release/git": "^11.0.1",
+    "@semantic-release/release-notes-generator": "^14.1.1",
+    "conventional-changelog-conventionalcommits": "^8.0.0",
+    "prettier": "^3.3.3",
+    "semantic-release": "^25.0.8"
   },
   "pnpm": {
     "neverBuiltDependencies": ["@prisma/engines"],

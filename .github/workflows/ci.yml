@@ -53,6 +53,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # fetch-depth: 0 is REQUIRED by the type-vs-paths check below — it
+          # walks base..head, which a shallow clone cannot resolve.
+          fetch-depth: 0
 
       - name: Setup Node 20
         uses: actions/setup-node@v4
@@ -74,6 +78,19 @@ jobs:
           gh api "repos/${{ github.repository }}/pulls/${PR_NUMBER}/commits?per_page=100" \
             --jq '.[].commit.message | split("\n")[0]' \
             | node scripts/lint-commit-subject.mjs --stdin
+
+      # BLOCKING, unlike the advisory step above. The subject lint checks that
+      # a type is well-FORMED; this checks that it is TRUE. Commit 1c23627
+      # landed 502 product files under a `docs:` subject — invisible in the log,
+      # and under auto-release that ships app code to main while publishing
+      # nothing (docs/chore/ci/test/style => no version bump, no changelog,
+      # no images). Verified against that exact commit: it fails, while honest
+      # docs-only commits pass.
+      - name: Commit type matches the files changed
+        run: |
+          node scripts/check-commit-type-vs-paths.mjs \
+            "${{ github.event.pull_request.base.sha }}" \
+            "${{ github.event.pull_request.head.sha }}"
 
   build-test:
     name: Build, typecheck & unit test
