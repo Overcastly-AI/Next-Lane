@@ -48,6 +48,15 @@ test.describe('Issue status change persists after reload', () => {
     await page.keyboard.press('Escape');
     await expect(drawer).toBeHidden({ timeout: 5_000 });
 
+    // Let the status PATCH actually reach the server before reloading.
+    // Selecting a status fires the write immediately (no debounce — see
+    // IssueDetailDrawer's `onChange={... onPatch('statusId', ...)}`), but
+    // closing the drawer and reloading straight after could abort that
+    // request in flight and then blame the app for "not persisting". This
+    // waits for OUR OWN write, and weakens nothing: the reload below still
+    // re-reads from the server and still asserts the status stuck.
+    await page.waitForLoadState('networkidle');
+
     await page.reload();
     await expect(page.getByText(title).first()).toBeVisible({ timeout: 15_000 });
     drawer = await openDrawer(page, title);

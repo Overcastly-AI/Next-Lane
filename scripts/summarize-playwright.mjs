@@ -27,8 +27,19 @@ if (!file || !fs.existsSync(file)) {
   process.exit(0);
 }
 
-/** First N meaningful lines of an error, with ANSI codes stripped. */
-function briefError(err, maxLines = 4) {
+/**
+ * First N meaningful lines of an error, with ANSI codes stripped.
+ *
+ * 16, not 4. A `toEqual` diff spends its first four lines on the header
+ * ("Error: expect(received).toEqual(expected)", "- Expected  - 1",
+ * "+ Received  + 1", "Array [") and only THEN prints the elements — so a
+ * 4-line budget printed literally `Array [` and nothing else. A page-reorder
+ * failure was chased across three CI rounds with nobody able to see which
+ * order the server actually ended up in. The whole point of this script is
+ * that a tail-only reader can diagnose the run; truncating mid-diff defeats
+ * it. Still bounded, so one runaway stack can't bury the other failures.
+ */
+function briefError(err, maxLines = 16) {
   const raw = [err?.message, err?.stack].filter(Boolean).join('\n');
   return raw
     // eslint-disable-next-line no-control-regex
