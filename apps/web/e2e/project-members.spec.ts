@@ -45,23 +45,30 @@ function memberRow(page: Page, email: string) {
     .filter({ hasText: email });
 }
 
-/** Log a user into a fresh browser context (token injected, no UI login). */
+/**
+ * Log a user into a fresh browser context (token injected, no UI login).
+ *
+ * Seeded with `addInitScript` so the token exists BEFORE the app's first
+ * script runs. Doing it after `goto('/login')` let the app boot logged-out
+ * and fire an unauthenticated request whose 401 then cleared the token that
+ * had just been injected, bouncing the next navigation back to /login.
+ *
+ * Still clears any cached identity (`nl_user`, read as `initialData` by
+ * AuthContext) so the helper is safe to reuse against an authenticated page.
+ */
 async function loginViaToken(
   ctx: BrowserContext,
   user: RegisteredUser,
 ): Promise<Page> {
-  const page = await ctx.newPage();
-  await page.goto('/login');
-  // Clear any cached identity too (`nl_user`, read as `initialData` by
-  // AuthContext) — a fresh context normally has none, but this keeps the
-  // helper safe to reuse against an already-authenticated page.
-  await page.evaluate(
+  await ctx.addInitScript(
     ({ token, key }) => {
       localStorage.clear();
       localStorage.setItem(key, token);
     },
     { token: user.token, key: 'nl_token' },
   );
+  const page = await ctx.newPage();
+  await page.goto('/login');
   return page;
 }
 

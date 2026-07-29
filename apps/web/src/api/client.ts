@@ -82,8 +82,16 @@ export async function request<T>(
 
   if (!res.ok) {
     const message = extractMessage(data) ?? `Request failed (${res.status})`;
-    if (res.status === 401) {
+    if (res.status === 401 && token) {
       // Token is invalid/expired — clear it so guards redirect to login.
+      //
+      // ONLY when this request actually presented a token. A 401 for a
+      // request we sent unauthenticated says nothing about what is in
+      // storage, and clearing on it destroys a token that arrived while
+      // this request was in flight — logging the user straight back out.
+      // Real case: the app boots on /login, fires an unauthenticated call,
+      // a token is established before the 401 lands, and that 401 then
+      // wiped the good token.
       clearAuth();
     }
     throw new ApiError(message, res.status);
