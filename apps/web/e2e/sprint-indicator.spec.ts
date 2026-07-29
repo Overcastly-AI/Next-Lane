@@ -110,19 +110,49 @@ async function gotoBoard(page: Page, projectId: string): Promise<void> {
 }
 
 test.describe('sprint indicator & dates', () => {
-  test('board shows the active sprint badge with a countdown', async ({
-    page,
-    request,
-  }) => {
-    const f = await seed(request);
-    await login(page, DEMO);
-    await gotoBoard(page, f.projectId);
+  // The badge lives in ProjectBreadcrumb's `extra` slot, which is
+  // `hidden … sm:flex` — the breadcrumb deliberately drops its badges below
+  // 640px so the PROJECT NAME wins the space (a founder-reported mobile bug;
+  // see mobile-breadcrumb.spec.ts). This test therefore pins a desktop
+  // viewport, and the mobile counterpart below asserts the collapse is
+  // intentional rather than leaving that behaviour uncovered.
+  test.describe('badge on desktop', () => {
+    test.use({ viewport: { width: 1280, height: 800 } });
 
-    const badge = page.getByTestId('active-sprint-badge');
-    await expect(badge).toBeVisible();
-    await expect(badge).toContainText(f.activeSprintName);
-    await expect(badge).toContainText(/active/i);
-    await expect(badge).toContainText(/ends|overdue|today/i);
+    test('board shows the active sprint badge with a countdown', async ({
+      page,
+      request,
+    }) => {
+      const f = await seed(request);
+      await login(page, DEMO);
+      await gotoBoard(page, f.projectId);
+
+      const badge = page.getByTestId('active-sprint-badge');
+      await expect(badge).toBeVisible();
+      await expect(badge).toContainText(f.activeSprintName);
+      await expect(badge).toContainText(/active/i);
+      await expect(badge).toContainText(/ends|overdue|today/i);
+    });
+  });
+
+  test.describe('badge on mobile', () => {
+    test.use({ viewport: { width: 393, height: 851 } });
+
+    test('active sprint badge collapses on mobile so the project name keeps the width', async ({
+      page,
+      request,
+    }) => {
+      const f = await seed(request);
+      await login(page, DEMO);
+      await gotoBoard(page, f.projectId);
+
+      // Rendered (so the countdown stays a single source of truth) but not
+      // shown at this width — the breadcrumb name takes priority instead.
+      await expect(page.getByTestId('active-sprint-badge')).toBeHidden();
+      await expect(
+        page.getByTestId('project-breadcrumb-name'),
+      ).toBeVisible();
+    });
   });
 
   test('backlog shows sprint dates and an end-date warning for the active sprint', async ({
