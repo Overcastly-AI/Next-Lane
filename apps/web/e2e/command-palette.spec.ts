@@ -82,7 +82,7 @@ test.describe('command palette', () => {
     await openPaletteByShortcut(page);
 
     const input = page.getByRole('combobox', {
-      name: /search issues and projects/i,
+      name: /search issues.*projects/i,
     });
     // "Kanban board drag-and-drop" is a seeded NL issue.
     await input.fill('Kanban');
@@ -142,7 +142,7 @@ test.describe('command palette', () => {
     await login(page);
     await openPaletteByShortcut(page);
     await page
-      .getByRole('combobox', { name: /search issues and projects/i })
+      .getByRole('combobox', { name: /search issues.*projects/i })
       .fill(foreignTitle);
 
     await expect(

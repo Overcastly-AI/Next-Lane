@@ -138,7 +138,7 @@ test.describe('full-text search — description matches', () => {
 
     // Type the description-only term.
     const input = page.getByRole('combobox', {
-      name: /search issues and projects/i,
+      name: /search issues.*projects/i,
     });
     await input.fill(descriptionTerm.substring(0, 40)); // palette char limit may apply
 
