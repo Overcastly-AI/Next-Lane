@@ -30,12 +30,31 @@ export function CreatePageModal({
   // modal (re)opens.
   const submittingRef = useRef(false);
 
-  useEffect(() => {
+  // Reset the draft DURING RENDER whenever the modal (re)opens — deliberately
+  // NOT in a `useEffect`.
+  //
+  // This component stays mounted while closed (`Modal` renders null), so
+  // `title` survives from the previous session. Resetting it post-commit meant
+  // a reopened modal COMMITTED one render carrying the PREVIOUS page's title
+  // into the real <input>, with `autoFocus` parking the caret at offset 0. The
+  // reset only landed on a later, normal-priority render — and a keystroke
+  // arriving inside that window wins, because `onChange` reads the stale DOM
+  // value and its higher-priority update supersedes the pending reset. The
+  // result was a spliced title: typing "Other Doc" over a leftover "Draft Doc"
+  // persisted a page actually named "Other DocDraft Doc".
+  //
+  // Adjusting state during render makes React re-run this component
+  // immediately, before it touches the DOM, so the stale value is never
+  // observable to a user, a keystroke, or a test.
+  // See https://react.dev/reference/react/useState#storing-information-from-previous-renders
+  const [lastSeen, setLastSeen] = useState({ open, initialTitle });
+  if (lastSeen.open !== open || lastSeen.initialTitle !== initialTitle) {
+    setLastSeen({ open, initialTitle });
     if (open) {
       setTitle(initialTitle);
       submittingRef.current = false;
     }
-  }, [open, initialTitle]);
+  }
 
   // Release the guard once the create settles (success closes the modal; a
   // failure keeps it open, and the user must be able to retry).

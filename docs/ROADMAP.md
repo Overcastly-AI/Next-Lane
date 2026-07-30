@@ -804,6 +804,17 @@ a list silently put it at the BOTTOM after a refresh. Fixed by pinning
 `COLLATE "C"` on those columns. CI had been reporting this correctly for four
 rounds while local — on a C-collation database — could not reproduce it.
 
+A third pass root-caused the one remaining `main` failure
+(`pages-p1-fixes.spec.ts` on `mobile-chrome`, run 30494152793) and found
+another **real user-visible bug** rather than a flaky selector: reopening the
+"New page" modal left the previous page's title in the input with the caret at
+offset 0, so typing spliced the two titles together and persisted a page named
+`"Other DocDraft Doc"`. The reset lived in a `useEffect`, one render too late;
+it now happens during render. Measured 2.7% → 0% over 300 trials. It was **not**
+caused by PR #52's `modulePreload.polyfill: false` — the parent commit measures
+the same rate — so the preceding green runs were luck, not evidence. Phase
+status below is unchanged by this work. See `docs/BACKLOG.md` § Already Done.
+
 **The bar: "Is this better than Jira?"** (founder mandate, `docs/VISION.md`
 § The operating question.) Not cheaper — *better*, on a daily-driver test: a
 team that has run the incumbent for years should prefer Next Lane within the
