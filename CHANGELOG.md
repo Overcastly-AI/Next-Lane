@@ -16,6 +16,14 @@ staged here by hand (see [`RELEASING.md`](./RELEASING.md))._
 
 ---
 
+## [0.3.0] — 2026-07-30
+
+[Compare with v0.2.0](https://github.com/Overcastly-AI/Next-Lane/compare/v0.2.0...v0.3.0)
+
+### Features
+
+* **search:** return answers, not titles — snippets, real paging, comment index ([dc0f84a](https://github.com/Overcastly-AI/Next-Lane/commit/dc0f84a243d5ba20ff75d20efdc1bf30b254eaaf)), closes [#21](https://github.com/Overcastly-AI/Next-Lane/issues/21)
+
 ## [0.2.0] — 2026-07-30
 
 [Compare with v0.1.5](https://github.com/Overcastly-AI/Next-Lane/compare/v0.1.5...v0.2.0)
