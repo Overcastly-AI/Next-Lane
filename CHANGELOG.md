@@ -16,6 +16,14 @@ staged here by hand (see [`RELEASING.md`](./RELEASING.md))._
 
 ---
 
+## [0.2.0] — 2026-07-30
+
+[Compare with v0.1.5](https://github.com/Overcastly-AI/Next-Lane/compare/v0.1.5...v0.2.0)
+
+### Features
+
+* **mcp:** expose the workspace docs space — close the org-wide memory hole ([57e3d8d](https://github.com/Overcastly-AI/Next-Lane/commit/57e3d8d0c2cdf998559870a140e8c9978b251128))
+
 ## [0.1.5] — 2026-07-30
 
 [Compare with v0.1.4](https://github.com/Overcastly-AI/Next-Lane/compare/v0.1.4...v0.1.5)
