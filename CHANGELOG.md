@@ -16,6 +16,14 @@ staged here by hand (see [`RELEASING.md`](./RELEASING.md))._
 
 ---
 
+## [0.1.5] — 2026-07-30
+
+[Compare with v0.1.4](https://github.com/Overcastly-AI/Next-Lane/compare/v0.1.4...v0.1.5)
+
+### Bug Fixes
+
+* **helm:** block api scaling that would silently 404 uploads ([3dbd13e](https://github.com/Overcastly-AI/Next-Lane/commit/3dbd13ed65172a603744a06f5fd3d1c1e11c3b83))
+
 ## [0.1.4] — 2026-07-30
 
 [Compare with v0.1.3](https://github.com/Overcastly-AI/Next-Lane/compare/v0.1.3...v0.1.4)
