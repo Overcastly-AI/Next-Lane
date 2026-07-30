@@ -12,11 +12,11 @@ type: application
 # `scripts/sync-versions.mjs`: one `vX.Y.Z` tag ships the images, the npm
 # package and this chart together, and `release.yml` refuses to publish if any
 # of them disagree. Do not hand-edit — run `node scripts/sync-versions.mjs X.Y.Z`.
-version: 0.1.2
+version: 0.1.3
 
 # Version of the Next Lane application this chart deploys by default
 # (the image tag used when image.api.tag / image.web.tag are empty).
-appVersion: "0.1.2"
+appVersion: "0.1.3"
 
 home: https://github.com/Overcastly-AI/Next-Lane
 sources:

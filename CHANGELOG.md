@@ -16,6 +16,15 @@ staged here by hand (see [`RELEASING.md`](./RELEASING.md))._
 
 ---
 
+## [0.1.3] — 2026-07-30
+
+[Compare with v0.1.2](https://github.com/Overcastly-AI/Next-Lane/compare/v0.1.2...v0.1.3)
+
+### Bug Fixes
+
+* **ci:** CSP smoke test fired on a <script> inside an HTML comment ([d1df230](https://github.com/Overcastly-AI/Next-Lane/commit/d1df2309696710170fa6bba01f91c06bfff861d2))
+* **web:** reopened "New page" modal kept the previous title, splicing typed text ([9086ecc](https://github.com/Overcastly-AI/Next-Lane/commit/9086eccb71b74c162178153b1099e40568a885c7)), closes [#52](https://github.com/Overcastly-AI/Next-Lane/issues/52)
+
 ## [0.1.2] — 2026-07-29
 
 [Compare with v0.1.1](https://github.com/Overcastly-AI/Next-Lane/compare/v0.1.1...v0.1.2)
