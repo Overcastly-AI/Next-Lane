@@ -16,6 +16,14 @@ staged here by hand (see [`RELEASING.md`](./RELEASING.md))._
 
 ---
 
+## [0.1.4] — 2026-07-30
+
+[Compare with v0.1.3](https://github.com/Overcastly-AI/Next-Lane/compare/v0.1.3...v0.1.4)
+
+### Bug Fixes
+
+* **ci:** readiness probe hard-failed on a still-starting container ([16bfd8d](https://github.com/Overcastly-AI/Next-Lane/commit/16bfd8d7705b553938b2b5a1ce095695604d106e))
+
 ## [0.1.3] — 2026-07-30
 
 [Compare with v0.1.2](https://github.com/Overcastly-AI/Next-Lane/compare/v0.1.2...v0.1.3)
