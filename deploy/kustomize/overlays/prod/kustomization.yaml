@@ -16,11 +16,11 @@ resources:
 # Pin exact image tags in prod.
 images:
   - name: next-lane-api
-    newName: ghcr.io/next-lane/next-lane-api
-    newTag: "1.0.0"
+    newName: ghcr.io/overcastly-ai/next-lane-api
+    newTag: "0.3.0"
   - name: next-lane-web
-    newName: ghcr.io/next-lane/next-lane-web
-    newTag: "1.0.0"
+    newName: ghcr.io/overcastly-ai/next-lane-web
+    newTag: "0.3.0"
 
 patches:
   # 3 API replicas, 3 web replicas.

@@ -9,8 +9,9 @@
  *   1. reads the Conventional Commits since the last `v*` tag,
  *   2. decides the next version (see RELEASE RULES below),
  *   3. writes the new CHANGELOG.md section,
- *   4. runs `scripts/sync-versions.mjs <version>` so all 7 version records
- *      (5 package.json + Helm `version` + Helm `appVersion`) move in lockstep,
+ *   4. runs `scripts/sync-versions.mjs <version>` so all 11 version records
+ *      (5 package.json + Helm `version` + Helm `appVersion` + the 4 pinned
+ *      Kustomize image tags) move in lockstep,
  *   5. commits that back to `main` and creates + pushes the `vX.Y.Z` tag.
  *
  * It publishes NOTHING. `.github/workflows/release.yml` still owns every
@@ -145,7 +146,7 @@ export default {
     [
       '@semantic-release/exec',
       {
-        // THE version bump. One script owns all 7 records — never hand-edit.
+        // THE version bump. One script owns all 11 records — never hand-edit.
         prepareCmd: 'node scripts/sync-versions.mjs ${nextRelease.version}',
         // Runs after the tag has been created and pushed; hands the version to
         // the workflow so it can call release.yml.
@@ -155,6 +156,10 @@ export default {
     [
       '@semantic-release/git',
       {
+        // MUST list every file `sync-versions.mjs` writes. A file the script
+        // rewrites but this array omits is left modified-but-uncommitted after
+        // the release, so `sync-versions.mjs --check` goes red on the very next
+        // push and stays red until someone commits it by hand.
         assets: [
           'CHANGELOG.md',
           'package.json',
@@ -163,6 +168,8 @@ export default {
           'apps/mcp/package.json',
           'packages/shared/package.json',
           'deploy/helm/next-lane/Chart.yaml',
+          'deploy/kustomize/base/kustomization.yaml',
+          'deploy/kustomize/overlays/prod/kustomization.yaml',
         ],
         // `[skip ci]` is belt-and-braces against a release loop: the push is
         // made with GITHUB_TOKEN, which by design cannot trigger workflows at

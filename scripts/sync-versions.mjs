@@ -15,6 +15,8 @@
  *   apps/mcp/package.json               (PUBLISHED to npm)
  *   packages/shared/package.json        (private)
  *   deploy/helm/next-lane/Chart.yaml    (version AND appVersion)
+ *   deploy/kustomize/base + overlays/prod kustomization.yaml
+ *                                       (pinned image newTag; dev tracks latest)
  *
  * Usage:
  *   node scripts/sync-versions.mjs 1.2.3       # write 1.2.3 everywhere (idempotent)
@@ -22,6 +24,7 @@
  *   node scripts/sync-versions.mjs --check v1.2.3
  *                                              # ...and they equal this tag/version
  *   node scripts/sync-versions.mjs --print     # print the current version
+ *   node scripts/sync-versions.mjs --files     # list every file it writes
  *
  * A leading "v" is accepted and stripped, so `--check "$GITHUB_REF_NAME"` works
  * directly on a tag name.
@@ -46,6 +49,17 @@ const PACKAGE_FILES = [
 
 const CHART_FILE = 'deploy/helm/next-lane/Chart.yaml';
 
+// Kustomize overlays that PIN an exact image tag. Left unowned these silently
+// rot — both of these sat on a `1.0.0` that was never published, so
+// `kubectl apply -k` gave ImagePullBackOff on a release that had shipped fine.
+//
+// The DEV overlay is deliberately absent: it tracks the mutable `latest` tag
+// on purpose, and pinning it would defeat the point.
+const KUSTOMIZE_FILES = [
+  'deploy/kustomize/base/kustomization.yaml',
+  'deploy/kustomize/overlays/prod/kustomization.yaml',
+];
+
 // SemVer 2.0.0 (with optional prerelease + build metadata).
 const SEMVER =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/;
@@ -54,6 +68,27 @@ const read = (rel) => readFileSync(join(ROOT, rel), 'utf8');
 const write = (rel, text) => writeFileSync(join(ROOT, rel), text);
 
 const normalize = (v) => String(v ?? '').trim().replace(/^v/, '');
+
+/**
+ * Every pinned `newTag:` in a kustomization, paired with the image it pins.
+ * Walks lines tracking the most recent `- name:` rather than regexing the
+ * whole `images:` block, so an unrelated `newTag:` elsewhere in the file is
+ * still attributed to something readable in --check output.
+ */
+function readKustomizeTags(rel) {
+  const out = [];
+  let image = null;
+  for (const line of read(rel).split('\n')) {
+    const name = line.match(/^\s*-\s*name:\s*(\S+)/);
+    if (name) {
+      image = name[1];
+      continue;
+    }
+    const tag = line.match(/^\s*newTag:\s*"?([^"\s#]+)"?/);
+    if (tag) out.push({ image: image ?? '?', value: tag[1] });
+  }
+  return out;
+}
 
 /** Every place a version lives, as {file, label, value}. */
 function readAll() {
@@ -77,6 +112,17 @@ function readAll() {
       process.exit(1);
     }
     found.push({ file: CHART_FILE, label: `${CHART_FILE} (${key})`, value: m[1] });
+  }
+
+  for (const rel of KUSTOMIZE_FILES) {
+    const tags = readKustomizeTags(rel);
+    if (!tags.length) {
+      console.error(`✗ ${rel}: no pinned "newTag:" found`);
+      process.exit(1);
+    }
+    for (const t of tags) {
+      found.push({ file: rel, label: `${rel} (${t.image})`, value: t.value });
+    }
   }
 
   return found;
@@ -109,6 +155,18 @@ function setVersion(version) {
     changed++;
   }
 
+  for (const rel of KUSTOMIZE_FILES) {
+    const text = read(rel);
+    // Every pinned tag in these two files is the app version, so rewrite them
+    // all. Quote the value: an unquoted `newTag: 1.0` is a YAML float.
+    const next = text.replace(/^(\s*newTag:\s*)"?[^"\s#]+"?/gm, `$1"${version}"`);
+    if (next !== text) {
+      write(rel, next);
+      console.log(`  updated ${rel} (image tags)`);
+      changed++;
+    }
+  }
+
   return changed;
 }
 
@@ -117,6 +175,16 @@ function main() {
 
   if (args.includes('--print')) {
     console.log(readAll()[0].value);
+    return;
+  }
+
+  // Every file this script WRITES, one per line. release.config.mjs must list
+  // all of them in @semantic-release/git `assets`, or a release rewrites a file
+  // it never commits and `--check` goes red on the next push. CI asserts that
+  // containment against this output rather than trusting the two lists to be
+  // kept in sync by hand.
+  if (args.includes('--files')) {
+    for (const rel of [...PACKAGE_FILES, CHART_FILE, ...KUSTOMIZE_FILES]) console.log(rel);
     return;
   }
 
@@ -153,7 +221,9 @@ function main() {
 
   const version = normalize(positional[0]);
   if (!version) {
-    console.error('Usage: node scripts/sync-versions.mjs <version> | --check [version] | --print');
+    console.error(
+      'Usage: node scripts/sync-versions.mjs <version> | --check [version] | --print | --files',
+    );
     process.exit(1);
   }
   if (!SEMVER.test(version)) {

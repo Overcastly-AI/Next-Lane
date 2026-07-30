@@ -16,8 +16,9 @@ jobs:
   # Cheap guard (node only, no install) for the release pipeline's core
   # invariant: a `vX.Y.Z` tag must match the version committed in EVERY
   # artifact — root/api/web/mcp/shared package.json plus the Helm chart's
-  # `version` AND `appVersion`. Catching drift here (on every push) means
-  # `release.yml`'s identical check can never be the first time anyone notices.
+  # `version` AND `appVersion` and the pinned Kustomize image tags. Catching
+  # drift here (on every push) means `release.yml`'s identical check can never
+  # be the first time anyone notices.
   versions:
     name: Version consistency
     runs-on: ubuntu-latest
@@ -32,6 +33,85 @@ jobs:
 
       - name: All artifact versions agree
         run: node scripts/sync-versions.mjs --check
+
+      # A file sync-versions.mjs REWRITES but release.config.mjs does not list
+      # in @semantic-release/git `assets` is rewritten during a release and then
+      # never committed — so the check above goes red on the next push and stays
+      # red until a human commits it. Assert the containment instead of trusting
+      # two hand-maintained lists to stay in step.
+      - name: Release commits every file the version sync writes
+        run: |
+          set -euo pipefail
+          missing=0
+          assets="$(node -e "
+            import('./release.config.mjs').then(({default: c}) => {
+              const git = c.plugins.find(p => Array.isArray(p) && p[0] === '@semantic-release/git');
+              if (!git) { console.error('no @semantic-release/git plugin'); process.exit(1); }
+              console.log(git[1].assets.join('\n'));
+            });
+          ")"
+          while read -r f; do
+            [ -z "$f" ] && continue
+            if ! printf '%s\n' "$assets" | grep -qxF "$f"; then
+              echo "::error file=release.config.mjs::sync-versions.mjs writes '$f' but @semantic-release/git assets does not list it"
+              missing=1
+            fi
+          done < <(node scripts/sync-versions.mjs --files)
+          [ "$missing" -eq 0 ] && echo "✓ every synced file is committed by the release"
+
+  # Kustomize deploy path. Nothing rendered these overlays in CI, and both had
+  # rotted silently: every image pointed at `ghcr.io/next-lane/...` (a namespace
+  # that does not exist — we publish to `ghcr.io/<owner>/`), and base+prod
+  # pinned a `1.0.0` that was never released. A user following
+  # docs/DEPLOY-KUBERNETES.md got ImagePullBackOff on a green build.
+  #
+  # This renders each overlay and asserts the resulting image refs EXACTLY match
+  # the expected set — so a bad namespace, an unsynced tag, or a no-op image
+  # transformer all fail here instead of in someone's cluster.
+  kustomize:
+    name: Kustomize overlays render
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install kustomize
+        run: |
+          curl -fsSL "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" \
+            | bash -s -- 5.4.3 /usr/local/bin
+          kustomize version
+
+      # Derive the owner the same way images.yml does, so a fork that publishes
+      # to its own namespace still passes.
+      - name: Assert rendered images
+        run: |
+          set -euo pipefail
+          owner="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
+          version="$(node scripts/sync-versions.mjs --print)"
+
+          check() {
+            local overlay="$1" tag="$2"
+            local expected actual
+            expected="$(printf 'ghcr.io/%s/next-lane-api:%s\nghcr.io/%s/next-lane-web:%s\n' \
+              "$owner" "$tag" "$owner" "$tag" | sort -u)"
+            actual="$(kustomize build "deploy/kustomize/overlays/$overlay" \
+              | sed -n 's/^[[:space:]]*image:[[:space:]]*//p' | sort -u)"
+            if [ "$expected" != "$actual" ]; then
+              echo "::error::overlay '$overlay' rendered unexpected images"
+              diff <(echo "$expected") <(echo "$actual") || true
+              return 1
+            fi
+            echo "✓ $overlay:"; echo "$actual" | sed 's/^/    /'
+          }
+
+          # prod pins the released version; dev deliberately tracks `latest`.
+          check prod "$version"
+          check dev latest
 
   # Conventional Commits guard. The repo already writes them consistently
   # (`feat(pages):`, `fix(api):`, `docs(audit):`, `vision:`); enforcing the

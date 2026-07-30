@@ -30,9 +30,9 @@ installs.
 - An **Ingress controller** (e.g. ingress-nginx) if you want external access via
   a hostname.
 - **cert-manager** with a configured `ClusterIssuer` if you want automatic TLS.
-- Container images for the API and web published to a registry your cluster can
-  pull (`ghcr.io/next-lane/next-lane-api`, `…-web`, or your mirror). See
-  [Building & publishing images](#building--publishing-images).
+- Outbound access to `ghcr.io` so the cluster can pull the public
+  `ghcr.io/overcastly-ai/next-lane-api` / `…-web` images — or a mirror of them.
+  Nothing to build. See [Images](#images).
 - For production: a **managed PostgreSQL** (and, for HA, a **managed Redis**).
 
 ---
@@ -353,10 +353,10 @@ Redis). For a batteries-included quick-start, prefer the Helm chart.
 | `nameOverride` / `fullnameOverride` | `""` | Override generated resource names. |
 | `commonLabels` / `commonAnnotations` | `{}` | Applied to every resource. |
 | `image.pullSecrets` | `[]` | Image pull secrets for private registries. |
-| `image.api.repository` | `ghcr.io/next-lane/next-lane-api` | API image repo. |
+| `image.api.repository` | `ghcr.io/overcastly-ai/next-lane-api` | API image repo. |
 | `image.api.tag` | `""` (→ `appVersion`) | API image tag. |
 | `image.api.pullPolicy` | `IfNotPresent` | API pull policy. |
-| `image.web.repository` | `ghcr.io/next-lane/next-lane-web` | Web image repo. |
+| `image.web.repository` | `ghcr.io/overcastly-ai/next-lane-web` | Web image repo. |
 | `image.web.tag` | `""` (→ `appVersion`) | Web image tag. |
 | `image.web.pullPolicy` | `IfNotPresent` | Web pull policy. |
 | `api.replicaCount` | `1` | API replicas. **Keep 1 unless Redis is enabled.** |
@@ -436,29 +436,45 @@ Redis). For a batteries-included quick-start, prefer the Helm chart.
 
 ---
 
-## Building & publishing images
+## Images
 
-The repo Dockerfiles build the production images from the monorepo root:
+**You do not need to build anything.** Multi-arch (amd64 + arm64) images are
+published automatically and are what both deploy paths reference by default:
+
+| Image | Tags |
+| --- | --- |
+| `ghcr.io/overcastly-ai/next-lane-api` | `X.Y.Z`, `X.Y`, `latest`, `edge`, `sha-<commit>` |
+| `ghcr.io/overcastly-ai/next-lane-web` | `X.Y.Z`, `X.Y`, `latest`, `edge`, `sha-<commit>` |
+
+Every `vX.Y.Z` tag publishes the released version (`release.yml`); every push to
+`main` refreshes `edge` (`images.yml`). They are public — no pull secret needed.
+
+Pin an exact version in production. `latest` is fine for a dev cluster.
+
+### Building your own
+
+Only needed if you are modifying the app or mirroring into a private registry.
+The Dockerfiles build from the monorepo **root**:
 
 ```bash
-# API
-docker build -f apps/api/Dockerfile -t ghcr.io/next-lane/next-lane-api:1.0.0 .
+# Substitute your own registry/namespace and version.
+REG=ghcr.io/your-org
+VER=0.2.0
 
-# Web — same-origin mode: build with EMPTY VITE_API_URL
-docker build -f apps/web/Dockerfile \
-  --build-arg VITE_API_URL= \
-  -t ghcr.io/next-lane/next-lane-web:1.0.0 .
-
-# Web — external mode: bake the API origin
-docker build -f apps/web/Dockerfile \
-  --build-arg VITE_API_URL=https://api.example.com \
-  -t ghcr.io/next-lane/next-lane-web:1.0.0 .
+docker build -f apps/api/Dockerfile -t "$REG/next-lane-api:$VER" .
+docker build -f apps/web/Dockerfile -t "$REG/next-lane-web:$VER" .
 ```
 
-Push to your registry and reference the tags via `image.api.tag` /
-`image.web.tag` (Helm) or the `images:` block (Kustomize). Automated multi-arch
-GHCR publishing via CI is a separate Phase 4 deliverable (see
-`docs/ROADMAP.md`).
+> **The web image's API origin is set at RUNTIME, not build time.** One built
+> image serves every environment: `docker-entrypoint.sh` writes `config.js` from
+> the `API_URL` env var on each container start, and `index.html` loads it as
+> its first script. Point a deployment at a different API by changing that env
+> var — no rebuild. (`VITE_API_URL` is accepted as a legacy alias; the fallback
+> is `http://localhost:4000`.) A `--build-arg VITE_API_URL=…` no longer bakes
+> anything into the bundle and can be dropped from old pipelines.
+
+Push, then point the deployment at your tags via `image.api.repository` /
+`image.api.tag` (Helm) or the `images:` block (Kustomize).
 
 ---
 

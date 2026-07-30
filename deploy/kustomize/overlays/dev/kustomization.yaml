@@ -9,13 +9,17 @@ resources:
   - namespace.yaml
   - ../../base
 
-# Mutable dev image tag.
+# Mutable dev image tag — override the version the base pins.
+#
+# `name:` MUST be the image name as it exists AFTER the base's transformer has
+# run (i.e. fully qualified), not the bare `next-lane-api` the manifests are
+# authored with. Kustomize matches an image transformer against the manifest's
+# CURRENT image, and the base has already rewritten it — keyed on the short
+# name these entries silently no-op'd and dev inherited the base's pinned tag.
 images:
-  - name: next-lane-api
-    newName: ghcr.io/next-lane/next-lane-api
+  - name: ghcr.io/overcastly-ai/next-lane-api
     newTag: latest
-  - name: next-lane-web
-    newName: ghcr.io/next-lane/next-lane-web
+  - name: ghcr.io/overcastly-ai/next-lane-web
     newTag: latest
 
 patches:
