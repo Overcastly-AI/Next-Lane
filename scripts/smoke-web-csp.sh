@@ -189,8 +189,21 @@ fi
 # governs via 'unsafe-inline'/nonce/hash (an external `src="..."` script,
 # self-hosted, is always allowed by plain `'self'` and is NOT what this check
 # is for).
+#
+# HTML COMMENTS MUST BE STRIPPED FIRST. Text inside `<!-- ... -->` is not
+# parsed as markup by any browser, so a `<script>` written there is inert and
+# CSP has nothing to say about it. Scanning the raw HTML made this check fire
+# on prose — and, with perfect irony, the prose it fired on was index.html's
+# own comment explaining that the theme bootstrap is "NOT an inline <script>".
+# That false positive failed every `Publish images` run and sent a fix at the
+# wrong target (Vite's modulePreload polyfill) before anyone read the built
+# HTML. Verified against the real built artifact: after stripping comments
+# there are zero inline scripts, and the only <script> tags are the three
+# src= ones (config.js, theme-init.js, the module entry).
+HTML_SAME_NOCOMMENTS="$(printf '%s' "$HTML_SAME" | perl -0777 -pe 's/<!--.*?-->//gs')"
+
 INLINE_SCRIPT_FOUND=0
-SCRIPT_TAGS="$(printf '%s' "$HTML_SAME" | grep -oE '<script[^>]*>' || true)"
+SCRIPT_TAGS="$(printf '%s' "$HTML_SAME_NOCOMMENTS" | grep -oE '<script[^>]*>' || true)"
 while IFS= read -r tag; do
   [ -n "$tag" ] || continue
   if ! printf '%s' "$tag" | grep -q ' src='; then
