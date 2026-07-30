@@ -1589,6 +1589,43 @@ const readTools: ToolDef[] = [
     },
   },
   {
+    name: 'list_workspace_pages',
+    group: 'read',
+    description:
+      "The WORKSPACE docs space — pages that belong to the org rather than " +
+      'to any one project (handbook, runbooks, ADRs, policies). Flattened ' +
+      'from the workspace page tree into sidebar (rank) order, same compact ' +
+      'refs as list_pages (`{id, title, parentId, archived}`) and the same ' +
+      '`verbose: true` hydration (capped at 25 pages per call). This lists ' +
+      'ONLY workspace-level pages — project pages are not included; use ' +
+      'list_pages per project for those, or get_workspace_page_graph for ' +
+      'both at once as a graph. Read from here before assuming a convention ' +
+      "isn't written down: cross-project knowledge lives here. Requires " +
+      '`pages:read` scope when the token is scoped.',
+    inputSchema: {
+      workspaceId: z.string().describe('Workspace id.'),
+      ...compactPageParams,
+    },
+    handler: async (args, client) => {
+      const tree = await client.get<ApiItem[]>(`/workspaces/${args.workspaceId}/pages/tree`);
+      const flat = flattenPageTree(tree);
+      if (!args.verbose) {
+        const page = paginateOnly(flat, args);
+        return pageResult({ ...page, items: page.items.map(compactPageRef) });
+      }
+      const rawLimit = Number(args.limit ?? DEFAULT_LIST_LIMIT);
+      const verboseLimit = Math.min(
+        Number.isFinite(rawLimit) && rawLimit > 0 ? rawLimit : DEFAULT_LIST_LIMIT,
+        VERBOSE_HYDRATE_MAX,
+      );
+      const page = paginateOnly(flat, { ...args, limit: verboseLimit });
+      const items = await mapWithConcurrency(page.items, HYDRATE_CONCURRENCY, (ref) =>
+        client.get<ApiItem>(`/pages/${ref.id}`),
+      );
+      return pageResult({ ...page, items });
+    },
+  },
+  {
     name: 'get_page',
     group: 'read',
     description:
@@ -1681,9 +1718,11 @@ const readTools: ToolDef[] = [
     group: 'read',
     description:
       "CROWN-JEWEL traversal call: load a project's ENTIRE knowledge graph " +
-      'in one shot — every page as a node (`{id, title}`) and every ' +
-      'resolved `[[wiki-link]]` as a directed edge (`{sourceId, ' +
-      'targetId}`). Load the graph to understand how the project\'s ' +
+      'in one shot — every page as a node (`{id, title, projectId, ' +
+      'projectKey, updatedAt}`) and every resolved `[[wiki-link]]` as a ' +
+      'directed edge (`{sourceId, targetId}`). Nodes carry `updatedAt`, so ' +
+      'this one call also answers "which docs are stale / what changed ' +
+      "recently\". Load the graph to understand how the project's " +
       'knowledge connects: spot hub pages (many edges — the docs everything ' +
       'depends on), orphaned pages (no edges either way — candidates to ' +
       'link up or archive), and navigable paths between two docs, all ' +
@@ -1693,10 +1732,34 @@ const readTools: ToolDef[] = [
       'dropped node is dropped too, so the graph returned is always ' +
       'internally consistent) — treat it as a large sample, not the full ' +
       "picture, and fall back to get_page_links/get_page_backlinks for a " +
-      "specific page's exact neighbors.",
+      "specific page's exact neighbors. This view is narrowed to ONE " +
+      "project's own pages; because wiki-links resolve workspace-wide, a " +
+      'link crossing into another project (or into the workspace-docs ' +
+      'space) is not in it — use get_workspace_page_graph for the whole ' +
+      'workspace at once.',
     inputSchema: { projectId: z.string().describe('Project id.') },
     handler: (args, client) =>
       client.get(`/projects/${args.projectId}/pages/graph`).then(jsonResult),
+  },
+  {
+    name: 'get_workspace_page_graph',
+    group: 'read',
+    description:
+      "The whole WORKSPACE's knowledge graph in one call — every page in " +
+      'every project of the workspace PLUS the workspace-level docs space, ' +
+      'as one connected graph. Same payload as get_page_graph (nodes ' +
+      '`{id, title, projectId, projectKey, updatedAt}` — `projectId: null` ' +
+      'marks a workspace-level page — edges `{sourceId, targetId}`, ' +
+      '`truncated`, 1000-node cap). Use this over get_page_graph when the ' +
+      'question spans projects: "what is connected to this handbook page ' +
+      'anywhere in the org", which projects depend on a shared runbook, or ' +
+      'where the cross-project hubs are. Wiki-links resolve workspace-wide, ' +
+      'so cross-project edges are real and only appear here. Requires ' +
+      '`pages:read` scope when the token is scoped; scoped to workspaces ' +
+      'you are a member of.',
+    inputSchema: { workspaceId: z.string().describe('Workspace id.') },
+    handler: (args, client) =>
+      client.get(`/workspaces/${args.workspaceId}/pages/graph`).then(jsonResult),
   },
   {
     name: 'get_page_backlinks',
@@ -1705,12 +1768,16 @@ const readTools: ToolDef[] = [
       'Walk backlinks to find everything referencing this page — "what ' +
       'links here", the INCOMING edge of the knowledge graph. Each item is ' +
       'the linking page as a compact ref (`sourcePageId`/`sourcePageTitle`) ' +
-      'plus when the link was created. Check this before editing or ' +
+      'plus `sourceProjectId`/`sourceProjectKey`/`sourceWorkspaceId` and ' +
+      'when the link was created. Already WORKSPACE-WIDE: a source can be ' +
+      'in another project or in the workspace-docs space (`sourceProjectId: ' +
+      'null`), never another workspace. Check this before editing or ' +
       'archiving a page to see what would be left dangling, or to find the ' +
       'pages most central to a topic (many backlinks = load-bearing doc — ' +
       "keep walking backlinks from those to map a whole subject area). " +
       'Pairs with get_page_links (the reverse direction — this page\'s own ' +
-      'outgoing links) and get_page_graph (the whole project at once).',
+      'outgoing links), get_page_graph (one project at once) and ' +
+      'get_workspace_page_graph (the whole workspace at once).',
     inputSchema: { pageId: z.string().describe('Page id.'), ...pageParams },
     handler: async (args, client) => {
       const data = await client.get<ApiItem[]>(`/pages/${args.pageId}/backlinks`);
@@ -3234,14 +3301,19 @@ const writeTools: ToolDef[] = [
     description:
       'Create a knowledge-base page in a project. Reference other pages ' +
       'with `[[Page Title]]` (or `[[Page Title|display text]]`) anywhere ' +
-      'in `content` — resolved automatically (case-insensitive, exact ' +
-      'title match within the project, self-links excluded) into the link ' +
-      'graph on save; a title with no matching page just renders as-is ' +
-      'until a page with that exact title exists AND this page is saved ' +
-      'again (see get_page_links). Omit `parentId` (or pass null) for a ' +
-      "top-level page; pass an existing page's id to nest it as that " +
-      "page's child (appended at the end of its children). Requires " +
-      '`pages:write` scope when the token is scoped.',
+      'in `content` — resolved automatically into the link graph on save ' +
+      '(case-insensitive exact title match, WORKSPACE-WIDE: this project ' +
+      'first, then any other project or the workspace-docs space in the ' +
+      'same workspace; never another workspace; self-links excluded). A ' +
+      'title with no matching page just renders as-is until a page with ' +
+      'that exact title exists AND this page is saved again (see ' +
+      'get_page_links). Mentioning an issue key (e.g. NL-123) from THIS ' +
+      "project links the page to that issue. Omit `parentId` (or pass " +
+      "null) for a top-level page; pass an existing page's id to nest it " +
+      "as that page's child (appended at the end of its children). For a " +
+      'doc that is not about one project (handbook, runbook, ADR, policy), ' +
+      'use create_workspace_page instead. Requires `pages:write` scope ' +
+      'when the token is scoped.',
     inputSchema: {
       projectId: z.string().describe('Project id.'),
       title: z.string().min(1).max(300).describe('Page title.'),
@@ -3258,6 +3330,46 @@ const writeTools: ToolDef[] = [
     handler: (args, client) =>
       client
         .post(`/projects/${args.projectId}/pages`, {
+          title: args.title,
+          content: args.content,
+          parentId: args.parentId,
+        })
+        .then(jsonResult),
+  },
+  {
+    name: 'create_workspace_page',
+    group: 'write',
+    description:
+      'Create a page in the WORKSPACE docs space — org-level knowledge ' +
+      'that outlives any single project (handbook, runbooks, ADRs, ' +
+      'conventions, postmortems). Identical to create_page except the page ' +
+      'belongs to the workspace, not a project, and shows up in ' +
+      'list_workspace_pages. `[[Page Title]]` links resolve workspace-wide ' +
+      '(other workspace pages first, then any project in the workspace), ' +
+      'so a workspace page can link straight into project docs and will ' +
+      'appear in their get_page_backlinks. Issue keys are NOT auto-linked ' +
+      'here — a workspace page has no project to resolve keys against; ' +
+      'link the project page instead. `parentId` must be another ' +
+      'WORKSPACE page (400 otherwise); omit/null for top-level. Everything ' +
+      'after creation uses the same by-id tools as project pages ' +
+      '(get_page, update_page, move_page, delete_page, versions, ' +
+      'backlinks). Requires `pages:write` scope when the token is scoped.',
+    inputSchema: {
+      workspaceId: z.string().describe('Workspace id.'),
+      title: z.string().min(1).max(300).describe('Page title.'),
+      content: z
+        .string()
+        .optional()
+        .describe('Markdown body (default empty string). Capped at 256 KB (UTF-8 bytes).'),
+      parentId: z
+        .string()
+        .nullable()
+        .optional()
+        .describe('Parent WORKSPACE page id, or null/omit for a top-level page.'),
+    },
+    handler: (args, client) =>
+      client
+        .post(`/workspaces/${args.workspaceId}/pages`, {
           title: args.title,
           content: args.content,
           parentId: args.parentId,
@@ -3311,11 +3423,13 @@ const writeTools: ToolDef[] = [
       'Update a page. Only the fields you pass are changed (partial ' +
       'update). Changing `title` and/or `content` writes a new version ' +
       'snapshot (list_page_versions/restore_page_version) and re-syncs ' +
-      "this page's outgoing [[wiki-links]] to match the new content. " +
-      '`parentId` re-parents the page within the project tree (null = ' +
-      'move to top-level; omit to leave unchanged) — rejected with a 400 ' +
-      'if it would create a cycle or the new parent is in a different ' +
-      'project; use move_page instead if you also care about sibling ' +
+      "this page's outgoing [[wiki-links]] to match the new content " +
+      '(resolved workspace-wide). Works on project AND workspace-docs ' +
+      'pages alike. `parentId` re-parents the page within its own tree ' +
+      '(null = move to top-level; omit to leave unchanged) — rejected with ' +
+      "a 400 if it would create a cycle or the new parent is in a " +
+      'different scope (another project, or the workspace-docs space); ' +
+      'use move_page instead if you also care about sibling ' +
       'position. `archived: true` hides it from the default sidebar view ' +
       'without deleting it (`archived: false` unhides it). Requires ' +
       '`pages:write` scope when the token is scoped.',

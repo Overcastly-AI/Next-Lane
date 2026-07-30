@@ -2,7 +2,7 @@
 
 A [Model Context Protocol](https://modelcontextprotocol.io) server that lets
 external AI agents — **Claude Desktop**, **Claude Code**, and any other MCP host
-— **read and write** a Next Lane instance end-to-end: **120 tools** covering
+— **read and write** a Next Lane instance end-to-end: **123 tools** covering
 workspaces/projects, workflows / SDLC, issues (incl. links, labels, comments
 with author-or-admin edit/delete, checklists, worklogs), boards, statuses,
 sprints, components, versions, custom fields, saved NLQL filters, automation
@@ -244,7 +244,9 @@ minimal, so there is no `verbose` mode.
 | `get_page` | Get one page by id: title, markdown content, hierarchy, author/editor, timestamps. Defaults to also including `links.outgoing` (this page's resolved/unresolved `[[wiki-links]]`) and `links.backlinkCount` in the same call — pass `includeLinks: false` to skip. Requires `pages:read`. |
 | `list_page_versions` | A page's version history, newest first, cursor-paginated (`pageId`, `cursor?`, `limit?`). Compact summaries, no content. Requires `pages:read`. |
 | `get_page_version` | Get one historical version's title + content (`pageId`, `versionNumber`). Requires `pages:read`. |
-| `get_page_graph` | **Crown-jewel traversal:** the whole project's knowledge graph in one call — every page as a node, every resolved `[[wiki-link]]` as a directed edge (`projectId`). Capped at 1000 nodes; `truncated: true` flags a cut-off graph. Requires `pages:read`. |
+| `get_page_graph` | **Crown-jewel traversal:** the whole project's knowledge graph in one call — every page as a node (`{id, title, projectId, projectKey, updatedAt}`), every resolved `[[wiki-link]]` as a directed edge (`projectId`). Capped at 1000 nodes; `truncated: true` flags a cut-off graph. Requires `pages:read`. |
+| `list_workspace_pages` | List the **workspace docs space** (`workspaceId`) — org-level pages that belong to no single project (handbook, runbooks, ADRs), flattened from the workspace page tree into rank order. Same compact refs and `verbose` hydration as `list_pages`. Requires `pages:read`. |
+| `get_workspace_page_graph` | The whole **workspace's** knowledge graph in one call (`workspaceId`) — every page in every project **plus** the workspace docs space, as one node/edge set. The only view that shows cross-project `[[wiki-link]]` edges. Same payload/cap as `get_page_graph`; `projectId: null` marks a workspace-level page. Requires `pages:read`. |
 | `get_page_backlinks` | "What links here" — pages that link TO this one (`pageId`), paginated. **paged**. Requires `pages:read`. |
 | `get_page_links` | This page's own OUTGOING `[[wiki-links]]` (`pageId`), split into `resolved` (existing target pages) and `unresolvedTitles` (referenced but not yet written). Requires `pages:read`. |
 | `get_page_issues` | The tracked issues a page links to (`pageId`) — auto-linked when the page body mentions a same-project issue key (`NL-123`). Compact issue refs + `truncated`. Requires `pages:read`. |
@@ -296,7 +298,8 @@ minimal, so there is no `verbose` mode.
 | `create_dashboard_gadget` / `update_dashboard_gadget` / `delete_dashboard_gadget` | Add / edit / remove a gadget — an NLQL `query` + `visualization` (STAT/TABLE/BREAKDOWN/BURNDOWN/VELOCITY_TREND) + `config`. Update merges `config` rather than replacing it. VELOCITY_TREND ignores `query` (project-wide); capped at 20 dashboards/project and 30 gadgets/dashboard — a 400 at the cap names the limit. |
 | `set_project_role_override` / `remove_project_role_override` | Elevate/restrict (or revert) a workspace member's role scoped to one project. Requires effective project ADMIN; refuses to override a workspace admin. |
 | `update_project_context` | Full-content replace of the project's agent handoff document (`projectId`, `content` markdown, 64 KB cap). **Call before ending every work session** — and at milestones — so the next run starts with your context. Requires project MEMBER+. |
-| `create_page` | Create a knowledge-base page (`projectId`, `title`, `content?`, `parentId?`). Reference other pages with `[[Page Title]]` in `content` — resolved into the link graph on save. Requires `pages:write`. |
+| `create_page` | Create a knowledge-base page in a project (`projectId`, `title`, `content?`, `parentId?`). Reference other pages with `[[Page Title]]` in `content` — resolved into the link graph on save, **workspace-wide** (this project first, then any other project or the workspace docs space in the same workspace). Requires `pages:write`. |
+| `create_workspace_page` | Create a page in the **workspace docs space** (`workspaceId`, `title`, `content?`, `parentId?`) — org-level knowledge with no owning project. Same `[[wiki-link]]` resolution; issue keys are not auto-linked (no project to resolve them against). Everything after creation uses the same by-id tools as project pages. Requires `pages:write`. |
 | `move_page` | Drag-and-drop-style reorder/reparent (`id`, `parentId?`, `beforeId?`, `afterId?`) — computes the fractional-index rank server-side. Requires `pages:write`. |
 | `update_page` | Partial-update a page: `title`/`content` (writes a new version + re-syncs links), `parentId` (re-parent; null = top-level), `archived`. Requires `pages:write`. |
 | `delete_page` | Delete a page (`id`). Rejected with a 400 if it still has child pages — move or delete them first. Irreversible. Requires `pages:write`. |
@@ -345,10 +348,17 @@ minimal, so there is no `verbose` mode.
 
 ## Ship your agent with memory
 
-Every Next Lane project keeps a single shared **agent-context document** —
-persistent memory that survives between agent runs and carries across agents
-(and humans: it's visible and editable in the project UI). Two tools manage
-it (`get_project_context` / `update_project_context`), the server's MCP
+The durable memory is the **Pages knowledge graph** (next section) — pages,
+`[[wiki-links]]`, versions, in both the project and workspace scopes. The
+server's MCP `instructions` name it first for exactly that reason.
+
+Alongside it, every project keeps a single shared **agent-context document**:
+a short handoff note that survives between agent runs and carries across
+agents (and humans: it's visible and editable in the project UI). It holds
+current goal, in-flight work, next steps, gotchas, and pointers into the
+pages — it is a full-content replace with a 64 KB cap and no merge, so it is
+the sticky note on the door, not the memory behind it. Two tools manage it
+(`get_project_context` / `update_project_context`), the server's MCP
 `instructions` teach every connecting client the read-first / hand-off-last
 practice automatically, and the distributable
 [`project-context` skill](../../skills/project-context/SKILL.md) bakes the
@@ -377,16 +387,23 @@ cp -r skills/knowledge-base ~/.claude/skills/
 ## Read AND write the knowledge base — and traverse its graph
 
 Neither Confluence (no graph/agent API) nor Obsidian (local-only, no API at
-all) lets an agent do this: twelve tools give full read/write access to a
-project's **Pages** knowledge base — `list_pages`/`get_page`/`create_page`/
-`move_page`/`update_page`/`delete_page` for CRUD, `list_page_versions`/
-`get_page_version`/`restore_page_version` for history — plus three tools
-purpose-built for **graph traversal**, the differentiated part:
+all) lets an agent do this: fifteen tools give full read/write access to the
+**Pages** knowledge base in BOTH scopes — `list_pages`/`get_page`/
+`create_page`/`move_page`/`update_page`/`delete_page` for project-page CRUD,
+`list_workspace_pages`/`create_workspace_page` for the org-level docs space
+(handbook, runbooks, ADRs), `list_page_versions`/`get_page_version`/
+`restore_page_version` for history — plus four tools purpose-built for
+**graph traversal**, the differentiated part:
 
 - **`get_page_graph`** loads a project's entire wiki as `{nodes, edges}` in
   one call — every page, every resolved `[[wiki-link]]` — so an agent can spot
   hub pages, orphaned docs, and how the knowledge actually connects before
   reading a single page.
+- **`get_workspace_page_graph`** does the same for a whole workspace: every
+  project's pages **plus** the org docs space in one graph. `[[wiki-links]]`
+  resolve workspace-wide, so cross-project edges only appear here — this is
+  what answers "what's connected to this handbook page across every project?"
+  in a single call.
 - **`get_page_backlinks`** walks "what links here" for one page — the
   incoming edges — useful before editing/archiving a doc, or to find the most
   load-bearing page on a topic.

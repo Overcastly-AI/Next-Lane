@@ -44,7 +44,7 @@ features:
   - icon: "🤖"
     title: AI-native and agent-native
     details: >
-      Built for the agent era. MCP-native today — 120 tools let AI coding agents
+      Built for the agent era. MCP-native today — 123 tools let AI coding agents
       read and write issues, workflows, pages, and dashboards directly from the
       IDE, with persistent per-project agent memory and an agent-traversable
       knowledge graph.
@@ -90,7 +90,7 @@ Log in: `demo@nextlane.dev` / `nextlane`
 | Per-project role overrides, workspace audit log, public share links (boards + dashboards) | Live |
 | Personal boards, dark mode, workspace branding | Live |
 | Pages — project wiki with `[[wiki-links]]`, version history, backlinks, and a force-directed knowledge graph | Live |
-| **MCP agent integration — 120 tools + per-project agent memory, incl. agent-traversable page graph** | **Live** |
+| **MCP agent integration — 123 tools + per-project agent memory, incl. agent-traversable page graph** | **Live** |
 | Private AI inference | Roadmap |
 
 See the full [Features](./guide/features) guide and the

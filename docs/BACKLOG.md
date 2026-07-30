@@ -337,8 +337,9 @@ prevent exactly that, reusing the already-shipped `assertWorkspaceMember`/
    [ROADMAP Phase 11 continuation item 13; founder directive 2026-07-10]
 9. ✅ **Backend — workspace-scoped page CRUD/tree/move/version history** —
    shipped 2026-07-10, see the ticked § Already Done entry for full detail.
-   MCP tools for workspace pages remain a deliberate follow-up (not done in
-   this slice — see the § Already Done entry's explicit MCP note). (P1,
+   MCP tools for workspace pages were a deliberate follow-up (not done in
+   this slice — see the § Already Done entry's explicit MCP note); they
+   **shipped 2026-07-30** as item 13 below. (P1,
    M, depends on #8) — mirrors `PagesService`'s existing project-scoped
    methods, branching on `projectId === null`. **Authz decision (explicit):**
    gated by `assertWorkspaceMember`/`assertWorkspaceRole` directly against
@@ -446,10 +447,52 @@ prevent exactly that, reusing the already-shipped `assertWorkspaceMember`/
     `apps/web/src/pages/WorkspaceDocsPage.tsx`, `apps/web/src/components/
     nav/**`, `apps/web/src/components/WorkspaceSettingsNav.tsx`,
     `apps/web/src/api/pages.ts`, `apps/web/src/api/keys.ts`. **MCP:** n/a
-    (frontend only — the matching MCP surface is item 13, below).
-    [ROADMAP Phase 11 continuation item 17]
-13. **Search + MCP — workspace-wide search scoping and cross-project/
-    workspace-docs traversal tools** (P2, M, depends on #9/#10/#11) —
+    (frontend only — the matching MCP surface is item 13, below; shipped
+    2026-07-30). [ROADMAP Phase 11 continuation item 17]
+13. ✅ **Search + MCP — workspace-wide search scoping and cross-project/
+    workspace-docs traversal tools** — **shipped 2026-07-30**
+    (`docs/RESEARCH-AGENT-MEMORY.md` R2, "close the org-wide memory hole";
+    ROADMAP Phase 11 continuation item 18, now ticked with full evidence).
+    Shipped **three** MCP tools, not the eight sketched below, because only
+    three REST routes were actually missing an MCP door:
+    `list_workspace_pages` (`GET /workspaces/:id/pages/tree`, `pages:read`),
+    `get_workspace_page_graph` (`GET /workspaces/:id/pages/graph`,
+    `pages:read`) and `create_workspace_page` (`POST /workspaces/:id/pages`,
+    `pages:write`) — 120 → **123 tools** (59 read / 64 write). The other
+    five (`get_/update_/move_/delete_workspace_page`,
+    `get_workspace_page_backlinks`) were deliberately dropped: those are
+    by-id routes that `PagesService` already branches on
+    `projectId === null` for, so the existing `get_page`/`update_page`/
+    `move_page`/`delete_page`/`get_page_backlinks` already work on
+    workspace pages — a second name for the same route is tool-list bytes
+    with zero capability. Fixed two verified-stale descriptions in the same
+    commit (`get_page_graph` claimed nodes were `{id, title}` when they also
+    carry `projectId`/`projectKey`/`updatedAt`; several page tools still
+    said `[[wiki-links]]` resolve "within the project" when resolution went
+    workspace-wide on 2026-07-17) and **rewrote the MCP server
+    instructions** so the pages graph is named as the memory and
+    `get_project_context` is described as what it is — a short, full-replace
+    64 KB handoff note that points into the pages, not "the project's
+    persistent memory" (the mis-framing `RESEARCH-AGENT-MEMORY.md` §2
+    identified as the reason agents skip the graph). **Acceptance criteria
+    met, live:** an outsider PAT holding `pages:read`+`pages:write` gets 403
+    on all three workspace page routes, and an owner PAT WITHOUT
+    `pages:read` also gets 403 on all three; `pat-scope-coverage` already
+    rostered every workspace page route (no matrix hole); search was
+    re-verified to already scope by `Page.workspaceId`, so workspace pages
+    are searchable and tenant-scoped by construction (ranked snippets + a
+    real result cap are `RESEARCH-AGENT-MEMORY.md` **R1**, a separate
+    follow-up, not this item). **Verified:** MCP 147/147 (+37) + build
+    clean; API integration 441/441; `tsc --noEmit` clean across
+    api/web/mcp/shared; and a live round-trip through the REAL stdio MCP
+    server — workspace graph **3 nodes / 4 edges / 1,078 B** with all four
+    cross-scope edges resolved, `list_workspace_pages` 359 B (no
+    project-page leak), `create_workspace_page` 936 B, handbook backlinks
+    747 B carrying `sourceProjectKey`, and the per-project graph correctly
+    still 1 node / 0 edges (278 B). **Territory:** `apps/mcp/src/**` (no API
+    change needed). Original definition follows.
+    <details><summary>Original item</summary>
+    (P2, M, depends on #9/#10/#11) —
     extends the shipped `Page.searchVector` FTS and the `canReadPages`/
     `includePages` pattern (the exact mechanism the 2026-07-10 `/search`
     leak fix introduced) to workspace-scoped pages: a search result NEVER
@@ -475,6 +518,7 @@ prevent exactly that, reusing the already-shipped `assertWorkspaceMember`/
     just-fixed `/search` regression test shape exactly. **Territory:**
     `apps/api/src/search/**`, `apps/mcp/src/tools/**`. [ROADMAP Phase 11
     continuation item 18]
+    </details>
 
 **Build update (2026-07-10, same day): item 12 (frontend workspace Docs
 surface) shipped** — see the ticked entry above for full detail. Built
