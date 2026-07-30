@@ -22,27 +22,24 @@ export default defineConfig(() => {
     },
     build: {
       modulePreload: {
-        // Vite's default (`polyfill: true`) injects an INLINE <script> into
-        // the built index.html. The production nginx serves a strict
-        // `script-src 'self'` with no 'unsafe-inline'/nonce/hash, so the
-        // browser silently blocks it — caught by mode 3 of
-        // scripts/smoke-web-csp.sh against the real image:
+        // DEFENSIVE, not a bug fix. An earlier version of this comment
+        // claimed the polyfill was injecting a CSP-blocked inline <script>
+        // into the built index.html. That was wrong: the only "inline
+        // script" in the built HTML was the literal text `<script>` inside
+        // an HTML comment, and scripts/smoke-web-csp.sh was scanning raw
+        // HTML without stripping comments. Verified on the real artifact —
+        // with the polyfill ENABLED the build emits no inline script and no
+        // `<link rel="modulepreload">` at all, so the polyfill is inert
+        // here and ships as dead code in the entry chunk.
         //
-        //   inline <script> tag found: <script>
-        //   SMOKE FAIL: [mode 3] served index.html contains an inline
-        //   <script> ... will be SILENTLY BLOCKED by the browser
-        //
-        // The source index.html is deliberately inline-script-free (the
-        // theme bootstrap was moved to the self-hosted /theme-init.js for
-        // exactly this reason) — the polyfill was the only thing putting one
-        // back, at build time, where nobody could see it.
-        //
-        // Turning it off is safe here: it only backfills
-        // `<link rel="modulepreload">` for older browsers. Anything that
-        // supports the ES-module bundle this app ships still loads every
-        // chunk correctly — it just doesn't get preload hints. That is a
-        // marginal, browser-specific latency trade; a CSP-blocked script is
-        // a correctness bug.
+        // Kept off anyway, because Vite injects that polyfill INLINE at the
+        // point it becomes necessary. Today nothing emits modulepreload
+        // links; the day code-splitting changes that, `polyfill: true` would
+        // start writing an inline script into index.html and break the
+        // strict `script-src 'self'` the production nginx serves. Disabling
+        // it now costs only preload hints on browsers that lack native
+        // modulepreload — every browser that can run this ES-module bundle
+        // still loads all chunks.
         polyfill: false,
       },
     },
