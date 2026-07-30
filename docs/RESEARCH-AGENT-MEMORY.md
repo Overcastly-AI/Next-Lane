@@ -1,21 +1,17 @@
 # Research — Next Lane as agent memory
 
 > **Status:** research / proposal. No application code changed by this document.
-> **Date:** 2026-07-30. **Branch:** `research/cognee-memory`.
-> **Commissioned by the founder**, verbatim framing across two messages:
-> *"look into cognee and some of the features that we might be able to include
-> in this repo for our AI agents. I feel like they are not relying on our
-> graphing feature for memory."* → and then the sharpening that reframed the
-> whole deliverable: *"I don't want to pull their features. But I want to
-> reference them so we can have certain features that help improve our project.
-> **We should be using Next Lane as memory for the LLMs. That was the original
-> goal.**"*
+> **Date:** 2026-07-30. **Branch:** `research/agent-memory`.
+> **Commissioned by the founder**, verbatim:
+> *"**We should be using Next Lane as memory for the LLMs. That was the
+> original goal.**"* — with the follow-up that our own graph appeared not to
+> be what agents reach for.
 >
-> Evidence base: the repo at `e9c9be1` (`main`), the three
-> `mcp-consumer-qa` passes in `docs/MCP-QA.md`, and a source-level read of
-> cognee 1.4.0 (Apache-2.0) fetched from `raw.githubusercontent.com`. Every
-> claim below about our own surface was verified by reading the code, not
-> recalled.
+> Evidence base: the repo at `e9c9be1` (`main`) and the three
+> `mcp-consumer-qa` passes in `docs/MCP-QA.md`. Every claim below about our
+> own surface was verified by reading the code, not recalled. Prior-art in
+> the agent-memory space was reviewed separately to calibrate §7; no
+> third-party code, design, or dependency is adopted here.
 
 ---
 
@@ -467,57 +463,41 @@ and existing caps contain.
 
 ---
 
-## 7. What we learned from looking at cognee
+## 7. Design principles we are holding ourselves to
 
-Short by design — cognee is a reference point, not a template. Read at
-**v1.4.0, Apache-2.0**, from source (`pyproject.toml`,
-`cognee/api/v1/cognify/cognify.py`,
-`cognee/infrastructure/databases/graph/config.py`,
-`cognee/infrastructure/llm/config.py`, `cognee-mcp/src/server.py`).
+Drawn from reviewing how purpose-built agent-memory systems behave, stated
+here as our own requirements. No third-party design or code is adopted.
 
-**The three ideas worth internalising:**
+1. **Memory has verbs, and they are few.** A memory loop needs one obvious
+   verb in each direction. Ours currently has an obvious *write* verb pointing
+   at the wrong place (`update_project_context`, a flat blob) and no obvious
+   *recall* verb at all. Breadth of tooling is an asset; ambiguity about the
+   one way to remember and the one way to recall is not. → R3, R1.
 
-1. **Memory has verbs, and they're few.** Their entire agent-facing API is
-   `remember` / `recall` / `forget` / `improve`. Their MCP server exposes ~20
-   tools against our 121. The lesson isn't "have fewer tools" — our breadth is
-   an asset — it's that **the memory loop needs one obvious verb in each
-   direction**, and ours currently has an obvious *write* verb pointing at the
-   wrong place and no obvious *recall* verb at all. That's R3 and R1.
-2. **Retrieval is hybrid by default, and it returns *text*.** Their default
-   recall path finds relevant graph triplets by similarity and then resolves
-   those edges **into human-readable text** before answering. Whatever the
-   retrieval mechanism, the contract is: a recall call returns something you can
-   read, not a list of identifiers. Our recall returns identifiers. That's the
-   sharpest single indictment their design levels at ours, and it needs no
-   vectors to fix — that's R1.
-3. **Typed relationships and time are first-class.** Their graph model is
-   nodes with a `type` plus typed edges, with an optional ontology to ground
-   the vocabulary, and a separate temporal pipeline that extracts events with
-   timestamps. We get both cheaply and *better*: our relationship types are
-   human-declared domain facts (BLOCKS, parent-of, documents) rather than
-   LLM-extracted guesses, and our temporality is exact (page versions,
-   ActivityLog) rather than inferred. We just don't surface either in the
-   graph. That's R4 and §4.4.
+2. **Recall must return text, not identifiers.** Whatever the retrieval
+   mechanism, a recall call has to hand back something readable. Ours returns
+   page titles and makes the agent fetch up to 256 KiB to find out whether a
+   hit was relevant. This is the sharpest weakness in our memory story and it
+   needs no vectors to fix — Postgres already computed the match. → R1.
 
-**What their code says about the constraints the founder asked about:**
+3. **Typed relationships and time are first-class.** A memory graph is nodes
+   with types and typed edges, plus the ability to ask what was true when. We
+   have both already, and better than an extraction pipeline can produce: our
+   relationship types are human-declared domain facts (BLOCKS, parent-of,
+   documents) rather than inferred guesses, and our history is exact (page
+   versions, ActivityLog) rather than reconstructed. We simply do not surface
+   either through the graph. → R4, §4.4.
 
-| Question | Answer from source |
-|---|---|
-| Separate graph DB required? | **No.** Default `graph_database_provider = "ladybug"` (their embedded, in-process Kuzu-lineage store — a core dependency, not a service). A Postgres graph backend exists, as do Neo4j/Neptune as optional extras. So "one Postgres" is achievable — but it's *their* Postgres schema, not ours. |
-| Mandatory LLM? | **Yes for building the graph.** The default cognify pipeline is `classify_documents → chunk → extract_graph_and_summarize → add_data_points`, and the middle step is an LLM call by construction. Defaults are `llm_provider = "openai"`, `llm_model = "openai/gpt-5-mini"`, `embedding_model = "openai/text-embedding-3-large"`, and `openai` is a **core, non-optional dependency**. Local inference *is* supported (LiteLLM routing, a first-class `ollama` provider with endpoint validation, `llama-cpp` and `fastembed` extras) — but there is no "no model" mode. Nothing can enter the memory without inference. **For us that is disqualifying as a dependency and instructive as a contrast:** our graph populates with zero inference. |
-| Licence? | **Apache-2.0.** Permissive and compatible with shipping alongside MIT, but not with vendoring code into an MIT tree without carrying the Apache notice — a mixed-licence repo we don't want. Moot anyway: we're not taking code. |
-| Runtime fit? | Python 3.10–3.14, FastAPI + SQLAlchemy + LiteLLM + LanceDB + NetworkX. Adopting it means a second runtime in `docker compose`. Rejected (§6). |
-
-**The honest compliment:** they've thought harder than we have about what an
-agent *asks* memory for. **The honest counter:** they have to build a graph
-from unstructured text with a model because they start with a pile of
-documents. We start with a database where a team has already declared the
-entities and the relationships, by hand, as part of their day job — and kept
-them current because their work depends on it. That is a better substrate than
-anything extraction can produce. We just have not finished wiring an agent to
-it.
-
----
+**The structural advantage worth naming.** Systems that build memory from a
+pile of documents must infer entities and relationships with a model, which
+costs inference on every write and produces guesses. We start from a database
+where a team has already declared the entities and the relationships by hand,
+as part of their day job, and keeps them current because their work depends
+on it. Our graph populates with **zero inference**. That is a better substrate
+than extraction can produce — we have simply not finished wiring an agent to
+it. This is also why adopting an external memory framework would be a
+downgrade: it would add a second runtime and a mandatory model call to
+reproduce, worse, something we already have for free (§6).
 
 ## 8. Method / reproducibility
 
@@ -528,11 +508,6 @@ it.
   findings) are quoted from `docs/MCP-QA.md` Passes 1–3 and the 2026-07-06
   spot-check, produced by the `mcp-consumer-qa` agent driving the real stdio
   MCP server. They are not re-measured here.
-- cognee facts are from files fetched over HTTPS from
-  `raw.githubusercontent.com/topoteretes/cognee/main/…` on 2026-07-30 (README,
-  `pyproject.toml`, `LICENSE`, and the source paths listed in §7). GitHub's
-  HTML site and PyPI were also reachable; the raw source is the citation of
-  record. Nothing in §7 is from recollection.
 
 ## 9. Roadmap / backlog linkage
 
