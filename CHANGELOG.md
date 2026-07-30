@@ -16,6 +16,14 @@ staged here by hand (see [`RELEASING.md`](./RELEASING.md))._
 
 ---
 
+## [0.3.1] — 2026-07-30
+
+[Compare with v0.3.0](https://github.com/Overcastly-AI/Next-Lane/compare/v0.3.0...v0.3.1)
+
+### Bug Fixes
+
+* **deploy:** repair the Kustomize path and gate it in CI ([c799a77](https://github.com/Overcastly-AI/Next-Lane/commit/c799a7794db21d4f958ba76dcbed47defca3ae18)), closes [#57](https://github.com/Overcastly-AI/Next-Lane/issues/57)
+
 ## [0.3.0] — 2026-07-30
 
 [Compare with v0.2.0](https://github.com/Overcastly-AI/Next-Lane/compare/v0.2.0...v0.3.0)
