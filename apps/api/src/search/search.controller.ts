@@ -23,11 +23,20 @@ function canReadPages(user: AuthUser): boolean {
 export class SearchController {
   constructor(private readonly search: SearchService) {}
 
-  /** Global cross-project search, scoped to the caller's workspaces. */
+  /**
+   * Global cross-project search, scoped to the caller's workspaces.
+   *
+   * `limit`/`offset` are real server-side paging (per group), and `groups`
+   * narrows which groups are computed at all — see `SearchQueryDto`.
+   */
   @Get('search')
   @RequireScope('issues:read')
   global(@CurrentUser() user: AuthUser, @Query() query: SearchQueryDto) {
-    return this.search.search(user.id, query.q, query.projectId, canReadPages(user));
+    return this.search.search(user.id, query.q, query.projectId, canReadPages(user), {
+      limit: query.limit,
+      offset: query.offset,
+      groups: query.groups,
+    });
   }
 
   /** Search scoped to a single project the caller can access. */
@@ -38,7 +47,11 @@ export class SearchController {
     @Param('projectId') projectId: string,
     @Query() query: SearchQueryDto,
   ) {
-    return this.search.search(user.id, query.q, projectId, canReadPages(user));
+    return this.search.search(user.id, query.q, projectId, canReadPages(user), {
+      limit: query.limit,
+      offset: query.offset,
+      groups: query.groups,
+    });
   }
 
   /**
@@ -52,6 +65,9 @@ export class SearchController {
   @Get('search/pages')
   @RequireScope('pages:read')
   pagesOnly(@CurrentUser() user: AuthUser, @Query() query: SearchQueryDto) {
-    return this.search.searchPagesOnly(user.id, query.q, query.projectId);
+    return this.search.searchPagesOnly(user.id, query.q, query.projectId, {
+      limit: query.limit,
+      offset: query.offset,
+    });
   }
 }

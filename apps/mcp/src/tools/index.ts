@@ -237,6 +237,86 @@ const pageParams = { limit: limitParam, offset: offsetParam };
 /** Shared limit+offset+verbose params for list tools with a compact default shape. */
 const compactPageParams = { limit: limitParam, offset: offsetParam, verbose: verboseParam };
 
+// ── Search paging (distinct from list paging on purpose) ────────────────────
+//
+// The search tools page SERVER-SIDE: `limit`/`offset` go to the API as query
+// params and the API's own `paging` block is returned verbatim. They used to
+// fetch a fixed 20-row cap and slice it here, so `offset: 20` returned nothing
+// and `total` lied — match #21 was unreachable.
+//
+// The defaults are smaller than the list tools' because every search hit now
+// carries a `snippet` (a highlighted excerpt of the matched body). Ten
+// snippet-bearing hits answer "what do we know about X?" in one call; fifty
+// would mostly be budget spent on results nobody reads. Page with `offset`
+// when `paging.<group>.hasMore` is true.
+
+/** Default page size for search tools. Small because hits carry snippets. */
+const DEFAULT_SEARCH_LIMIT = 10;
+/** Mirrors SEARCH_MAX_LIMIT on the API — a larger value is rejected with 400. */
+const MAX_SEARCH_LIMIT = 50;
+
+const searchLimitParam = z
+  .number()
+  .int()
+  .min(1)
+  .max(MAX_SEARCH_LIMIT)
+  .optional()
+  .describe(
+    `Max hits per group (default ${DEFAULT_SEARCH_LIMIT}, max ${MAX_SEARCH_LIMIT}). ` +
+      'Applied server-side; each hit includes a snippet, so keep it small.',
+  );
+
+const searchOffsetParam = z
+  .number()
+  .int()
+  .min(0)
+  .optional()
+  .describe('Hits to skip (server-side). Use when `paging.<group>.hasMore` is true.');
+
+/** Shared server-side paging params for the search_* tools. */
+const searchPageParams = { limit: searchLimitParam, offset: searchOffsetParam };
+
+/** Resolve the search limit/offset to send to the API as query params. */
+function resolveSearchPaging(args: Record<string, unknown>): {
+  limit: number;
+  offset: number;
+} {
+  const rawLimit = Number(args.limit);
+  const limit = Math.min(
+    Math.max(Number.isFinite(rawLimit) && rawLimit > 0 ? rawLimit : DEFAULT_SEARCH_LIMIT, 1),
+    MAX_SEARCH_LIMIT,
+  );
+  const rawOffset = Number(args.offset);
+  const offset = Math.max(Number.isFinite(rawOffset) ? rawOffset : 0, 0);
+  return { limit, offset };
+}
+
+/** A `SearchPagingDto` as it arrives over the wire (before we trust it). */
+type ApiPaging = { limit?: number; offset?: number; total?: number; hasMore?: boolean };
+
+/**
+ * Re-shape the API's per-group `paging` block into this server's uniform
+ * `{ items, total, limit, offset, hasMore }` envelope.
+ *
+ * Falls back to the requested window and the returned length when `paging` is
+ * absent: this package is published to npm independently of the server, so a
+ * user can point a new MCP build at an older API that predates the paging
+ * block. Degrading to "what I got is all I know" is better than reporting
+ * `total: undefined`.
+ */
+function searchEnvelope<T>(
+  items: T[],
+  paging: ApiPaging | undefined,
+  requested: { limit: number; offset: number },
+): PageEnvelope<T> {
+  const limit = typeof paging?.limit === 'number' ? paging.limit : requested.limit;
+  const offset = typeof paging?.offset === 'number' ? paging.offset : requested.offset;
+  const total = typeof paging?.total === 'number' ? paging.total : offset + items.length;
+  const hasMore =
+    typeof paging?.hasMore === 'boolean' ? paging.hasMore : offset + items.length < total;
+  return { items, total, limit, offset, hasMore };
+}
+
 /** Loosely-typed JSON object — list-tool items before/after compacting. */
 type ApiItem = Record<string, unknown>;
 
@@ -290,6 +370,21 @@ function pageResult(envelope: PageEnvelope<unknown>): ToolResult {
 // ---------------------------------------------------------------------------
 
 const compactProject = (p: ApiItem) => ({ id: p.id, key: p.key, name: p.name });
+
+/**
+ * A `search_pages` hit, minus `workspaceId`. Every hit a given token can see
+ * shares the same workspace and no tool takes it as an input, so returning it
+ * per row is pure overhead multiplied by the page size. `snippet` is the whole
+ * point of the hit and is always kept.
+ */
+const compactSearchPage = (p: ApiItem) => ({
+  id: p.id,
+  title: p.title,
+  projectId: p.projectId,
+  projectKey: p.projectKey,
+  archived: p.archived,
+  snippet: p.snippet,
+});
 
 const compactWorkspace = (w: ApiItem) => ({ id: w.id, name: w.name, slug: w.slug });
 
@@ -891,21 +986,88 @@ const readTools: ToolDef[] = [
     description:
       'Full-text search issues by title/key/description. Scope to one project ' +
       'with projectId, or omit it to search everything the caller can access. ' +
-      'Results are already the minimal `SearchIssueDto` shape (no verbose ' +
-      'mode); `limit`/`offset` page the `issues` array (the `projects` array ' +
-      'of matched project names/keys is returned in full, it is normally tiny).',
+      'Every hit carries a `snippet`: a relevance-ranked, highlighted excerpt ' +
+      'of the matching DESCRIPTION text, so you can judge which issues are ' +
+      'actually relevant from this one call — do NOT fetch each hit with ' +
+      'get_issue just to find out. Matched terms are wrapped in U+E000/U+E001 ' +
+      '(invisible Private Use Area sentinels, not HTML); ignore them or strip ' +
+      'them, they are only markers. `limit`/`offset` are real SERVER-SIDE ' +
+      'paging: `total`/`hasMore` describe the `issues` array and `total` is ' +
+      'the true match count, not the page length — page with `offset` while ' +
+      '`hasMore`. Returns the minimal `SearchIssueDto` shape (no verbose mode) ' +
+      'plus a `projects` array of matched project names/keys (paged by the ' +
+      'same window; its count is `projectsTotal`, normally tiny). Looking for ' +
+      'a DECISION rather than an issue? Use search_comments.',
     inputSchema: {
       q: z.string().describe('Search text.'),
       projectId: z.string().optional().describe('Restrict to this project.'),
-      ...pageParams,
+      ...searchPageParams,
     },
     handler: async (args, client) => {
-      const data = await client.get<{ issues: ApiItem[]; projects: ApiItem[] }>('/search', {
+      const { limit, offset } = resolveSearchPaging(args);
+      // groups=issues,projects: the API would otherwise also run the pages and
+      // comments queries whose results this tool discards.
+      const data = await client.get<{
+        issues: ApiItem[];
+        projects: ApiItem[];
+        paging?: Record<string, ApiPaging>;
+      }>('/search', {
         q: args.q as string,
         projectId: args.projectId as string | undefined,
+        groups: 'issues,projects',
+        limit,
+        offset,
       });
-      const { limit, offset, total, hasMore, items: issues } = paginateOnly(data.issues, args);
-      return jsonResult({ issues, projects: data.projects, total, limit, offset, hasMore });
+      const { items, ...envelope } = searchEnvelope(data.issues ?? [], data.paging?.issues, {
+        limit,
+        offset,
+      });
+      // The top-level total/limit/offset/hasMore describe `issues` (the uniform
+      // envelope, unchanged); `projectsTotal` covers the second array, which is
+      // paged by the same window but is almost always shorter than one page.
+      return jsonResult({
+        issues: items,
+        projects: data.projects ?? [],
+        projectsTotal: data.paging?.projects?.total ?? (data.projects ?? []).length,
+        ...envelope,
+      });
+    },
+  },
+  {
+    name: 'search_comments',
+    group: 'read',
+    description:
+      'Full-text search issue COMMENTS — the place decisions actually get ' +
+      'written down ("Decision: we are going with Stripe", "reverted this, ' +
+      'here is why"). Use it for questions about WHY something is the way it ' +
+      'is, or what was agreed, when you do not already know which issue holds ' +
+      'the answer; list_comments only works if you do. Each hit is ' +
+      '`{id, issueId, issueKey, issueTitle, projectId, projectKey, ' +
+      'authorName, createdAt, snippet}` — the highlighted excerpt plus enough ' +
+      'issue identity to cite the decision without a follow-up get_issue. ' +
+      'Matched terms are wrapped in U+E000/U+E001 sentinels (not HTML). ' +
+      'Server-side paged in the standard `{items, total, limit, offset, hasMore}` ' +
+      'envelope. Requires the same access as issues (comments are issue data).',
+    inputSchema: {
+      q: z.string().describe('Search text (words likely to appear in the comment).'),
+      projectId: z.string().optional().describe('Restrict to this project.'),
+      ...searchPageParams,
+    },
+    handler: async (args, client) => {
+      const { limit, offset } = resolveSearchPaging(args);
+      const data = await client.get<{
+        comments: ApiItem[];
+        paging?: Record<string, ApiPaging>;
+      }>('/search', {
+        q: args.q as string,
+        projectId: args.projectId as string | undefined,
+        groups: 'comments',
+        limit,
+        offset,
+      });
+      return pageResult(
+        searchEnvelope(data.comments ?? [], data.paging?.comments, { limit, offset }),
+      );
     },
   },
   {
@@ -1846,24 +2008,47 @@ const readTools: ToolDef[] = [
       'this over listing/reading pages one by one when you know words that ' +
       'would appear in it ("deploy runbook", an error message, a feature ' +
       'name). Scope to one project with projectId or omit it to search all ' +
-      'accessible projects. Returns compact page refs (`{id, title, ' +
-      'projectId, projectKey, archived}`) — follow `id` into get_page to ' +
-      'read, then get_page_links/get_page_backlinks to traverse outward. ' +
-      'Pairs with get_page_graph (structure-first discovery) the way ' +
-      'search pairs with browsing.',
+      'accessible projects. Each hit is `{id, title, projectId, projectKey, ' +
+      'archived, snippet}`, where `snippet` is a relevance-ranked, highlighted ' +
+      'excerpt of the matching BODY text — enough to answer "what do we know ' +
+      'about X?" from this call alone. Only follow `id` into get_page when you ' +
+      'need the full document (it can be up to 256 KB); reading every hit to ' +
+      'find out which one mattered is the mistake this snippet exists to ' +
+      'prevent. Matched terms are wrapped in U+E000/U+E001 (invisible Private ' +
+      'Use Area sentinels, not HTML); ignore or strip them. `limit`/`offset` ' +
+      'are real SERVER-SIDE paging in the standard `{items, total, limit, ' +
+      'offset, hasMore}` envelope — `total` is the true match count, not the ' +
+      'page length. From a hit, ' +
+      'get_page_links/get_page_backlinks traverse outward; pairs with ' +
+      'get_page_graph (structure-first discovery) the way search pairs with ' +
+      'browsing.',
     inputSchema: {
       q: z.string().describe('Search text (words likely to appear in the page title or body).'),
       projectId: z.string().optional().describe('Restrict to this project.'),
-      ...pageParams,
+      ...searchPageParams,
     },
     handler: async (args, client) => {
+      const { limit, offset } = resolveSearchPaging(args);
       // /search/pages (not /search): pages-only response gated by pages:read,
       // so a knowledge-base-scoped token can search without issues:read.
-      const data = await client.get<{ pages: ApiItem[] }>('/search/pages', {
-        q: args.q as string,
-        projectId: args.projectId as string | undefined,
-      });
-      return pageResult(paginateOnly(data.pages ?? [], args));
+      const data = await client.get<{ pages: ApiItem[]; paging?: ApiPaging }>(
+        '/search/pages',
+        {
+          q: args.q as string,
+          projectId: args.projectId as string | undefined,
+          limit,
+          offset,
+        },
+      );
+      // `workspaceId` is dropped by compactSearchPage: it is the same for
+      // every hit a given token can see and is never an input to another tool,
+      // so it is pure overhead multiplied by the page size.
+      return pageResult(
+        searchEnvelope((data.pages ?? []).map(compactSearchPage), data.paging, {
+          limit,
+          offset,
+        }),
+      );
     },
   },
 ];

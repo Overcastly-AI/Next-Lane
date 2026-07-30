@@ -1637,6 +1637,182 @@ function buildMatrix(a: Tenant): Array<MatrixRow & { resolvedPath: string; resol
       });
     });
 
+    // ── R1: search snippets + the new comment index ───────────────────────────
+    //
+    // Search just became a *content* surface: it now returns an excerpt of the
+    // matched body (`ts_headline`), and it now indexes COMMENTS, which were
+    // previously unreachable by any search. Both are new ways for text to cross
+    // a route boundary, so both need an adversarial tenant test rather than a
+    // "the query has a WHERE clause" code read.
+    //
+    // Shape mirrors the wiki-link block below: a positive control proving the
+    // feature genuinely works inside one tenant, and a negative control proving
+    // the same query run by the OTHER tenant returns nothing — no id, and
+    // crucially no snippet TEXT, which is the byte that would actually leak.
+    describe('R1 — comment search + snippets are tenant-scoped', () => {
+      // Single alphanumeric tokens: `to_tsvector('english', ...)` keeps them
+      // intact, so an exact-term query is unambiguous.
+      const SECRET_TERM = `zzsecretdecision${Date.now()}`;
+      const OWN_TERM = `zzowndecision${Date.now()}`;
+      const SECRET_PAGE_TERM = `zzsecretpagebody${Date.now()}`;
+
+      beforeAll(async () => {
+        // Tenant A records a decision in a COMMENT (the exact thing R1 makes
+        // findable) and in a page BODY (findable only via the snippet).
+        const aComment = await req(
+          server,
+          'POST',
+          `/issues/${tenantA.issueId}/comments`,
+          tenantA.token,
+          { body: `Decision: we are going with ${SECRET_TERM} for billing.` },
+        );
+        expect(aComment.status).toBe(201);
+
+        const aPage = await req(
+          server,
+          'POST',
+          `/projects/${tenantA.projectId}/pages`,
+          tenantA.token,
+          {
+            title: 'Innocuous Title',
+            content: `The interesting part is ${SECRET_PAGE_TERM}, buried in the body.`,
+          },
+        );
+        expect(aPage.status).toBe(201);
+
+        // Tenant B records their own, so we can prove B's search works at all
+        // (a search that is simply broken would pass a negative-only test).
+        const bComment = await req(
+          server,
+          'POST',
+          `/issues/${tenantB.issueId}/comments`,
+          tenantB.token,
+          { body: `Decision: we picked ${OWN_TERM} instead.` },
+        );
+        expect(bComment.status).toBe(201);
+      }, 30_000);
+
+      it('positive control: tenant A finds their own comment, with a snippet, in one call', async () => {
+        const res = await req(
+          server,
+          'GET',
+          `/search?q=${SECRET_TERM}&groups=comments`,
+          tenantA.token,
+        );
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body) as {
+          comments: Array<{ issueId: string; snippet: string | null }>;
+          paging: { comments: { total: number } };
+        };
+        expect(body.comments).toHaveLength(1);
+        expect(body.comments[0].issueId).toBe(tenantA.issueId);
+        expect(body.paging.comments.total).toBe(1);
+        // The whole point of R1: the answer is in the search response.
+        expect(body.comments[0].snippet).toContain(SECRET_TERM);
+      });
+
+      it('negative control: tenant B searching A’s comment term gets nothing — no id AND no snippet text', async () => {
+        const res = await req(
+          server,
+          'GET',
+          `/search?q=${SECRET_TERM}&groups=comments`,
+          tenantB.token,
+        );
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body) as {
+          comments: unknown[];
+          paging: { comments: { total: number } };
+        };
+        expect(body.comments).toEqual([]);
+        // `total` is the DATABASE match count — it must be scoped too, or it
+        // becomes an oracle for "how much does the other tenant know about X".
+        expect(body.paging.comments.total).toBe(0);
+        // The leak that matters for a snippet feature is the TEXT, not the id.
+        // `query` legitimately echoes the caller's own input, so strip that one
+        // field before asserting the term appears nowhere in the RESULTS.
+        const withoutEcho = res.body.replace(`"query":${JSON.stringify(SECRET_TERM)},`, '');
+        expect(withoutEcho).not.toContain(SECRET_TERM);
+        for (const id of foreignIds) expect(res.body).not.toContain(id);
+      });
+
+      it('tenant B can still find their OWN comment (search is not merely broken)', async () => {
+        const res = await req(
+          server,
+          'GET',
+          `/search?q=${OWN_TERM}&groups=comments`,
+          tenantB.token,
+        );
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body) as {
+          comments: Array<{ issueId: string; snippet: string | null }>;
+        };
+        expect(body.comments).toHaveLength(1);
+        expect(body.comments[0].issueId).toBe(tenantB.issueId);
+        expect(body.comments[0].snippet).toContain(OWN_TERM);
+      });
+
+      it('negative control: a page-BODY term is not leaked through the snippet either', async () => {
+        // Page titles were already tenant-scoped; the snippet exposes body text
+        // that no previous response ever carried, so re-prove the boundary.
+        const res = await req(
+          server,
+          'GET',
+          `/search/pages?q=${SECRET_PAGE_TERM}`,
+          tenantB.token,
+        );
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body) as { pages: unknown[] };
+        expect(body.pages).toEqual([]);
+        // Same as above: `query` echoes the caller's input and is not a leak.
+        const withoutEcho = res.body.replace(
+          `"query":${JSON.stringify(SECRET_PAGE_TERM)},`,
+          '',
+        );
+        expect(withoutEcho).not.toContain(SECRET_PAGE_TERM);
+        expect(res.body).not.toContain('Innocuous Title');
+      });
+
+      it('positive control: tenant A gets the page body snippet without fetching the page', async () => {
+        const res = await req(
+          server,
+          'GET',
+          `/search/pages?q=${SECRET_PAGE_TERM}`,
+          tenantA.token,
+        );
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body) as {
+          pages: Array<{ title: string; snippet: string | null }>;
+          paging: { total: number; hasMore: boolean };
+        };
+        expect(body.pages).toHaveLength(1);
+        // The title gives nothing away — only the snippet answers the question.
+        expect(body.pages[0].title).toBe('Innocuous Title');
+        expect(body.pages[0].snippet).toContain(SECRET_PAGE_TERM);
+        expect(body.paging.hasMore).toBe(false);
+      });
+
+      it('paging is server-side: offset past the end returns nothing, not a re-sliced first page', async () => {
+        const res = await req(
+          server,
+          'GET',
+          `/search/pages?q=${SECRET_PAGE_TERM}&limit=1&offset=5`,
+          tenantA.token,
+        );
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body) as {
+          pages: unknown[];
+          paging: { limit: number; offset: number; hasMore: boolean };
+        };
+        expect(body.pages).toEqual([]);
+        expect(body.paging).toMatchObject({ limit: 1, offset: 5, hasMore: false });
+      });
+
+      it('rejects an out-of-range limit rather than silently honouring it', async () => {
+        const res = await req(server, 'GET', '/search?q=decision&limit=5000', tenantA.token);
+        expect(res.status).toBe(400);
+      });
+    });
+
     // ── Org-level-docs epic, Slices 15+16 ─────────────────────────────────────
     //
     // Cross-workspace-safe `[[wiki-link]]` resolution (Slice 15) + the

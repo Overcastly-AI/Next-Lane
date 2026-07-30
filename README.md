@@ -7,7 +7,7 @@
 Next Lane is an **open source project tracker**: boards, sprints, backlog, custom
 workflows, and reporting, running entirely on **your** hardware with **your** data,
 under an MIT license. It's also built for a world where AI coding agents write half
-your code — a first-party **MCP server** with 123 tools lets Claude (or any MCP
+your code — a first-party **MCP server** with 124 tools lets Claude (or any MCP
 client) **read and write your tracker directly**, not just chat about it.
 
 **⭐ If Next Lane is useful to you (or your agent), starring the repo helps other
@@ -198,7 +198,7 @@ This is the part no incumbent — closed or open — has: an issue tracker built
 a world where AI agents are first-class users, not an API afterthought.
 
 Next Lane ships **`@next-lane/mcp`** — a first-party [Model Context
-Protocol](https://modelcontextprotocol.io) server with **123 tools** (59 read, 64
+Protocol](https://modelcontextprotocol.io) server with **124 tools** (60 read, 64
 write) that let Claude Desktop, Claude Code, or any MCP client **read *and write*
 your workspace**: issues (with server-side **NLQL** `query` evaluation and
 pagination), sprints, comments, worklogs, checklists, labels, components,
@@ -301,7 +301,7 @@ The full capability matrix:
 | **Collaboration** | Comments & activity history · realtime updates (Socket.io) · in-app notifications & @mentions · "My Work" + Team Pulse dashboards |
 | **Auth & SSO** | Email/password (JWT) · **SSO/OIDC** with an **in-app admin configuration screen** (`/admin/sso`, secrets encrypted at rest, no redeploy to change) — works with Okta/Auth0/Keycloak/Authentik/Google · personal API tokens (PATs) |
 | **Workflows (SDLC)** | **Configurable workflows** — per-project enforcement **and reusable named workflows assigned per board** · transition graph with **visual node/edge editor** · gates (require assignee/description/field/link/no-open-blockers) · seed from templates (simple / kanban / scrum / bug-triage) |
-| **Agent-native (MCP)** | **MCP server** (`apps/mcp`) — 123 read/write tools (59 read, 64 write) over PAT auth, server-side NLQL evaluation, `get_epic_overview`, agent-traversable Pages knowledge graph, and **persistent per-project agent memory**. See [above](#-agent-native-your-coding-agent-can-run-the-tracker) |
+| **Agent-native (MCP)** | **MCP server** (`apps/mcp`) — 123 read/write tools (60 read, 64 write) over PAT auth, server-side NLQL evaluation, `get_epic_overview`, agent-traversable Pages knowledge graph, and **persistent per-project agent memory**. See [above](#-agent-native-your-coding-agent-can-run-the-tracker) |
 | **Pages (knowledge base)** | Project-scoped wiki: nestable page tree · markdown editor with `[[wiki-link]]` autocomplete (resolved + "create-it" unresolved links) · append-only **version history** with restore · **backlinks** ("what links here") · Obsidian-style **force-directed knowledge graph** view · graph/backlinks/links traversable over MCP for agent-native document authoring |
 | **Estimation & tracking** | Story points · **original estimate + work logs** (time spent vs estimate rollup) · **checklists** (sub-items + progress) · **WIP limits** per column |
 | **Automation** | **Glass Box engine** — trigger → condition → action rules · NLQL-based conditions · unlimited runs · full **run log** (audit trail per execution) |
@@ -400,7 +400,7 @@ Full production guidance (external DB/Redis, HA, TLS, Kustomize overlays) is in
 
 ### 3 · MCP server — give your agent the tracker
 
-`@next-lane/mcp` is a standalone stdio MCP server (123 tools). It talks to a
+`@next-lane/mcp` is a standalone stdio MCP server (124 tools). It talks to a
 running Next Lane over its REST API with a Personal Access Token — published to
 npm from `v0.1.0`:
 
@@ -447,7 +447,7 @@ Other useful scripts: `pnpm build`, `pnpm lint`, `pnpm test`, `pnpm format`.
 | Frontend | React + Vite + TypeScript |
 | UI | Tailwind CSS + shadcn/ui · TanStack Query · dnd-kit |
 | Auth | JWT access token · SSO/OIDC · personal API tokens (PATs) |
-| Agents | MCP server (`apps/mcp`, stdio, 123 tools with persistent agent memory) over the same REST API |
+| Agents | MCP server (`apps/mcp`, stdio, 124 tools with persistent agent memory) over the same REST API |
 | Infra | Docker Compose · Helm / Kustomize for Kubernetes |
 
 ```mermaid
@@ -469,7 +469,7 @@ Next-Lane/
 ├── apps/
 │   ├── api/        # NestJS backend (REST + WebSocket, 1999 unit tests)
 │   ├── web/        # React + Vite frontend
-│   └── mcp/        # MCP server (stdio, 123 tools with persistent agent memory) for AI agents
+│   └── mcp/        # MCP server (stdio, 124 tools with persistent agent memory) for AI agents
 ├── packages/
 │   └── shared/     # Shared TypeScript types / contracts
 ├── skills/
