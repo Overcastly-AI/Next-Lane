@@ -178,3 +178,37 @@ imagePullSecrets:
 {{- toYaml . | nindent 2 }}
 {{- end }}
 {{- end -}}
+
+{{/*
+Guard: scaling the api past one pod silently breaks uploads.
+
+Attachments and workspace logos are written to api.uploads.mountPath. That
+path is node-local in BOTH default configurations:
+
+  - persistence.enabled=false (the default) -> emptyDir, private to each pod
+  - persistence.enabled=true with ReadWriteOnce -> exactly one node may mount it
+
+Either way a second api replica serves a filesystem that is missing whatever
+the other pod wrote. Uploads appear to succeed and then 404 for a fraction of
+requests proportional to replica count — a fault nobody attributes to Helm
+values. Only ReadWriteMany (or moving uploads off the pod entirely) makes the
+api horizontally scalable.
+
+values.yaml has carried a comment about this since the chart was written. A
+comment is not a constraint: `api.autoscaling.enabled=true` is one flag and
+nothing stopped it. This fails the render instead, with the fix in the message.
+*/}}
+{{- define "next-lane.validateUploadsScaling" -}}
+{{- $p := .Values.api.uploads.persistence -}}
+{{- $shared := and $p.enabled (has "ReadWriteMany" (default (list) $p.accessModes)) -}}
+{{- if not $shared -}}
+{{- $how := ternary "a ReadWriteOnce PVC" "an emptyDir (api.uploads.persistence.enabled=false)" $p.enabled -}}
+{{- $fix := "Set api.uploads.persistence.enabled=true with accessModes: [\"ReadWriteMany\"], or keep the api at a single pod." -}}
+{{- if .Values.api.autoscaling.enabled -}}
+{{- fail (printf "next-lane: api.autoscaling.enabled=true, but uploads live on %s, which is node-local. A second api pod would serve a filesystem missing the other pod's attachments and logos, so they would 404 intermittently. %s" $how $fix) -}}
+{{- end -}}
+{{- if gt (int (default 1 .Values.api.replicaCount)) 1 -}}
+{{- fail (printf "next-lane: api.replicaCount=%d, but uploads live on %s, which is node-local. Attachments and logos written by one pod would 404 when another serves the request. %s" (int .Values.api.replicaCount) $how $fix) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}

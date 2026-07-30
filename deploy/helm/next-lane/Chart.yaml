@@ -3,7 +3,8 @@ name: next-lane
 description: |
   Next Lane — open-source, self-hosted issue & project tracker.
   NestJS API + React/Vite static web, with optional bundled PostgreSQL and
-  Redis (Bitnami subcharts) or external/managed datastores.
+  Redis (plain in-chart manifests on the official images, no subcharts) or
+  external/managed datastores.
 type: application
 
 # Chart version — bump on every chart change (SemVer).
