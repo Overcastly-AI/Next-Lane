@@ -80,10 +80,19 @@ jobs:
         with:
           node-version: 20
 
-      - name: Install kustomize
+      # `ubuntu-latest` already ships kustomize, and its installer hard-fails
+      # ("/usr/local/bin/kustomize exists. Remove it first.") rather than
+      # no-op'ing — so only fetch when the runner image stops providing it.
+      # The assertions below are version-agnostic.
+      - name: Ensure kustomize
         run: |
-          curl -fsSL "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" \
-            | bash -s -- 5.4.3 /usr/local/bin
+          set -euo pipefail
+          if command -v kustomize >/dev/null 2>&1; then
+            echo "Using kustomize preinstalled on the runner."
+          else
+            curl -fsSL "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" \
+              | bash -s -- 5.4.3 /usr/local/bin
+          fi
           kustomize version
 
       # Derive the owner the same way images.yml does, so a fork that publishes
