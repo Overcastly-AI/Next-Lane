@@ -905,6 +905,16 @@ model Comment {
   authorId  String? // nullable: author can be deleted (SetNull); display as "Deleted User"
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  // Generated tsvector for full-text search over the comment body, managed
+  // entirely by Postgres (GENERATED ALWAYS AS ... STORED). Prisma cannot
+  // read/write this directly — FTS goes through $queryRaw. The GIN index
+  // "Comment_searchVector_idx" is created via raw SQL in the add-comment-fts
+  // migration. Mirrors Page.searchVector / Issue.searchVector.
+  //
+  // Comments are the `comments` group of GET /search: they're where decisions
+  // are actually recorded, and before this column they were invisible to
+  // search entirely.
+  searchVector Unsupported("tsvector")?
 
   issue  Issue @relation(fields: [issueId], references: [id], onDelete: Cascade)
   author User? @relation(fields: [authorId], references: [id], onDelete: SetNull)

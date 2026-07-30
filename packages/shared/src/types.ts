@@ -675,9 +675,25 @@ export interface RoadmapDto {
 }
 
 /**
+ * A relevance-ranked excerpt of the matched body text, with the query terms
+ * wrapped in the {@link SEARCH_HIGHLIGHT_START}/{@link SEARCH_HIGHLIGHT_END}
+ * delimiters (see `search.ts` for why those, and NOT HTML).
+ *
+ * This exists so ONE search call answers "what do we know about X?". Without
+ * it a caller can only see titles and has to fetch each candidate in full to
+ * judge relevance — 1 + N calls with unbounded reads. Deliberately short
+ * (≈2 fragments / ≈260 chars); fetch the record itself when you need the
+ * whole body.
+ *
+ * `null` when the hit matched only on a field the excerpt doesn't cover
+ * (e.g. the title) and the body is empty.
+ */
+export type SearchSnippet = string | null;
+
+/**
  * A single issue hit in a global/cross-project search. Lightweight by design:
- * just enough to render a result row and navigate to the issue's board with the
- * issue drawer open.
+ * just enough to render a result row, judge relevance from the snippet, and
+ * navigate to the issue's board with the issue drawer open.
  */
 export interface SearchIssueDto {
   id: string;
@@ -690,6 +706,8 @@ export interface SearchIssueDto {
   statusName: string;
   statusCategory: StatusCategory;
   type: IssueType;
+  /** Highlighted excerpt of the issue description — see {@link SearchSnippet}. */
+  snippet: SearchSnippet;
 }
 
 /**
@@ -715,17 +733,85 @@ export interface SearchPageDto {
   projectKey: string | null;
   /** Whether the page is archived (rendered muted / de-emphasised in results). */
   archived: boolean;
+  /** Highlighted excerpt of the page body — see {@link SearchSnippet}. */
+  snippet: SearchSnippet;
+}
+
+/**
+ * A comment hit in cross-project search. Comments are where decisions actually
+ * get written down ("Decision: we're going with Stripe"), so they are a
+ * first-class recall surface, not an afterthought.
+ *
+ * Carries the owning issue's identity inline so a caller can cite the decision
+ * ("NL-42 — Payment provider") without a follow-up `get_issue`. Gated by
+ * `issues:read` exactly like the `issues` group, since a comment is issue data.
+ */
+export interface SearchCommentDto {
+  id: string;
+  issueId: string;
+  /** Human-facing issue key, e.g. "NL-42". */
+  issueKey: string;
+  issueTitle: string;
+  projectId: string;
+  projectKey: string;
+  /** Null when the author's account was deleted. */
+  authorName: string | null;
+  createdAt: string;
+  /** Highlighted excerpt of the comment body — see {@link SearchSnippet}. */
+  snippet: SearchSnippet;
+}
+
+/**
+ * Server-side paging state for one search group. `total` is the true number of
+ * matches in the database (computed with a window function in the same query,
+ * so it costs no extra round trip), NOT the length of the returned page — a
+ * caller can therefore tell the difference between "that's everything" and
+ * "there is more, ask for offset += limit".
+ *
+ * Before this existed the service hard-capped every group at 20 rows and the
+ * MCP layer "paged" by slicing those 20 client-side, so match 21 was
+ * unreachable and silently invisible.
+ */
+export interface SearchPagingDto {
+  limit: number;
+  offset: number;
+  /** Total matches for this group across the caller's workspaces. */
+  total: number;
+  /** True when `offset + returned < total`, i.e. another page exists. */
+  hasMore: boolean;
+}
+
+/** Per-group paging state. Groups not requested via `?groups=` report zeroes. */
+export interface SearchPagingByGroupDto {
+  issues: SearchPagingDto;
+  pages: SearchPagingDto;
+  projects: SearchPagingDto;
+  comments: SearchPagingDto;
 }
 
 /**
  * Cross-project search results, scoped to the workspaces the caller belongs to.
- * Issues, pages, and projects are returned separately so the UI can group them.
+ * Issues, pages, projects, and comments are returned separately so the UI can
+ * group them; every group is independently paged (see {@link SearchPagingDto}).
+ *
+ * A group the caller did not request (`?groups=`) — or is not authorized for
+ * (`pages` without `pages:read`) — comes back as an empty array with zeroed
+ * paging, never as a missing key, so consumers never have to null-check.
  */
 export interface SearchResultsDto {
   query: string;
   issues: SearchIssueDto[];
   pages: SearchPageDto[];
   projects: SearchProjectDto[];
+  comments: SearchCommentDto[];
+  paging: SearchPagingByGroupDto;
+}
+
+/** Response shape of the pages-only `GET /search/pages` route. */
+export interface SearchPagesResultsDto {
+  query: string;
+  pages: SearchPageDto[];
+  paging: SearchPagingDto;
 }
 
 /**

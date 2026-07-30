@@ -2,7 +2,7 @@
 
 A [Model Context Protocol](https://modelcontextprotocol.io) server that lets
 external AI agents — **Claude Desktop**, **Claude Code**, and any other MCP host
-— **read and write** a Next Lane instance end-to-end: **123 tools** covering
+— **read and write** a Next Lane instance end-to-end: **124 tools** covering
 workspaces/projects, workflows / SDLC, issues (incl. links, labels, comments
 with author-or-admin edit/delete, checklists, worklogs), boards, statuses,
 sprints, components, versions, custom fields, saved NLQL filters, automation
@@ -25,7 +25,7 @@ Next Lane API. It requires no schema or backend changes and stores nothing.
 
 ### Token efficiency (agent-context-friendly by default)
 
-Every `list_*` / `search_issues` tool returns a **compact, hand-picked field
+Every `list_*` / `search_*` tool returns a **compact, hand-picked field
 set** by default (e.g. `list_issues` → `{key, title, status, assignee,
 priority, type}`) instead of the full API object, wrapped in a uniform
 envelope: `{ items, total?, limit, offset?, hasMore, ... }`. Pass
@@ -204,7 +204,8 @@ minimal, so there is no `verbose` mode.
 | `list_issue_links`  | List an issue's typed links/dependencies (`issueId`); includes link ids. **paged**. |
 | `list_labels`       | List a project's labels with ids + colors (`projectId`). **paged**.    |
 | `list_users`        | List users (workspace members) — for assignee ids. Optional `q` filters server-side by case-insensitive name/email substring. **compact** `{id, name, email}`. |
-| `search_issues`     | Full-text issue search (`q`, optional `projectId`). **paged** (pages the `issues` array; `projects` returned in full). |
+| `search_issues`     | Full-text issue search (`q`, optional `projectId`). Each hit carries a **`snippet`** — a highlighted excerpt of the matching description — so relevance is judged without a follow-up `get_issue`. **Server-side paged** (`total`/`hasMore` describe `issues`; `projectsTotal` covers `projects`). |
+| `search_comments`   | Full-text search over issue **comments** — where decisions get written down (`q`, optional `projectId`). Returns `{id, issueId, issueKey, issueTitle, projectId, projectKey, authorName, createdAt, snippet}`. **Server-side paged**. |
 | `list_sprints`      | List a project's sprints (`projectId`). **compact** `{id, name, state}`. |
 | `list_components`   | List a project's components (`projectId`). **compact** `{id, name, defaultAssignee}`. |
 | `list_versions`     | List a project's versions/releases (`projectId`). **compact** `{id, name, state, releaseDate, issueCount}`. |
@@ -251,7 +252,7 @@ minimal, so there is no `verbose` mode.
 | `get_page_links` | This page's own OUTGOING `[[wiki-links]]` (`pageId`), split into `resolved` (existing target pages) and `unresolvedTitles` (referenced but not yet written). Requires `pages:read`. |
 | `get_page_issues` | The tracked issues a page links to (`pageId`) — auto-linked when the page body mentions a same-project issue key (`NL-123`). Compact issue refs + `truncated`. Requires `pages:read`. |
 | `get_issue_pages` | Reverse of `get_page_issues`: the knowledge-base pages that reference an issue (`issueId`) — "what docs mention this work". Compact page refs + `truncated`. Requires `pages:read`. |
-| `search_pages` | Full-text search over page titles AND body content (relevance-ranked Postgres FTS), optionally scoped to one project — the cheapest way to find the right doc. Compact page refs, **paged**. Requires `pages:read`. |
+| `search_pages` | Full-text search over page titles AND body content (relevance-ranked Postgres FTS), optionally scoped to one project — the cheapest way to find the right doc. Each hit adds a **`snippet`** (highlighted body excerpt), so you rarely need to follow it into `get_page`. Compact page refs, **server-side paged**. Requires `pages:read`. |
 
 ### Write (SDLC)
 

@@ -43,6 +43,7 @@ describe('tool registry', () => {
       'list_labels',
       'list_users',
       'search_issues',
+      'search_comments',
       'list_sprints',
       'list_components',
       'list_versions',
@@ -373,13 +374,20 @@ describe('tool registry', () => {
     });
   });
 
-  it('search_issues GETs /search with q + projectId query', async () => {
+  it('search_issues GETs /search with q + projectId + server-side paging query', async () => {
     const { client, fetchImpl } = clientWith(200, { issues: [], projects: [] });
     await tool('search_issues').handler({ q: 'login bug', projectId: 'p1' }, client);
     const url = fetchImpl.mock.calls[0][0] as string;
     expect(url).toContain('http://localhost:4000/api/search?');
     expect(url).toContain('q=login+bug');
     expect(url).toContain('projectId=p1');
+    // limit/offset go to the SERVER (they used to slice a fixed 20-row cap
+    // client-side, which made match #21 unreachable).
+    expect(url).toContain('limit=10');
+    expect(url).toContain('offset=0');
+    // Only the groups this tool returns are computed — no wasted pages/comments
+    // queries whose results would be thrown away.
+    expect(url).toContain('groups=issues%2Cprojects');
   });
 
   it('add_worklog POSTs minutes to /issues/:id/worklogs', async () => {
@@ -1139,16 +1147,67 @@ describe('tool registry', () => {
     expect(body.hasMore).toBe(true);
   });
 
-  it('search_issues paginates the issues array and leaves projects untouched', async () => {
+  it('search_issues surfaces the API paging block verbatim (snippets included)', async () => {
     const { client } = clientWith(200, {
-      issues: [{ id: 's1', key: 'NL-1' }, { id: 's2', key: 'NL-2' }],
+      // The server already applied LIMIT 1 — the tool must NOT re-slice.
+      issues: [{ id: 's1', key: 'NL-1', snippet: 'a \uE000bug\uE001 in checkout' }],
       projects: [{ id: 'p1', key: 'NL' }],
+      paging: {
+        issues: { limit: 1, offset: 0, total: 7, hasMore: true },
+        projects: { limit: 1, offset: 0, total: 1, hasMore: false },
+      },
     });
     const res = await tool('search_issues').handler({ q: 'bug', limit: 1 }, client);
     const body = JSON.parse(res.content[0].text);
-    expect(body.issues).toEqual([{ id: 's1', key: 'NL-1' }]);
+    expect(body.issues).toEqual([
+      { id: 's1', key: 'NL-1', snippet: 'a \uE000bug\uE001 in checkout' },
+    ]);
     expect(body.projects).toEqual([{ id: 'p1', key: 'NL' }]);
+    // total is the DATABASE match count, not the length of the returned page.
+    expect(body.total).toBe(7);
+    expect(body.hasMore).toBe(true);
+    expect(body.projectsTotal).toBe(1);
+  });
+
+  it('search_issues degrades gracefully against an API with no paging block', async () => {
+    // The MCP package ships to npm independently of the server, so a new build
+    // can be pointed at an older API. Report what we got rather than undefined.
+    const { client } = clientWith(200, {
+      issues: [{ id: 's1' }, { id: 's2' }],
+      projects: [],
+    });
+    const res = await tool('search_issues').handler({ q: 'bug', limit: 10 }, client);
+    const body = JSON.parse(res.content[0].text);
+    expect(body.issues).toHaveLength(2);
     expect(body.total).toBe(2);
+    expect(body.hasMore).toBe(false);
+  });
+
+  it('search_comments asks only for the comments group and returns the uniform envelope', async () => {
+    const { client, fetchImpl } = clientWith(200, {
+      comments: [
+        {
+          id: 'c1',
+          issueId: 'i1',
+          issueKey: 'NL-42',
+          issueTitle: 'Payment provider',
+          projectId: 'p1',
+          projectKey: 'NL',
+          authorName: 'Dana',
+          createdAt: '2026-07-01T00:00:00.000Z',
+          snippet: 'Decision: going with \uE000Stripe\uE001',
+        },
+      ],
+      paging: { comments: { limit: 10, offset: 0, total: 3, hasMore: true } },
+    });
+    const res = await tool('search_comments').handler({ q: 'Stripe' }, client);
+    const url = fetchImpl.mock.calls[0][0] as string;
+    expect(url).toContain('/api/search?');
+    expect(url).toContain('groups=comments');
+    const body = JSON.parse(res.content[0].text);
+    expect(body.items[0].issueKey).toBe('NL-42');
+    expect(body.items[0].snippet).toContain('Stripe');
+    expect(body.total).toBe(3);
     expect(body.hasMore).toBe(true);
   });
 
@@ -1742,13 +1801,22 @@ describe('pages (knowledge base) tools', () => {
     expect(body.truncated).toBe(false);
   });
 
-  it('search_pages GETs the pages:read-scoped /search/pages route, paginated', async () => {
+  it('search_pages GETs the pages:read-scoped /search/pages route, server-side paged with snippets', async () => {
     const { client, fetchImpl } = clientWith(200, {
       query: 'runbook',
+      // Server already applied LIMIT 1; the tool must not re-slice.
       pages: [
-        { id: 'pg-1', title: 'Runbook', projectId: 'p1', projectKey: 'NL', archived: false },
-        { id: 'pg-2', title: 'Deploy Runbook', projectId: 'p1', projectKey: 'NL', archived: false },
+        {
+          id: 'pg-1',
+          title: 'Runbook',
+          workspaceId: 'ws-1',
+          projectId: 'p1',
+          projectKey: 'NL',
+          archived: false,
+          snippet: 'restart the \uE000runbook\uE001 worker',
+        },
       ],
+      paging: { limit: 1, offset: 0, total: 2, hasMore: true },
     });
     const res = await tool('search_pages').handler({ q: 'runbook', projectId: 'p1', limit: 1 }, client);
     const url = fetchImpl.mock.calls[0][0] as string;
@@ -1757,10 +1825,20 @@ describe('pages (knowledge base) tools', () => {
     expect(url).toContain('/api/search/pages?');
     expect(url).toContain('q=runbook');
     expect(url).toContain('projectId=p1');
+    expect(url).toContain('limit=1');
     const body = JSON.parse(res.content[0].text);
     // Pages only — the issues/projects groups are not duplicated here.
+    // `workspaceId` is dropped (same for every hit, never a tool input);
+    // `snippet` is kept — it is the reason the caller doesn't need get_page.
     expect(body.items).toEqual([
-      { id: 'pg-1', title: 'Runbook', projectId: 'p1', projectKey: 'NL', archived: false },
+      {
+        id: 'pg-1',
+        title: 'Runbook',
+        projectId: 'p1',
+        projectKey: 'NL',
+        archived: false,
+        snippet: 'restart the \uE000runbook\uE001 worker',
+      },
     ]);
     expect(body.total).toBe(2);
     expect(body.hasMore).toBe(true);

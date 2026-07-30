@@ -7,7 +7,12 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router-dom';
-import type { SearchIssueDto, SearchPageDto, SearchProjectDto } from '@next-lane/shared';
+import {
+  splitSearchHighlight,
+  type SearchIssueDto,
+  type SearchPageDto,
+  type SearchProjectDto,
+} from '@next-lane/shared';
 import { useSearch } from '@/api/search';
 import { useDebouncedValue } from '@/lib/useDebouncedValue';
 import { pageRefPath } from '@/lib/pageRoute';
@@ -25,9 +30,43 @@ interface PaletteItem {
   label: ReactNode;
   /** Plain-text label for aria + matching. */
   text: string;
+  /**
+   * Optional second line — the search snippet. Rendered `aria-hidden` on
+   * purpose: an option's accessible name should be the thing you're selecting
+   * (the title), and folding a variable-length excerpt into it would both
+   * bury the title for screen-reader users and make role-based test selectors
+   * ambiguous across rows.
+   */
+  subtitle?: ReactNode;
   hint?: string;
   icon: ReactNode;
   onSelect: () => void;
+}
+
+/**
+ * Render a search snippet, emphasising the runs that matched the query.
+ *
+ * The API delimits matches with Private Use Area sentinels rather than HTML
+ * precisely so this can be done with text nodes — `splitSearchHighlight`
+ * returns plain strings, so user-authored page/issue content is never
+ * interpreted as markup. Returns null when there is no snippet (e.g. an issue
+ * with no description), so no empty line is reserved.
+ */
+function Snippet({ snippet }: { snippet: string | null }) {
+  if (!snippet) return null;
+  return (
+    <span className="block truncate text-xs font-normal text-ink-400" aria-hidden="true">
+      {splitSearchHighlight(snippet).map((seg, i) =>
+        seg.highlight ? (
+          <mark key={i} className="bg-transparent font-medium text-ink-600">
+            {seg.text}
+          </mark>
+        ) : (
+          <span key={i}>{seg.text}</span>
+        ),
+      )}
+    </span>
+  );
 }
 
 /** Extract the current project id from the path, if we're on a project route. */
@@ -149,6 +188,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
         </span>
       ),
       text: `${issue.key} ${issue.title}`,
+      subtitle: <Snippet snippet={issue.snippet} />,
       hint: issue.statusName,
       icon: <TypeDot type={issue.type} />,
       onSelect: () =>
@@ -177,6 +217,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
           </span>
         ),
         text: `${scopeLabel} ${page.title}`,
+        subtitle: <Snippet snippet={page.snippet} />,
         hint: page.archived ? 'Archived' : undefined,
         icon: <GlyphPage />,
         onSelect: () => go(pageRefPath(page)),
@@ -342,16 +383,23 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
                     onMouseMove={() => setActiveIndex(index)}
                     onClick={() => item.onSelect()}
                     className={cn(
-                      'mx-2 flex cursor-pointer items-center gap-3 rounded px-2 py-2 text-sm text-ink-700',
+                      'mx-2 flex cursor-pointer gap-3 rounded px-2 py-2 text-sm text-ink-700',
+                      // Rows with a snippet are two lines; top-align the icon
+                      // and hint so they sit against the title, not the middle
+                      // of the block.
+                      item.subtitle ? 'items-start' : 'items-center',
                       index === activeIndex && 'bg-signal-50 text-signal-700',
                     )}
                   >
                     <span className={cn('flex h-5 w-5 shrink-0 items-center justify-center', index === activeIndex ? 'text-signal-500' : 'text-ink-400')}>
                       {item.icon}
                     </span>
-                    <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate">{item.label}</span>
+                      {item.subtitle}
+                    </span>
                     {item.hint && (
-                      <span className="shrink-0 text-xs text-ink-400">
+                      <span className="shrink-0 text-xs leading-5 text-ink-400">
                         {item.hint}
                       </span>
                     )}
