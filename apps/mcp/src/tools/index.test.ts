@@ -162,6 +162,10 @@ describe('tool registry', () => {
       'update_page',
       'delete_page',
       'restore_page_version',
+      // Workspace (org-level) docs over MCP — R2, ROADMAP Phase 11 item 18 (2026-07-30)
+      'list_workspace_pages',
+      'get_workspace_page_graph',
+      'create_workspace_page',
     ];
     for (const name of expected) expect(names).toContain(name);
     // No duplicate names.
@@ -1857,5 +1861,120 @@ describe('pages (knowledge base) tools', () => {
     expect(tool('get_page_backlinks').description).toMatch(/Walk backlinks/i);
     expect(tool('get_page_links').description).toMatch(/get_page_backlinks/);
     expect(tool('get_page_backlinks').description).toMatch(/get_page_links/);
+  });
+
+  // ── Workspace (org-level) docs — R2, ROADMAP Phase 11 item 18 ───────────
+
+  it('list_workspace_pages GETs the workspace tree and flattens it into compact refs', async () => {
+    const { client, fetchImpl } = clientWith(200, sampleTree);
+    const res = await tool('list_workspace_pages').handler({ workspaceId: 'ws-1' }, client);
+    expect(fetchImpl.mock.calls[0][0]).toBe(
+      'http://localhost:4000/api/workspaces/ws-1/pages/tree',
+    );
+    const body = JSON.parse(res.content[0].text);
+    expect(body.items).toEqual([
+      { id: 'pg-1', title: 'Onboarding Guide', parentId: null, archived: false },
+      { id: 'pg-2', title: 'Setup Steps', parentId: 'pg-1', archived: false },
+      { id: 'pg-3', title: 'Runbook', parentId: null, archived: true },
+    ]);
+    expect(body.total).toBe(3);
+  });
+
+  it('list_workspace_pages applies limit/offset and verbose hydration like list_pages', async () => {
+    const { client, fetchImpl } = sequencedClient([
+      { status: 200, body: sampleTree },
+      { status: 200, body: { id: 'pg-1', title: 'Onboarding Guide', content: 'full body' } },
+    ]);
+    const res = await tool('list_workspace_pages').handler(
+      { workspaceId: 'ws-1', limit: 1, verbose: true },
+      client,
+    );
+    expect(fetchImpl.mock.calls).toHaveLength(2);
+    expect(fetchImpl.mock.calls[1][0]).toBe('http://localhost:4000/api/pages/pg-1');
+    const body = JSON.parse(res.content[0].text);
+    expect(body.items[0]).toMatchObject({ id: 'pg-1', content: 'full body' });
+    expect(body.hasMore).toBe(true);
+  });
+
+  it('get_workspace_page_graph GETs /workspaces/:id/pages/graph and passes the payload through untouched', async () => {
+    const { client, fetchImpl } = clientWith(200, {
+      nodes: [
+        {
+          id: 'pg-ws',
+          title: 'Engineering Handbook',
+          projectId: null,
+          projectKey: null,
+          updatedAt: '2026-07-30T00:00:00.000Z',
+        },
+        {
+          id: 'pg-proj',
+          title: 'Deploy Runbook',
+          projectId: 'p1',
+          projectKey: 'NL',
+          updatedAt: '2026-07-29T00:00:00.000Z',
+        },
+      ],
+      edges: [{ sourceId: 'pg-proj', targetId: 'pg-ws' }],
+      truncated: false,
+    });
+    const res = await tool('get_workspace_page_graph').handler({ workspaceId: 'ws-1' }, client);
+    expect(fetchImpl.mock.calls[0][0]).toBe(
+      'http://localhost:4000/api/workspaces/ws-1/pages/graph',
+    );
+    const body = JSON.parse(res.content[0].text);
+    // Cross-project edge (project page -> workspace page) survives untouched.
+    expect(body.edges).toEqual([{ sourceId: 'pg-proj', targetId: 'pg-ws' }]);
+    expect(body.nodes[0].projectId).toBeNull();
+    expect(body.nodes[1].projectKey).toBe('NL');
+  });
+
+  it('create_workspace_page POSTs title/content/parentId to /workspaces/:id/pages', async () => {
+    const { client, fetchImpl } = clientWith(201, { id: 'pg-ws', title: 'Engineering Handbook' });
+    await tool('create_workspace_page').handler(
+      {
+        workspaceId: 'ws-1',
+        title: 'Engineering Handbook',
+        content: 'See [[Deploy Runbook]].',
+        parentId: null,
+      },
+      client,
+    );
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toBe('http://localhost:4000/api/workspaces/ws-1/pages');
+    expect((init as RequestInit).method).toBe('POST');
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({
+      title: 'Engineering Handbook',
+      content: 'See [[Deploy Runbook]].',
+      parentId: null,
+    });
+  });
+
+  it('workspace page tools are scoped to a workspaceId, never a projectId', () => {
+    for (const name of [
+      'list_workspace_pages',
+      'get_workspace_page_graph',
+      'create_workspace_page',
+    ]) {
+      expect(Object.keys(tool(name).inputSchema)).toContain('workspaceId');
+      expect(Object.keys(tool(name).inputSchema)).not.toContain('projectId');
+    }
+    expect(tool('create_workspace_page').group).toBe('write');
+    expect(tool('list_workspace_pages').group).toBe('read');
+    expect(tool('get_workspace_page_graph').group).toBe('read');
+  });
+
+  it('page tool descriptions state the CURRENT wiki-link scope (workspace-wide, not project-only)', () => {
+    // Regression guard for the stale "links resolve within the project" claim
+    // corrected on 2026-07-30 (syncWikiLinks went workspace-wide 2026-07-17).
+    for (const name of ['create_page', 'create_workspace_page', 'get_page_backlinks']) {
+      expect(tool(name).description).toMatch(/workspace-wide/i);
+    }
+    expect(tool('create_page').description).not.toMatch(/title match within the project/i);
+  });
+
+  it('get_page_graph description reports the real node shape, including updatedAt', () => {
+    const d = tool('get_page_graph').description;
+    expect(d).toMatch(/\{id, title, projectId, projectKey, updatedAt\}/);
+    expect(d).toMatch(/get_workspace_page_graph/);
   });
 });

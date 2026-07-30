@@ -271,7 +271,7 @@ live.
 - ✅ **Personal & team analytics backend** — `AnalyticsModule` (`apps/api/src/analytics/`): `GET /me/analytics?days=N` → `PersonalAnalyticsDto` (open/completed/overdue assigned issues, per-day throughput flow series, avg cycle time, byType/byPriority CategoryCountDto groups, personal board stats); `GET /projects/:projectId/analytics?days=N` → `ProjectAnalyticsDto` (per-day flow series, createdTotal/completedTotal, avg cycle time, all-5-bucket CycleTimeBucketDto distribution with en-dash labels, WorkloadRowDto by assignee busiest-first + Unassigned row); both endpoints use ActivityLog completion-date reconstruction identical to reports.service; `days` defaults to 30, clamped to [1, 366]; 25 unit tests (analytics.service.spec.ts); build + typecheck clean; registered in AppModule. (2026-06-28)
 - ✅ **Personal & team analytics frontend** (2026-06-28) — `PersonalAnalyticsPage` at `/me/analytics` (14/30/90-day window selector, headline stat cards, hand-rolled SVG throughput chart, type/priority horizontal bar breakdowns, personal board mini-stats); `ProjectAnalyticsPage` at `/projects/:projectId/analytics` (window selector, headline stats, flow chart, cycle-time distribution, workload bars by assignee); "Analytics" tab in `ProjectNav`; "Insights" link in `AppHeader`; WCAG-AA, accessible charts with visually-hidden summaries; full data-testid coverage; Playwright e2e (desktop + mobile); build green.
 
-## Phase 11 — Pages: a Confluence × Obsidian hybrid, agent-traversable 🚧 (schema + backend module + MCP tools shipped 2026-07-09; org-wide docs schema + workspace-scoped backend + workspace Docs frontend surface shipped 2026-07-10; cross-workspace-safe wiki-link resolution + workspace-wide graph shipped 2026-07-17; cross-project scope-indicator/link-routing frontend shipped 2026-07-17 — founder directive 2026-07-06, scope sharpened 2026-07-09, org-wide 2026-07-10; only item 18 — search scoping + MCP traversal tools — remains ⬜)
+## Phase 11 — Pages: a Confluence × Obsidian hybrid, agent-traversable 🚧 (schema + backend module + MCP tools shipped 2026-07-09; org-wide docs schema + workspace-scoped backend + workspace Docs frontend surface shipped 2026-07-10; cross-workspace-safe wiki-link resolution + workspace-wide graph shipped 2026-07-17; cross-project scope-indicator/link-routing frontend shipped 2026-07-17 — founder directive 2026-07-06, scope sharpened 2026-07-09, org-wide 2026-07-10; **item 18 — workspace-docs MCP traversal tools + search scoping — shipped 2026-07-30**, so every numbered slice in this phase is now ✅. Phase status left 🚧 pending an orchestrator close-out pass; the follow-up recall work — ranked search snippets and a real result cap, `docs/RESEARCH-AGENT-MEMORY.md` R1 — is tracked separately, not as a Phase 11 slice.)
 
 **Founder directive, verbatim (2026-07-06): "How can we add a confluence type
 section?"** **Sharpened same-week (2026-07-09): "Could it be hybrid of
@@ -638,8 +638,66 @@ chokepoint, mirroring `assertProjectRole`'s role as the project-level one.
     WorkspaceDocsPage.tsx`, `apps/web/src/components/nav/**`,
     `apps/web/src/components/WorkspaceSettingsNav.tsx`, `apps/web/src/api/
     pages.ts`, `apps/web/src/api/keys.ts`. **Size:** M.
-18. ⬜ **Search + MCP — workspace-wide search scoping and cross-project/
-    workspace-docs traversal tools** — extends the existing
+18. ✅ **Search + MCP — workspace-wide search scoping and cross-project/
+    workspace-docs traversal tools** — **shipped 2026-07-30**
+    (`docs/RESEARCH-AGENT-MEMORY.md` R2, "close the org-wide memory hole").
+    **Three new MCP tools**, derived from the REST routes that actually
+    exist rather than the eight originally sketched: `list_workspace_pages`
+    (`GET /workspaces/:id/pages/tree`, `pages:read`),
+    `get_workspace_page_graph` (`GET /workspaces/:id/pages/graph`,
+    `pages:read`), `create_workspace_page` (`POST /workspaces/:id/pages`,
+    `pages:write`) — 120 → **123 tools** (59 read / 64 write). The other
+    five sketched tools (`get_/update_/move_/delete_workspace_page`,
+    `get_workspace_page_backlinks`) were deliberately NOT built: those are
+    by-id routes (`/pages/:id`, `…/move`, `…/backlinks`) that `PagesService`
+    already branches on `projectId === null` for, so `get_page`/
+    `update_page`/`move_page`/`delete_page`/`get_page_backlinks` already
+    operate on workspace pages — duplicating them under a second name would
+    add tool-list bytes and zero capability. Scopes match each route's
+    `@RequireScope` exactly; MCP stays a pure PAT passthrough with no authz
+    of its own. **Description corrections in the same commit:**
+    `get_page_graph` now states the real node shape
+    (`{id, title, projectId, projectKey, updatedAt}` — it had claimed
+    `{id, title}`, hiding the built-in staleness signal), and every page
+    tool that described `[[wiki-link]]` resolution as project-scoped now
+    states the truth (workspace-wide since slice 15, 2026-07-17).
+    **Server-instructions rewrite:** the MCP handshake text now names the
+    pages graph as the memory and describes `get_project_context` as what
+    it is — a short, full-replace, 64 KB handoff note that POINTS at the
+    pages. It previously called that blob "the project's persistent
+    memory" and mentioned the graph second, which is why agents reached for
+    a flat document instead of the traversable knowledge base
+    (`docs/RESEARCH-AGENT-MEMORY.md` §2, §4.2). Pinned by five new
+    assertions in `apps/mcp/src/index.test.ts`. **Search half:** already
+    satisfied by the shipped implementation and re-verified live —
+    `searchPagesFts`/`searchPagesIlike` scope by `Page.workspaceId` (not
+    `projectId`), so workspace-level pages are searchable and tenant-scoped
+    by construction, and `/search/pages` is gated on `pages:read`; a
+    ranked-snippet/pagination upgrade is `RESEARCH-AGENT-MEMORY.md` R1, a
+    separate follow-up, NOT part of this item. **Verified:** MCP 147/147
+    (+37) and build clean; API integration 441/441 incl.
+    `pat-scope-coverage` — the scope matrix already rostered all three
+    workspace page routes, no hole to fill; `tsc --noEmit` clean across
+    api/web/mcp/shared; and a live round-trip through the REAL stdio MCP
+    server (spawned `node dist/index.js`, JSON-RPC over stdin/stdout)
+    creating two workspace pages + one project page that `[[wiki-link]]`s
+    into the workspace docs space, then reading the graph back: **3 nodes /
+    4 edges, all four cross-scope edges resolved, 1,078 B**;
+    `list_workspace_pages` 359 B (2 items, no project-page leak);
+    `create_workspace_page` 936 B; `get_page_backlinks` on the handbook
+    747 B showing both the workspace runbook and the cross-project page
+    with `sourceProjectKey`; the per-project `get_page_graph` correctly
+    still shows 1 node / 0 edges (278 B), proving the cross-scope edges are
+    visible ONLY through the workspace graph. **Acceptance criteria met:**
+    live negative matrix — an outsider PAT with `pages:read`+`pages:write`
+    gets 403 on all three workspace page routes, and an owner PAT
+    WITHOUT `pages:read` also gets 403 on all three; the standing
+    `tenant-isolation.integration.spec.ts` matrix (already covering the
+    workspace graph/tree routes and asserting workspace A's graph contains
+    no node or edge from tenant B) passes unchanged. **Territory:**
+    `apps/mcp/src/**` (no API change was needed).
+    <details><summary>Original slice definition</summary>
+    Extends the existing
     `Page.searchVector` FTS (shipped 2026-07-09) and the
     `canReadPages`/`includePages` pattern (the exact mechanism the
     2026-07-10 `/search` leak fix introduced) to workspace-scoped pages: a
@@ -663,6 +721,7 @@ chokepoint, mirroring `assertProjectRole`'s role as the project-level one.
     (no `pages:read`) sees zero pages from either scope, mirroring the
     just-fixed `/search` regression test shape exactly. **Territory:**
     `apps/api/src/search/**`, `apps/mcp/src/tools/**`. **Size:** M.
+    </details>
 
 **PAT-scope recommendation (applies to slices 14/16/18, stated once here
 rather than per-slice):** keep `pages:read`/`pages:write` as the single
