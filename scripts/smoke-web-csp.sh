@@ -69,15 +69,26 @@ wait_ready() {
   for i in $(seq 1 30); do
     # -o /dev/null + %{http_code}: never fails on HTTP status, so a reachable
     # server that answers 4xx/5xx is distinguishable from an unreachable one.
+    #
+    # NO `|| echo 000` here. curl ALREADY prints 000 when it cannot connect,
+    # and it also exits non-zero — so the fallback appended a second 000 and
+    # produced the literal string "000000". That matched neither `2??` nor
+    # `000`, fell through to the catch-all, and hard-failed a container that
+    # was simply still starting ("Up Less than a second"). Use `|| true` so a
+    # non-zero exit doesn't kill the script under `set -e`, and let curl's
+    # own output stand.
     code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
-      "http://127.0.0.1:${port}/" 2>/dev/null || echo 000)"
+      "http://127.0.0.1:${port}/" 2>/dev/null || true)"
     case "$code" in
-      2??) return 0 ;;
-      000) : ;;  # not reachable yet — keep waiting
-      *)   # Reachable but unhappy: that is a real failure, not a timeout.
+      2[0-9][0-9]) return 0 ;;
+      # Only a well-formed 3-digit non-2xx is a genuine HTTP error worth
+      # failing on immediately. Empty, 000, or anything malformed means "not
+      # reachable yet" — keep waiting rather than inventing a diagnosis.
+      [1-9][0-9][0-9])
            echo "----- docker ps -----" >&2; docker ps -a --filter "name=${name}" >&2 || true
            echo "----- docker logs ${name} -----" >&2; docker logs "$name" >&2 2>&1 || true
            fail "nginx answered HTTP ${code} (not 2xx) on port ${port} (container ${name})" ;;
+      *)   : ;;  # ''/000/unexpected — still coming up
     esac
     sleep 1
   done
