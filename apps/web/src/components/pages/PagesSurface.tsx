@@ -49,7 +49,8 @@ import { OutgoingLinksPanel } from './OutgoingLinksPanel';
 import { PageLinkedIssuesSection } from './PageLinkedIssuesSection';
 import { VersionHistoryDrawer } from './VersionHistoryDrawer';
 import { KnowledgeGraphView } from './graph/KnowledgeGraphView';
-import { CreatePageModal } from './CreatePageModal';
+import { BLANK_TEMPLATE_ID, CreatePageModal } from './CreatePageModal';
+import { usePageTemplates, useCreatePageFromTemplate } from '@/api/pageTemplates';
 import { cn } from '@/lib/cn';
 
 /**
@@ -167,6 +168,10 @@ export function PagesSurface({
   const createProjectPage = useCreatePage(scope.kind === 'project' ? scope.id : '');
   const createWorkspacePage = useCreateWorkspacePage(scope.kind === 'workspace' ? scope.id : '');
   const createPage = scope.kind === 'project' ? createProjectPage : createWorkspacePage;
+  // Doc templates offered for this scope. A project's list also carries the
+  // workspace-wide templates it inherits (server-merged, project rows first).
+  const templatesQuery = usePageTemplates(scope);
+  const createFromTemplate = useCreatePageFromTemplate(scope);
 
   const updatePage = useUpdatePage(scope);
   const deletePage = useDeletePage(scope);
@@ -213,18 +218,35 @@ export function PagesSurface({
     navigate(pageRefPath(ref));
   }
 
-  function handleCreate(title: string) {
+  function handleCreate(title: string, templateId: string) {
     if (!createModal) return;
-    createPage.mutate(
-      { title, parentId: createModal.parentId },
-      {
-        onSuccess: (created) => {
-          toast.success('Page created.');
-          setCreateModal(null);
-          openPage(created.id);
-        },
-        onError: (err) => toast.error(errorMessage(err, 'Could not create the page.')),
+    // Same success/failure handling either way — only the endpoint differs.
+    const onSettled = {
+      onSuccess: (created: { id: string }) => {
+        toast.success('Page created.');
+        setCreateModal(null);
+        openPage(created.id);
       },
+      onError: (err: unknown) =>
+        toast.error(errorMessage(err, 'Could not create the page.')),
+    };
+
+    if (templateId === BLANK_TEMPLATE_ID) {
+      createPage.mutate({ title, parentId: createModal.parentId }, onSettled);
+      return;
+    }
+
+    // A workspace-wide template can create a page in EITHER space, so the
+    // destination has to be stated explicitly: pass this surface's project
+    // when mounted under one, and null for the workspace-docs surface.
+    createFromTemplate.mutate(
+      {
+        templateId,
+        title,
+        parentId: createModal.parentId,
+        projectId: scope.kind === 'project' ? scope.id : null,
+      },
+      onSettled,
     );
   }
 
@@ -455,7 +477,8 @@ export function PagesSurface({
         open={createModal !== null}
         parentTitle={createModal?.parentTitle}
         initialTitle={createModal?.initialTitle}
-        loading={createPage.isPending}
+        loading={createPage.isPending || createFromTemplate.isPending}
+        templates={templatesQuery.data}
         onCreate={handleCreate}
         onClose={() => setCreateModal(null)}
       />

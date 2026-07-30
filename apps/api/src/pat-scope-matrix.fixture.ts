@@ -218,6 +218,22 @@ export const MATRIX: MatrixRow[] = [
   { controller: 'pages', method: 'GET', path: `/workspaces/${X}/pages/tree`, scope: 'pages:read' },
   { controller: 'pages', method: 'GET', path: `/workspaces/${X}/pages/graph`, scope: 'pages:read' },
 
+  // page-templates (doc templates) — reusable markdown skeletons for pages.
+  // Gated by `pages:*`, NOT `projects:*`: a template only ever reads and
+  // writes page content, so a wiki-scoped agent can use them without also
+  // being granted project administration. (IssueTemplate uses `projects:*`
+  // because its payload spans assignees/components/labels.)
+  { controller: 'page-templates', method: 'GET', path: `/workspaces/${X}/page-templates`, scope: 'pages:read' },
+  { controller: 'page-templates', method: 'GET', path: `/projects/${X}/page-templates`, scope: 'pages:read' },
+  { controller: 'page-templates', method: 'GET', path: `/page-templates/${X}`, scope: 'pages:read' },
+  { controller: 'page-templates', method: 'POST', path: `/workspaces/${X}/page-templates`, scope: 'pages:write' },
+  { controller: 'page-templates', method: 'POST', path: `/projects/${X}/page-templates`, scope: 'pages:write' },
+  { controller: 'page-templates', method: 'PATCH', path: `/page-templates/${X}`, scope: 'pages:write' },
+  { controller: 'page-templates', method: 'DELETE', path: `/page-templates/${X}`, scope: 'pages:write' },
+  // Writes a Page, so `pages:write` — the destination's MEMBER check is
+  // enforced by PagesService, same as a direct create.
+  { controller: 'page-templates', method: 'POST', path: `/page-templates/${X}/create-page`, scope: 'pages:write' },
+
   // project-memberships
   { controller: 'project-memberships', method: 'GET', path: `/projects/${X}/members`, scope: 'projects:read' },
   { controller: 'project-memberships', method: 'PUT', path: `/projects/${X}/members/${X}/role`, scope: 'projects:write' },

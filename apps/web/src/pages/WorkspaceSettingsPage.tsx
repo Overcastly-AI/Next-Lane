@@ -11,6 +11,7 @@ import { Role } from '@next-lane/shared';
 import { AppHeader } from '@/components/AppHeader';
 import { WorkspaceSettingsNav } from '@/components/WorkspaceSettingsNav';
 import { Button } from '@/components/ui/Button';
+import { PageTemplatesSection } from '@/components/settings/PageTemplatesSection';
 import { Input } from '@/components/ui/Input';
 import { Field } from '@/components/ui/Field';
 import { LoadingState, ErrorState } from '@/components/ui/States';
@@ -279,6 +280,19 @@ export function WorkspaceSettingsPage() {
                 Save
               </Button>
             </form>
+          </section>
+
+          {/* Workspace-wide doc templates: offered when creating a page
+              anywhere in this workspace, including inside any project.
+              Project-local templates are managed in project settings. */}
+          <section
+            className="rounded-xl border border-ink-200 bg-surface p-5 shadow-card"
+            aria-label="Doc templates"
+          >
+            <PageTemplatesSection
+              scope={{ kind: 'workspace', id: workspaceId }}
+              canManage={isAdmin}
+            />
           </section>
 
           {/* Danger zone */}

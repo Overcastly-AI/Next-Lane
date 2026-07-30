@@ -24,6 +24,7 @@ import {
 import { Role } from '@next-lane/shared';
 import type { WorkspaceDto, MembershipDto } from '@next-lane/shared';
 import { AuditService } from '../audit/audit.service';
+import { PageTemplatesService } from '../page-templates/page-templates.service';
 
 /** Default upload directory; override with UPLOADS_DIR env var. */
 export const DEFAULT_UPLOADS_DIR = './uploads';
@@ -82,6 +83,7 @@ export class WorkspacesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly pageTemplates: PageTemplatesService,
   ) {}
 
   async findAll(userId: string): Promise<WorkspaceDto[]> {
@@ -113,6 +115,16 @@ export class WorkspacesService {
             },
           },
         });
+        // Seed the built-in doc templates so a new workspace has something to
+        // create pages from immediately. Best-effort ON PURPOSE: templates are
+        // a convenience, and failing the whole workspace creation because a
+        // starter row didn't insert would be wildly disproportionate. The boot
+        // backfill re-attempts any workspace still marked unseeded.
+        try {
+          await this.pageTemplates.seedStarters(workspace.id);
+        } catch {
+          // Intentionally swallowed — see above.
+        }
         return toWorkspaceDto(workspace);
       } catch (err) {
         const isSlugCollision =

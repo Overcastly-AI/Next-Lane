@@ -60,6 +60,9 @@ export function PageContent({
     <div
       className={['markdown-body nl-page-content text-sm text-ink-700', className].filter(Boolean).join(' ')}
       onClick={handleClick}
+      // Stable hook for asserting rendered page body in e2e — the class list
+      // above is styling and must stay free to change.
+      data-testid="page-content"
     >
       {segments.map((seg, i) => {
         if (seg.kind === 'mermaid') {

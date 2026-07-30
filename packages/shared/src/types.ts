@@ -2711,3 +2711,70 @@ export interface PaginatedPageVersionsDto {
   /** Opaque cursor for the next page, or null when there is no more. */
   nextCursor: string | null;
 }
+
+// ---------------------------------------------------------------------------
+// Page templates (doc templates)
+// ---------------------------------------------------------------------------
+
+/**
+ * A reusable markdown skeleton for creating pages.
+ *
+ * Scope mirrors `PageDto` exactly: `workspaceId` is always present, and
+ * `projectId` narrows the template to one project. A template with
+ * `projectId: null` is workspace-wide and usable when creating ANY page in
+ * that workspace — including inside a project. That inheritance is the reason
+ * the two scopes exist rather than just one: shared house style lives at the
+ * workspace, and a project can add its own without duplicating the rest.
+ */
+export interface PageTemplateDto {
+  id: string;
+  workspaceId: string;
+  /** Null = workspace-wide (available to every project in the workspace). */
+  projectId: string | null;
+  name: string;
+  /** Short blurb shown under the name in the template picker. */
+  description: string | null;
+  /** Default title for pages made from this template; may contain tokens. */
+  titleTemplate: string | null;
+  /** The markdown body, with `{{token}}` placeholders unrendered. */
+  content: string;
+  /**
+   * True for a row seeded from `PAGE_TEMPLATE_STARTERS`. Purely informational
+   * — a built-in row is edited and deleted exactly like a user-authored one.
+   */
+  builtIn: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Body for POST /workspaces/:workspaceId/page-templates and the project variant. */
+export interface CreatePageTemplateDto {
+  name: string;
+  description?: string | null;
+  titleTemplate?: string | null;
+  content?: string;
+}
+
+/** Body for PATCH /page-templates/:id */
+export interface UpdatePageTemplateDto {
+  name?: string;
+  description?: string | null;
+  titleTemplate?: string | null;
+  content?: string;
+}
+
+/**
+ * Body for POST /page-templates/:id/create-page.
+ *
+ * `projectId` picks the destination for a WORKSPACE-WIDE template: omit (or
+ * null) to create a workspace-level page, or name a project to create the page
+ * inside it. For a project-scoped template the destination is already fixed by
+ * the template, and passing a different `projectId` is rejected rather than
+ * silently ignored.
+ */
+export interface CreatePageFromTemplateDto {
+  projectId?: string | null;
+  parentId?: string | null;
+  /** Overrides the template's `titleTemplate`. */
+  title?: string;
+}

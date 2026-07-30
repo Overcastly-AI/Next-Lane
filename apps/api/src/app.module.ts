@@ -58,6 +58,7 @@ import { DashboardsModule } from './dashboards/dashboards.module';
 import { AdminSettingsModule } from './admin-settings/admin-settings.module';
 import { AgentContextModule } from './agent-context/agent-context.module';
 import { PagesModule } from './pages/pages.module';
+import { PageTemplatesModule } from './page-templates/page-templates.module';
 import { HealthController } from './health.controller';
 
 const isProd = process.env.NODE_ENV === 'production';
@@ -192,6 +193,7 @@ const isProd = process.env.NODE_ENV === 'production';
     AdminSettingsModule,
     AgentContextModule,
     PagesModule,
+    PageTemplatesModule,
   ],
   controllers: [HealthController],
   providers: [

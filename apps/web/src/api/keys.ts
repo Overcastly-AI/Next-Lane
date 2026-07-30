@@ -99,6 +99,14 @@ export const qk = {
    * `/projects/:id/pages/tree`) and must never collide or cross-invalidate.
    */
   workspacePageTree: (workspaceId: string) => ['workspacePageTree', workspaceId] as const,
+  /**
+   * Doc templates offered for a scope. Keyed by scope kind + id because a
+   * project's list INCLUDES the workspace-wide templates it inherits, so the
+   * project list is not derivable from the workspace one and the two must
+   * cache separately.
+   */
+  pageTemplates: (scope: PagesScope) =>
+    [scope.kind === 'project' ? 'projectPageTemplates' : 'workspacePageTemplates', scope.id] as const,
   /** A workspace's org-wide page<->page wiki-link graph (the workspace Docs graph view). */
   workspacePageGraph: (workspaceId: string) => ['workspacePageGraph', workspaceId] as const,
   /** A single page's full detail (title/content/metadata). */
