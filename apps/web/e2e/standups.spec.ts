@@ -14,6 +14,7 @@ import {
   createIssue,
   API_URL,
   login,
+  trackApiWrites,
   type IsolatedContext,
 } from './helpers';
 
@@ -173,6 +174,13 @@ test.describe('Async Standups — desktop', () => {
     page,
   }) => {
     await login(page, { email: ctx.user.email, password: ctx.user.password });
+    // Two saves in a row, so wait for the SERVER to ack them rather than for a
+    // toast. The first toast is still on screen when the second save fires:
+    // `getByText(/standup saved/i)` was satisfied by the stale one, which both
+    // let the reload race the second write (the observed failure, ~1 run in
+    // 12) and, worse, would have let a silently-failing second save pass. Two
+    // toasts also trip strict mode outright. See `trackApiWrites`.
+    const writes = trackApiWrites(page);
     await goToStandupsPage(page, ctx.project.id);
 
     // First save.
@@ -184,8 +192,13 @@ test.describe('Async Standups — desktop', () => {
     // Update the fields and save again (upsert).
     await page.getByTestId('standup-yesterday').fill('Updated yesterday text');
     await page.getByTestId('standup-save').click();
-    await expect(page.getByText(/standup saved/i)).toBeVisible({
-      timeout: 10_000,
+
+    // Both saves acked, nothing still in flight. `atLeast: 2` is the part that
+    // makes a swallowed second click fail as "1 of 2 acked" rather than as an
+    // opaque text mismatch after the reload.
+    await writes.settle({
+      match: (w) => w.path.includes('/standups'),
+      atLeast: 2,
     });
 
     // Reload and verify updated text is shown.
