@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
+import { moveUploadedFile } from '../common/move-file.util';
 import * as crypto from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -216,7 +217,7 @@ export class AttachmentsService {
     const uploadsDir = getUploadsDir();
     fs.mkdirSync(uploadsDir, { recursive: true });
     const dest = path.join(uploadsDir, storageKey);
-    fs.renameSync(file.path, dest);
+    moveUploadedFile(file.path, dest);
 
     const attachment = await this.prisma.attachment.create({
       data: {

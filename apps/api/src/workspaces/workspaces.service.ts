@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
+import { moveUploadedFile } from '../common/move-file.util';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const fileType = require('file-type') as typeof import('file-type');
 import { Prisma } from '@prisma/client';
@@ -474,7 +475,7 @@ export class WorkspacesService {
     // Use the multer-assigned temp filename (already a UUID) as the storage key.
     const storageKey = path.basename(file.path);
     const dest = path.join(uploadsDir, storageKey);
-    fs.renameSync(file.path, dest);
+    moveUploadedFile(file.path, dest);
 
     const workspace = await this.prisma.workspace.update({
       where: { id: workspaceId },
