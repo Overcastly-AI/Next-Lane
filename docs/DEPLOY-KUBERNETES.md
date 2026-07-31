@@ -436,6 +436,98 @@ Redis). For a batteries-included quick-start, prefer the Helm chart.
 
 ---
 
+## Object storage (S3-compatible, incl. Ceph)
+
+By default, uploaded files — issue attachments and workspace logos — are
+written to the api pod's `uploads` volume. That works, but it is **node-local**,
+which is why running more than one api replica requires ReadWriteMany storage
+(the chart refuses the combination outright rather than letting attachments
+404 intermittently).
+
+Pointing Next Lane at an object store removes that constraint: every replica
+reads and writes the same bucket, so the api scales freely and the guard stands
+down automatically.
+
+One driver covers **Ceph RADOS Gateway, MinIO, AWS S3, Cloudflare R2 and
+Wasabi** — they all speak S3, so only the endpoint and credentials differ.
+
+### Ceph (Rook)
+
+Rook publishes an S3 endpoint via `CephObjectStore`, and creates a Secret per
+`CephObjectStoreUser` containing `AccessKey` / `SecretKey`. Reference it
+directly rather than copying the credentials into your values:
+
+```yaml
+storage:
+  driver: s3
+  s3:
+    bucket: next-lane
+    endpoint: http://rook-ceph-rgw-my-store.rook-ceph.svc.cluster.local
+    # Rook's own key names — remapped onto the S3_* vars the API reads.
+    existingSecret: rook-ceph-object-user-my-store-next-lane
+    existingSecretAccessKeyIdKey: AccessKey
+    existingSecretSecretAccessKeyKey: SecretKey
+```
+
+The bucket must already exist — create it with a `CephObjectStoreUser` +
+`ObjectBucketClaim`, or with `mc`/`aws s3 mb` against the RGW endpoint. Next
+Lane does not create buckets: doing so would require broader credentials than
+reading and writing objects, for a one-time action an operator should own.
+
+> **Path-style addressing is on by default whenever `endpoint` is set**, which
+> is what Ceph RGW needs. Virtual-host style would require `bucket.rgw-host` to
+> resolve in DNS, and for an in-cluster Service name it does not. Override with
+> `storage.s3.forcePathStyle: false` only if your gateway is set up for it.
+
+### AWS S3 with IRSA (no static keys)
+
+Leave **both** credentials empty and the SDK falls back to its provider chain,
+so an IAM role bound to the service account is used:
+
+```yaml
+serviceAccount:
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/next-lane-s3
+storage:
+  driver: s3
+  s3:
+    bucket: next-lane-uploads
+    region: eu-west-1        # omit `endpoint` for real AWS
+```
+
+Setting only one of the two credentials is rejected at render time — a partial
+pair silently shadows the provider chain and then fails with a 403 that points
+nowhere near the cause.
+
+### Reference
+
+| Value | Default | Description |
+| --- | --- | --- |
+| `storage.driver` | `local` | `local` (pod volume) or `s3`. |
+| `storage.s3.bucket` | `""` | Required for `s3`. Must already exist. |
+| `storage.s3.endpoint` | `""` | Ceph RGW / MinIO URL. Empty = real AWS S3. |
+| `storage.s3.region` | `us-east-1` | Ignored by Ceph/MinIO; the SDK requires a value. |
+| `storage.s3.forcePathStyle` | `""` (auto) | Auto = on when `endpoint` is set. |
+| `storage.s3.prefix` | `""` | Key prefix, so one bucket can host several installs. |
+| `storage.s3.accessKeyId` / `secretAccessKey` | `""` | Inline creds; both or neither. |
+| `storage.s3.existingSecret` | `""` | Read creds from a Secret you manage. Wins over inline. |
+
+### Migrating an existing install
+
+Switching the driver does **not** move existing files. Copy the contents of the
+`uploads` volume into the bucket first — keys are flat, so a plain sync is
+enough — then flip `storage.driver`:
+
+```bash
+kubectl exec deploy/next-lane-api -- tar cf - -C /app/uploads . | tar xf - -C ./uploads-backup
+aws s3 sync ./uploads-backup s3://next-lane/ --endpoint-url http://rgw.example
+```
+
+Anything not copied will 404 on download; the DB rows are unaffected, so a
+missed file can be re-synced later without data loss.
+
+---
+
 ## Images
 
 **You do not need to build anything.** Multi-arch (amd64 + arm64) images are

@@ -9,6 +9,7 @@ import { CorrelationIdMiddleware } from './common/correlation-id.middleware';
 import { CorrelationIdInterceptor } from './common/correlation-id.interceptor';
 import { ConfigurableThrottlerGuard } from './common/configurable-throttler.guard';
 import { PrismaModule } from './prisma/prisma.module';
+import { StorageModule } from './storage/storage.module';
 import { RedisModule } from './redis/redis.module';
 import { AuthModule } from './auth/auth.module';
 import { OidcModule } from './auth/oidc/oidc.module';
@@ -144,6 +145,8 @@ const isProd = process.env.NODE_ENV === 'production';
       },
     ]),
     PrismaModule,
+    // @Global — every uploader resolves the same configured driver.
+    StorageModule,
     RedisModule,
     RealtimeModule,
     AuthModule,

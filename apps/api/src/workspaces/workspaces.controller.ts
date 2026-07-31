@@ -180,16 +180,16 @@ export class WorkspacesController {
   @Public()
   @Get(':id/logo')
   async serveLogo(@Param('id') id: string, @Res() res: Response) {
-    const { filePath, mimeType } = await this.workspaces.resolveLogo(id);
+    const { stream, mimeType } = await this.workspaces.resolveLogo(id);
 
     res.setHeader('Content-Type', mimeType);
     // Public branding asset: allow shared caches (CDN/proxy) to cache for 5
     // minutes; allow clients to cache for 1 hour.
     res.setHeader('Cache-Control', 'public, max-age=3600, s-maxage=300');
-    // `filePath` is absolute (resolveLogo path.resolve's it). Passing it
-    // directly is both correct and safer than the previous `{ root: '/' }`,
-    // which re-rooted a relative path at the filesystem root (the ENOENT/500
-    // bug) and made every path the server could name reachable in principle.
-    res.sendFile(filePath);
+    // Piped rather than `res.sendFile`: with the s3 driver there is no
+    // filesystem path. Destroy the socket if the stream dies mid-transfer —
+    // headers are already flushed, so it can't become an error response.
+    stream.on('error', () => res.destroy());
+    stream.pipe(res);
   }
 }

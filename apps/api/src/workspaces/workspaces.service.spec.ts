@@ -25,6 +25,7 @@ import { WorkspacesService, LOGO_MAX_BYTES, LOGO_ALLOWED_MIME_TYPES, toWorkspace
 import type { PrismaService } from '../prisma/prisma.service';
 import type { AuditService } from '../audit/audit.service';
 import type { PageTemplatesService } from '../page-templates/page-templates.service';
+import { LocalStorageDriver } from '../storage/local-storage.driver';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -131,7 +132,14 @@ function makePageTemplates(): PageTemplatesService {
 
 function makeService(prisma: PrismaService) {
   process.env.UPLOADS_DIR = os.tmpdir();
-  return new WorkspacesService(prisma, makeAudit(), makePageTemplates());
+  return new WorkspacesService(
+    prisma,
+    makeAudit(),
+    makePageTemplates(),
+    // Real local driver against a temp dir — see the attachments spec for why
+    // this is preferable to a mock here.
+    new LocalStorageDriver(),
+  );
 }
 
 function makeTmpFile(
@@ -529,10 +537,14 @@ describe('WorkspacesService.resolveLogo()', () => {
     });
 
     const svc = makeService(prisma);
-    const { filePath, mimeType } = await svc.resolveLogo(WS_ID);
+    const { stream, mimeType } = await svc.resolveLogo(WS_ID);
 
     expect(mimeType).toBe('image/png');
-    expect(filePath).toBe(path.join(os.tmpdir(), storageKey));
+    // Assert the bytes, not a path — resolveLogo now returns a stream so it
+    // works for object storage as well as disk.
+    const chunks: Buffer[] = [];
+    for await (const c of stream) chunks.push(Buffer.from(c as Buffer));
+    expect(chunks.length).toBeGreaterThan(0);
 
     fs.unlinkSync(tmpFile);
   });

@@ -14,6 +14,31 @@ data:
   API_PORT: {{ .Values.api.port | quote }}
   LOG_LEVEL: {{ .Values.api.env.LOG_LEVEL | quote }}
   JWT_EXPIRES_IN: {{ .Values.api.env.JWT_EXPIRES_IN | quote }}
+  UPLOADS_DIR: {{ .Values.api.uploads.mountPath | quote }}
+  {{- /*
+    Object storage. Non-secret settings only — credentials go in the Secret.
+    Emitted only for the s3 driver so a `local` install's ConfigMap is
+    unchanged and there are no empty S3_* keys to puzzle over.
+  */}}
+  STORAGE_DRIVER: {{ .Values.storage.driver | quote }}
+  {{- if eq .Values.storage.driver "s3" }}
+  S3_BUCKET: {{ required "storage.s3.bucket is required when storage.driver=s3" .Values.storage.s3.bucket | quote }}
+  {{- with .Values.storage.s3.endpoint }}
+  S3_ENDPOINT: {{ . | quote }}
+  {{- end }}
+  S3_REGION: {{ .Values.storage.s3.region | quote }}
+  {{- /*
+    Only emit when explicitly set: an empty value would override the API's
+    auto-detect (path-style ON whenever an endpoint is configured), which is
+    exactly what a self-hosted Ceph RGW / MinIO needs.
+  */}}
+  {{- if ne (toString .Values.storage.s3.forcePathStyle) "" }}
+  S3_FORCE_PATH_STYLE: {{ .Values.storage.s3.forcePathStyle | quote }}
+  {{- end }}
+  {{- with .Values.storage.s3.prefix }}
+  S3_PREFIX: {{ . | quote }}
+  {{- end }}
+  {{- end }}
   {{- $cors := include "next-lane.corsOrigins" . }}
   {{- if $cors }}
   CORS_ORIGINS: {{ $cors | quote }}
