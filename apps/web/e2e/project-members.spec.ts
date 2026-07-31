@@ -37,6 +37,23 @@ async function gotoSettings(page: Page, projectId: string): Promise<void> {
   ).toBeVisible({ timeout: 15_000 });
 }
 
+/**
+ * A success toast identified by its COPY, not just by `data-variant`.
+ *
+ * This spec raises several success toasts per run, and they overlap: a toast
+ * lives for a few seconds, so on a slow runner the "Set … role" one is still
+ * on screen when the "Reverted …" one arrives. A bare
+ * `[data-toast][data-variant="success"]` then matches two elements and fails
+ * strict mode — which is how this spec went red on CI. Naming the copy fixes
+ * that and strengthens the assertion: it now says *which* operation succeeded
+ * rather than that something, somewhere, did.
+ */
+function successToast(page: Page, copy: RegExp) {
+  return page
+    .locator('[data-toast][data-variant="success"]')
+    .filter({ hasText: copy });
+}
+
 /** Row locator for a given user's email inside the Members section. */
 function memberRow(page: Page, email: string) {
   return page
@@ -154,9 +171,9 @@ test.describe('Project members — role override', () => {
     // --- Baseline (positive control): the MEMBER can create an issue. ---
     const baselineTitle = `PM baseline ${Date.now()}`;
     await attemptCreateIssue(memberPage, ctx.project.id, baselineTitle);
-    await expect(
-      memberPage.locator('[data-toast][data-variant="success"]'),
-    ).toBeVisible({ timeout: 10_000 });
+    await expect(successToast(memberPage, /^Created /i)).toBeVisible({
+      timeout: 10_000,
+    });
     await expect(memberPage.getByRole('dialog')).toHaveCount(0);
 
     // --- Admin sets a VIEWER override for the member on this project. ---
@@ -167,8 +184,14 @@ test.describe('Project members — role override', () => {
     await expect(roleSelect).toHaveValue('MEMBER');
     await roleSelect.selectOption('VIEWER');
 
+    // Assert the toast's TEXT, not just `[data-variant="success"]`. Two success
+    // toasts are raised in this spec (set override, then revert) and the first
+    // is still on screen when the second arrives on a slow runner — the generic
+    // locator then matches both and fails strict mode, which is exactly how
+    // this spec went red on CI. Matching the copy also makes the assertion
+    // mean "the override was set" rather than "something succeeded".
     await expect(
-      page.locator('[data-toast][data-variant="success"]'),
+      successToast(page, /role for this project to VIEWER/i),
     ).toBeVisible({ timeout: 10_000 });
     await expect(row.getByTestId('project-member-override-badge')).toBeVisible();
     await expect(row.getByTestId('project-member-inherited-badge')).toHaveCount(0);
@@ -197,7 +220,7 @@ test.describe('Project members — role override', () => {
     await confirmDialog.getByRole('button', { name: /^revert to inherited$/i }).click();
 
     await expect(
-      page.locator('[data-toast][data-variant="success"]'),
+      successToast(page, /to their workspace role/i),
     ).toBeVisible({ timeout: 10_000 });
     await expect(row.getByTestId('project-member-inherited-badge')).toBeVisible();
     await expect(row.getByTestId('project-member-override-badge')).toHaveCount(0);
@@ -206,9 +229,9 @@ test.describe('Project members — role override', () => {
     // Access is restored — the member can create issues again.
     const restoredTitle = `PM restored ${Date.now()}`;
     await attemptCreateIssue(memberPage, ctx.project.id, restoredTitle);
-    await expect(
-      memberPage.locator('[data-toast][data-variant="success"]'),
-    ).toBeVisible({ timeout: 10_000 });
+    await expect(successToast(memberPage, /^Created /i)).toBeVisible({
+      timeout: 10_000,
+    });
 
     await memberContext.close();
   });
