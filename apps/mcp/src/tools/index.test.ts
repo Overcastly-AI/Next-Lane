@@ -94,6 +94,8 @@ describe('tool registry', () => {
       'list_issue_gitlab_links',
       'get_personal_board',
       'list_issue_templates',
+      // Doc templates (2026-07-30)
+      'list_page_templates',
       'get_project_analytics',
       'get_my_analytics',
       'get_velocity_report',
@@ -108,6 +110,7 @@ describe('tool registry', () => {
       'create_personal_card',
       'update_personal_card',
       'create_issue_from_template',
+      'create_page_from_template',
       'bulk_update_issues',
       'mark_notification_read',
       'mark_all_notifications_read',
@@ -516,6 +519,49 @@ describe('tool registry', () => {
     );
   });
 
+  it('list_page_templates GETs the PROJECT collection when given projectId', async () => {
+    const { client, fetchImpl } = clientWith(200, [{ id: 'pt1', projectId: null }]);
+    await tool('list_page_templates').handler({ projectId: 'p1' }, client);
+    expect(fetchImpl.mock.calls[0][0]).toBe(
+      'http://localhost:4000/api/projects/p1/page-templates',
+    );
+  });
+
+  it('list_page_templates GETs the WORKSPACE collection when given workspaceId', async () => {
+    const { client, fetchImpl } = clientWith(200, [{ id: 'pt1', projectId: null }]);
+    await tool('list_page_templates').handler({ workspaceId: 'w1' }, client);
+    expect(fetchImpl.mock.calls[0][0]).toBe(
+      'http://localhost:4000/api/workspaces/w1/page-templates',
+    );
+  });
+
+  it('list_page_templates rejects BOTH scopes with an actionable message', async () => {
+    const { client } = clientWith(200, []);
+    await expect(
+      tool('list_page_templates').handler({ projectId: 'p1', workspaceId: 'w1' }, client),
+    ).rejects.toThrow(/exactly one of projectId or workspaceId/i);
+  });
+
+  it('list_page_templates rejects NEITHER scope', async () => {
+    const { client } = clientWith(200, []);
+    await expect(tool('list_page_templates').handler({}, client)).rejects.toThrow(
+      /exactly one of projectId or workspaceId/i,
+    );
+  });
+
+  it('list_page_templates projects projectId into a readable `scope` word', async () => {
+    const { client } = clientWith(200, [
+      { id: 'a', name: 'WS', description: null, projectId: null },
+      { id: 'b', name: 'PR', description: null, projectId: 'p1' },
+    ]);
+    const res = await tool('list_page_templates').handler({ projectId: 'p1' }, client);
+    const text = (res as { content: { text: string }[] }).content[0].text;
+    expect(JSON.parse(text).items.map((i: { scope: string }) => i.scope)).toEqual([
+      'workspace',
+      'project',
+    ]);
+  });
+
   it('get_project_analytics GETs /projects/:id/analytics with days query', async () => {
     const { client, fetchImpl } = clientWith(200, { throughput: 5 });
     await tool('get_project_analytics').handler({ projectId: 'p1', days: 14 }, client);
@@ -663,6 +709,24 @@ describe('tool registry', () => {
     expect((init as RequestInit).method).toBe('POST');
     expect(JSON.parse((init as RequestInit).body as string)).toEqual({
       title: 'Override title',
+    });
+  });
+
+  it('create_page_from_template POSTs to /page-templates/:id/create-page', async () => {
+    const { client, fetchImpl } = clientWith(200, { id: 'page1' });
+    await tool('create_page_from_template').handler(
+      { templateId: 'pt1', title: 'Q3 Retro', projectId: 'p1', parentId: null },
+      client,
+    );
+    expect(fetchImpl.mock.calls[0][0]).toBe(
+      'http://localhost:4000/api/page-templates/pt1/create-page',
+    );
+    const init = fetchImpl.mock.calls[0][1] as { method: string; body: string };
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body)).toEqual({
+      title: 'Q3 Retro',
+      projectId: 'p1',
+      parentId: null,
     });
   });
 

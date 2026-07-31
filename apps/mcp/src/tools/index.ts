@@ -458,6 +458,18 @@ const compactTemplate = (t: ApiItem) => ({
   issueType: t.issueType,
 });
 
+/**
+ * Doc-template projection. `scope` collapses the workspace/project distinction
+ * into one word the model can act on, instead of making it infer meaning from
+ * a null projectId.
+ */
+const compactPageTemplate = (t: ApiItem) => ({
+  id: t.id,
+  name: t.name,
+  description: t.description,
+  scope: t.projectId === null ? 'workspace' : 'project',
+});
+
 const compactNotification = (n: ApiItem) => ({
   id: n.id,
   type: n.type,
@@ -1356,6 +1368,45 @@ const readTools: ToolDef[] = [
       'columnId/card ids for create_personal_card / update_personal_card.',
     inputSchema: {},
     handler: (_args, client) => client.get('/me/personal-board').then(jsonResult),
+  },
+  {
+    name: 'list_page_templates',
+    group: 'read',
+    description:
+      'List the doc (page) templates available for a scope — reusable ' +
+      'markdown skeletons for new pages. Pass `projectId` for a project ' +
+      '(returns the project’s own templates FIRST, then the workspace-wide ' +
+      'ones it inherits) or `workspaceId` for the workspace-docs space ' +
+      '(workspace templates only). Exactly one of the two is required. Use ' +
+      'the returned id with create_page_from_template. Compact ' +
+      '`{id, name, description, scope}` per template by default — pass ' +
+      '`verbose: true` for the full object including the markdown body. ' +
+      'Requires `pages:read` scope when the token is scoped.',
+    inputSchema: {
+      projectId: z.string().optional().describe('Project id — templates usable in this project.'),
+      workspaceId: z.string().optional().describe('Workspace id — workspace-wide templates.'),
+      ...compactPageParams,
+    },
+    // `async` so the guard below REJECTS rather than throwing synchronously.
+    // Every other handler returns a promise, and the registrar's
+    // `try { await tool.handler(...) }` happens to catch both — but a future
+    // call site using `.then()` without a try/catch would let a sync throw
+    // escape. Uniform contract, no special case.
+    handler: async (args, client) => {
+      // Enforced here rather than with a zod refinement so the failure is a
+      // sentence the model can act on, not a schema-shaped validation dump.
+      if (Boolean(args.projectId) === Boolean(args.workspaceId)) {
+        throw new Error(
+          'Pass exactly one of projectId or workspaceId: projectId lists a project’s templates plus inherited workspace ones, workspaceId lists only workspace-wide templates.',
+        );
+      }
+      const path = args.projectId
+        ? `/projects/${args.projectId}/page-templates`
+        : `/workspaces/${args.workspaceId}/page-templates`;
+      return client
+        .get<ApiItem[]>(path)
+        .then((data) => pageResult(paginateCompact(data, args, compactPageTemplate)));
+    },
   },
   {
     name: 'list_issue_templates',
@@ -3137,6 +3188,50 @@ const writeTools: ToolDef[] = [
           columnId: args.columnId,
           beforeId: args.beforeId,
           afterId: args.afterId,
+        })
+        .then(jsonResult),
+  },
+  {
+    name: 'create_page_from_template',
+    group: 'write',
+    description:
+      'Create a page from a doc template (list_page_templates for the id). ' +
+      'The template supplies the markdown body; `{{date}}`, `{{title}}`, ' +
+      '`{{author}}` and friends are substituted server-side at creation. ' +
+      'DESTINATION: a workspace-scoped template can create the page either ' +
+      'in the workspace-docs space (omit `projectId`) or inside a project ' +
+      '(pass it); a project-scoped template always creates in its OWN ' +
+      'project, and passing a different `projectId` is rejected rather than ' +
+      'silently redirected. The resolved title must end up non-empty (from ' +
+      '`title` or the template’s default) or the API rejects the request. ' +
+      'Requires `pages:write` scope when the token is scoped.',
+    inputSchema: {
+      templateId: z.string().describe('Doc template id (from list_page_templates).'),
+      title: z
+        .string()
+        .min(1)
+        .max(300)
+        .optional()
+        .describe('Overrides the template’s default title.'),
+      projectId: z
+        .string()
+        .nullable()
+        .optional()
+        .describe(
+          'Destination project for a workspace template; omit/null to create a workspace-docs page.',
+        ),
+      parentId: z
+        .string()
+        .nullable()
+        .optional()
+        .describe('Parent page id, or null/omit for a top-level page.'),
+    },
+    handler: (args, client) =>
+      client
+        .post(`/page-templates/${args.templateId}/create-page`, {
+          title: args.title,
+          projectId: args.projectId,
+          parentId: args.parentId,
         })
         .then(jsonResult),
   },

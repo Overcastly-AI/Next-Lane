@@ -345,6 +345,19 @@ model Workspace {
   // Pages — every page (project-scoped or workspace-level) belongs to a
   // workspace; see `Page.workspaceId`.
   pages Page[]
+  // Doc templates — same scoping rule as `pages` (see `PageTemplate`).
+  pageTemplates PageTemplate[]
+
+  /// When the built-in starter doc templates were seeded into this workspace.
+  ///
+  /// A MARKER, not a cache: seeding is driven by "is this null?", never by
+  /// "does this workspace have zero templates?". Those differ in exactly the
+  /// case that matters — a workspace whose owner deliberately deleted every
+  /// starter. Keyed on the count, the next API restart would helpfully
+  /// resurrect all six; keyed on this timestamp, deletion stays deleted.
+  /// Null means "never seeded" (every workspace created before doc templates
+  /// shipped), which is what the backfill looks for.
+  pageTemplatesSeededAt DateTime?
 }
 
 model Membership {
@@ -413,6 +426,8 @@ model Project {
 
   // Issue templates
   issueTemplates IssueTemplate[]
+  /// Project-local doc templates (workspace-wide ones live on Workspace).
+  pageTemplates  PageTemplate[]
 
   // GitHub integration (Phase 9 — Developer Graph, v1 two-way link)
   githubIntegration GithubIntegration?
@@ -2296,4 +2311,53 @@ model PageLink {
   @@index([sourcePageId])
   // Inbound: "backlinks — what links HERE" + graph-edge queries.
   @@index([targetPageId])
+}
+
+/// A reusable markdown skeleton for creating pages ("doc template").
+///
+/// SCOPING mirrors `Page` exactly — `workspaceId` is always set, `projectId`
+/// is nullable. A row with `projectId: null` is workspace-wide and offered
+/// when creating ANY page in that workspace, including pages inside a
+/// project; a row with `projectId` set is offered only inside that project.
+/// That inheritance is why both scopes exist: shared house style lives once at
+/// the workspace, and a project layers its own on top without re-declaring it.
+///
+/// NAME UNIQUENESS is enforced by two PARTIAL unique indexes created in the
+/// migration, NOT by `@@unique([workspaceId, projectId, name])`. In Postgres a
+/// composite unique treats NULLs as distinct, so that constraint would happily
+/// admit two workspace-wide templates both named "Runbook" — the exact case
+/// that most needs protecting. The partial indexes are:
+///   PageTemplate_workspace_name_key  UNIQUE (workspaceId, name) WHERE projectId IS NULL
+///   PageTemplate_project_name_key    UNIQUE (projectId, name)   WHERE projectId IS NOT NULL
+/// A project template MAY reuse a workspace template's name — that is a
+/// deliberate override, and the picker labels the scope.
+model PageTemplate {
+  id            String   @id @default(cuid())
+  /// Always present, even for a project-scoped template (equals
+  /// `project.workspaceId`; the service sets and validates both together).
+  workspaceId   String
+  /// Null = workspace-wide. Non-null = scoped to that one project.
+  projectId     String?
+  name          String
+  /// Short blurb rendered under the name in the template picker.
+  description   String?
+  /// Default page title; supports the same `{{tokens}}` as `content`.
+  titleTemplate String?
+  /// The markdown body, stored UNRENDERED — `{{token}}` substitution happens
+  /// at page-creation time (see `renderPageTemplate` in packages/shared), so
+  /// editing a template never has to re-resolve historical values.
+  content       String   @default("")
+  /// True when seeded from `PAGE_TEMPLATE_STARTERS`. Informational only: a
+  /// built-in row is edited and deleted exactly like a user-authored one.
+  builtIn       Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project   Project?  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  /// "Templates offered for a workspace-level page" and the picker's
+  /// workspace-wide half of a project page's list.
+  @@index([workspaceId, projectId])
+  @@index([projectId])
 }

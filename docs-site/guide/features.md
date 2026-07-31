@@ -508,6 +508,6 @@ issues.
 
 ### AI agents (MCP)
 
-The flagship integration — 124 tools over the Model Context Protocol, with
+The flagship integration — 126 tools over the Model Context Protocol, with
 per-project agent memory. See the dedicated
 [AI Agents & MCP](./agents-mcp) chapter.

@@ -84,6 +84,8 @@ interface Tenant {
   // Pages (Confluence x Obsidian-hybrid knowledge base).
   pageId: string;
   pageVersionNumber: number;
+  /** A PROJECT-scoped doc template owned by this tenant. */
+  pageTemplateId: string;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -470,6 +472,24 @@ async function setupTenant(
   }
   const pageVersionNumber = 1;
 
+  // ── Doc template (project-scoped) ──────────────────────────────────────────
+  const pageTemplateResp = await req(
+    server,
+    'POST',
+    `/projects/${projectId}/page-templates`,
+    token,
+    {
+      name: `Template-${suffix}`,
+      description: `Only tenant ${suffix} should ever see this`,
+      titleTemplate: `Doc ${suffix}: `,
+      content: `# {{title}}\n\nSecret body for tenant ${suffix}.\n`,
+    },
+  );
+  const pageTemplateId =
+    pageTemplateResp.status === 201
+      ? (JSON.parse(pageTemplateResp.body) as { id: string }).id
+      : 'nonexistent-page-template-id';
+
   return {
     token,
     userId,
@@ -495,6 +515,7 @@ async function setupTenant(
     dashboardShareTokenId,
     pageId,
     pageVersionNumber,
+    pageTemplateId,
   };
 }
 
@@ -1225,6 +1246,56 @@ function buildMatrix(a: Tenant): Array<MatrixRow & { resolvedPath: string; resol
       method: 'PATCH',
       path: (t) => `/poker-sessions/${t.pokerSessionId}`,
       body: () => ({ name: 'Hijacked session' }),
+    },
+
+    // ── Doc templates (page templates) ───────────────────────────────────────
+    // Both scopes and both directions: listing, reading the BODY (a template
+    // body is tenant content — it can hold anything the author typed),
+    // mutating, deleting, and — the one that actually writes data — using a
+    // foreign template to create a page.
+    {
+      label: "GET tenant A's workspace doc templates",
+      method: 'GET',
+      path: (t) => `/workspaces/${t.workspaceId}/page-templates`,
+    },
+    {
+      label: "GET tenant A's project doc templates",
+      method: 'GET',
+      path: (t) => `/projects/${t.projectId}/page-templates`,
+    },
+    {
+      label: "GET tenant A's doc template by id (body is tenant content)",
+      method: 'GET',
+      path: (t) => `/page-templates/${t.pageTemplateId}`,
+    },
+    {
+      label: "POST a doc template into tenant A's workspace",
+      method: 'POST',
+      path: (t) => `/workspaces/${t.workspaceId}/page-templates`,
+      body: () => ({ name: 'Injected workspace template' }),
+    },
+    {
+      label: "POST a doc template into tenant A's project",
+      method: 'POST',
+      path: (t) => `/projects/${t.projectId}/page-templates`,
+      body: () => ({ name: 'Injected project template' }),
+    },
+    {
+      label: "PATCH tenant A's doc template (cross-tenant mutation)",
+      method: 'PATCH',
+      path: (t) => `/page-templates/${t.pageTemplateId}`,
+      body: () => ({ content: 'Hijacked template — attacker was here.' }),
+    },
+    {
+      label: "DELETE tenant A's doc template (cross-tenant mutation)",
+      method: 'DELETE',
+      path: (t) => `/page-templates/${t.pageTemplateId}`,
+    },
+    {
+      label: "POST create-page from tenant A's doc template (cross-tenant write)",
+      method: 'POST',
+      path: (t) => `/page-templates/${t.pageTemplateId}/create-page`,
+      body: () => ({ title: 'Injected from foreign template' }),
     },
 
     // ── Pages (Confluence x Obsidian-hybrid knowledge base) ──────────────────

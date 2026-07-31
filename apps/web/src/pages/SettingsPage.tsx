@@ -22,6 +22,7 @@ import { CustomFieldsSection } from '@/components/settings/CustomFieldsSection';
 import { ComponentsSection } from '@/components/settings/ComponentsSection';
 import { MembersSection } from '@/components/settings/MembersSection';
 import { TemplatesManager } from '@/components/settings/TemplatesManager';
+import { PageTemplatesSection } from '@/components/settings/PageTemplatesSection';
 import { VersionsSection } from '@/components/settings/VersionsSection';
 import { WorkflowSection } from '@/components/settings/WorkflowSection';
 import { WorkflowsManager } from '@/components/settings/WorkflowsManager';
@@ -164,6 +165,14 @@ export function SettingsPage() {
           projectId={projectId}
           isAdmin={isAdmin}
           users={workspaceUsers}
+        />
+
+        {/* Doc templates owned by THIS project. Workspace-wide ones are
+            managed in workspace settings but still appear in this project's
+            page-creation picker. */}
+        <PageTemplatesSection
+          scope={{ kind: 'project', id: projectId }}
+          canManage={isAdmin}
         />
 
         <VersionsSection

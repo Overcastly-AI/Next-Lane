@@ -24,6 +24,7 @@ import { Role } from '@next-lane/shared';
 import { WorkspacesService, LOGO_MAX_BYTES, LOGO_ALLOWED_MIME_TYPES, toWorkspaceDto } from './workspaces.service';
 import type { PrismaService } from '../prisma/prisma.service';
 import type { AuditService } from '../audit/audit.service';
+import type { PageTemplatesService } from '../page-templates/page-templates.service';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -116,9 +117,21 @@ function makeAudit(): AuditService {
   return { record: jest.fn() } as unknown as AuditService;
 }
 
+/**
+ * Doc-template seeding is a best-effort side effect of workspace creation
+ * (see WorkspacesService.create) — stubbed here so these tests stay about
+ * workspaces. `seedStarters` resolving false means "already seeded", the
+ * no-op branch.
+ */
+function makePageTemplates(): PageTemplatesService {
+  return {
+    seedStarters: jest.fn().mockResolvedValue(false),
+  } as unknown as PageTemplatesService;
+}
+
 function makeService(prisma: PrismaService) {
   process.env.UPLOADS_DIR = os.tmpdir();
-  return new WorkspacesService(prisma, makeAudit());
+  return new WorkspacesService(prisma, makeAudit(), makePageTemplates());
 }
 
 function makeTmpFile(

@@ -2,7 +2,7 @@
 
 A [Model Context Protocol](https://modelcontextprotocol.io) server that lets
 external AI agents — **Claude Desktop**, **Claude Code**, and any other MCP host
-— **read and write** a Next Lane instance end-to-end: **124 tools** covering
+— **read and write** a Next Lane instance end-to-end: **126 tools** covering
 workspaces/projects, workflows / SDLC, issues (incl. links, labels, comments
 with author-or-admin edit/delete, checklists, worklogs), boards, statuses,
 sprints, components, versions, custom fields, saved NLQL filters, automation
@@ -225,6 +225,7 @@ minimal, so there is no `verbose` mode.
 | `list_quick_links`  | List the caller's personal sidebar shortcut links. **compact** `{id, label, url, group}`. |
 | `get_personal_board`| Get the caller's personal (non-project) board: columns + cards.       |
 | `list_issue_templates` | List a project's issue templates (`projectId`). **compact** `{id, name, issueType}`. |
+| `list_page_templates` | List the doc (page) templates usable in a scope — pass exactly one of `projectId` (the project's own, then the workspace-wide ones it inherits) or `workspaceId`. Requires `pages:read` when the token is scoped. **compact** `{id, name, description, scope}`. |
 | `get_project_analytics` | Team analytics for a project (`projectId`, `days?`).               |
 | `get_my_analytics`  | Personal analytics for the caller (`days?`).                          |
 | `get_velocity_report` | Velocity per completed/active sprint (`projectId`).                 |
@@ -293,6 +294,7 @@ minimal, so there is no `verbose` mode.
 | `create_quick_link` / `update_quick_link` / `delete_quick_link` | CRUD the caller's personal sidebar shortcut links. |
 | `create_personal_card` / `update_personal_card` | Add / edit / move a card on the caller's personal board (move = `columnId` + `beforeId`/`afterId`). |
 | `create_issue_from_template`    | Create an issue from an issue template, with per-field overrides. |
+| `create_page_from_template`     | Create a page from a doc template; `{{date}}`/`{{title}}`/`{{author}}` are substituted server-side. A workspace template targets a project via `projectId` or the workspace-docs space when omitted; a project template always creates in its own project. Requires `pages:write` when the token is scoped. |
 | `bulk_update_issues`            | Apply the same status/assignee/priority/sprint/type/parentId/label change to up to 100 issues at once — one call parents 30 tickets under an epic. `atomic: true` makes the whole batch all-or-nothing (validates every issue first, writes only if all pass); `dryRun: true` previews per-item verdicts with zero writes (with or without atomic). Cross-project references (foreign `parentId`/`statusId`/`sprintId`) are rejected per-item with the same precise message as `update_issue`. |
 | `mark_notification_read` / `mark_all_notifications_read` | Mark one or all of the caller's notifications read. |
 | `create_dashboard` / `update_dashboard` / `delete_dashboard` | Create a project dashboard (a brand-new project's first dashboard is pre-populated with 3 starter gadgets); rename/reorder; delete (gadgets cascade). Capped at 20 dashboards/project. |

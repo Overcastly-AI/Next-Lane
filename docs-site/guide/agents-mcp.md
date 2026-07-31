@@ -2,7 +2,7 @@
 
 Next Lane is **agent-native**: AI agents are first-class users of the tracker,
 not an afterthought. The official MCP server — **`@next-lane/mcp`** — exposes
-**124 tools** over the [Model Context Protocol](https://modelcontextprotocol.io)
+**126 tools** over the [Model Context Protocol](https://modelcontextprotocol.io)
 so Claude Code, Claude Desktop, and any other MCP host can read *and write*
 your Next Lane instance end-to-end: file bugs, move cards, design workflows,
 run NLQL queries, log time, build dashboards, and hand off context between
@@ -17,7 +17,7 @@ in lockstep with the product.
 
 ## What "agent-native" means here
 
-- **Full read/write coverage** — 124 tools spanning the whole product surface
+- **Full read/write coverage** — 126 tools spanning the whole product surface
   (issues, boards, sprints, workflows, dashboards, automations, analytics,
   notifications, pages, and more), not a read-only wrapper.
 - **Token-efficient by design** — compact responses, pagination everywhere,
