@@ -1409,6 +1409,20 @@ const readTools: ToolDef[] = [
     },
   },
   {
+    name: 'get_page_template',
+    group: 'read',
+    description:
+      'Get one doc (page) template in full, including its markdown body — ' +
+      'which list_page_templates omits by default. Read this before ' +
+      'update_page_template: the update is a partial patch, so you need the ' +
+      'current `content` in hand to edit it rather than replace it wholesale. ' +
+      'Requires `pages:read` scope when the token is scoped.',
+    inputSchema: {
+      id: z.string().describe('Doc template id (from list_page_templates).'),
+    },
+    handler: (args, client) => client.get(`/page-templates/${args.id}`).then(jsonResult),
+  },
+  {
     name: 'list_issue_templates',
     group: 'read',
     description:
@@ -3190,6 +3204,130 @@ const writeTools: ToolDef[] = [
           afterId: args.afterId,
         })
         .then(jsonResult),
+  },
+  {
+    name: 'create_page_template',
+    group: 'write',
+    description:
+      'Create a doc (page) template — a reusable markdown skeleton that ' +
+      'create_page_from_template stamps out into new pages. ' +
+      'SCOPE: pass `workspaceId` for a workspace-wide template (offered when ' +
+      'creating ANY page in that workspace, including inside a project) or ' +
+      '`projectId` for one only that project sees. Exactly one is required. ' +
+      'Prefer the workspace scope for house style — a project template that ' +
+      'reuses a workspace template’s name reads as a deliberate override and ' +
+      'sorts above it in the picker. ' +
+      'TOKENS: `{{title}} {{date}} {{time}} {{datetime}} {{year}} {{month}} ' +
+      '{{day}} {{author}}` in `content` (and in `titleTemplate`) are ' +
+      'substituted when a page is created, not now. An UNKNOWN token is left ' +
+      'verbatim rather than blanked, so a fill-me-in marker survives into the ' +
+      'page — that is deliberate, but it also means a typo like `{{data}}` ' +
+      'will ship to readers as literal text. ' +
+      'Names must be unique within the scope. Requires workspace ADMIN, and ' +
+      '`pages:write` scope when the token is scoped.',
+    inputSchema: {
+      workspaceId: z
+        .string()
+        .optional()
+        .describe('Create a WORKSPACE-WIDE template (usable anywhere in the workspace).'),
+      projectId: z
+        .string()
+        .optional()
+        .describe('Create a template scoped to this project only.'),
+      name: z
+        .string()
+        .min(1)
+        .max(100)
+        .describe('Template name, unique within its scope. Shown in the picker.'),
+      description: z
+        .string()
+        .max(280)
+        .nullable()
+        .optional()
+        .describe('Short blurb under the name in the picker.'),
+      titleTemplate: z
+        .string()
+        .max(300)
+        .nullable()
+        .optional()
+        .describe(
+          'Default title for pages made from this template; may contain tokens. Cannot contain [ ] or | — those are reserved for [[wiki-link]] syntax, and this becomes a real page title.',
+        ),
+      content: z
+        .string()
+        .max(100000)
+        .optional()
+        .describe('The markdown body, with any `{{token}}` placeholders unrendered.'),
+    },
+    // `async` so the scope guard REJECTS rather than throwing synchronously —
+    // same contract as list_page_templates.
+    handler: async (args, client) => {
+      if (Boolean(args.projectId) === Boolean(args.workspaceId)) {
+        throw new Error(
+          'Pass exactly one of workspaceId or projectId: workspaceId creates a template usable anywhere in the workspace, projectId scopes it to that one project.',
+        );
+      }
+      const path = args.projectId
+        ? `/projects/${args.projectId}/page-templates`
+        : `/workspaces/${args.workspaceId}/page-templates`;
+      return client
+        .post(path, {
+          name: args.name,
+          description: args.description,
+          titleTemplate: args.titleTemplate,
+          content: args.content,
+        })
+        .then(jsonResult);
+    },
+  },
+  {
+    name: 'update_page_template',
+    group: 'write',
+    description:
+      'Update a doc (page) template. PARTIAL — only the fields you pass ' +
+      'change, but any field you DO pass replaces its value outright, so ' +
+      'get_page_template first when editing `content` rather than replacing ' +
+      'it. Editing a template never touches pages already created from it; ' +
+      'a template is a stamp, not a live layout. A built-in starter is ' +
+      'edited exactly like a user-authored one — `builtIn` is informational. ' +
+      'A template cannot be moved between scopes; create a new one and delete ' +
+      'this one. Requires workspace ADMIN, and `pages:write` scope when the ' +
+      'token is scoped.',
+    inputSchema: {
+      id: z.string().describe('Doc template id.'),
+      name: z.string().min(1).max(100).optional().describe('New name, unique within the scope.'),
+      description: z.string().max(280).nullable().optional().describe('New blurb, or null to clear.'),
+      titleTemplate: z
+        .string()
+        .max(300)
+        .nullable()
+        .optional()
+        .describe('New default title (tokens allowed; no [ ] or |), or null to clear.'),
+      content: z.string().max(100000).optional().describe('New markdown body — REPLACES the old one.'),
+    },
+    handler: (args, client) =>
+      client
+        .patch(`/page-templates/${args.id}`, {
+          name: args.name,
+          description: args.description,
+          titleTemplate: args.titleTemplate,
+          content: args.content,
+        })
+        .then(jsonResult),
+  },
+  {
+    name: 'delete_page_template',
+    group: 'write',
+    description:
+      'Delete a doc (page) template. Pages already created from it are ' +
+      'unaffected — they are ordinary pages and keep their content. ' +
+      'Irreversible, and that includes the six built-in starters: a deleted ' +
+      'starter is NOT re-seeded on the next API restart (seeding is keyed on ' +
+      'a per-workspace marker, not on "this workspace has no templates"), so ' +
+      'deleting one is permanent unless you re-create it by hand. Requires ' +
+      'workspace ADMIN, and `pages:write` scope when the token is scoped.',
+    inputSchema: { id: z.string().describe('Doc template id.') },
+    handler: (args, client) => client.delete(`/page-templates/${args.id}`).then(jsonResult),
   },
   {
     name: 'create_page_from_template',

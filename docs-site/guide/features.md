@@ -520,7 +520,7 @@ tools — letting an AI agent traverse and author the knowledge base
 programmatically, not just read a rendered page. Neither a closed,
 cloud-only wiki (no graph/agent API) nor a local-only graph note-taking tool
 (no server, no agent surface) offers that combination. Full tool reference in
-[AI Agents & MCP](./agents-mcp#the-123-tool-surface-at-a-glance).
+[AI Agents & MCP](./agents-mcp#the-130-tool-surface-at-a-glance).
 
 Issue ↔ page cross-linking (a "Linked pages" section on the issue drawer) is
 on the roadmap, not shipped yet — today, pages link to each other, not to
@@ -528,6 +528,6 @@ issues.
 
 ### AI agents (MCP)
 
-The flagship integration — 126 tools over the Model Context Protocol, with
+The flagship integration — 130 tools over the Model Context Protocol, with
 per-project agent memory. See the dedicated
 [AI Agents & MCP](./agents-mcp) chapter.

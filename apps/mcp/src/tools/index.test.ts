@@ -96,6 +96,8 @@ describe('tool registry', () => {
       'list_issue_templates',
       // Doc templates (2026-07-30)
       'list_page_templates',
+      // Doc templates — agents author them too (2026-07-31)
+      'get_page_template',
       'get_project_analytics',
       'get_my_analytics',
       'get_velocity_report',
@@ -111,6 +113,9 @@ describe('tool registry', () => {
       'update_personal_card',
       'create_issue_from_template',
       'create_page_from_template',
+      'create_page_template',
+      'update_page_template',
+      'delete_page_template',
       'bulk_update_issues',
       'mark_notification_read',
       'mark_all_notifications_read',
@@ -560,6 +565,87 @@ describe('tool registry', () => {
       'workspace',
       'project',
     ]);
+  });
+
+  it('get_page_template GETs the single template, body and all', async () => {
+    const { client, fetchImpl } = clientWith(200, { id: 'pt1', content: '# Runbook' });
+    const res = await tool('get_page_template').handler({ id: 'pt1' }, client);
+    expect(fetchImpl.mock.calls[0][0]).toBe('http://localhost:4000/api/page-templates/pt1');
+    // Deliberately NOT compacted — the point of this tool over
+    // list_page_templates is that you get the markdown body to edit.
+    const text = (res as { content: { text: string }[] }).content[0].text;
+    expect(JSON.parse(text).content).toBe('# Runbook');
+  });
+
+  it('create_page_template POSTs to the WORKSPACE collection when given workspaceId', async () => {
+    const { client, fetchImpl } = clientWith(201, { id: 'pt1' });
+    await tool('create_page_template').handler(
+      { workspaceId: 'w1', name: 'Runbook', content: '# {{title}}' },
+      client,
+    );
+    expect(fetchImpl.mock.calls[0][0]).toBe(
+      'http://localhost:4000/api/workspaces/w1/page-templates',
+    );
+    const init = fetchImpl.mock.calls[0][1] as RequestInit;
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      name: 'Runbook',
+      content: '# {{title}}',
+    });
+  });
+
+  it('create_page_template POSTs to the PROJECT collection when given projectId', async () => {
+    const { client, fetchImpl } = clientWith(201, { id: 'pt1' });
+    await tool('create_page_template').handler({ projectId: 'p1', name: 'Spec' }, client);
+    expect(fetchImpl.mock.calls[0][0]).toBe(
+      'http://localhost:4000/api/projects/p1/page-templates',
+    );
+  });
+
+  it('create_page_template rejects BOTH scopes and NEITHER, with an actionable message', async () => {
+    const { client, fetchImpl } = clientWith(201, {});
+    await expect(
+      tool('create_page_template').handler(
+        { workspaceId: 'w1', projectId: 'p1', name: 'X' },
+        client,
+      ),
+    ).rejects.toThrow(/exactly one of workspaceId or projectId/i);
+    await expect(
+      tool('create_page_template').handler({ name: 'X' }, client),
+    ).rejects.toThrow(/exactly one of workspaceId or projectId/i);
+    // An ambiguous scope must not reach the API and half-create anything.
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('update_page_template PATCHes only the fields passed', async () => {
+    const { client, fetchImpl } = clientWith(200, { id: 'pt1' });
+    await tool('update_page_template').handler({ id: 'pt1', name: 'Renamed' }, client);
+    expect(fetchImpl.mock.calls[0][0]).toBe('http://localhost:4000/api/page-templates/pt1');
+    const init = fetchImpl.mock.calls[0][1] as RequestInit;
+    expect(init.method).toBe('PATCH');
+    const sent = JSON.parse(init.body as string) as Record<string, unknown>;
+    expect(sent.name).toBe('Renamed');
+    // `content` was not passed, so it must not appear at all — sending
+    // `undefined` as an explicit key would blank the template's body.
+    expect('content' in sent).toBe(false);
+  });
+
+  it('update_page_template forwards an explicit null to CLEAR a field', async () => {
+    const { client, fetchImpl } = clientWith(200, { id: 'pt1' });
+    await tool('update_page_template').handler({ id: 'pt1', description: null }, client);
+    const init = fetchImpl.mock.calls[0][1] as RequestInit;
+    const sent = JSON.parse(init.body as string) as Record<string, unknown>;
+    expect(sent.description).toBeNull();
+  });
+
+  it('delete_page_template DELETEs the template', async () => {
+    // 200/null, not 204 — the test's Response helper cannot construct a 204
+    // (the DOM spec forbids a body on one). The client's own 204 handling is
+    // covered in client.test.ts; this asserts the tool's method and URL.
+    const { client, fetchImpl } = clientWith(200, null);
+    await tool('delete_page_template').handler({ id: 'pt1' }, client);
+    expect(fetchImpl.mock.calls[0][0]).toBe('http://localhost:4000/api/page-templates/pt1');
+    expect((fetchImpl.mock.calls[0][1] as RequestInit).method).toBe('DELETE');
   });
 
   it('get_project_analytics GETs /projects/:id/analytics with days query', async () => {

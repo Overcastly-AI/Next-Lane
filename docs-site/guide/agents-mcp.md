@@ -2,7 +2,7 @@
 
 Next Lane is **agent-native**: AI agents are first-class users of the tracker,
 not an afterthought. The official MCP server — **`@next-lane/mcp`** — exposes
-**126 tools** over the [Model Context Protocol](https://modelcontextprotocol.io)
+**130 tools** over the [Model Context Protocol](https://modelcontextprotocol.io)
 so Claude Code, Claude Desktop, and any other MCP host can read *and write*
 your Next Lane instance end-to-end: file bugs, move cards, design workflows,
 run NLQL queries, log time, build dashboards, and hand off context between
@@ -17,7 +17,7 @@ in lockstep with the product.
 
 ## What "agent-native" means here
 
-- **Full read/write coverage** — 126 tools spanning the whole product surface
+- **Full read/write coverage** — 130 tools spanning the whole product surface
   (issues, boards, sprints, workflows, dashboards, automations, analytics,
   notifications, pages, and more), not a read-only wrapper.
 - **Token-efficient by design** — compact responses, pagination everywhere,
@@ -123,7 +123,7 @@ Two environment variables configure the server:
 
 ---
 
-## The 123-tool surface at a glance
+## The 130-tool surface at a glance
 
 Grouped by area (see the
 [full tool table in `apps/mcp/README.md`](https://github.com/Overcastly-AI/Next-Lane/blob/main/apps/mcp/README.md)
@@ -144,6 +144,7 @@ for every tool and parameter):
 | **SCM links** | Read an issue's linked GitHub PRs/commits, GitLab MRs/commits/branches, and Gitea PRs/commits/branches |
 | **Agent memory** | The Pages knowledge graph (below) is the durable memory; `get_project_context` / `update_project_context` is the short per-project handoff note that points into it |
 | **Pages** | CRUD (create, list, get, update, delete), move in tree, version history (list/get/restore), backlinks ("what links here"), and **knowledge-graph traversal** (`get_page_graph` → full node/edge set, `get_page_links` → outgoing links, `get_page_backlinks` → inbound links) for Obsidian-style wiki navigation over the agent API |
+| **Doc templates** | Full template CRUD (`create_page_template` / `get_page_template` / `update_page_template` / `delete_page_template`) plus `list_page_templates` and `create_page_from_template` — an agent can define the house format for runbooks or ADRs once and then stamp every new doc from it, at workspace scope (shared) or project scope (an override) |
 | **Org-level docs** | The workspace docs space — knowledge that outlives one project (handbook, runbooks, ADRs): `list_workspace_pages`, `create_workspace_page`, and `get_workspace_page_graph` (every project **plus** the workspace docs space as one graph — the only view that shows cross-project links) |
 
 **Deliberately not exposed:** configuring the GitHub/GitLab/Gitea
