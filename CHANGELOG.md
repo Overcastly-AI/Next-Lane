@@ -16,6 +16,14 @@ staged here by hand (see [`RELEASING.md`](./RELEASING.md))._
 
 ---
 
+## [0.4.0] — 2026-07-31
+
+[Compare with v0.3.1](https://github.com/Overcastly-AI/Next-Lane/compare/v0.3.1...v0.4.0)
+
+### Features
+
+* **pages:** doc templates — preloadable markdown formats, workspace-wide and per-project ([7614a1c](https://github.com/Overcastly-AI/Next-Lane/commit/7614a1c006a7e45b1605dca0ac9e823cfcc665ac))
+
 ## [0.3.1] — 2026-07-30
 
 [Compare with v0.3.0](https://github.com/Overcastly-AI/Next-Lane/compare/v0.3.0...v0.3.1)
