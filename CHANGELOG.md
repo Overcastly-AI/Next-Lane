@@ -16,6 +16,14 @@ staged here by hand (see [`RELEASING.md`](./RELEASING.md))._
 
 ---
 
+## [0.5.0] — 2026-07-31
+
+[Compare with v0.4.2](https://github.com/Overcastly-AI/Next-Lane/compare/v0.4.2...v0.5.0)
+
+### Features
+
+* **storage:** S3-compatible object storage — Ceph RGW, MinIO, AWS S3, R2 ([7155fe6](https://github.com/Overcastly-AI/Next-Lane/commit/7155fe6beb3c9bd89641278a433823d25b82b6a7))
+
 ## [0.4.2] — 2026-07-31
 
 [Compare with v0.4.1](https://github.com/Overcastly-AI/Next-Lane/compare/v0.4.1...v0.4.2)

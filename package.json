@@ -1,6 +1,6 @@
 {
   "name": "next-lane",
-  "version": "0.4.2",
+  "version": "0.5.0",
   "private": true,
   "description": "Next Lane — an open-source, self-hosted issue & project tracker that runs locally via Docker.",
   "license": "MIT",
