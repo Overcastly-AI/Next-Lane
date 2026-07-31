@@ -215,6 +215,35 @@ export function invalidatePagesFamily(
  * invalidating only `qk.board(projectId)` refreshes a cache nothing renders
  * from, leaving the visible boardView stale until the global staleTime lapses.
  */
+/**
+ * Invalidate an issue's activity log after a mutation that appended to it.
+ *
+ * `cancelRefetch: true` is the entire point and must not be dropped.
+ *
+ * Without it, an invalidation that lands while an activity fetch is ALREADY in
+ * flight is deduped onto that request — and that request was issued BEFORE the
+ * mutation, so it resolves with pre-change rows and then marks the query fresh.
+ * No further refetch happens and the panel silently shows a stale history until
+ * something else invalidates it.
+ *
+ * That is not hypothetical. Instrumented trace of the real failure (drawer
+ * opened, status changed immediately, one request and one response total):
+ *
+ *   t=105543  GET /issues/:id/activity   ← fires as the drawer opens
+ *   t=105583  status change starts
+ *   t=106843  invalidate                 ← lands mid-flight, deduped
+ *   t=107027  200, rows=1 fields=created ← pre-change data, marked fresh
+ *
+ * Cancelling forces a genuinely new request. The in-flight one is known-stale
+ * by construction (it predates our own write), so nothing useful is discarded.
+ */
+export function invalidateIssueActivity(
+  qc: import('@tanstack/react-query').QueryClient,
+  issueId: string,
+): void {
+  void qc.invalidateQueries({ queryKey: qk.activity(issueId) }, { cancelRefetch: true });
+}
+
 export function invalidateBoardFamily(
   qc: import('@tanstack/react-query').QueryClient,
   projectId: string,
