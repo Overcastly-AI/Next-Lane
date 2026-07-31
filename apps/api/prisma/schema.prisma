@@ -248,6 +248,7 @@ model User {
   // Pages — authorship / attribution (all nullable FKs; SetNull preserves the
   // page/version when the account is later deleted)
   authoredPages      Page[]        @relation("pageAuthor")
+  uploadedPageImages PageImage[]   @relation("pageImageUploader")
   lastEditedPages    Page[]        @relation("pageLastEditedBy")
   editedPageVersions PageVersion[]
 }
@@ -2182,6 +2183,8 @@ model Page {
   lastEditedBy  User?           @relation("pageLastEditedBy", fields: [lastEditedById], references: [id], onDelete: SetNull)
   versions      PageVersion[]
   issueLinks    PageIssueLink[]
+  /// Images uploaded into this page's body (`nl-image:<id>` references).
+  images        PageImage[]
   /// Obsidian-style `[[wiki-links]]` this page contains (outbound edges).
   outgoingLinks PageLink[]      @relation("PageOutgoing")
   /// Backlinks — other pages whose body links TO this page (inbound edges;
@@ -2360,4 +2363,37 @@ model PageTemplate {
   /// workspace-wide half of a project page's list.
   @@index([workspaceId, projectId])
   @@index([projectId])
+}
+
+/// An image uploaded into a page's markdown body.
+///
+/// Referenced from `Page.content` as `![alt](nl-image:<id>)` — an app-internal
+/// scheme rather than a URL, deliberately. A stored absolute URL would bake the
+/// deployment origin into user content and break on every rename; a stored
+/// path would resolve against the WEB origin, which is wrong whenever the API
+/// is served from a different one. The renderer resolves the scheme at display
+/// time (see `PageContent`), fetching each image WITH the caller's token and
+/// swapping in a `blob:` URL — so an embedded image is exactly as private as
+/// the page holding it. A plain `<img src>` cannot carry an auth header, which
+/// is why the alternative (a public, unguessable URL like the workspace logo)
+/// would have quietly made every screenshot in a private doc link-shareable.
+model PageImage {
+  id           String   @id @default(cuid())
+  pageId       String
+  /// Opaque key in the storage driver (local disk or the S3 bucket).
+  storageKey   String
+  /// Original filename, for display and the download name. NEVER used as a
+  /// filesystem path — the storage key is server-generated.
+  filename     String
+  mimeType     String
+  sizeBytes    Int
+  /// Nullable: SetNull preserves the image if the uploader is deleted.
+  uploadedById String?
+  createdAt    DateTime @default(now())
+
+  page     Page  @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  uploader User? @relation("pageImageUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
+
+  /// "every image on this page" — the list/cleanup query.
+  @@index([pageId])
 }

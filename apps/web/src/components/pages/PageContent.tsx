@@ -11,11 +11,17 @@
  * syntax is rewritten to plain markdown link syntax BEFORE it reaches
  * `marked`, so mermaid fences, tables, etc. inside a page all keep working
  * exactly as they do in issue descriptions/comments.
+ *
+ * Images uploaded into the body appear as `![alt](nl-image:<id>)` and are
+ * resolved after render by `usePageImageResolver`, which fetches each one with
+ * the reader's token and swaps in a `blob:` URL — so an embedded image is
+ * exactly as private as the page holding it.
  */
-import { Fragment, useMemo } from 'react';
+import { Fragment, useMemo, useRef } from 'react';
 import { Mermaid } from '@/components/ui/Mermaid';
 import { renderMarkdown, splitMermaidSegments } from '@/components/ui/MarkdownRenderer';
 import { transformWikiLinksForRender } from '@/lib/wikiLinks';
+import { usePageImageResolver } from '@/lib/pageImages';
 
 export interface PageContentProps {
   content: string;
@@ -38,6 +44,14 @@ export function PageContent({
     [content, titleIndex],
   );
 
+  // Images uploaded into the body are stored as `nl-image:<id>` references and
+  // fetched with the reader's token at display time — see `lib/pageImages.ts`
+  // for why the markdown holds a reference rather than a URL. The hook runs
+  // before the early return below because hook order must not depend on
+  // whether the body happens to be empty.
+  const containerRef = useRef<HTMLDivElement>(null);
+  usePageImageResolver(containerRef, content);
+
   const hasRenderable = segments.some((s) =>
     s.kind === 'mermaid' ? s.value.trim() : renderMarkdown(s.value),
   );
@@ -58,6 +72,7 @@ export function PageContent({
 
   return (
     <div
+      ref={containerRef}
       className={['markdown-body nl-page-content text-sm text-ink-700', className].filter(Boolean).join(' ')}
       onClick={handleClick}
       // Stable hook for asserting rendered page body in e2e — the class list

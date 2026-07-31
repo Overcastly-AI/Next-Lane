@@ -234,6 +234,14 @@ export const MATRIX: MatrixRow[] = [
   // enforced by PagesService, same as a direct create.
   { controller: 'page-templates', method: 'POST', path: `/page-templates/${X}/create-page`, scope: 'pages:write' },
 
+  // page-images — images embedded in a page body. Gated by `pages:*` because
+  // an image inherits the page's permissions exactly: there is no separate
+  // image ACL, which is what makes an embedded image as private as its page.
+  { controller: 'page-images', method: 'POST', path: `/pages/${X}/images`, scope: 'pages:write' },
+  { controller: 'page-images', method: 'GET', path: `/pages/${X}/images`, scope: 'pages:read' },
+  { controller: 'page-images', method: 'GET', path: `/page-images/${X}`, scope: 'pages:read' },
+  { controller: 'page-images', method: 'DELETE', path: `/page-images/${X}`, scope: 'pages:write' },
+
   // project-memberships
   { controller: 'project-memberships', method: 'GET', path: `/projects/${X}/members`, scope: 'projects:read' },
   { controller: 'project-memberships', method: 'PUT', path: `/projects/${X}/members/${X}/role`, scope: 'projects:write' },

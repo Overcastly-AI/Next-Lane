@@ -2778,3 +2778,66 @@ export interface CreatePageFromTemplateDto {
   /** Overrides the template's `titleTemplate`. */
   title?: string;
 }
+
+// ---------------------------------------------------------------------------
+// Page images
+// ---------------------------------------------------------------------------
+
+/**
+ * An image uploaded into a page's markdown body.
+ *
+ * Referenced from `PageDto.content` as `![alt](nl-image:<id>)` — an
+ * app-internal scheme rather than a URL, deliberately. A stored absolute URL
+ * would bake the deployment origin into user content, so moving an install
+ * from `localhost` to a domain (or exporting a page) would break every image.
+ * The renderer resolves the scheme at display time, fetching each image WITH
+ * the caller's token and swapping in a `blob:` URL — which is also what makes
+ * an embedded image exactly as private as the page holding it, with no
+ * separate image ACL to drift out of sync.
+ *
+ * `storageKey` is intentionally omitted, matching `AttachmentDto`: callers
+ * read bytes through `GET /page-images/:id`, never the object store directly.
+ */
+export interface PageImageDto {
+  id: string;
+  pageId: string;
+  filename: string;
+  mimeType: string;
+  sizeBytes: number;
+  createdAt: string;
+}
+
+/** Image types accepted in a page body. SVG is excluded — it can carry script. */
+export const PAGE_IMAGE_MIME_TYPES: readonly string[] = [
+  'image/png',
+  'image/jpeg',
+  'image/gif',
+  'image/webp',
+];
+
+/** Upload size cap, shared so the editor rejects before spending the upload. */
+export const PAGE_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
+
+/**
+ * The URL scheme used inside page markdown, e.g. `nl-image:abc123`.
+ * Exported so the API, the renderer and the editor all agree on one spelling.
+ */
+export const PAGE_IMAGE_SCHEME = 'nl-image:';
+
+/** Build the markdown reference for an uploaded image. */
+export function pageImageMarkdown(image: {
+  id: string;
+  filename: string;
+}): string {
+  // Alt text defaults to the filename: better than empty for screen readers,
+  // and the author can edit it like any other markdown.
+  const alt = image.filename.replace(/[[\]]/g, '');
+  return `![${alt}](${PAGE_IMAGE_SCHEME}${image.id})`;
+}
+
+/** Extract the image id from an `nl-image:<id>` src, or null if not one. */
+export function parsePageImageSrc(src: string): string | null {
+  if (!src.startsWith(PAGE_IMAGE_SCHEME)) return null;
+  const id = src.slice(PAGE_IMAGE_SCHEME.length).trim();
+  return id.length > 0 ? id : null;
+}

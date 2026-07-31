@@ -44,7 +44,7 @@ Next Lane is a TypeScript monorepo with three deployable concerns:
 |------|---------|
 | `apps/api` | NestJS backend — REST API, WebSocket gateway, Prisma data access |
 | `apps/web` | React + Vite single-page application |
-| `apps/mcp` | MCP server (`@next-lane/mcp`) — 126 tools for AI agents over stdio ([guide](./agents-mcp)) |
+| `apps/mcp` | MCP server (`@next-lane/mcp`) — 130 tools for AI agents over stdio ([guide](./agents-mcp)) |
 | `packages/shared` | Shared TypeScript types, enums, NLQL parser/evaluator, API contracts |
 | `skills/project-context` | Distributable Agent Skill for the per-project agent-context workflow |
 | `deploy/helm/next-lane` | Helm chart for Kubernetes |

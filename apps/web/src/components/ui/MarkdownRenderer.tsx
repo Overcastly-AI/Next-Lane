@@ -15,6 +15,10 @@
  *    rendered `<img>` gets `referrerpolicy="no-referrer"` so a third-party
  *    image host never sees the referring page's URL. Requires the deployment
  *    CSP's `img-src` to permit the scheme in use — see `nginx.conf`.
+ *  - `nl-image:<id>` srcs (images uploaded into a page body) survive
+ *    sanitization but are NOT loadable by the browser on their own; a
+ *    container wired to `usePageImageResolver` swaps each one for a `blob:`
+ *    URL fetched with the reader's token. See `src/lib/pageImages.ts`.
  *
  * @mention tokens (e.g. `@user@example.com`) are preserved as-is by marked
  * (they appear inline in text nodes, not parsed as special syntax) and survive
@@ -66,6 +70,15 @@ const PURIFY_CONFIG: DOMPurifyConfig = {
   FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover', 'onfocus', 'onblur'],
   // Do not allow any DOM clobbering.
   ALLOW_DATA_ATTR: false,
+  // DOMPurify's default URI allowlist rejects any unknown `scheme:` prefix,
+  // which would strip `nl-image:<id>` (see PAGE_IMAGE_SCHEME) before the hook
+  // below ever sees it. This is the default regexp with `nl-image` added to
+  // the scheme alternation — nothing else is relaxed. The scheme is inert in
+  // a browser (no handler, so no navigation and no script); it is a marker
+  // that `usePageImageResolver` swaps for an authorized `blob:` URL at display
+  // time, which is what keeps an embedded image as private as its page.
+  ALLOWED_URI_REGEXP:
+    /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|nl-image):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
 };
 
 // Images are the one element whose "safe" attribute (`src`) can carry a URI —
@@ -77,9 +90,25 @@ const PURIFY_CONFIG: DOMPurifyConfig = {
 // else (rather than trust the default permissiveness of `data:` URIs, which
 // covers other mime types too). Also strips the referrer for every image so a
 // third-party host embedded in a page never learns the page's URL.
-const SAFE_IMAGE_SRC = /^(https?:\/\/|data:image\/)/i;
+//
+// `nl-image:<id>` is the third permitted form: an image uploaded into a page
+// body, addressed by its record id rather than a URL so that moving an install
+// between origins never breaks user content. The id pattern is deliberately
+// strict (cuid/uuid characters only) so nothing else can ride the scheme, and
+// it is only ever meaningful inside a container wired to
+// `usePageImageResolver`, which replaces it with a `blob:` URL fetched using
+// the reader's own token. Anywhere else it renders as a broken image, which is
+// the correct outcome: no bytes without authorization.
+const SAFE_IMAGE_SRC = /^(https?:\/\/|data:image\/|nl-image:[A-Za-z0-9_-]{1,64}$)/i;
 
 DOMPurify.addHook('afterSanitizeAttributes', (node) => {
+  // `nl-image:` is permitted by ALLOWED_URI_REGEXP for <img src>; strip it from
+  // anchors so it cannot be used as a link target anywhere.
+  if (node.tagName === 'A') {
+    const href = node.getAttribute('href');
+    if (href && /^nl-image:/i.test(href)) node.removeAttribute('href');
+    return;
+  }
   if (node.tagName !== 'IMG') return;
   const src = node.getAttribute('src');
   if (!src || !SAFE_IMAGE_SRC.test(src)) {

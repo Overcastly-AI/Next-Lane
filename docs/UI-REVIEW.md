@@ -1895,3 +1895,449 @@ of defense. Screenshots (desktop 1440 + mobile 393, dashboard + board, expanded 
 collapsed rail + open mobile drawer) captured before/after per the design-elevation
 directive. All existing `data-testid`/role/aria-label hooks preserved; full e2e
 suite (desktop + mobile) green.
+
+---
+
+## 2026-07-31 — Left-hand sidebar navigation audit (founder: "it doesn't seem organised")
+
+Scope: `apps/web/src/components/nav/{AppSidebar,MobileSidebarDrawer,SidebarNavContent,sidebarIcons}.tsx`,
+`apps/web/src/contexts/SidebarContext.tsx`, and every surface that competes with or
+feeds it (`AppHeader.tsx`, `ProjectNav.tsx`, `ProjectBreadcrumb.tsx`,
+`WorkspaceSettingsNav.tsx`, `WorkspaceSwitcherMenuContent.tsx`, `App.tsx` routing).
+Verified against the running app at http://localhost:3000 (demo@nextlane.dev) at
+1280px, 768px, 390px, collapsed rail, and dark mode. Screenshots saved under
+`/tmp/nav-audit/` (paths listed at the end). Tab-order and tap-target numbers below
+were measured with a throwaway Playwright spec (`e2e/zz-nav-audit.spec.ts` /
+`e2e/zz-nav-measure.spec.ts`, both deleted after the run — not part of the suite).
+
+### Verifying the founder's specific list
+
+1. **"There's a project Docs and a workspace Docs with the identical label" — TRUE, confirmed.**
+   `SidebarNavContent.tsx:160` (`PROJECT_VIEWS`, `{ to: 'pages', label: 'Docs' }`) and
+   `SidebarNavContent.tsx:429` (`label="Docs"`, route `/workspaces/:id/docs`) render
+   the literal string "Docs" twice, in two different groups, pointing at two
+   completely separate content trees (project wiki/pages vs. workspace-wide
+   handbook). This isn't just a nav-label collision — it's baked into the pages
+   themselves: `WorkspaceDocsPage.tsx:90` renders its own header as `<span>Docs</span>`
+   and `PagesPage.tsx:67` renders its breadcrumb secondary segment as `{ label: 'Docs' }`
+   too. A user (or an agent) told "check the Docs" has no way to disambiguate without
+   already knowing which of two products-within-the-product is meant. The code
+   comment at `SidebarNavContent.tsx:419-424` explains the distinction thoughtfully —
+   but that reasoning lives only in a source comment, never in the UI.
+
+2. **"The third group has no heading while the two above it do" — TRUE, and there are actually two unlabeled boundaries, not one.**
+   Confirmed group headings exist at `SidebarNavContent.tsx:332-335` ("PROJECTS") and
+   `:376-379` ("PERSONAL"). What the founder's screenshot didn't capture (ours did,
+   because the demo account is an instance admin) is a **third labeled group**,
+   "INSTANCE ADMIN" (`:401-404`), between Personal and the unlabeled block. So the
+   real structure is four visually-grouped blocks, three with caps-letter headings
+   and one — Docs / Workspace settings / Branding (`:417-457`) — with none. Confirmed
+   live at 1280px, 768px, and 390px (screenshots: `desktop-1280-board-expanded.png`,
+   `mobile-390-drawer.png`).
+
+3. **"Insights vs Reports vs Dashboards is three analytics-ish words in two groups" — TRUE, and it's actually four words across three scopes, one of which contradicts its own page.**
+   - `Insights` (Personal group, `SidebarNavContent.tsx:300`) → routes to `/me/analytics`
+     → `PersonalAnalyticsPage.tsx`, whose own `<h1>` reads **"My Analytics"**
+     (`PersonalAnalyticsPage.tsx:72`) — the nav label and the page's own heading
+     disagree. This is a real, verifiable inconsistency, not a nit: a user who lands
+     via a bookmark/deep-link/search sees "My Analytics" and has to reconcile it
+     against a completely different word ("Insights") in the nav they came from.
+   - `Analytics` (project scope, only in `ProjectNav.tsx`'s "More" menu, `:58`) →
+     `/projects/:id/analytics` → `ProjectAnalyticsPage.tsx`, `<h1>` = "Analytics"
+     (`:61`) — this one is internally consistent, but it means the word "Analytics"
+     names a *different* feature than the "Insights" nav item, even though "Insights"
+     is literally the personal analog of it.
+   - `Dashboards` (project scope) and `Reports` (project scope) are two more,
+     genuinely distinct, features (`DashboardsPage.tsx`, `ReportsPage.tsx`) — those
+     two names are fine on their own, but land in a sidebar that already has
+     "Insights" one section up and "Analytics" one click into a "More" menu the
+     sidebar doesn't even expose (see finding below). Four analytics-adjacent nouns,
+     three different scopes, one outright label/heading contradiction.
+
+4. **"Unclear whether Roadmap/Reports are project-scoped or global" — confirmed project-scoped only; not a bug, but worth stating plainly in the IA.**
+   `App.tsx:205-226`: `roadmap`, `reports`, `dashboards`, `analytics`, `triage`,
+   `automations`, `standups`, `poker` are all nested exclusively under
+   `/projects/:projectId`. Grep confirms exactly one `RoadmapPage`/`ReportsPage`
+   route each, both project-nested — there is no workspace- or instance-level
+   Roadmap/Reports anywhere in the router. So the founder's suspicion is correct:
+   these are 100% project-scoped, and nothing in the sidebar visually distinguishes
+   "things that follow you across the whole workspace" (Personal group) from "things
+   that only exist inside whichever project happens to be expanded" (the nested
+   sub-list) other than physical nesting depth — which disappears entirely once a
+   second project is active or the rail is collapsed.
+
+### Additional problems found (not on the founder's list, but root causes of "unorganised")
+
+**🔴 P1 — The sidebar's per-project view list and the project's own top-tab nav disagree about what the project's views even are.**
+`SidebarNavContent.tsx:157-164` (`PROJECT_VIEWS`) exposes exactly 6 views under the
+active project: Board, Backlog, Docs, Dashboards, Roadmap, Reports. But
+`ProjectNav.tsx:46-64` (the tab strip rendered on every project page, still the
+primary nav for that context) exposes **11 views**: Board, Backlog, Triage, Docs,
+Reports (primary tabs) + Analytics, Dashboards, Roadmap, Poker, Standup, Automation
+(the "More" menu) — plus Settings as a 12th, gear-only item. Comparing the two lists:
+- **Triage, Analytics, Poker, Standup, Automation exist in the product and are one
+  click away from the top tab bar, but are entirely absent from the sidebar.** A user
+  who only ever uses the persistent sidebar (the surface the whole redesign made
+  primary) will never discover five real, shipped features.
+- **The two lists also disagree on hierarchy.** ProjectNav's own "primary vs. more"
+  split treats Reports as primary and Dashboards/Roadmap as secondary ("More"); the
+  sidebar's flat list promotes Dashboards and Roadmap to always-visible while
+  Reports gets pushed to the bottom and Analytics vanishes completely. There is no
+  discoverable logic for why Dashboards outranks Analytics, or why Reports (primary
+  everywhere else) is visually last in the one place that's supposed to be primary
+  navigation. This mismatch is very likely the single biggest contributor to the
+  "not organised" feeling — the app is telling the user two different, incompatible
+  stories about its own information architecture depending on which chrome they
+  look at. Screenshot proof: `desktop-1280-board-expanded.png` (sidebar sub-nav) vs
+  `project-nav-more-menu.png` (top-tab "More" menu), captured back-to-back on the
+  same project.
+- Fix direction: make the sidebar's expanded sub-list a **superset-consistent**
+  mirror of `ProjectNav`'s own primary/secondary split (see proposed structure
+  below) — one canonical ordering, shared by both surfaces, ideally sourced from
+  one shared array instead of two independently-maintained ones (`PROJECT_VIEWS` in
+  `SidebarNavContent.tsx` and `PRIMARY_TABS`/`MORE_TABS` in `ProjectNav.tsx` — right
+  now a new project view added to one will silently not appear in the other).
+
+**🔴 P1 — Two live, simultaneously-visible workspace switchers on desktop, both wired to the identical dropdown.**
+`AppHeader.tsx`'s `WorkspaceChip` (`:54-141`) renders unconditionally — no `lg:hidden`
+— right next to the logo, showing "Demo Workspace ▾" and opening
+`WorkspaceSwitcherMenuContent`. `SidebarNavContent.tsx`'s `WorkspaceSection`
+(`:208-291`) renders "D Demo Workspace ▾" at the very top of the sidebar, opening
+the *exact same* `WorkspaceSwitcherMenuContent` component. Both are visible
+together at 1280px (screenshot: `desktop-1280-board-expanded.png` — top-left chip
+"Demo Workspace ⌄" in the header, "D Demo Workspace ⌄" as the first sidebar row).
+The team already solved this exact problem for `My Work`/`My Board`/`Insights`:
+those header links are explicitly `hidden ... md:inline-block lg:hidden`
+(`AppHeader.tsx:188,200,212`) specifically so they disappear once the sidebar
+takes over at `lg`+ — the sidebar-overhaul PR (see the "2026-07-02" entry in this
+file) even wrote an e2e test asserting exactly that non-duplication
+(`nav-sidebar.spec.ts:56-60`). The identical treatment was never applied to
+`WorkspaceChip`. Two controls that do the same thing, in two different visual
+idioms (pill-in-header vs. row-in-sidebar), reachable at the same time, is exactly
+what "doesn't seem organised" looks like on a screenshot even before you open either
+menu.
+Fix: give `WorkspaceChip` the same `lg:hidden` treatment (or, if the breadcrumb
+needs the workspace name for orientation on wide screens, downgrade it to
+non-interactive text at `lg`+ instead of a second live switcher).
+
+**🔴 P1 — There is no "Home" in the primary nav; the only ways back to the app's actual landing page are an implicit logo click or a mislabeled breadcrumb.**
+`App.tsx:129-136` makes `/` (`PulseDashboardPage` — sprint snapshot, "assigned to
+me", recent activity, project grid; genuinely the home/daily-standup page per its
+own header comment) the authenticated root route. Nothing in
+`SidebarNavContent.tsx` links to it — the "PROJECTS" text at `:332-335` is a plain
+`<p>`, not a link. The only two paths back are (a) clicking the logo
+(`AppHeader.tsx:168-170`, an icon with no visible label, relying entirely on
+"logo = home" convention) or (b) the project breadcrumb's "Projects" text/back-chevron
+(`ProjectBreadcrumb.tsx:50-66`), which is **mislabeled** — it says "Projects" and
+looks like it should open a project list, but its `to="/"` actually opens the Pulse
+Dashboard (sprints/my-issues/activity/projects, not a bare project list). Confirmed
+in `keyboard-focus-1.png`: that page's own content literally has a `PROJECTS`
+heading further down, i.e. "Projects" already means something else, on the same
+screen, one scroll away from the nav that (mis)uses the same word to mean "home."
+Fix: add an explicit `Home` (or `Overview`/`Pulse`) row at the very top of the
+sidebar's primary list, above "PROJECTS," linking to `/`; rename the breadcrumb's
+"Projects" segment to something that matches its actual destination (e.g. a house
+glyph + "Home", or just drop the link text and keep the icon-only back-affordance
+that already exists at `sm-` widths (`ProjectBreadcrumb.tsx:52-65`, `aria-label="Back
+to projects"` — same mislabel exists there too, at the aria-label level).
+Rename cost: **zero test breakage** for the aria-label/text change — grepped
+`mobile-breadcrumb.spec.ts:68,84` and it asserts the accessible name "Back to
+projects" only at the mobile (`sm:hidden`) icon variant; no spec asserts the
+desktop-visible "Projects" text.
+
+**🟡 P2 — Keyboard/tab order forces every user through the entire sidebar (workspace switcher + every project) before reaching the header or main content, on every single page.**
+`App.tsx:102-108` (`AppShellFrame`) mounts `<AppSidebar />` before the routed page
+content in the DOM. There is no skip-link anywhere in the app (grepped
+`skip.to.content|SkipLink` — zero matches). Measured live with `Tab` from a fresh
+page load on the demo account (which currently has 8 visible projects due to
+concurrent QA test data — see caveat below): the first **10** tab stops are the
+workspace-switcher trigger and 8 project rows; "My Work" doesn't get focus until
+stop 11, "My Board" stop 12 — and Insights/Notifications/Instance-admin/Docs/
+Settings/Branding/theme toggle/collapse-button all come after that, before a
+keyboard user ever reaches the header's search, notifications, or the page's own
+`<main>`. This is a genuine accessibility defect (WCAG 2.4.1 Bypass Blocks) as well
+as an organization one: because the sidebar's tab order visits Projects → Personal →
+Instance-admin → the unlabeled group in strict DOM order with no way to jump
+sections, the model of "shallow global chrome, then deep page content" that sighted
+users get from glancing at the screen is *not* the model a keyboard user experiences
+— they experience "all sidebar depth, then everything else," regardless of section
+headings.
+Caveat: the demo account currently shows 8 project rows because a concurrently
+running e2e suite is writing test projects into the same shared workspace ("QA
+Backlog 27211334", etc., visible in every screenshot here) — that count isn't
+representative of a real workspace, but it does demonstrate that tab-order cost
+scales linearly and unboundedly with project count, which a skip-link would fix
+regardless of list length.
+Fix: add a "Skip to content" link as the very first focusable element (visually
+hidden until focused, standard pattern), and/or make the collapsed-project-list
+region a single tab stop with roving arrow-key navigation inside it (common combobox/
+listbox pattern) so expanding to N projects doesn't cost N tab presses.
+
+**🟡 P2 — Section-heading and secondary text fail WCAG AA contrast in light mode (not dark mode).**
+The "PROJECTS"/"PERSONAL"/"INSTANCE ADMIN" headings (`SidebarNavContent.tsx:332-335,
+376-379, 401-404`) and the loading/empty/error copy ("Couldn't load projects.", "No
+projects yet.", `:344,347`) all use `text-ink-400`. In light mode that token is
+`#8b95a8` (`index.css:101`) on a `#ffffff` sidebar (`index.css:226`,
+`bg-surface` on the `<aside>` in `AppSidebar.tsx:36`) — computed contrast ≈ **3.0:1**,
+below the 4.5:1 WCAG AA threshold for normal-weight text this small (11px). The
+same token in dark mode, `#7d859c` (`index.css:314`) against the dark
+`#141821` sidebar surface (`index.css:443`), computes to ≈ **4.83:1** — passes. So
+this is specifically a light-mode defect: the labels that are supposed to give the
+sidebar its structure are also the hardest thing in it to read, in the mode most
+users will actually be in. This directly compounds the "unorganised" feeling — the
+one piece of UI whose entire job is to communicate grouping is low-contrast enough
+to visually recede.
+Fix: bump these to `ink-500` (`#6b7280` light — computed ≈ 4.83:1, passes) for text
+uses; keep `ink-400` for icons only (3:1 is the correct, lower bar for non-text
+graphical elements per WCAG 1.4.11).
+
+**🟡 P2 — Mobile tap targets are under the ~40-44px guideline.**
+Measured via Playwright `boundingBox()` on the mobile drawer at 390px: the "My Work"
+row is **36px** tall (`SidebarRow`, `py-2` = 8px top+8px bottom + ~20px line-height,
+`SidebarNavContent.tsx:92`), and a project row is **34px** tall (`ProjectRow`,
+`py-1.5`, `:129`). Both are reachable/clickable (no overlap issues observed) but sit
+under the commonly-cited ~40-44px minimum comfortable tap target, on a surface whose
+entire job on mobile is "the only way to navigate."
+Fix: bump `SidebarRow`/`ProjectRow` vertical padding by ~2-4px on <lg surfaces only
+(the mobile drawer already renders at `collapsed=false` unconditionally per
+`MobileSidebarDrawer.tsx:60`, so this can be done with a drawer-specific prop or a
+`lg:py-2` / base `py-2.5` split without touching the desktop rail's current density).
+
+**🟡 P2 — Feature parity gap between the two "identical" surfaces: the mobile drawer has no theme toggle and no collapse control.**
+The `SidebarNavContent.tsx` header comment (`:1-4`) states the shared content
+component exists specifically "so the two surfaces can never drift apart." They
+already have: `AppSidebar.tsx:43-67` renders `<ThemeToggle>` and the
+collapse/expand button in a footer *outside* `SidebarNavContent`, and
+`MobileSidebarDrawer.tsx` never renders either. Confirmed live: the drawer
+screenshot (`mobile-390-drawer.png`) ends at "Branding" with no theme control below
+it. Mobile users must close the drawer and dig into the avatar dropdown
+(`AppHeader.tsx:284-287`) to find Light/Dark/System — a different UI pattern
+(themed swatch buttons in a settings block) than the desktop sidebar's own
+Light/Dark/System row. Not a "which group" IA problem exactly, but it is an
+example of the same root cause: pieces got added to one surface (desktop rail) at a
+time without an equivalent pass over its sibling.
+
+**🟡 P2 — "Instance admin" is positioned as if it were a daily-use group, not the rarest, most powerful one.**
+When visible (workspace-admin-only concept, but actually gated on the narrower
+`User.isInstanceAdmin`, `SidebarNavContent.tsx:393-397`), "INSTANCE ADMIN" sits
+between "PERSONAL" and the unlabeled Docs/Settings/Branding group — i.e., in the
+middle of the everyday-use part of the nav, one section before the
+workspace-admin-ish group it's conceptually closest to. For the overwhelming
+majority of users it never renders at all, so this is low-severity, but for the
+one account that does see it (the demo account, and presumably every self-hoster's
+own admin account — likely a well-used persona), it reads as randomly slotted in
+rather than deliberately placed at the "most powerful, least frequent" end of the
+list.
+
+**🟢 P3 — Independent (`role`-less) grouping: only "Projects" gets a semantic `<nav>` landmark.**
+Only the Projects block is wrapped in `<nav aria-label="Projects">`
+(`SidebarNavContent.tsx:330`); Personal, Instance-admin, and the unlabeled group are
+plain `<div>`s inside the single outer `<aside aria-label="Primary">`
+(`AppSidebar.tsx:32-34`). A screen-reader user jumping between landmarks sees one
+undifferentiated "Primary" region plus one nested "Projects" region — the visual
+grouping (headings, borders) has no assistive-tech equivalent for the other three
+sections. Low severity given the row-level `aria-current`/focus-ring hygiene is
+otherwise good (see "what's good" below), but worth fixing while touching this file.
+
+**🟢 P3 — Collapsed rail drops all group semantics, not just group visuals.**
+When `collapsed`, every group heading (`{!collapsed && <p>...</p>}` pattern,
+`:331-335, 375-379, 400-404`) is entirely removed from the DOM rather than
+`sr-only`'d, unlike individual row labels which correctly fall back to `sr-only`
+spans (`SidebarRow`, `:100`) plus a `title` attribute. So a screen-reader user in
+collapsed mode gets a flat list of item names with zero section context, even though
+each item's own name is preserved. Confirmed via code inspection and the collapsed
+screenshot (`desktop-1280-collapsed.png`).
+
+### Information architecture assessment
+
+Is Project / Personal / (unlabeled) the right split? **The three-way split by
+"whose context is this" (project-scoped / user-scoped / workspace-scoped) is the
+right instinct** — it's the same mental model good competitors use (project switcher
++ "your stuff" + workspace admin). The execution breaks it in three ways documented
+above: (1) the workspace-scoped group has no label at all, so it doesn't read as a
+third category, it reads as "stuff that didn't fit"; (2) the project-scoped sub-list
+is an inconsistent subset of the real project IA (`ProjectNav`), so "Projects" in the
+sidebar doesn't actually mean "everything about a project," it means "whatever six
+things someone remembered to also add to the sidebar"; (3) there is no top-level
+"home" category at all — the eye has nowhere to land for "get me back to my
+overview," which is arguably the single most common navigation action in a daily
+driver tool.
+
+Where does the eye go? On the current expanded desktop layout the visual weight
+(background tint + bold text + rail tick) correctly goes to the active
+project/project-view — that part works well. But because the group headings are
+low-contrast (P2 above) and one group has none, the eye doesn't have a reliable way
+to answer "what section of the app am I even looking at" independent of the active
+highlight.
+
+What's hard to find: Triage, Analytics, Poker, Standup, Automation (not in the
+sidebar at all, see P1); Members and Audit log (only reachable via Workspace
+Settings' own tab strip or the workspace-switcher-menu footer, never the sidebar
+itself — arguably fine as second-tier, but worth being intentional about, not
+accidental).
+
+What's redundant: the two workspace switchers (P1); "Workspace settings" reachable
+from 3 places at once (the sidebar's own row, the workspace-switcher dropdown
+footer shared by both header chip and sidebar trigger — `WorkspaceSwitcherMenuContent.tsx:171-178`,
+and via Branding's own settings-tab strip) — this one is defensible (quick-access
+footer links in a switcher are a common, deliberate pattern, e.g. Slack/Notion do
+the same), so I'm not flagging it as a defect, just noting it adds to the general
+sense of "many paths, no map."
+
+### Viewport / theme verification
+
+- **Desktop 1280, expanded:** as analyzed above. Screenshot: `desktop-1280-board-expanded.png`.
+- **Desktop 1280, collapsed rail:** icon-only rail renders correctly, active project
+  highlighted, no icon overlap, tooltips (`title`) present. Loses all group-heading
+  semantics (P3 above). Screenshot: `desktop-1280-collapsed.png`.
+- **Desktop 1280, dark mode:** verified via the sidebar's own Light/Dark/System
+  toggle and the header avatar-menu's duplicate toggle (both present, both work,
+  both switch the same state — no divergence found here, that part is consistent).
+  Dark surfaces read fine, section-heading contrast is actually *better* in dark
+  mode than light (see P2 contrast finding). No mobile-only dark-mode issue found.
+  Screenshot: `desktop-1280-dark.png`.
+- **Tablet 768:** the persistent rail is hidden below `lg` (1024px), so 768px uses
+  the same mobile hamburger + overlay drawer as 390px, not a third layout. Confirmed
+  no unique 768px-only bugs; drawer opens correctly, no horizontal overflow.
+  Screenshots: `tablet-768-dashboard.png`, `tablet-768-drawer.png`.
+- **Mobile 390:** drawer opens via hamburger, closes on Escape/backdrop/nav-click
+  (verified in existing `nav-sidebar.spec.ts`, still true live). No horizontal
+  overflow of the drawer itself. Tap-target and theme-toggle-parity issues noted
+  above (P2). Screenshots: `mobile-390-dashboard.png`, `mobile-390-drawer.png`.
+
+### Accessibility summary
+
+- ✅ `aria-current="page"` correctly applied to the active row/project/view link
+  (`SidebarRow`/`ProjectRow`/`ProjectViewsSubNav`, consistently).
+- ✅ Focus-visible rings are consistent (`focus-visible:ring-2 ring-signal-500
+  ring-offset-1`) across every interactive row in the sidebar — no divergence found.
+- ✅ Mobile drawer traps focus, closes on Escape, restores scroll (`useOverlay`,
+  shared with `Modal` — same pattern, verified live).
+- ✅ Collapsed-rail rows keep an accessible name via `sr-only` span + `title`.
+- 🔴 No skip-link; sidebar-first DOM order costs every keyboard user 10+ tab presses
+  before reaching header/content (P2 above).
+- 🟡 Section headings/secondary text fail AA contrast in light mode (P2 above).
+- 🟡 Only one of four visual groups has a semantic `<nav>` landmark (P3 above).
+- 🟡 Collapsed rail drops group semantics entirely, not just visually (P3 above).
+
+### What's good (don't lose this in a rewrite)
+
+- The active-state "rail tick" signature element is distinctive, consistently
+  applied, and — per the 2026-07-02 entry above — a deliberate rejection of the
+  generic filled-pill pattern. Keep it.
+- `SidebarNavContent` being shared verbatim between the desktop rail and the mobile
+  drawer (rather than two parallel implementations) is the right architecture — the
+  parity gaps found here (theme toggle, tap-target sizing) are in the parts that
+  *aren't* shared (`AppSidebar`'s own footer), which is itself useful signal for
+  where to look next.
+- Workspace-switcher dropdown content (`WorkspaceSwitcherMenuContent`) being a
+  single reused component between the header chip and the sidebar trigger means the
+  fix for the P1 duplication finding is a CSS-visibility change, not a rewrite.
+  Loading/empty/error states, search, and keyboard Escape-to-close on that dropdown
+  all work correctly.
+- Icon vocabulary (`sidebarIcons.tsx`) is disciplined: 24-unit viewBox, 2px stroke,
+  monochrome, no icon-library dependency — consistent across every row including
+  the newer Phase-2 additions (Dashboards, Branding, Shield). No visual-style drift
+  between old and new icons.
+- Row-density hierarchy (project rows tighter than personal rows, sub-nav rows
+  tightest of all) reads as an intentional typographic scale reflecting nesting
+  depth, not an inconsistency — worth keeping as-is.
+
+### Proposed reorganized sidebar structure
+
+Ordered top to bottom. "Was" notes call out renames/merges and their cost.
+
+1. **Workspace switcher** (unchanged component/position) — but make `AppHeader`'s
+   `WorkspaceChip` `lg:hidden` (matching the existing `My Work`/`My Board`/`Insights`
+   precedent at `AppHeader.tsx:188,200,212`) so only one switcher is ever live at a
+   given width. *No sidebar code change; header-only fix. No test breakage —
+   `workspace-chip` testid still exists at <lg widths where mobile specs check it.*
+2. **`Home`** *(new)* → `/`. Fixes the "no way back to the dashboard from the
+   sidebar" gap. *New row; no rename, no test cost. Recommend giving it its own
+   `data-testid="nav-sidebar-home"` for future QA.*
+3. **`PROJECTS`** heading (unchanged) → project list (unchanged) → for the active
+   project, an expanded sub-list that **mirrors `ProjectNav`'s own primary/secondary
+   split** instead of the current bespoke 6-item list:
+   - Primary (always visible under the active project): `Board`, `Backlog`,
+     `Triage`, `Docs`, `Reports` — same set and order as `ProjectNav.tsx`'s
+     `PRIMARY_TABS`.
+   - Secondary (a "More" disclosure directly beneath, default-collapsed,
+     remembering the same open/closed idea `ProjectNav` already uses): `Analytics`,
+     `Dashboards`, `Roadmap`, `Poker`, `Standup`, `Automation` — same set/order as
+     `ProjectNav.tsx`'s `MORE_TABS`.
+   - *Was: `PROJECT_VIEWS` = Board, Backlog, Docs, Dashboards, Roadmap, Reports
+     (`SidebarNavContent.tsx:157-164`). Cost: this changes visible text/order for
+     Dashboards and Roadmap (now behind "More") — `nav-sidebar.spec.ts:95-120`
+     ("Roadmap is reachable one click from the sidebar") explicitly asserts Roadmap
+     is a **direct**, non-menu click; that test's premise would need to change
+     (or Roadmap specifically could stay promoted to primary if the team wants to
+     keep that one-click guarantee — flagging the tension rather than deciding it).
+     `nav-sidebar-view` testid can be kept on both tiers.*
+4. **`PERSONAL`** heading (unchanged) → `My Work`, `My Board`,
+   **`My Analytics`** *(renamed from `Insights`)*, `Notifications`.
+   - *Was: `Insights` (`SidebarNavContent.tsx:300`, `AppHeader.tsx:220,294`). Cost:
+     renaming to match the page's own `<h1>` ("My Analytics",
+     `PersonalAnalyticsPage.tsx:72`) breaks the accessible-name assertion at
+     `nav-sidebar.spec.ts:53` (`getByRole('link', { name: 'Insights' })`) and the
+     `gotoSection(page, 'Insights')` call in `analytics.spec.ts:73` — both are
+     one-line text updates, not structural changes, but they are real, named test
+     edits the implementer needs to make in the same commit.*
+5. **`WORKSPACE`** heading *(new — currently unlabeled)* →
+   **`Knowledge Base`** *(renamed from workspace-level `Docs`, to end the collision
+   with project-level `Docs`)*, `Members`, `Workspace settings`, `Branding`
+   (admin-gated, unchanged).
+   - *Was: unlabeled group = `Docs`, `Workspace settings`, `Branding`
+     (`SidebarNavContent.tsx:417-457`); `Members` currently only reachable via the
+     workspace-switcher-menu footer or Workspace Settings' own tab strip, promoted
+     here to a first-class row to match `Docs`/`Branding`'s existing "pull it out of
+     Settings so it's discoverable" precedent. Cost: renaming the *label* "Docs" →
+     "Knowledge Base" does **not** touch `nav-sidebar-workspace-docs`
+     (`workspace-docs.spec.ts:41,43` asserts the `data-testid`, not the text) or
+     `pages-search.spec.ts:41` (that "Docs" is the *project*-pages command-palette
+     group, unaffected). Zero test breakage found for this rename. Adding "Members"
+     as a new row needs a new testid, no existing-test risk.*
+6. **`INSTANCE ADMIN`** heading (unchanged content) — **moved to the very bottom**
+   of the scrollable list, immediately above the Theme/Collapse footer, reflecting
+   "rarest, most powerful, least relevant to a normal workday" rather than sitting
+   mid-list. *No label/testid change, position only — no test cost
+   (`admin-sso-settings.spec.ts` asserts testid/visibility, not position.)*
+7. Utility footer (unchanged): Theme toggle, Collapse — **plus**, add the same
+   Theme toggle to `MobileSidebarDrawer`'s footer so the two "identical" surfaces
+   actually stop drifting apart (per the file's own stated goal).
+
+Net effect: every group has a heading; "Home" and the full project-view set are
+finally reachable from the one nav surface the app's own README/redesign calls
+primary; the two Analytics-adjacent personal/project words are reconciled with
+their own page headings; "Docs" stops meaning two different things; and the
+riskiest/rarest group (Instance admin) sits at the bottom instead of the middle.
+
+### Screenshots captured (for founder hand-off)
+
+- `/tmp/nav-audit/desktop-1280-board-expanded.png` — expanded rail, active project,
+  full 4-group structure, header workspace-chip duplication visible.
+- `/tmp/nav-audit/desktop-1280-collapsed.png` — collapsed icon rail.
+- `/tmp/nav-audit/desktop-1280-dark.png` — dark mode, avatar-menu theme toggle open.
+- `/tmp/nav-audit/tablet-768-dashboard.png`, `/tmp/nav-audit/tablet-768-drawer.png`
+- `/tmp/nav-audit/mobile-390-dashboard.png`, `/tmp/nav-audit/mobile-390-drawer.png`
+- `/tmp/nav-audit/project-nav-more-menu.png` — `ProjectNav`'s top-tab "More" menu,
+  for direct side-by-side comparison against the sidebar's sub-nav.
+- `/tmp/nav-audit/keyboard-focus-1.png` — Pulse Dashboard home page, showing its own
+  "PROJECTS" section heading (context for the breadcrumb mislabel finding).
+
+### Top 5 for the dev team (priority order)
+
+1. **Fix the sidebar/ProjectNav project-view mismatch** — Triage, Analytics, Poker,
+   Standup, Automation are invisible from the primary nav. This is the single
+   biggest driver of "unorganised": the app disagrees with itself about its own IA.
+   Ideally, source both `ProjectNav` and the sidebar's sub-nav from one shared
+   ordered list.
+2. **De-duplicate the workspace switcher** — `lg:hidden` the header's `WorkspaceChip`
+   the same way `My Work`/`My Board`/`Insights` already are. Small, safe, high
+   perceived-polish payoff.
+3. **Add a `Home` row and give the unlabeled group a heading** — both are one-line,
+   zero-test-cost changes that directly answer the founder's report.
+4. **Resolve the two `Docs` / `Insights`-vs-"My Analytics" naming collisions** — pick
+   one name per concept and make the nav label and the page's own heading agree.
+5. **Add a skip-link and fix the sidebar-first tab order** — currently costs every
+   keyboard user 10+ tab presses (measured, scales with project count) before
+   reaching page content on every single page load.

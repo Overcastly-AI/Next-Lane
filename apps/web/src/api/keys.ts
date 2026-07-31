@@ -113,6 +113,8 @@ export const qk = {
   page: (pageId: string) => ['page', pageId] as const,
   /** A page's version history (cursor-paginated, newest-first). */
   pageVersions: (pageId: string) => ['pageVersions', pageId] as const,
+  /** Metadata for the images embedded in a page's body. */
+  pageImages: (pageId: string) => ['pageImages', pageId] as const,
   /** One specific version's full content. */
   pageVersion: (pageId: string, versionNumber: number) =>
     ['pageVersion', pageId, versionNumber] as const,
