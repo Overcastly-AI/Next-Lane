@@ -16,6 +16,19 @@ staged here by hand (see [`RELEASING.md`](./RELEASING.md))._
 
 ---
 
+## [0.6.0] — 2026-07-31
+
+[Compare with v0.5.0](https://github.com/Overcastly-AI/Next-Lane/compare/v0.5.0...v0.6.0)
+
+### Features
+
+* **mcp:** agents can author doc templates, not just use them ([c70c32e](https://github.com/Overcastly-AI/Next-Lane/commit/c70c32e7d4fc07b16a5970f753e142479f705cc7))
+* **pages:** images in documentation pages, addressed by id not URL ([511ff93](https://github.com/Overcastly-AI/Next-Lane/commit/511ff93dc294cdda0ab098d49b2245bb25789f2a))
+
+### Bug Fixes
+
+* **web:** pin jsdom to ^26 — jsdom 30 silently skipped every DOM test on CI ([c4f6c9b](https://github.com/Overcastly-AI/Next-Lane/commit/c4f6c9b0b291cc1688650daacc24d883b2c0b4e5))
+
 ## [0.5.0] — 2026-07-31
 
 [Compare with v0.4.2](https://github.com/Overcastly-AI/Next-Lane/compare/v0.4.2...v0.5.0)
