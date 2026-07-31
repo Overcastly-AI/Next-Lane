@@ -459,6 +459,26 @@ draft are currently unresolved. Because `[`, `]`, and `|` are reserved for
 this link grammar, page **titles** can't contain them — the "New page" modal
 validates this inline before you can hit a round-trip 400.
 
+**Images.** Paste a screenshot straight into the editor, or drag an image file
+onto it, and it uploads to the page and renders inline. PNG, JPEG, GIF and
+WebP up to 10 MB each; SVG is deliberately refused, because an SVG is an
+active document that could carry script and page images render inline rather
+than downloading. The bytes go wherever your object storage is configured to
+put them — local disk by default, or Ceph/MinIO/S3 (see
+[Configuration](./configuration#object-storage)) — with no extra setup on the
+page side.
+
+Worth knowing what gets written into your markdown: **not a URL**. A page body
+stores `![alt](nl-image:<id>)`, an app-internal reference. That's a deliberate
+choice with two payoffs. First, nothing about your deployment is baked into
+your content — move an install from `localhost` to a real domain, or restore
+the database somewhere else, and every image still resolves. Second, and more
+importantly, an image is **exactly as private as the page holding it**: the
+app fetches each one using *your* session when it renders the page, rather
+than pointing the browser at a URL that would have to work without
+credentials. There is no separate share setting on an image to get wrong; if
+you can read the page, you can see its images, and if you can't, you can't.
+
 **Version history.** Every save snapshots a full, immutable `PageVersion` —
 **append-only**, nothing is ever overwritten. The History drawer (clock icon,
 top-right of a page) lists every version newest-first with author and

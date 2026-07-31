@@ -45,10 +45,23 @@ export interface WikiLinkTextareaProps {
   onBlur?: (e: React.FocusEvent<HTMLTextAreaElement>) => void;
   className?: string;
   'data-testid'?: string;
+  /**
+   * Called with any files pasted or dropped onto the textarea. Omitted =
+   * the browser's default paste/drop behaviour is left completely untouched.
+   * The component takes no view on what the files are; the caller decides
+   * which ones it accepts and what markdown they become.
+   */
+  onFiles?: (files: File[]) => void;
 }
 
 export interface WikiLinkTextareaHandle {
   focus(): void;
+  /**
+   * Insert `text` at the caret (replacing any selection) and leave the caret
+   * after it. Reads the LIVE DOM value rather than the `value` prop so that
+   * back-to-back inserts can't build on a stale render.
+   */
+  insertAtCaret(text: string): void;
 }
 
 export const WikiLinkTextarea = forwardRef<WikiLinkTextareaHandle, WikiLinkTextareaProps>(
@@ -65,6 +78,7 @@ export const WikiLinkTextarea = forwardRef<WikiLinkTextareaHandle, WikiLinkTexta
       className,
       'aria-label': ariaLabel,
       'data-testid': dataTestId,
+      onFiles,
     },
     ref,
   ) {
@@ -85,9 +99,26 @@ export const WikiLinkTextarea = forwardRef<WikiLinkTextareaHandle, WikiLinkTexta
       top: 0,
     });
 
+    const [dropActive, setDropActive] = useState(false);
+
     useImperativeHandle(ref, () => ({
       focus() {
         textareaRef.current?.focus();
+      },
+      insertAtCaret(text: string) {
+        const el = textareaRef.current;
+        if (!el) return;
+        const live = el.value;
+        const start = el.selectionStart ?? live.length;
+        const end = el.selectionEnd ?? start;
+        const newValue = `${live.slice(0, start)}${text}${live.slice(end)}`;
+        onChange(newValue);
+        const caret = start + text.length;
+        // setSelectionRange only, never .focus() — the documented focus-loss
+        // rule for every composer in this codebase.
+        requestAnimationFrame(() => {
+          textareaRef.current?.setSelectionRange(caret, caret);
+        });
       },
     }));
 
@@ -179,6 +210,49 @@ export const WikiLinkTextarea = forwardRef<WikiLinkTextareaHandle, WikiLinkTexta
       [query, filtered, selectedIndex, insertPage, parentOnKeyDown],
     );
 
+    /**
+     * Paste of an image (screenshot from the clipboard, or a copied file).
+     *
+     * Only preventDefault when there ARE files: a normal text paste — including
+     * a paste that carries an `image/*` flavour alongside rich text, which is
+     * what copying from a web page produces — must still land as text.
+     */
+    const handlePaste = useCallback(
+      (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+        if (!onFiles) return;
+        const files = Array.from(e.clipboardData?.files ?? []);
+        if (files.length === 0) return;
+        e.preventDefault();
+        onFiles(files);
+      },
+      [onFiles],
+    );
+
+    const handleDrop = useCallback(
+      (e: React.DragEvent<HTMLTextAreaElement>) => {
+        setDropActive(false);
+        if (!onFiles) return;
+        const files = Array.from(e.dataTransfer?.files ?? []);
+        if (files.length === 0) return;
+        e.preventDefault();
+        onFiles(files);
+      },
+      [onFiles],
+    );
+
+    // dragover must be prevented for a drop to fire at all; only do so when a
+    // file is actually being dragged, so dragging selected TEXT into the
+    // textarea keeps working as the browser intends.
+    const handleDragOver = useCallback(
+      (e: React.DragEvent<HTMLTextAreaElement>) => {
+        if (!onFiles) return;
+        if (!Array.from(e.dataTransfer?.types ?? []).includes('Files')) return;
+        e.preventDefault();
+        setDropActive(true);
+      },
+      [onFiles],
+    );
+
     const isOpen = query !== null;
     const hasResults = filtered.length > 0;
 
@@ -222,13 +296,23 @@ export const WikiLinkTextarea = forwardRef<WikiLinkTextareaHandle, WikiLinkTexta
           onChange={handleChange}
           onKeyDown={handleKeyDown}
           onScroll={handleScroll}
+          onPaste={handlePaste}
+          onDrop={handleDrop}
+          onDragOver={handleDragOver}
+          onDragLeave={() => setDropActive(false)}
           onBlur={(e) => {
+            setDropActive(false);
             parentOnBlur?.(e);
           }}
           placeholder={placeholder}
           rows={rows}
           disabled={disabled}
-          className={cn('font-mono text-sm leading-relaxed', className)}
+          data-drop-active={dropActive ? '' : undefined}
+          className={cn(
+            'font-mono text-sm leading-relaxed',
+            dropActive && 'rounded-lg ring-2 ring-signal-400 ring-offset-2',
+            className,
+          )}
           aria-label={ariaLabel}
           aria-autocomplete={isOpen ? 'list' : undefined}
           aria-expanded={isOpen}

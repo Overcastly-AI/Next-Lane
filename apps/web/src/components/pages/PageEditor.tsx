@@ -10,17 +10,27 @@
  * PATCH on Save snapshots a new `PageVersion` server-side automatically
  * (see `UpdatePageDto`) — this component doesn't manage version history
  * itself, see `VersionHistoryDrawer`.
+ *
+ * Images can be pasted or dropped into the editor: they upload to the page and
+ * are inserted as `![alt](nl-image:<id>)`, which the reader resolves with their
+ * own token (see `lib/pageImages.ts`).
  */
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PageDto } from '@next-lane/shared';
+import {
+  PAGE_IMAGE_MAX_BYTES,
+  PAGE_IMAGE_MIME_TYPES,
+  pageImageMarkdown,
+} from '@next-lane/shared';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { useToast } from '@/components/ui/Toast';
+import { useUploadPageImage } from '@/api/pageImages';
 import { errorMessage } from '@/lib/errorMessage';
 import { countUnresolvedWikiLinks, type FlatPageOption } from '@/lib/wikiLinks';
 import { useUnsavedChangesGuard } from '@/lib/unsavedChangesGuard';
 import { PageContent } from './PageContent';
-import { WikiLinkTextarea } from './WikiLinkTextarea';
+import { WikiLinkTextarea, type WikiLinkTextareaHandle } from './WikiLinkTextarea';
 
 export interface PageEditorProps {
   page: PageDto;
@@ -107,10 +117,66 @@ export function PageEditor({
   // A ref set synchronously blocks the second one.
   const savingRef = useRef(false);
 
+  // ── Image upload (paste / drag-and-drop into the editor) ────────────────
+  //
+  // An upload is optimistic in the editor but NOT in the document: a text
+  // placeholder goes in at the caret immediately so the writer keeps their
+  // place and can carry on typing, and it is rewritten to the real
+  // `![alt](nl-image:<id>)` reference only once the bytes are stored. If the
+  // upload fails the placeholder is removed again, so a saved page can never
+  // reference an image that doesn't exist.
+  const editorRef = useRef<WikiLinkTextareaHandle>(null);
+  const { mutateAsync: uploadFile } = useUploadPageImage(page.id);
+  const placeholderSeq = useRef(0);
+  const [uploading, setUploading] = useState(0);
+
+  const handleFiles = useCallback(
+    async (files: File[]) => {
+      const accepted = files.filter((f) => PAGE_IMAGE_MIME_TYPES.includes(f.type));
+      if (accepted.length < files.length) {
+        toast.error('Only PNG, JPEG, GIF and WebP images can be added to a page.');
+      }
+      // Sequential, not parallel: each insert reads the live textarea value,
+      // and concurrent inserts would race over the same caret position.
+      for (const file of accepted) {
+        if (file.size > PAGE_IMAGE_MAX_BYTES) {
+          toast.error(
+            `${file.name} is larger than ${PAGE_IMAGE_MAX_BYTES / 1024 / 1024} MB.`,
+          );
+          continue;
+        }
+        placeholderSeq.current += 1;
+        const placeholder = `![Uploading ${file.name}…](uploading-${placeholderSeq.current})`;
+        editorRef.current?.insertAtCaret(`${placeholder}\n`);
+        setUploading((n) => n + 1);
+        try {
+          const image = await uploadFile(file);
+          const markdown = pageImageMarkdown(image);
+          // Function replacement: a filename containing `$&` would otherwise
+          // be interpreted as a replacement pattern.
+          setContent((c) => c.replace(placeholder, () => markdown));
+        } catch (err) {
+          setContent((c) => c.replace(`${placeholder}\n`, () => ''));
+          toast.error(errorMessage(err, `Could not upload ${file.name}.`));
+        } finally {
+          setUploading((n) => n - 1);
+        }
+      }
+    },
+    [toast, uploadFile],
+  );
+
   async function handleSave() {
     if (savingRef.current) return;
     if (!title.trim()) {
       toast.error('Page title can’t be empty.');
+      return;
+    }
+    // Saving mid-upload would persist an `![Uploading …]` placeholder into the
+    // page body — and into a version snapshot — with nothing to rewrite it
+    // afterwards, since the rewrite targets local draft state.
+    if (uploading > 0) {
+      toast.error('Wait for the image upload to finish before saving.');
       return;
     }
     savingRef.current = true;
@@ -181,11 +247,20 @@ export function PageEditor({
                 <Button variant="secondary" size="sm" onClick={handleCancel} data-testid="page-cancel-edit">
                   Cancel
                 </Button>
+                {uploading > 0 && (
+                  <span
+                    data-testid="page-image-uploading"
+                    className="inline-flex items-center gap-1 rounded-full bg-signal-50 px-2 py-1 text-xs font-medium text-signal-700 ring-1 ring-signal-200"
+                    role="status"
+                  >
+                    Uploading {uploading} image{uploading === 1 ? '' : 's'}…
+                  </span>
+                )}
                 <Button
                   size="sm"
                   onClick={handleSave}
                   loading={saving}
-                  disabled={!dirty || saving}
+                  disabled={!dirty || saving || uploading > 0}
                   data-testid="page-save"
                 >
                   Save
@@ -216,11 +291,13 @@ export function PageEditor({
         <div className="flex min-h-0 flex-1 flex-col px-4 py-4 sm:px-8">
           <div className="mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col">
             <WikiLinkTextarea
+              ref={editorRef}
               value={content}
               onChange={setContent}
+              onFiles={handleFiles}
               pages={pageOptions}
               aria-label="Page content (Markdown, use [[ to link another page)"
-              placeholder="Write in Markdown… type [[ to link another page."
+              placeholder="Write in Markdown… type [[ to link another page. Paste or drop an image to add it."
               data-testid="page-content-editor"
               className="min-h-[50vh] flex-1 resize-none border-none bg-transparent px-0 shadow-none focus:ring-0"
             />

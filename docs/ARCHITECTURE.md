@@ -106,6 +106,7 @@ Core entities and relationships:
   - `PageVersion`: immutable snapshots of each page save, monotonic per-page `versionNumber`, stores title + content at snapshot time.
   - `PageLink`: directed edges between pages, sourced from `[[wiki-link]]` references (`packages/shared/src/wikilink.ts#parseWikiLinks` resolves them case-insensitively); every save syncs the delta (adds/removes only changed links). An unresolved link (reference to a not-yet-created page) is valid and tracked.
   - `PageIssueLink`: many-to-many cross-links between pages and issues (on roadmap, not yet shipped).
+  - `PageImage`: an image uploaded into a page body (`onDelete: Cascade` from the page; `SetNull` on the uploader). Referenced from `Page.content` as `![alt](nl-image:<id>)` — an app-internal scheme, not a URL. Two reasons: a stored absolute URL would bake the deployment origin into user content, and it would have to be fetchable *without* an `Authorization` header, which would make an image embedded in a private page less private than the page. The web renderer resolves the scheme at display time, fetching each image with the caller's token and swapping in a `blob:` URL, so an image inherits the page's authorization exactly (`pages:read` on the page's project or workspace) with no separate image ACL. Bytes go through the same `StorageDriver` as attachments; `apps/web/src/lib/pageImages.ts` holds the resolver and the rationale.
 
 **Developer Graph (GitHub, GitLab, Gitea integration):** three self-hosted-friendly forges supported with two-way issue linking. GitHub and GitLab webhooks process inbound events (push, pull_request/merge_request); Gitea uses HMAC-SHA256 webhook verification. Commit messages, PR/MR/branch titles and names referencing an issue key (e.g. `NL-123`) trigger upsert of `IssueGithubLink`/`IssueGitlabLink`/`IssueGiteaLink` rows, visible in the issue's Development section. Every webhook is HMAC-verified against the secret before processing; PATs/tokens are encrypted at rest and never returned by the API. Gitea v1 is links-only; GitHub and GitLab also support live PR/MR status polling and auto-transition-on-merge automation.
 
@@ -124,7 +125,7 @@ Services:
 - **api** — built from `apps/api`; runs `prisma migrate deploy` on boot, then starts. Depends on db/redis being healthy.
 - **web** — built from `apps/web`; static build served by nginx (prod) or Vite dev server (dev override).
 
-A `docker-compose.dev.yml` override mounts source and enables hot reload. Attachments use a named `uploads` volume in the MVP (swappable for S3/MinIO later).
+A `docker-compose.dev.yml` override mounts source and enables hot reload. Uploads (attachments, workspace logos, page images) go through a `StorageDriver`: `local` by default, writing to a named `uploads` volume, or `s3` against any S3-compatible store — Ceph RADOS Gateway, MinIO (shipped behind a compose profile), AWS S3, R2, Wasabi. See `apps/api/src/storage/` and `docs-site/guide/configuration.md` § Object storage.
 
 ## Conventions
 

@@ -290,8 +290,47 @@ any API response after it is saved.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `UPLOADS_DIR` | `./uploads` | Filesystem path where uploaded files are stored. In Kubernetes set this to the PVC mount path (e.g. `/data/uploads`). |
+| `UPLOADS_DIR` | `./uploads` | Filesystem path where uploaded files are stored (`STORAGE_DRIVER=local` only). In Kubernetes set this to the PVC mount path (e.g. `/data/uploads`). |
 | `MAX_FILE_BYTES` | `10485760` (10 MB) | Maximum allowed upload size in bytes. |
+
+---
+
+## Object storage
+
+Everything you upload — issue attachments, workspace logos, and images pasted
+into documentation pages — goes through one storage driver. The default is
+`local`, which writes to `UPLOADS_DIR` and is what a single-host
+`docker compose` install wants. Set `STORAGE_DRIVER=s3` to put the bytes in an
+object store instead.
+
+The `s3` driver targets the **S3 API**, not one specific vendor, which is why
+it works with **Ceph RADOS Gateway**, MinIO, AWS S3, Cloudflare R2 and Wasabi
+from the same six variables. A Ceph-native integration would have covered only
+Ceph — and would have obliged a single-host user to run a Ceph cluster to
+store a logo.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `STORAGE_DRIVER` | `local` | `local` (disk at `UPLOADS_DIR`) or `s3`. An unrecognized value fails at startup rather than silently falling back — a fallback would look like it worked until the container was replaced and the uploads were gone. |
+| `S3_BUCKET` | — | **Required** when `STORAGE_DRIVER=s3`. |
+| `S3_ENDPOINT` | — | Endpoint of a self-hosted store, e.g. `http://rgw.ceph.svc.cluster.local` or `http://minio:9000`. **Omit for real AWS S3.** |
+| `S3_REGION` | `us-east-1` | Ignored by Ceph/MinIO, but the AWS SDK requires a value. |
+| `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | — | Omit **both** to use the AWS provider chain instead (IRSA, instance profile). Setting only one is rejected at startup, since a half-pair would shadow the provider chain and fail confusingly later. |
+| `S3_FORCE_PATH_STYLE` | `true` when `S3_ENDPOINT` is set | Path-style addressing (`https://host/bucket/key`). Virtual-host style needs `bucket.host` to resolve in DNS, which it won't for the bare hostname or IP a self-hosted RGW/MinIO is usually reached by. |
+| `S3_PREFIX` | — | Optional key prefix, so one bucket can host several installs. |
+
+`docker compose` ships MinIO behind a profile, so a plain `up` is unchanged:
+`docker compose --profile minio up -d`. For Kubernetes — including reading
+credentials directly out of a Rook `CephObjectStoreUser` secret — see
+[Kubernetes deployment](https://github.com/Overcastly-AI/Next-Lane/blob/main/docs/DEPLOY-KUBERNETES.md).
+
+Switching an existing install to `s3` does **not** migrate what's already on
+disk: copy `UPLOADS_DIR` into the bucket (`aws s3 sync`, `rclone`, `mc mirror`)
+before flipping the variable, or older attachments will 404.
+
+Running more than one API replica requires `s3` (or a ReadWriteMany volume) —
+with `local`, each pod has its own disk and an upload is only readable from
+the pod that received it.
 
 ---
 

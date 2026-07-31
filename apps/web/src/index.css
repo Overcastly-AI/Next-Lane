@@ -743,6 +743,18 @@ h1, h2, h3, h4, h5, h6,
   @apply mb-2 max-w-full rounded-md border border-ink-200 shadow-xs;
   height: auto;
 }
+/* A page image between "reference parsed" and "bytes fetched": it has no src
+   yet (see lib/pageImages.ts), so reserve a calm block rather than let the
+   alt text collapse the layout and then jump when the picture arrives. */
+.markdown-body img[data-nl-image-loading] {
+  @apply block min-h-24 w-full bg-ink-50;
+}
+/* An image whose bytes could not be fetched. Deliberately still visible, with
+   its alt text readable — a reader should be told a picture is missing, not
+   silently shown a page with a hole in it. */
+.markdown-body img[data-nl-image-error] {
+  @apply block min-h-16 w-full border-dashed bg-ink-50 p-2 text-xs text-ink-500;
+}
 .markdown-body > *:first-child { @apply mt-0; }
 
 /* ── Pages: [[wiki-link]] rendering ───────────────────────────────────────
