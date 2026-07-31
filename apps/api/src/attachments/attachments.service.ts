@@ -6,7 +6,13 @@ import {
 } from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
-import { moveUploadedFile } from '../common/move-file.util';
+import { Inject } from '@nestjs/common';
+import type { Readable } from 'stream';
+import {
+  STORAGE_DRIVER,
+  StorageObjectNotFound,
+  type StorageDriver,
+} from '../storage/storage.types';
 import * as crypto from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -168,7 +174,9 @@ function toDto(
 
 @Injectable()
 export class AttachmentsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService,
+    @Inject(STORAGE_DRIVER) private readonly storage: StorageDriver,
+  ) {}
 
   /** Validate size + MIME and store the file, returning the saved Attachment DTO. */
   async upload(
@@ -214,10 +222,7 @@ export class AttachmentsService {
     // storage key (UUID) as the filename. The client-provided originalname
     // is stored in the DB for display but NEVER used as a filesystem path.
     const storageKey = `${crypto.randomUUID()}${this.ext(file.originalname)}`;
-    const uploadsDir = getUploadsDir();
-    fs.mkdirSync(uploadsDir, { recursive: true });
-    const dest = path.join(uploadsDir, storageKey);
-    moveUploadedFile(file.path, dest);
+    await this.storage.put(storageKey, file.path, file.mimetype);
 
     const attachment = await this.prisma.attachment.create({
       data: {
@@ -258,20 +263,25 @@ export class AttachmentsService {
   async resolveForDownload(
     userId: string,
     attachmentId: string,
-  ): Promise<{ filePath: string; attachment: AttachmentDto }> {
+  ): Promise<{ stream: Readable; attachment: AttachmentDto }> {
     const attachment = await this.findAttachment(attachmentId);
     const issue = await this.getIssue(attachment.issueId);
     await assertProjectMember(this.prisma, userId, issue.projectId);
 
-    // MUST be absolute — see the identical fix in workspaces.service.ts.
-    // getUploadsDir() defaults to the RELATIVE './uploads', and the controller
-    // resolves this against the filesystem root, so a relative path here made
-    // every attachment download stat '/uploads/<key>' and 500 with ENOENT.
-    const filePath = path.resolve(getUploadsDir(), attachment.storageKey);
-    if (!fs.existsSync(filePath)) {
-      throw new NotFoundException('File not found on disk');
+    // A STREAM, not a path: the bytes may live in object storage, where there
+    // is no filesystem path to hand to `res.sendFile`. The local driver still
+    // opens a plain read stream, so nothing regresses for disk-backed installs.
+    try {
+      const stream = await this.storage.createReadStream(attachment.storageKey);
+      return { stream, attachment: toDto(attachment) };
+    } catch (err) {
+      // A DB row whose blob is gone is a 404, not a 500 — the same shape the
+      // old `fs.existsSync` guard produced.
+      if (err instanceof StorageObjectNotFound) {
+        throw new NotFoundException('File not found in storage');
+      }
+      throw err;
     }
-    return { filePath, attachment: toDto(attachment) };
   }
 
   /**
@@ -296,7 +306,8 @@ export class AttachmentsService {
     }
 
     await this.prisma.attachment.delete({ where: { id: attachmentId } });
-    this.safeUnlink(path.join(getUploadsDir(), attachment.storageKey));
+    // Driver-backed so the blob is removed from wherever it actually lives.
+    await this.storage.delete(attachment.storageKey);
     return { id: attachmentId };
   }
 

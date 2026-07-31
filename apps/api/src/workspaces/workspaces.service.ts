@@ -6,7 +6,13 @@ import {
 } from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
-import { moveUploadedFile } from '../common/move-file.util';
+import { Inject } from '@nestjs/common';
+import type { Readable } from 'stream';
+import {
+  STORAGE_DRIVER,
+  StorageObjectNotFound,
+  type StorageDriver,
+} from '../storage/storage.types';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const fileType = require('file-type') as typeof import('file-type');
 import { Prisma } from '@prisma/client';
@@ -85,6 +91,7 @@ export class WorkspacesService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly pageTemplates: PageTemplatesService,
+    @Inject(STORAGE_DRIVER) private readonly storage: StorageDriver,
   ) {}
 
   async findAll(userId: string): Promise<WorkspaceDto[]> {
@@ -469,13 +476,9 @@ export class WorkspacesService {
     });
     if (!existing) throw new NotFoundException('Workspace not found');
 
-    const uploadsDir = getUploadsDir();
-    fs.mkdirSync(uploadsDir, { recursive: true });
-
     // Use the multer-assigned temp filename (already a UUID) as the storage key.
     const storageKey = path.basename(file.path);
-    const dest = path.join(uploadsDir, storageKey);
-    moveUploadedFile(file.path, dest);
+    await this.storage.put(storageKey, file.path, file.mimetype);
 
     const workspace = await this.prisma.workspace.update({
       where: { id: workspaceId },
@@ -487,7 +490,7 @@ export class WorkspacesService {
 
     // Best-effort: remove previous logo from disk after successful DB update.
     if (existing.logoStorageKey && existing.logoStorageKey !== storageKey) {
-      this.safeUnlink(path.join(uploadsDir, existing.logoStorageKey));
+      await this.storage.delete(existing.logoStorageKey);
     }
 
     return toWorkspaceDto(workspace);
@@ -512,7 +515,7 @@ export class WorkspacesService {
     });
 
     if (existing.logoStorageKey) {
-      this.safeUnlink(path.join(getUploadsDir(), existing.logoStorageKey));
+      await this.storage.delete(existing.logoStorageKey);
     }
 
     return toWorkspaceDto(workspace);
@@ -525,7 +528,7 @@ export class WorkspacesService {
    */
   async resolveLogo(
     workspaceId: string,
-  ): Promise<{ filePath: string; mimeType: string }> {
+  ): Promise<{ stream: Readable; mimeType: string }> {
     const workspace = await this.prisma.workspace.findUnique({
       where: { id: workspaceId },
       select: { logoStorageKey: true, logoMimeType: true },
@@ -542,12 +545,18 @@ export class WorkspacesService {
     // against the filesystem root — stat '/uploads/<key>' → ENOENT → 500 on
     // every logo request. path.resolve makes the contract in the doc comment
     // above ("Returns the absolute file path") actually true.
-    const filePath = path.resolve(getUploadsDir(), workspace.logoStorageKey);
-    if (!fs.existsSync(filePath)) {
-      throw new NotFoundException('Logo file not found on disk');
+    // A STREAM, not a path: with the s3 driver there is no filesystem path.
+    // The local driver still opens a plain read stream, so disk-backed installs
+    // behave exactly as before.
+    try {
+      const stream = await this.storage.createReadStream(workspace.logoStorageKey);
+      return { stream, mimeType: workspace.logoMimeType };
+    } catch (err) {
+      if (err instanceof StorageObjectNotFound) {
+        throw new NotFoundException('Logo file not found in storage');
+      }
+      throw err;
     }
-
-    return { filePath, mimeType: workspace.logoMimeType };
   }
 
   // ── helpers ─────────────────────────────────────────────────────────────────

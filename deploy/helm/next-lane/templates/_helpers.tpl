@@ -200,10 +200,18 @@ nothing stopped it. This fails the render instead, with the fix in the message.
 */}}
 {{- define "next-lane.validateUploadsScaling" -}}
 {{- $p := .Values.api.uploads.persistence -}}
-{{- $shared := and $p.enabled (has "ReadWriteMany" (default (list) $p.accessModes)) -}}
+{{- /*
+  Object storage makes the whole question moot: with storage.driver=s3 every
+  replica reads and writes the same bucket, so uploads are not node-local and
+  the ReadWriteMany requirement below does not apply. Checking this FIRST
+  keeps the guard from blocking the configuration that actually solves the
+  problem it exists to warn about.
+*/ -}}
+{{- $objectStorage := eq .Values.storage.driver "s3" -}}
+{{- $shared := or $objectStorage (and $p.enabled (has "ReadWriteMany" (default (list) $p.accessModes))) -}}
 {{- if not $shared -}}
 {{- $how := ternary "a ReadWriteOnce PVC" "an emptyDir (api.uploads.persistence.enabled=false)" $p.enabled -}}
-{{- $fix := "Set api.uploads.persistence.enabled=true with accessModes: [\"ReadWriteMany\"], or keep the api at a single pod." -}}
+{{- $fix := "Set storage.driver=s3 (object storage — Ceph RGW, MinIO, S3; the recommended fix and it scales), or api.uploads.persistence.enabled=true with accessModes: [\"ReadWriteMany\"], or keep the api at a single pod." -}}
 {{- if .Values.api.autoscaling.enabled -}}
 {{- fail (printf "next-lane: api.autoscaling.enabled=true, but uploads live on %s, which is node-local. A second api pod would serve a filesystem missing the other pod's attachments and logos, so they would 404 intermittently. %s" $how $fix) -}}
 {{- end -}}

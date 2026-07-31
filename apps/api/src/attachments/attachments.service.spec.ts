@@ -17,6 +17,7 @@
 import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Role } from '@next-lane/shared';
 import { AttachmentsService, ALLOWED_MIME_TYPES } from './attachments.service';
+import { LocalStorageDriver } from '../storage/local-storage.driver';
 import type { PrismaService } from '../prisma/prisma.service';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -151,9 +152,13 @@ function makePrisma(opts: {
 }
 
 function makeService(prisma: PrismaService) {
-  const svc = new AttachmentsService(prisma);
-  // Override UPLOADS_DIR to a real temp directory so fs ops work
+  // Uploads now go through the storage driver. These tests exercise the
+  // SERVICE's logic (authorization, validation, DB writes), so they use the
+  // real LocalStorageDriver against a temp dir rather than a mock — the
+  // driver's own behaviour, including the cross-device move, is covered by
+  // storage/ and common/move-file.util.spec.ts.
   process.env.UPLOADS_DIR = os.tmpdir();
+  const svc = new AttachmentsService(prisma, new LocalStorageDriver());
   return svc;
 }
 
@@ -427,11 +432,15 @@ describe('AttachmentsService', () => {
       const prisma = makePrisma();
       const svc = makeService(prisma);
 
-      const { filePath, attachment } = await svc.resolveForDownload(
+      const { stream, attachment } = await svc.resolveForDownload(
         UPLOADER_ID,
         ATTACHMENT_ID,
       );
-      expect(filePath).toBe(fakePath);
+      // Assert the BYTES, not a path — the contract is now "a readable stream
+      // of the stored object", which holds for object storage too.
+      const chunks: Buffer[] = [];
+      for await (const c of stream) chunks.push(Buffer.from(c as Buffer));
+      expect(Buffer.concat(chunks).toString()).toBe('content');
       expect(attachment.filename).toBe('report.pdf');
     });
 

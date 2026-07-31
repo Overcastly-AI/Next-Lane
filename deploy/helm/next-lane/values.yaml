@@ -132,7 +132,9 @@ api:
       storageClass: ""
       accessModes: ["ReadWriteOnce"]
       # NOTE: ReadWriteOnce + replicaCount>1 means only one pod can mount it.
-      # For HA attachments use a ReadWriteMany class or object storage.
+      # For HA attachments use a ReadWriteMany class, or the top-level
+      # `storage.driver: s3` — which is the better answer and removes the
+      # constraint entirely (every replica reads the same object store).
 
   service:
     type: ClusterIP
@@ -161,6 +163,43 @@ api:
   podLabels: {}
 
 # ── Web (React/Vite SPA served by nginx) ──────────────────────────────────
+# ── Object storage (S3-compatible) ───────────────────────────────────────────
+# Where uploaded files (attachments, workspace logos) live. `local` (default)
+# writes to the api pod's uploads volume, which is why multi-replica needs
+# ReadWriteMany. `s3` puts them in an object store shared by every replica, so
+# the api scales freely.
+#
+# One driver covers Ceph RADOS Gateway, MinIO, AWS S3, Cloudflare R2 and
+# Wasabi — point `endpoint` at whichever you run.
+storage:
+  driver: local            # local | s3
+  s3:
+    bucket: ""
+    # Ceph RGW in-cluster, for example:
+    #   endpoint: http://rook-ceph-rgw-my-store.rook-ceph.svc.cluster.local
+    # Leave EMPTY for real AWS S3.
+    endpoint: ""
+    region: us-east-1
+    # Path-style addressing. Empty = auto (on whenever `endpoint` is set),
+    # which is what a bare-hostname Ceph RGW / MinIO needs — virtual-host
+    # style would require `bucket.host` to resolve in DNS.
+    forcePathStyle: ""
+    # Optional key prefix so one bucket can host several installs.
+    prefix: ""
+    # Static credentials. LEAVE BOTH EMPTY to use the AWS provider chain
+    # instead (IRSA / instance profile) — preferable on EKS, and it keeps
+    # long-lived keys out of the cluster. When set, they go into the
+    # chart-managed Secret.
+    accessKeyId: ""
+    secretAccessKey: ""
+    # Or reference an EXISTING secret you already manage — e.g. the one
+    # Rook-Ceph creates for a CephObjectStoreUser, or an external-secrets
+    # sync. Takes precedence over the inline values above and is the
+    # recommended production path.
+    existingSecret: ""
+    existingSecretAccessKeyIdKey: AWS_ACCESS_KEY_ID
+    existingSecretSecretAccessKeyKey: AWS_SECRET_ACCESS_KEY
+
 web:
   replicaCount: 2
   port: 80

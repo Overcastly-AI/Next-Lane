@@ -104,9 +104,33 @@ spec:
             {{- with .Values.api.extraEnvFrom }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
-          {{- with .Values.api.extraEnv }}
+          {{- /*
+            `env` is emitted when EITHER extraEnv or an S3 existingSecret is in
+            play. The existingSecret path uses secretKeyRef with configurable
+            key names rather than envFrom, because the secret it points at is
+            usually not ours — Rook-Ceph's CephObjectStoreUser secret, or an
+            external-secrets sync — and those publish their own key names
+            (AccessKey/SecretKey, AWS_ACCESS_KEY_ID, …) which have to be
+            remapped onto the S3_* names the API reads.
+          */}}
+          {{- $useExisting := and (eq .Values.storage.driver "s3") .Values.storage.s3.existingSecret }}
+          {{- if or .Values.api.extraEnv $useExisting }}
           env:
+            {{- with .Values.api.extraEnv }}
             {{- toYaml . | nindent 12 }}
+            {{- end }}
+            {{- if $useExisting }}
+            - name: S3_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.storage.s3.existingSecret }}
+                  key: {{ .Values.storage.s3.existingSecretAccessKeyIdKey }}
+            - name: S3_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.storage.s3.existingSecret }}
+                  key: {{ .Values.storage.s3.existingSecretSecretAccessKeyKey }}
+            {{- end }}
           {{- end }}
           {{- if .Values.api.probes.startup.enabled }}
           startupProbe:

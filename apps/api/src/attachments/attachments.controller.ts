@@ -70,7 +70,7 @@ export class AttachmentsController {
     @Param('id') attachmentId: string,
     @Res() res: Response,
   ) {
-    const { filePath, attachment } =
+    const { stream, attachment } =
       await this.attachments.resolveForDownload(user.id, attachmentId);
 
     // Sanitize filename for Content-Disposition header: strip control chars
@@ -111,9 +111,16 @@ export class AttachmentsController {
     // Allow browsers to cache for a short window; ETag would require hashing
     res.setHeader('Cache-Control', 'private, max-age=300');
     void ext; // suppress unused var
-    // Absolute path from resolveDownload — see workspaces.controller.ts for
-    // why `{ root: '/' }` was both broken and a traversal footgun.
-    res.sendFile(filePath);
+    // Piped, not `res.sendFile`: the bytes may come from object storage, which
+    // has no filesystem path. Content-Type/Length/Disposition are already set
+    // explicitly above, so the response is byte-identical either way.
+    //
+    // The error handler matters — a stream that dies mid-transfer (S3 socket
+    // reset, disk error) after headers are flushed cannot become an error
+    // response, so destroy the socket instead of leaving the client hanging on
+    // a promise that never settles.
+    stream.on('error', () => res.destroy());
+    stream.pipe(res);
   }
 
   /** DELETE /attachments/:id — remove an attachment (uploader or project admin). */
