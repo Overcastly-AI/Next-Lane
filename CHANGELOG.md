@@ -16,6 +16,14 @@ staged here by hand (see [`RELEASING.md`](./RELEASING.md))._
 
 ---
 
+## [0.4.2] — 2026-07-31
+
+[Compare with v0.4.1](https://github.com/Overcastly-AI/Next-Lane/compare/v0.4.1...v0.4.2)
+
+### Bug Fixes
+
+* **api:** uploads 500 in Docker and K8s — EXDEV on cross-device rename ([312f8eb](https://github.com/Overcastly-AI/Next-Lane/commit/312f8eb750180c87cf471ea59a3466fd5765cec4))
+
 ## [0.4.1] — 2026-07-31
 
 [Compare with v0.4.0](https://github.com/Overcastly-AI/Next-Lane/compare/v0.4.0...v0.4.1)
