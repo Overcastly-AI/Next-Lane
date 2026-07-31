@@ -16,6 +16,14 @@ staged here by hand (see [`RELEASING.md`](./RELEASING.md))._
 
 ---
 
+## [0.4.1] — 2026-07-31
+
+[Compare with v0.4.0](https://github.com/Overcastly-AI/Next-Lane/compare/v0.4.0...v0.4.1)
+
+### Bug Fixes
+
+* **web:** refresh the activity log from your own change, not a socket echo ([6598eed](https://github.com/Overcastly-AI/Next-Lane/commit/6598eed278c242f909684069ec788ad7e1292134))
+
 ## [0.4.0] — 2026-07-31
 
 [Compare with v0.3.1](https://github.com/Overcastly-AI/Next-Lane/compare/v0.3.1...v0.4.0)
