@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { BoardDto, IssueDto, LabelDto } from '@next-lane/shared';
 import { request } from './client';
-import { qk } from './keys';
+import { qk, invalidateIssueActivity } from './keys';
 
 export interface CreateLabelInput {
   name: string;
@@ -173,6 +173,10 @@ export function useToggleIssueLabel(projectId: string, boardId?: string) {
     },
     onSettled: (_data, _err, vars) => {
       void qc.invalidateQueries({ queryKey: qk.issue(vars.issueId) });
+      // LabelsService logs an ActivityLog row for attach/detach, so the issue's
+      // history is stale after this. Invalidated here rather than relying on
+      // the `issue.updated` socket echo — see useUpdateIssue for why.
+      invalidateIssueActivity(qc, vars.issueId);
       void qc.invalidateQueries({ queryKey: qk.board(projectId) });
       if (boardId) {
         void qc.invalidateQueries({ queryKey: qk.boardView(boardId) });

@@ -11,7 +11,7 @@ import {
   type Priority,
 } from '@next-lane/shared';
 import { request } from './client';
-import { qk, invalidateBoardFamily } from './keys';
+import { qk, invalidateBoardFamily, invalidateIssueActivity } from './keys';
 
 /**
  * @deprecated Use `useBoardDefault` from `@/api/boards` for new code.
@@ -171,6 +171,21 @@ export function useUpdateIssue() {
       void qc.invalidateQueries({ queryKey: qk.issue(updated.id) });
       invalidateBoardFamily(qc, vars.projectId);
       void qc.invalidateQueries({ queryKey: qk.projectIssues(vars.projectId) });
+      // The activity log is DERIVED from this mutation — `IssuesService.update`
+      // writes an ActivityLog row for every tracked field — so this mutation
+      // must invalidate it.
+      //
+      // Previously the only thing that refreshed `qk.activity` was the
+      // `issue.updated` SOCKET handler (api/socket.ts). That made correctness
+      // of your own UI depend on a realtime echo of your own action arriving:
+      // fine when the socket is connected and fast, silently broken when it
+      // isn't — no Redis adapter, a proxy that drops WebSockets, a reconnect
+      // window, or simply the echo losing a race with the render. The symptom
+      // is a user changing a status and the Activity panel just… not showing
+      // it. A client should never need a round trip through the realtime
+      // channel to observe a write it performed itself; the socket path stays
+      // for OTHER people's changes.
+      invalidateIssueActivity(qc, updated.id);
     },
   });
 }
@@ -215,9 +230,13 @@ export function useBulkUpdateIssues() {
     onSuccess: (_result, vars) => {
       void qc.invalidateQueries({ queryKey: qk.projectIssues(vars.projectId) });
       invalidateBoardFamily(qc, vars.projectId);
-      // Invalidate individual issue caches for touched ids
+      // Invalidate individual issue caches for touched ids, and their activity
+      // logs — a bulk edit writes an ActivityLog row per issue per changed
+      // field, so an open drawer would otherwise show a stale history (same
+      // socket-echo dependency as useUpdateIssue).
       for (const id of vars.ids) {
         void qc.invalidateQueries({ queryKey: qk.issue(id) });
+        invalidateIssueActivity(qc, id);
       }
     },
   });
@@ -410,6 +429,12 @@ export function useMoveIssue(projectId: string, boardId?: string) {
         };
       });
       qc.setQueryData(qk.issue(serverIssue.id), serverIssue);
+      // Dragging a card across columns IS a status change, and the server logs
+      // one — so the moved issue's activity history is now stale. Same reason
+      // as useUpdateIssue: don't make your own UI wait on a socket echo of your
+      // own write. Keyed on the moved issue only (not a broad prefix) so an
+      // unrelated open drawer isn't refetched.
+      invalidateIssueActivity(qc, serverIssue.id);
     },
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: boardKey });
