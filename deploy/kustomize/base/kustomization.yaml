@@ -34,7 +34,7 @@ resources:
 images:
   - name: next-lane-api
     newName: ghcr.io/overcastly-ai/next-lane-api
-    newTag: "0.6.0"
+    newTag: "0.7.0"
   - name: next-lane-web
     newName: ghcr.io/overcastly-ai/next-lane-web
-    newTag: "0.6.0"
+    newTag: "0.7.0"

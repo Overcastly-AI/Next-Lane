@@ -16,6 +16,14 @@ staged here by hand (see [`RELEASING.md`](./RELEASING.md))._
 
 ---
 
+## [0.7.0] — 2026-08-01
+
+[Compare with v0.6.0](https://github.com/Overcastly-AI/Next-Lane/compare/v0.6.0...v0.7.0)
+
+### Features
+
+* **pages:** make the docs nav draggable — resize the panel, drag to reorder or nest ([7db0308](https://github.com/Overcastly-AI/Next-Lane/commit/7db0308d3c4a130699c7b4ca4301c6d74c5128fa))
+
 ## [0.6.0] — 2026-07-31
 
 [Compare with v0.5.0](https://github.com/Overcastly-AI/Next-Lane/compare/v0.5.0...v0.6.0)
