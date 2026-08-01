@@ -4,9 +4,16 @@ Curated product screenshots captured from a **live Next Lane instance** (dressed
 workspace "Nova Analytics", project `NOVA`, mid-flight Sprint 14). Desktop shots are
 1440×900 CSS px @2x; mobile shots are 393×852 @2x. All PNGs are optimized with pngquant.
 
-Last reshoot: **2026-08-01** (post doc-images, doc-templates, and the draggable
-docs nav). Reshooting is now **reproducible** — see "Reshooting" below; it used
-to be a hand-staged afternoon, which is why these drifted in the first place.
+Last reshoot: **2026-08-01** (post doc-images, doc-templates, the draggable docs
+nav, the board/nav design elevation, and the knowledge-graph fit pass).
+Reshooting is now **reproducible** — see "Reshooting" below; it used to be a
+hand-staged afternoon, which is why these drifted in the first place.
+
+The graph shots are worth comparing against the previous set: the capture script
+used to click zoom-out three times because the graph opened with nodes clamped
+into straight rails along the top and bottom of the frame. That workaround is
+gone — the graph fits itself to its content now, so what you see is what the
+product does on open.
 
 **Every reshot surface exists in BOTH themes.** Light keeps the historical
 filename; dark adds a `-dark` suffix — except `board-dark-desktop.png`, which
