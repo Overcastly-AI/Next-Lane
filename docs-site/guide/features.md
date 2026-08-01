@@ -479,6 +479,13 @@ than pointing the browser at a URL that would have to work without
 credentials. There is no separate share setting on an image to get wrong; if
 you can read the page, you can see its images, and if you can't, you can't.
 
+![Docs — page tree, rendered markdown, backlinks and links-out](/screenshots/pages-desktop.png)
+
+![A doc page with an embedded image](/screenshots/pages-image-desktop.png)
+
+*A pasted screenshot, stored as `nl-image:<id>` and fetched with the reader's
+own session — as private as the page holding it.*
+
 **Version history.** Every save snapshots a full, immutable `PageVersion` —
 **append-only**, nothing is ever overwritten. The History drawer (clock icon,
 top-right of a page) lists every version newest-first with author and
@@ -506,11 +513,9 @@ shrunk "world"), respects dark mode, and honors `prefers-reduced-motion` by
 skipping the settle-in animation while still converging to the same final
 layout.
 
-<!-- SCREENSHOT PLACEHOLDER: pages-graph-desktop.png / pages-graph-mobile.png
-     not yet captured. Once shot per docs/screenshots/README.md, replace this
-     comment with:
-     ![Pages knowledge graph — force-directed page/link view](/screenshots/pages-graph-desktop.png)
--->
+![Pages knowledge graph — force-directed page/link view](/screenshots/pages-graph-desktop.png)
+
+*Every page is a node, every resolved `[[wiki-link]]` a directed edge.*
 
 **The standout: an agent can walk this graph too.** Next Lane's MCP server
 exposes `get_page_graph` (the full node/edge set for a project),
@@ -522,9 +527,37 @@ cloud-only wiki (no graph/agent API) nor a local-only graph note-taking tool
 (no server, no agent surface) offers that combination. Full tool reference in
 [AI Agents & MCP](./agents-mcp#the-130-tool-surface-at-a-glance).
 
-Issue ↔ page cross-linking (a "Linked pages" section on the issue drawer) is
-on the roadmap, not shipped yet — today, pages link to each other, not to
-issues.
+**Issue ↔ page cross-linking.** Mention an issue key (`NOVA-14`) anywhere in a
+page's body and the link is made automatically, in both directions: the page
+shows a **Linked issues** section, and that issue's drawer grows a **Linked
+pages** section pointing back. Nothing to configure and no explicit "attach"
+step — writing the key *is* the link. A key belonging to a different project
+never resolves, so a passing mention of another team's ticket doesn't create a
+phantom connection.
+
+### Doc templates
+
+Reusable markdown skeletons for new pages, at **two scopes**. A
+**workspace-wide** template is offered when creating a page anywhere in the
+workspace — including inside a project — and a **project** template is offered
+only in that project, sorting above the inherited ones so a same-named project
+template reads as a deliberate override.
+
+**Six starters ship seeded** — Meeting notes, Decision record (ADR), Runbook,
+Spec/PRD, Retrospective, How-to guide — as ordinary editable, deletable rows
+rather than fixtures. Delete one and it stays deleted; seeding is keyed on a
+per-workspace marker, not on "this workspace has no templates".
+
+Placeholders are substituted at creation, not at save:
+`{{title}} {{date}} {{time}} {{datetime}} {{year}} {{month}} {{day}} {{author}}`.
+An **unknown** token is left verbatim rather than blanked, so a deliberate
+fill-me-in marker survives into the page — the editor warns about unrecognised
+tokens before you ship the template.
+
+Manage them in Project Settings → Templates or Workspace settings → Templates.
+Agents get the full set too: `list_page_templates`, `get_page_template`,
+`create_page_template`, `update_page_template`, `delete_page_template`, and
+`create_page_from_template`.
 
 ### AI agents (MCP)
 

@@ -134,13 +134,12 @@ a hot-reload dev setup are in [Quickstart](#-quickstart) below.
   <img src="docs/screenshots/login-desktop.png" alt="Login (desktop)" width="49%" />
 </div>
 
-<!-- SCREENSHOT PLACEHOLDER: Pages knowledge-graph view (desktop + mobile)
-     not yet captured. Once shot per docs/screenshots/README.md, add here as:
-     <div align="center">
-       <img src="docs/screenshots/pages-graph-desktop.png" alt="Pages knowledge graph — force-directed page/link view (desktop)" width="49%" />
-       <img src="docs/screenshots/pages-graph-mobile.png" alt="Pages knowledge graph on mobile" width="24%" />
-     </div>
--->
+<div align="center">
+  <img src="docs/screenshots/pages-graph-desktop.png" alt="Pages knowledge graph — force-directed page/link view (desktop)" width="49%" />
+  <img src="docs/screenshots/pages-image-desktop.png" alt="A documentation page with an embedded image" width="49%" />
+</div>
+
+<p align="center"><em>Docs: an Obsidian-style knowledge graph, and a page with an embedded image.</em></p>
 
 </details>
 

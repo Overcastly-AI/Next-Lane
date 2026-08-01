@@ -4,7 +4,9 @@ Curated product screenshots captured from a **live Next Lane instance** (dressed
 workspace "Nova Analytics", project `NOVA`, mid-flight Sprint 14). Desktop shots are
 1440×900 CSS px @2x; mobile shots are 393×852 @2x. All PNGs are optimized with pngquant.
 
-Last reshoot: **2026-07-03** (post-sidebar, dark mode, and design-elevation work).
+Last reshoot: **2026-08-01** (post doc-images, doc-templates, and the draggable
+docs nav). Reshooting is now **reproducible** — see "Reshooting" below; it used
+to be a hand-staged afternoon, which is why these drifted in the first place.
 
 ## Index
 
@@ -27,8 +29,29 @@ Last reshoot: **2026-07-03** (post-sidebar, dark mode, and design-elevation work
 | `home-mobile.png` | Workspace home on mobile |
 | `login-mobile.png` | Login on mobile |
 | `sidebar-mobile.png` | Mobile navigation drawer open |
-| `pages-graph-desktop.png` *(planned — not yet captured)* | Pages knowledge graph view — force-directed node/edge layout of a project's wiki (desktop) |
-| `pages-graph-mobile.png` *(planned — not yet captured)* | Pages knowledge graph view on mobile (touch pan/pinch) |
+| `pages-desktop.png` | Docs — page tree, rendered markdown, backlinks and links-out |
+| `pages-image-desktop.png` | Docs — a page with an **embedded image**, resolved through an authorized fetch |
+| `pages-graph-desktop.png` | Pages knowledge graph — force-directed node/edge layout of a project's wiki |
+| `pages-graph-mobile.png` | Pages knowledge graph on mobile (touch pan/pinch) |
+| `pages-mobile.png` | Docs on mobile |
+
+### Reshot 2026-08-01 vs. carried over
+
+**Reshot** (everything the capture script covers): `board-desktop`,
+`board-dark-desktop`, `board-mobile`, `backlog-desktop`, `home-desktop`,
+`home-mobile`, `login-desktop`, `login-mobile`, `sidebar-mobile`, and all five
+`pages-*` shots (four of them brand new — the two `pages-graph-*` had been
+marked "planned" since the knowledge graph shipped).
+
+**Carried over unchanged**, because the capture script does not yet stage the
+data they need — a dashboard with all four gadget types, a Gantt with epics on
+date ranges, a named workflow graph, worklogs, an agent-context note:
+`dashboard-desktop`, `roadmap-desktop`, `workflow-graph-desktop`,
+`agent-context-desktop`, `drawer-desktop`, `drawer-worklogs-desktop`,
+`board-swimlanes-desktop`, `nlql-autocomplete-desktop`. They are still accurate
+as of the 2026-07-03 design pass; extending `seed-screenshots.ts` to cover them
+is the next step, and until then this note is the honest account of which
+images are current.
 
 ## Consumers
 
@@ -55,7 +78,34 @@ Last reshoot: **2026-07-03** (post-sidebar, dark mode, and design-elevation work
 
 ## Reshooting
 
-Run the stack locally (see `docs/` or `CLAUDE.md`), stage presentable demo data, and
-capture with Playwright at the viewports above (full viewport, network-idle, no
-skeletons/spinners in frame). Keep images web-optimized and **self-hosted in this repo** —
-no external CDN links.
+Two commands. The dressed dataset is a script, not a memory — that is the whole
+point, since the previous set drifted two design passes behind the product
+precisely because reshooting meant recreating a workspace by hand.
+
+```bash
+# 1. Stage the dressed "Nova Analytics" workspace (destructive for that
+#    workspace only; every other workspace in the database is untouched).
+cd apps/api
+DATABASE_URL=<your-db> npx tsx prisma/seed-screenshots.ts
+
+# 2. Capture. Needs the API on :4000 and the web build served on :3000.
+cd ../web && pnpm build
+PW_NO_WEBSERVER=1 npx playwright test --config=playwright.screenshots.config.ts
+#   -> writes to /tmp/nl-shots (override with SHOT_DIR)
+
+# 3. Optimize, then install into BOTH locations.
+pngquant --force --quality=65-90 --speed 1 --output <f> -- <f>   # for each PNG
+cp /tmp/nl-shots/*.png docs/screenshots/
+cp docs/screenshots/*.png docs-site/public/screenshots/
+```
+
+Skipping step 3's `pngquant` roughly **triples** every file — the committed set
+is 8-bit palette PNG, and a straight Playwright capture is 24-bit.
+
+`apps/web/e2e/screenshots.capture.ts` is named `.capture.ts`, not `.spec.ts`, so
+the normal Playwright config can never pick it up: it asserts almost nothing and
+depends on the dressed data above.
+
+Adding a shot: add it to the capture script, add a row to the index table, and —
+if a doc references it — add the reference. Keep images web-optimized and
+**self-hosted in this repo**; no external CDN links.
