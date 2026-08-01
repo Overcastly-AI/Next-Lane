@@ -817,6 +817,15 @@ _Hardening Night close-out ingest (2026-07-06) — P2s:_
 
 ## Already Done (recent shipments — ticked for reference)
 
+- [x] (P1, L) **Design elevation pass — board + nav** ✅ 2026-08-01 [founder: *"I want something before v1.0.0. It should look a whole lot better"*]
+  - Run through the `frontend-design` skill, per the standing design-elevation directive.
+  - **The board's problems were objective, not taste.** `--nl-canvas` and `--nl-ink-50` were byte-identical (`#f4f6f9`) — the page and the lane columns resting on it were the same colour, so the board was one grey field with hairlines. Canvas recedes to `#eef1f6`: desk < lane < card, which is what the DISPATCH "ink on paper" thesis needs and never had.
+  - **The accent bar became information.** A `border-t-2` drew the same line whether a lane held one card or was over its WIP limit. It is now a capacity rail filling with `count/limit`, red when over. Lanes with no limit get a flat track — a full bar there would assert a limit that does not exist.
+  - **The toolbar got a hierarchy.** Sixteen equal-weight controls in three ragged rows, with `+ Create issue` stranded bottom-right under the filter chrome. Split by intent (Act / Refine); export, import and colours demote to icon ghosts so one element is solid. Their accessible names already lived on `aria-label` and the specs use test ids, so no contract changed.
+  - **I broke mobile doing it and the existing guard caught me** — the action cluster added 40px between search and filters, pushing the Type filter y=173 → y=217. Fixed with `display: contents` below `sm` so the cluster orders itself last on a phone. Worth recording: the guard existed because someone previously cared about exactly this, and it paid for itself.
+  - **Nav:** four of five audit findings closed — Home row, WORKSPACE heading, `Workspace docs` (two rows both said `Docs`), and `Insights` reconciled with the `My Analytics` heading it opened. Sidebar/tab-bar mismatch and skip-link/tab-order left open and recorded in `docs/UI-REVIEW.md`.
+  - **Evidence: full e2e 1140/1140, 0 failed** (14 skipped, desktop + mobile, 18.4 min). 96/96 board and 68/68 nav during development. All 26 screenshots re-shot in both themes; docs site builds; every referenced image resolves.
+
 - [x] (P2, XS) **Header search trigger was 4px taller than every control beside it** ✅ 2026-08-01 [founder: *"fix the padding around the search bar"*]
   - **Measured, not eyeballed.** The trigger rendered at **40px** while notifications, quick links and the avatar were all **36px** — and since the cluster is `align-items: center`, the one element in the group with a visible border was also the only one standing 2px proud top and bottom. That reads as bad padding even though the padding values themselves were fine.
   - **Root cause was an inherited line-height.** Nobody had specified the button's height; it was whatever its contents computed to. The `⌘K` chip is `text-[10px]`, but Tailwind's `text-sm` on the button sets an ABSOLUTE `line-height: 20px`, which the chip inherited — so a 10px glyph occupied a 26px box and dragged the button to 40px.
