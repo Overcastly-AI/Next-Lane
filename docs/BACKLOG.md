@@ -817,6 +817,14 @@ _Hardening Night close-out ingest (2026-07-06) — P2s:_
 
 ## Already Done (recent shipments — ticked for reference)
 
+- [x] (P1, M) **Docs nav is draggable — resizable panel + drag-to-reorder/nest** ✅ 2026-08-01 [founder: *"on the docs pages the inner left doc nav should be draggable"*; founder chose BOTH readings]
+  - **Resize:** new `ui/ResizeHandle` primitive + `lib/usePersistentWidth`. Pointer-capture (a fast drag leaves the 6px hit area and, without capture, dies mid-gesture), `role="separator"` with Arrow/Home/End, width persisted and CLAMPED on read — an out-of-range stored value could otherwise render a 4px panel with no way back. Built as a primitive because the board and issue drawer share the fixed-panel problem.
+  - **Drag:** top/bottom quarter reorders, middle half nests. Native HTML5 DnD, not dnd-kit — a tree needs three outcomes per row and the row geometry gives that directly, where dnd-kit would mean hand-rolled nesting collision detection. Nesting gets the bigger target because it has no keyboard fallback; reordering does.
+  - **The up/down buttons stay.** Drag is an addition. Removing them would take reordering away from keyboard and screen-reader users entirely.
+  - **Two real bugs found, neither in the new code.** (1) `onDragOver` gated on React state set during `dragstart` — same tick, so `preventDefault()` never ran and the browser refused the drop. Now ref-driven; this fixes a fast real drag, not just the test. (2) **The bigger one:** `useMovePage.onSettled` deliberately does not refetch the tree on success (a refetch between rapid clicks used to swallow moves), which makes `optimisticallyReorderTree` the ONLY thing that updates the UI — and it explicitly did not handle re-parenting. A nest persisted server-side and never appeared on screen. Now handles it, with 7 new unit tests including refuse-to-move-into-own-subtree.
+  - **Process note:** the first version of the e2e drove the drag with `page.mouse.down/move/up`, which does NOT trigger HTML5 DnD in Chromium — it reported the row unmoved and looked exactly like a product bug. `locator.dragTo` with `targetPosition` is what fires the real sequence. Recorded in the spec header so the next person doesn't lose the same hour.
+  - **Evidence:** `docs-nav-drag.spec.ts` **5/5** on the real stack; **52/52** existing Pages e2e (incl. the up/down reorder spec); web unit **33/33**; `tsc --noEmit` clean.
+
 - [x] (P1, S) **Agents can author doc templates, not just use them — 4 new MCP tools** ✅ 2026-07-31 [founder: *"MCP should be able to make doc templates"*]
   - **The gap.** The doc-templates slice shipped `list_page_templates` + `create_page_from_template`, so an agent could *use* the house format but not *establish* it. "Set up a runbook template for this workspace" was a dead end over MCP.
   - **Now:** `create_page_template`, `get_page_template`, `update_page_template`, `delete_page_template`. Server goes 126 → **130 tools (62 read / 68 write)**.

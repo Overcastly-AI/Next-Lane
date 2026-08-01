@@ -12,14 +12,21 @@
  *   - Home / End            — first / last visible row
  *   - Enter / Space         — open the row's page
  *
- * Reordering uses the up/down-move affordance (calling `POST /pages/:id/move`
- * via the caller-supplied `onMoveUp`/`onMoveDown`) rather than drag-and-drop —
- * fully keyboard- and screen-reader-operable, no pointer required.
+ * Reordering has TWO affordances, deliberately kept side by side:
+ *   - the up/down-move buttons (`onMoveUp`/`onMoveDown`) — fully keyboard- and
+ *     screen-reader-operable, no pointer required. These remain the canonical
+ *     path and the only one that works without a mouse.
+ *   - drag-and-drop (`onDropMove`, see `lib/useTreeDrag.ts`) — drop on a row's
+ *     top/bottom quarter to reorder, or its middle to NEST as a child. Added
+ *     because it is what people reach for first in a document tree, but it is
+ *     an addition, not a replacement: removing the buttons would take the
+ *     feature away from keyboard users entirely.
  */
 import { useEffect, useRef, useState } from 'react';
 import { usePageBacklinks } from '@/api/pages';
 import type { PageTreeNode } from '@next-lane/shared';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { useTreeDrag, type DropPosition } from '@/lib/useTreeDrag';
 import { cn } from '@/lib/cn';
 
 export interface PageTreeProps {
@@ -31,6 +38,8 @@ export interface PageTreeProps {
   onCreateChild: (parentId: string) => void;
   onMoveUp: (nodeId: string) => void;
   onMoveDown: (nodeId: string) => void;
+  /** Drag-and-drop move: place `dragId` before/after/inside `targetId`. */
+  onDropMove: (dragId: string, targetId: string, position: DropPosition) => void;
   onDelete: (nodeId: string) => void;
 }
 
@@ -76,11 +85,21 @@ export function PageTree({
   onCreateChild,
   onMoveUp,
   onMoveDown,
+  onDropMove,
   onDelete,
 }: PageTreeProps) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [activeId, setActiveId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<PageTreeNode | null>(null);
+  const drag = useTreeDrag(tree, editable, (dragId, targetId, position) => {
+    // Expand the target when nesting INTO it. Without this the page appears to
+    // vanish: the move succeeds, but its new parent is collapsed, so the row
+    // the user just dragged is simply gone from the tree.
+    if (position === 'inside') {
+      setExpanded((prev) => new Set(prev).add(targetId));
+    }
+    onDropMove(dragId, targetId, position);
+  });
   // Informed-consent signal: how many OTHER pages link to the delete target
   // (their [[links]] would become unresolved). Fetched lazily — only while
   // the confirm dialog is open. Never blocks the delete.
@@ -233,6 +252,9 @@ export function PageTree({
             onMoveUp={row.index > 0 ? () => onMoveUp(row.node.id) : undefined}
             onMoveDown={row.index < row.siblingCount - 1 ? () => onMoveDown(row.node.id) : undefined}
             onDelete={() => setDeleteTarget(row.node)}
+            dragProps={drag.rowProps(row.node.id)}
+            isDragging={drag.draggingId === row.node.id}
+            dropPosition={drag.dropTarget?.id === row.node.id ? drag.dropTarget.position : null}
           />
         ))}
       </div>
@@ -289,6 +311,9 @@ function TreeRow({
   onMoveUp,
   onMoveDown,
   onDelete,
+  dragProps,
+  isDragging,
+  dropPosition,
 }: {
   row: FlatRow;
   rowRef: (el: HTMLDivElement | null) => void;
@@ -303,12 +328,16 @@ function TreeRow({
   onMoveUp?: () => void;
   onMoveDown?: () => void;
   onDelete: () => void;
+  dragProps: React.HTMLAttributes<HTMLDivElement> & { draggable: boolean };
+  isDragging: boolean;
+  dropPosition: DropPosition | null;
 }) {
   const hasChildren = row.node.children.length > 0;
 
   return (
     <div
       ref={rowRef}
+      {...dragProps}
       role="treeitem"
       aria-level={row.depth + 1}
       aria-setsize={row.siblingCount}
@@ -317,15 +346,33 @@ function TreeRow({
       aria-selected={isSelected}
       tabIndex={isActive ? 0 : -1}
       data-testid={`page-tree-item-${row.node.id}`}
+      data-drop-position={dropPosition ?? undefined}
       onKeyDown={onKeyDown}
       onClick={onOpen}
       style={{ paddingLeft: `${row.depth * 14}px` }}
       className={cn(
-        'group flex cursor-pointer items-center gap-0.5 rounded-md py-1 pr-1 text-sm outline-none',
+        'group relative flex cursor-pointer items-center gap-0.5 rounded-md py-1 pr-1 text-sm outline-none',
         'focus-visible:ring-2 focus-visible:ring-signal-400 focus-visible:ring-inset',
         isSelected ? 'bg-signal-50 text-signal-800 font-medium' : 'text-ink-700 hover:bg-ink-50',
+        // The dragged row fades rather than disappearing: the tree is the only
+        // map of where the page currently is, and removing the row mid-drag
+        // takes away the reference point the drop is being aimed at.
+        isDragging && 'opacity-40',
+        // Nesting is a filled highlight, reordering a hairline at the edge —
+        // two visually distinct answers to "what will this drop do?", because
+        // "into" and "next to" produce very different trees.
+        dropPosition === 'inside' && 'bg-signal-100 ring-1 ring-inset ring-signal-400',
       )}
     >
+      {(dropPosition === 'before' || dropPosition === 'after') && (
+        <span
+          aria-hidden="true"
+          className={cn(
+            'pointer-events-none absolute inset-x-1 h-0.5 rounded-full bg-signal-500',
+            dropPosition === 'before' ? 'top-0' : 'bottom-0',
+          )}
+        />
+      )}
       <button
         type="button"
         tabIndex={-1}

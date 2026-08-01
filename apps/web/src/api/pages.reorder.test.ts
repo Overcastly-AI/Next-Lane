@@ -83,3 +83,78 @@ describe('optimisticallyReorderTree', () => {
     expect(ids(result)).toEqual(['A', 'B']);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Re-parenting (drag-to-nest). These matter more than they look: `useMovePage`
+// deliberately does not refetch the tree after a successful move, so this
+// function is the ONLY thing that updates the UI. A case it mishandles is a
+// move that persists on the server and never appears on screen — which is
+// exactly how drag-to-nest first shipped broken.
+// ---------------------------------------------------------------------------
+
+describe('optimisticallyReorderTree — re-parenting', () => {
+  const flat = (): PageTreeNode[] => [
+    nodes('a')[0],
+    nodes('b')[0],
+    nodes('c')[0],
+  ];
+
+  it('moves a node into another node as its last child', () => {
+    const out = optimisticallyReorderTree(flat(), { id: 'b', parentId: 'a' });
+    expect(out.map((n) => n.id)).toEqual(['a', 'c']);
+    expect(out[0].children.map((n) => n.id)).toEqual(['b']);
+  });
+
+  it('positions the moved node among existing children via afterId', () => {
+    const tree: PageTreeNode[] = [
+      { ...nodes('a')[0], children: [nodes('x')[0], nodes('y')[0]] },
+      nodes('b')[0],
+    ];
+    const out = optimisticallyReorderTree(tree, { id: 'b', parentId: 'a', afterId: 'y' });
+    expect(out[0].children.map((n) => n.id)).toEqual(['x', 'b', 'y']);
+  });
+
+  it('promotes a nested node back to top level with parentId null', () => {
+    const tree: PageTreeNode[] = [
+      { ...nodes('a')[0], children: [nodes('b')[0]] },
+      nodes('c')[0],
+    ];
+    const out = optimisticallyReorderTree(tree, { id: 'b', parentId: null, afterId: 'c' });
+    expect(out.map((n) => n.id)).toEqual(['a', 'b', 'c']);
+    expect(out[0].children).toEqual([]);
+  });
+
+  it('carries the moved node’s own children with it', () => {
+    const tree: PageTreeNode[] = [
+      nodes('a')[0],
+      { ...nodes('b')[0], children: [nodes('b1')[0]] },
+    ];
+    const out = optimisticallyReorderTree(tree, { id: 'b', parentId: 'a' });
+    expect(out[0].children[0].children.map((n) => n.id)).toEqual(['b1']);
+  });
+
+  it('refuses to move a node into its own subtree', () => {
+    const tree: PageTreeNode[] = [
+      { ...nodes('a')[0], children: [nodes('b')[0]] },
+    ];
+    // Would detach the whole branch from the tree. Returning it unchanged
+    // keeps the cache consistent with the API, which rejects this too.
+    const out = optimisticallyReorderTree(tree, { id: 'a', parentId: 'b' });
+    expect(out).toEqual(tree);
+  });
+
+  it('leaves the tree alone when the node does not exist', () => {
+    const tree = flat();
+    expect(optimisticallyReorderTree(tree, { id: 'nope', parentId: 'a' })).toEqual(tree);
+  });
+
+  it('still treats an omitted parentId as a same-level reorder', () => {
+    // `parentId: undefined` means "keep the current parent" — it must NOT be
+    // read as "move to root", which would flatten the tree on every up/down.
+    const tree: PageTreeNode[] = [
+      { ...nodes('a')[0], children: [nodes('x')[0], nodes('y')[0]] },
+    ];
+    const out = optimisticallyReorderTree(tree, { id: 'y', afterId: 'x' });
+    expect(out[0].children.map((n) => n.id)).toEqual(['y', 'x']);
+  });
+});

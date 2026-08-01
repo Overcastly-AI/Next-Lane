@@ -38,10 +38,13 @@ import { flattenPageTree, buildTitleIndex } from '@/lib/wikiLinks';
 import { errorMessage } from '@/lib/errorMessage';
 import { useOverlay } from '@/lib/useOverlay';
 import { useUnsavedChangesGuard } from '@/lib/unsavedChangesGuard';
+import { usePersistentWidth } from '@/lib/usePersistentWidth';
+import type { DropPosition } from '@/lib/useTreeDrag';
 import { pageRefPath, type PageScopeRef } from '@/lib/pageRoute';
 import { Button } from '@/components/ui/Button';
 import { EmptyState, ErrorState, LoadingState } from '@/components/ui/States';
 import { useToast } from '@/components/ui/Toast';
+import { ResizeHandle } from '@/components/ui/ResizeHandle';
 import { PageTree } from './PageTree';
 import { PageEditor } from './PageEditor';
 import { BacklinksPanel } from './BacklinksPanel';
@@ -110,6 +113,16 @@ interface Siblings {
   parentId: string | null;
 }
 
+/** Depth-first lookup of a node by id. */
+function findNode(tree: PageTreeNode[], nodeId: string): PageTreeNode | null {
+  for (const node of tree) {
+    if (node.id === nodeId) return node;
+    const hit = findNode(node.children, nodeId);
+    if (hit) return hit;
+  }
+  return null;
+}
+
 /** Locate the sibling array (and its parent id) containing `nodeId`. */
 function findSiblings(tree: PageTreeNode[], nodeId: string, parentId: string | null = null): Siblings | null {
   if (tree.some((n) => n.id === nodeId)) return { siblings: tree, parentId };
@@ -135,6 +148,20 @@ export interface PagesSurfaceProps {
   emptyTitle: string;
   emptyDescription: string;
 }
+
+/**
+ * Page-tree sidebar width bounds (px).
+ *
+ * 240 was the old fixed `w-64`, kept as the default so nothing moves for
+ * anyone who never drags. The MINIMUM is 180 rather than something smaller
+ * because below that the row's disclosure caret, icon, title and hover
+ * actions stop co-existing and titles truncate to two or three characters —
+ * a width that "works" but is useless. The MAXIMUM stops the tree from
+ * crowding out the document it exists to navigate.
+ */
+const TREE_WIDTH_DEFAULT = 240;
+const TREE_WIDTH_MIN = 180;
+const TREE_WIDTH_MAX = 480;
 
 export function PagesSurface({
   scope,
@@ -193,6 +220,16 @@ export function PagesSurface({
   // True while the editor is in edit mode — the backlinks panel is hidden so
   // the editing canvas gets the full page (founder directive: full-page editing).
   const [editingPage, setEditingPage] = useState(false);
+  // Width of the page-tree sidebar, drag-resizable and persisted. One key for
+  // BOTH scopes on purpose: a reader who widens the tree because their page
+  // titles are long wants that everywhere, not re-set per project.
+  const [treeWidth, setTreeWidth] = usePersistentWidth(
+    'nl_pages_tree_width',
+    TREE_WIDTH_DEFAULT,
+    TREE_WIDTH_MIN,
+    TREE_WIDTH_MAX,
+  );
+
   const [createModal, setCreateModal] = useState<{ parentId: string | null; parentTitle?: string; initialTitle?: string } | null>(null);
 
   async function openPage(id: string) {
@@ -265,6 +302,50 @@ export function PagesSurface({
     }
   }
 
+  /**
+   * Drag-and-drop move: turn a drop position into the API's
+   * `{parentId, beforeId, afterId}` neighbour pair.
+   *
+   * `before`/`after` reorder within the TARGET's sibling list — which also
+   * re-parents when the target sits at a different depth than the dragged
+   * node. That is intended, and it is why `parentId` is always sent
+   * explicitly rather than omitted to mean "unchanged".
+   *
+   * `inside` makes the node the target's last child.
+   */
+  function handleDropMove(dragId: string, targetId: string, position: DropPosition) {
+    if (dragId === targetId) return;
+    const onError = (err: unknown) =>
+      toast.error(errorMessage(err, 'Could not move the page.'));
+
+    if (position === 'inside') {
+      const target = findNode(tree, targetId);
+      const lastChild = target?.children.filter((c) => c.id !== dragId).slice(-1)[0];
+      movePage.mutate(
+        { id: dragId, parentId: targetId, afterId: lastChild?.id },
+        { onError },
+      );
+      return;
+    }
+
+    const found = findSiblings(tree, targetId);
+    if (!found) return;
+    // Neighbours come from the sibling list WITHOUT the dragged node. Computed
+    // with it still in place, dragging a node onto its immediate neighbour
+    // resolves to "insert between yourself and them" — a no-op move that looks
+    // like the drop silently failed.
+    const siblings = found.siblings.filter((n) => n.id !== dragId);
+    const idx = siblings.findIndex((n) => n.id === targetId);
+    if (idx === -1) return;
+    const before = position === 'before' ? siblings[idx - 1] : siblings[idx];
+    const after = position === 'before' ? siblings[idx] : siblings[idx + 1];
+
+    movePage.mutate(
+      { id: dragId, parentId: found.parentId, beforeId: before?.id, afterId: after?.id },
+      { onError },
+    );
+  }
+
   function handleDelete(nodeId: string) {
     deletePage.mutate(nodeId, {
       onSuccess: () => {
@@ -307,7 +388,11 @@ export function PagesSurface({
           (founder directive: "a distinct full-page feel, better than
           Obsidian"), so the tree/History chrome below is Document-only. */}
       {!isGraphMode && (
-        <div className="hidden w-64 shrink-0 border-r border-ink-200 bg-surface sm:block">
+        <div
+          className="hidden shrink-0 border-r border-ink-200 bg-surface sm:block"
+          style={{ width: treeWidth }}
+          data-testid="page-tree-panel"
+        >
           {treeQuery.isLoading ? (
             <LoadingState label="Loading pages…" />
           ) : treeQuery.isError ? (
@@ -327,9 +412,24 @@ export function PagesSurface({
               }}
               onMoveUp={(id) => handleMove(id, 'up')}
               onMoveDown={(id) => handleMove(id, 'down')}
+              onDropMove={handleDropMove}
               onDelete={handleDelete}
             />
           )}
+        </div>
+      )}
+      {/* Desktop only: the mobile tree is a full-height drawer, where a
+          resize handle would have nothing to resize. */}
+      {!isGraphMode && (
+        <div className="hidden sm:flex">
+          <ResizeHandle
+            width={treeWidth}
+            onWidthChange={setTreeWidth}
+            min={TREE_WIDTH_MIN}
+            max={TREE_WIDTH_MAX}
+            label="Resize the page list"
+            data-testid="page-tree-resize"
+          />
         </div>
       )}
 
@@ -354,6 +454,7 @@ export function PagesSurface({
               }}
               onMoveUp={(id) => handleMove(id, 'up')}
               onMoveDown={(id) => handleMove(id, 'down')}
+              onDropMove={handleDropMove}
               onDelete={handleDelete}
             />
           </MobileTreeDrawer>,
