@@ -17,23 +17,17 @@ teams find it — that's the only ask.**
 [![Documentation](https://img.shields.io/badge/docs-overcastly--ai.github.io-0B7285.svg?logo=readthedocs&logoColor=white)](https://overcastly-ai.github.io/Next-Lane/)
 [![CI](https://github.com/Overcastly-AI/Next-Lane/actions/workflows/ci.yml/badge.svg)](https://github.com/Overcastly-AI/Next-Lane/actions/workflows/ci.yml)
 [![E2E](https://github.com/Overcastly-AI/Next-Lane/actions/workflows/e2e.yml/badge.svg)](https://github.com/Overcastly-AI/Next-Lane/actions/workflows/e2e.yml)
-[![MCP server](https://img.shields.io/badge/MCP-123%20tools-8A2BE2.svg)](./apps/mcp/README.md)
-[![Unit tests](https://img.shields.io/badge/unit%20tests-1999-brightgreen.svg)](./docs/ROADMAP.md)
+[![MCP server](https://img.shields.io/badge/MCP-130%20tools-8A2BE2.svg)](./apps/mcp/README.md)
+[![Unit tests](https://img.shields.io/badge/unit%20tests-2571-brightgreen.svg)](./docs/ROADMAP.md)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6.svg?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Docker](https://img.shields.io/badge/Docker-compose%20up-2496ED.svg?logo=docker&logoColor=white)](#-quickstart)
 [![Install](https://img.shields.io/badge/install-Compose%20%C2%B7%20Helm%20%C2%B7%20npx-4C1D95.svg)](#-install)
 [![Self-hosted](https://img.shields.io/badge/self--hosted-your%20data-success.svg)](#why-next-lane)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING.md)
 
-<!--
-  Registry badges are intentionally ABSENT until the first release actually
-  publishes (there are no tags yet — see RELEASING.md). Add these to the row
-  above the moment `v0.1.0` is out, and not one minute before:
-
-  [![npm](https://img.shields.io/npm/v/@next-lane/mcp.svg?logo=npm)](https://www.npmjs.com/package/@next-lane/mcp)
-  [![GHCR](https://img.shields.io/badge/ghcr.io-next--lane--api-2496ED.svg?logo=docker&logoColor=white)](https://github.com/Overcastly-AI/Next-Lane/pkgs/container/next-lane-api)
-  [![Release](https://github.com/Overcastly-AI/Next-Lane/actions/workflows/release.yml/badge.svg)](https://github.com/Overcastly-AI/Next-Lane/actions/workflows/release.yml)
--->
+[![npm](https://img.shields.io/npm/v/@next-lane/mcp.svg?logo=npm)](https://www.npmjs.com/package/@next-lane/mcp)
+[![GHCR](https://img.shields.io/badge/ghcr.io-next--lane--api-2496ED.svg?logo=docker&logoColor=white)](https://github.com/Overcastly-AI/Next-Lane/pkgs/container/next-lane-api)
+[![Release](https://github.com/Overcastly-AI/Next-Lane/actions/workflows/release.yml/badge.svg)](https://github.com/Overcastly-AI/Next-Lane/actions/workflows/release.yml)
 
 
 Built by [Overcastly AI](https://overcastly.com?utm_source=github&utm_medium=readme&utm_campaign=next-lane&utm_content=hero)
@@ -219,13 +213,8 @@ cp -r skills/project-context ~/.claude/skills/
 ```
 
 Token-efficient throughout: a compact result envelope (50 items/page by default),
-`verbose: true` opt-in for full DTOs — a real field measurement put the same
-`list_issues` call at 11 KB compact vs. 84–150 KB verbose.
-
-> "The handoff-document feature was the exact right thing to build… If those land
-> next, it's genuinely production-grade for AI-agent-driven project management."
->
-> — unsolicited field review from an AI coding agent using Next Lane's MCP server
+`verbose: true` opt-in for full DTOs — measured, the same `list_issues` call is
+**11 KB compact vs. 84–150 KB verbose**.
 
 Full tool reference: [`apps/mcp/README.md`](./apps/mcp/README.md). Connect it to
 Claude Code in one command once you have a personal access token (log in →
@@ -312,7 +301,7 @@ The full capability matrix:
 | **Workspace** | **Branding** — custom name, accent color, logo · workspace audit log |
 | **Admin & security** | Roles & permissions (Admin / Member / Viewer) · **per-project role overrides** (elevate or restrict a member on one project) · password reset over SMTP · HMAC-signed outbound webhooks (with SSRF guard) · 102-endpoint tenant-isolation regression matrix |
 | **Integrations** | **GitHub**, **GitLab**, and **Gitea** two-way issue ↔ PR/MR/commit/branch linking, HMAC/token-verified webhooks, self-hosted URLs support |
-| **Ops & deploy** | One-command Docker Compose · **Helm chart + Kustomize** for Kubernetes · GHCR multi-arch image builds · structured JSON logs · health/readiness probes · CI (typecheck + build + **1999 unit tests**) + full Playwright **e2e suite, desktop and mobile** |
+| **Ops & deploy** | One-command Docker Compose · **Helm chart + Kustomize** for Kubernetes · GHCR multi-arch image builds · structured JSON logs · health/readiness probes · CI (typecheck + build + **2571 unit tests**) + full Playwright **e2e suite, desktop and mobile** |
 
 ## 🚀 Quickstart
 
@@ -466,7 +455,7 @@ Deeper dives: [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) ·
 ```
 Next-Lane/
 ├── apps/
-│   ├── api/        # NestJS backend (REST + WebSocket, 1999 unit tests)
+│   ├── api/        # NestJS backend (REST + WebSocket, 2166 unit tests)
 │   ├── web/        # React + Vite frontend
 │   └── mcp/        # MCP server (stdio, 130 tools with persistent agent memory) for AI agents
 ├── packages/
