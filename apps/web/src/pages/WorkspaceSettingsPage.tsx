@@ -14,10 +14,11 @@ import { Button } from '@/components/ui/Button';
 import { PageTemplatesSection } from '@/components/settings/PageTemplatesSection';
 import { Input } from '@/components/ui/Input';
 import { Field } from '@/components/ui/Field';
-import { LoadingState, ErrorState } from '@/components/ui/States';
+import { LoadingState, ErrorState, EmptyState } from '@/components/ui/States';
 import { useToast } from '@/components/ui/Toast';
 import {
   useWorkspaces,
+  useWorkspaceMembers,
   useMyRole,
   useUpdateWorkspaceBranding,
   useDeleteWorkspace,
@@ -118,6 +119,10 @@ export function WorkspaceSettingsPage() {
 
   const myRole = useMyRole(workspaceId);
   const isAdmin = myRole === Role.ADMIN;
+  // `myRole` is derived from the membership list, so it reads `null` while that
+  // query is in flight — indistinguishable from "not a member". Hold the
+  // loading state until it settles, or an admin sees the non-admin view flash.
+  const membersQuery = useWorkspaceMembers(workspaceId);
 
   const workspacesQuery = useWorkspaces();
   const workspace = workspacesQuery.data?.find((w) => w.id === workspaceId);
@@ -174,7 +179,7 @@ export function WorkspaceSettingsPage() {
 
   // ── Loading / error guards ────────────────────────────────────────────────
 
-  if (myRole === null && workspacesQuery.isLoading) {
+  if (myRole === null && (workspacesQuery.isLoading || membersQuery.isLoading)) {
     return (
       <Shell workspaceName={workspaceName} workspaceId={workspaceId}>
         <LoadingState label="Loading…" />
@@ -189,6 +194,50 @@ export function WorkspaceSettingsPage() {
           error={workspacesQuery.error}
           onRetry={() => void workspacesQuery.refetch()}
         />
+      </Shell>
+    );
+  }
+
+  // ── Workspace you cannot see ──────────────────────────────────────────────
+
+  /*
+   * The list loaded successfully and this workspace is not in it: it was
+   * deleted, or you were removed, or the id is simply wrong.
+   *
+   * Without this guard the component fell through to the non-admin read-only
+   * view and rendered a "General settings" page reading `Workspace name: —`,
+   * which tells a reader the workspace exists and they merely lack admin
+   * rights. Both halves of that are wrong, and for a workspace they were never
+   * a member of it is also a small framing leak.
+   *
+   * Keyed on the workspaces list rather than on `myRole`: the role comes from
+   * the membership query, which reads `null` while in flight, so a `myRole`
+   * test would show this to an admin mid-load.
+   *
+   * Found via a test that had been passing for the wrong reason: it asserted
+   * the heading was absent after deleting a workspace, and that only held
+   * while the role query was still in flight. Under parallel load the query
+   * settled inside the timeout, the fall-through view rendered, and the
+   * assertion failed — reproduced 2 runs in 6. The test was right; the page
+   * was wrong.
+   */
+  if (workspacesQuery.isSuccess && workspace === undefined) {
+    return (
+      <Shell workspaceName={workspaceName} workspaceId={workspaceId}>
+        <div className="mx-auto w-full max-w-3xl p-4 sm:p-6">
+          <EmptyState
+            title="Workspace not available"
+            description="It may have been deleted, or you may no longer be a member. Pick another workspace to carry on."
+            action={
+              <Link
+                to="/"
+                className="inline-flex items-center rounded-md bg-signal-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-signal-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-300 focus-visible:ring-offset-2"
+              >
+                Go to home
+              </Link>
+            }
+          />
+        </div>
       </Shell>
     );
   }
