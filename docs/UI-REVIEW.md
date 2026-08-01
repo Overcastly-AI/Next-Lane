@@ -2346,15 +2346,28 @@ them so the audit stays readable as a record of what was wrong.
       already use it, and a destination that renames itself on arrival makes a
       reader doubt they landed in the right place.
 
-**Still open** — deliberately, as separate work:
+- [x] **#1 Sidebar/ProjectNav view mismatch** — both surfaces now read one
+      ordered list, `components/project/projectViews.ts`. There were THREE
+      hand-maintained lists that had drifted: the tab bar knew eleven views,
+      the sidebar six, and they disagreed on which mattered (Dashboards and
+      Roadmap were sidebar rows but "More" items; Triage was a tab and absent
+      from the sidebar). A single `primary` flag now decides, so the sidebar
+      gained Triage and the tab bar gained Dashboards and Roadmap. The type
+      makes the invariant structural rather than conventional: a primary view
+      without an icon is a compile error, verified by introducing one.
+- [x] **#5 Skip-link** — "Skip to content" is now the first tab stop, visible
+      on focus, and it moves FOCUS rather than only scroll (the target carries
+      `tabindex="-1"`; without it the browser scrolls but leaves focus on the
+      link, and the next Tab drops the user straight back into the sidebar).
+      `skip-link.spec.ts` asserts all three properties, including that the tab
+      after activation stays inside the main region.
 
-- [ ] **#1 Sidebar/ProjectNav view mismatch.** Triage, Analytics, Poker,
-      Standup and Automation are reachable from the project tab bar but
-      invisible in the sidebar. The real fix is sourcing both from one ordered
-      list, which is a refactor rather than a label change, so it is not in
-      this pass.
-- [ ] **#5 Skip-link + sidebar-first tab order.** Every keyboard user still
-      tabs 10+ times before reaching page content. Unchanged by this pass.
+**Still open:**
+
+- [ ] **Sidebar-first tab order itself.** The skip link makes the content
+      reachable in one press, which is the standard remedy, but the DOM order
+      is unchanged — a user who tabs past the link still traverses the whole
+      sidebar. Reordering the shell is a larger change and is not in this pass.
 
 Also filed during this pass:
 

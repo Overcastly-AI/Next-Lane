@@ -38,13 +38,9 @@ import {
   NotificationsIcon,
   SettingsIcon,
   ShieldIcon,
-  ViewBacklogIcon,
-  ViewBoardIcon,
-  ViewDashboardsIcon,
   ViewPagesIcon,
-  ViewReportsIcon,
-  ViewRoadmapIcon,
 } from './sidebarIcons';
+import { PRIMARY_PROJECT_VIEWS } from '@/components/project/projectViews';
 
 // Reused verbatim from the project Docs nav (`ProjectViewsSubNav`, below) —
 // the workspace Docs entry is the same "knowledge base" concept one level
@@ -155,14 +151,16 @@ function ProjectRow({
 // context — this is purely additive.
 // ---------------------------------------------------------------------------
 
-const PROJECT_VIEWS = [
-  { to: 'board', label: 'Board', Icon: ViewBoardIcon },
-  { to: 'backlog', label: 'Backlog', Icon: ViewBacklogIcon },
-  { to: 'pages', label: 'Docs', Icon: ViewPagesIcon },
-  { to: 'dashboards', label: 'Dashboards', Icon: ViewDashboardsIcon },
-  { to: 'roadmap', label: 'Roadmap', Icon: ViewRoadmapIcon },
-  { to: 'reports', label: 'Reports', Icon: ViewReportsIcon },
-] as const;
+/*
+ * Was a third hand-maintained list of project views, and the one that had
+ * drifted furthest: it knew about six views while the tab bar knew about
+ * eleven, and the two disagreed about which mattered — Dashboards and Roadmap
+ * were rows here but "More" items there, while Triage was a tab and nothing
+ * here at all. Both surfaces now read the same `primary` flag, so the sidebar
+ * gains Triage and the tab bar gains Dashboards and Roadmap, and neither can
+ * silently drift from the other again. See `projectViews.ts`.
+ */
+const PROJECT_VIEWS = PRIMARY_PROJECT_VIEWS;
 
 function ProjectViewsSubNav({
   projectId,

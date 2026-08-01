@@ -211,3 +211,18 @@ export function HomeIcon({ className }: { className?: string }) {
     </svg>
   );
 }
+
+/**
+ * Triage — the inbox of unsorted work.
+ *
+ * A funnel: the one glyph in this set that describes a PROCESS rather than a
+ * container, which is what triage is. Deliberately not another tray or list
+ * icon — Backlog and Board already own those shapes and the rows sit adjacent.
+ */
+export function ViewTriageIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M3.5 5h17l-6.5 7.5V20l-4-2.5v-5L3.5 5Z" />
+    </svg>
+  );
+}

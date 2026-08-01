@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/cn';
 import { useUnsavedChangesGuard } from '@/lib/unsavedChangesGuard';
+import { PRIMARY_PROJECT_VIEWS, SECONDARY_PROJECT_VIEWS } from './projectViews';
 
 /**
  * Per-project sub-navigation shown under the app header.
@@ -43,25 +44,14 @@ import { useUnsavedChangesGuard } from '@/lib/unsavedChangesGuard';
 // Data
 // ---------------------------------------------------------------------------
 
-const PRIMARY_TABS = [
-  { to: 'board',       label: 'Board'   },
-  { to: 'backlog',     label: 'Backlog' },
-  { to: 'triage',      label: 'Triage'  },
-  // Docs (route: /pages — unchanged for deep-link/MCP stability) is a
-  // flagship pillar (project wiki + knowledge graph) — a first-class tab,
-  // not a "More" item (the founder couldn't find it there).
-  { to: 'pages',       label: 'Docs',     testId: 'nav-pages' as const },
-  { to: 'reports',     label: 'Reports' },
-] as const;
-
-const MORE_TABS = [
-  { to: 'analytics',   label: 'Analytics'  },
-  { to: 'dashboards',  label: 'Dashboards' },
-  { to: 'roadmap',     label: 'Roadmap'    },
-  { to: 'poker',       label: 'Poker'      },
-  { to: 'standups',    label: 'Standup'    },
-  { to: 'automations', label: 'Automation', testId: 'nav-automation' as const },
-] as const;
+/*
+ * Both lists come from `projectViews.ts` now — see its header for why. They
+ * were two hand-maintained arrays that had drifted apart from the sidebar's
+ * own third list, so the app disagreed with itself about which views a project
+ * even has.
+ */
+const PRIMARY_TABS = PRIMARY_PROJECT_VIEWS;
+const MORE_TABS = SECONDARY_PROJECT_VIEWS;
 
 // ---------------------------------------------------------------------------
 // Helpers

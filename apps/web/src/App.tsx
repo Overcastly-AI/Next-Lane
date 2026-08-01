@@ -101,8 +101,35 @@ function AppShellFrame({ children }: { children: ReactNode }) {
 
   return (
     <div className="lg:flex">
+      {/*
+       * Skip link — first focusable thing in the document.
+       *
+       * The sidebar comes before the page content in DOM order, so a keyboard
+       * user tabbed through the workspace switcher, every project, every
+       * project view, four personal items and the workspace group before
+       * reaching anything on the page — measured at 10+ presses, and it scales
+       * with the number of projects, on EVERY page load. This is the standard
+       * fix: off-screen until focused, then a real, visible control.
+       *
+       * `sr-only focus:not-sr-only` rather than `display: none`, because a
+       * hidden element cannot receive focus and the link would never appear.
+       */}
+      <a
+        href="#main-content"
+        data-testid="skip-to-content"
+        className="sr-only rounded-md bg-signal-600 px-4 py-2 text-sm font-medium text-white focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[100] focus:outline-none focus:ring-2 focus:ring-signal-300 focus:ring-offset-2"
+      >
+        Skip to content
+      </a>
       <AppSidebar />
-      <div className="min-w-0 flex-1">{children}</div>
+      {/*
+       * `tabIndex={-1}` so the skip link's target can actually take focus —
+       * without it the browser scrolls here but leaves focus on the link, and
+       * the next Tab drops the user right back into the sidebar.
+       */}
+      <div id="main-content" tabIndex={-1} className="min-w-0 flex-1 focus:outline-none">
+        {children}
+      </div>
       <MobileSidebarDrawer />
     </div>
   );

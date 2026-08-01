@@ -266,7 +266,20 @@ export const IssueCard = forwardRef<HTMLDivElement, IssueCardProps>(
 
           {/* Footer row */}
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5">
+            {/*
+             * Two groups, not four evenly-spaced glyphs.
+             *
+             * This row previously read as `● ✓ NOVA-13 ▮▮▮` — a status dot, a
+             * type icon, the key chip and a priority meter, all at the same
+             * gap and in four different visual languages, repeated twenty-odd
+             * times per screen. The wider gap now separates the one thing you
+             * can CLICK (the status picker) from the three that merely
+             * describe the issue, and the type glyph drops to ink-300 so the
+             * only colour left in the cluster is the key and a priority that
+             * is actually high. Same elements, same order, same hooks — just
+             * a rhythm.
+             */}
+            <div className="flex items-center gap-2.5">
               {/* Inline status picker */}
               {statuses && statuses.length > 0 && onStatusChange && (
                 <CardStatusPicker
@@ -276,12 +289,14 @@ export const IssueCard = forwardRef<HTMLDivElement, IssueCardProps>(
                   editable={editable}
                 />
               )}
-              <IssueTypeIcon type={issue.type} className="h-3.5 w-3.5 text-ink-400" />
-              {/* Issue key — DISPATCH data signature: cobalt mono chip */}
-              <span className="nl-issue-key">
-                {issue.key}
+              <span className="flex items-center gap-1">
+                <IssueTypeIcon type={issue.type} className="h-3.5 w-3.5 text-ink-300" />
+                {/* Issue key — DISPATCH data signature: cobalt mono chip */}
+                <span className="nl-issue-key">
+                  {issue.key}
+                </span>
+                <PriorityIcon priority={issue.priority} className="h-3.5 w-3.5" />
               </span>
-              <PriorityIcon priority={issue.priority} className="h-3.5 w-3.5" />
             </div>
             <div className="flex items-center gap-1.5">
               {issue.storyPoints != null && (
