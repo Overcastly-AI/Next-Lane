@@ -479,9 +479,9 @@ than pointing the browser at a URL that would have to work without
 credentials. There is no separate share setting on an image to get wrong; if
 you can read the page, you can see its images, and if you can't, you can't.
 
-![Docs — page tree, rendered markdown, backlinks and links-out](/screenshots/pages-desktop.png)
+![Docs — page tree, rendered markdown, backlinks and links-out](/screenshots/pages-desktop-dark.png)
 
-![A doc page with an embedded image](/screenshots/pages-image-desktop.png)
+![A doc page with an embedded image](/screenshots/pages-image-desktop-dark.png)
 
 *A pasted screenshot, stored as `nl-image:<id>` and fetched with the reader's
 own session — as private as the page holding it.*
@@ -513,9 +513,9 @@ shrunk "world"), respects dark mode, and honors `prefers-reduced-motion` by
 skipping the settle-in animation while still converging to the same final
 layout.
 
-![Pages knowledge graph — force-directed page/link view](/screenshots/pages-graph-desktop.png)
+![Pages knowledge graph — force-directed page/link view](/screenshots/pages-graph-desktop-dark.png)
 
-*Every page is a node, every resolved `[[wiki-link]]` a directed edge.*
+*Every page is a node, every resolved `[[wiki-link]]` a directed edge — here, 101 pages and 358 links across seven clustered areas.*
 
 **The standout: an agent can walk this graph too.** Next Lane's MCP server
 exposes `get_page_graph` (the full node/edge set for a project),

@@ -8,6 +8,18 @@ Last reshoot: **2026-08-01** (post doc-images, doc-templates, and the draggable
 docs nav). Reshooting is now **reproducible** — see "Reshooting" below; it used
 to be a hand-staged afternoon, which is why these drifted in the first place.
 
+**Every reshot surface exists in BOTH themes.** Light keeps the historical
+filename; dark adds a `-dark` suffix — except `board-dark-desktop.png`, which
+predates this script and is referenced by name from the README and the
+docs-site `og:image`, so it keeps its name rather than being renamed to tidy a
+convention.
+
+The wiki behind the graph shots is **101 pages and 358 wiki-link edges**, in
+seven clustered sections with cross-links between them. That is deliberate: a
+six-node graph photographs as an empty canvas and says nothing about what a
+force-directed view is *for*. The structure — clusters, hubs, bridges — only
+appears at scale.
+
 ## Index
 
 | File | Surface |
@@ -34,6 +46,7 @@ to be a hand-staged afternoon, which is why these drifted in the first place.
 | `pages-graph-desktop.png` | Pages knowledge graph — force-directed node/edge layout of a project's wiki |
 | `pages-graph-mobile.png` | Pages knowledge graph on mobile (touch pan/pinch) |
 | `pages-mobile.png` | Docs on mobile |
+| `*-dark.png` | The dark-mode counterpart of each reshot surface above |
 
 ### Reshot 2026-08-01 vs. carried over
 

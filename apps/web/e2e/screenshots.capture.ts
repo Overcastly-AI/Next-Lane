@@ -131,16 +131,111 @@ async function novaProject(page: Page): Promise<{ id: string }> {
   return nova;
 }
 
+/**
+ * Theme suffix. Light shots keep their historical filenames so every existing
+ * doc reference keeps resolving; dark ones get `-dark`. The one exception is
+ * `board-dark-desktop.png`, which predates this script and is referenced by
+ * name from the README and the docs-site hero — it is emitted under that name
+ * rather than renamed, because breaking a published og:image to tidy a
+ * filename is a bad trade.
+ */
+function name(base: string, dark: boolean): string {
+  if (!dark) return base;
+  if (base === 'board-desktop') return 'board-dark-desktop';
+  return `${base}-dark`;
+}
+
+/**
+ * Force the app's theme rather than only the media query. The theme toggle
+ * writes an explicit preference, and an explicit preference beats
+ * `prefers-color-scheme` — so emulating the media alone leaves a previously
+ * toggled session on the wrong theme.
+ */
+async function setTheme(page: Page, dark: boolean): Promise<void> {
+  await page.emulateMedia({ colorScheme: dark ? 'dark' : 'light' });
+  // `nl.theme` + a `.dark` class on <html> — see `src/lib/theme.ts`. Set both:
+  // the class makes the CURRENT page correct without a reload, the stored
+  // preference makes every subsequent navigation correct.
+  await page.evaluate((d) => {
+    localStorage.setItem('nl.theme', d ? 'dark' : 'light');
+    document.documentElement.classList.toggle('dark', d);
+  }, dark);
+}
+
+/**
+ * The knowledge graph needs its own routine: the force layout settles
+ * asynchronously (so `settle` is not enough), and reset restores 100% zoom
+ * without fitting the layout to the viewport — on a graph of this size some
+ * nodes end up outside the frame. Zooming out three times frames the whole
+ * thing.
+ *
+ * That workaround is itself the evidence for a real gap: a knowledge graph
+ * that opens with nodes off-screen and offers no fit-to-content. Filed in
+ * docs/UI-REVIEW.md.
+ */
+async function captureGraph(page: Page, url: string, file: string): Promise<void> {
+  await page.goto(url);
+  await page.waitForTimeout(4000);
+  await page.getByTestId('page-graph-zoom-reset').click();
+  for (let i = 0; i < 3; i++) await page.getByTestId('page-graph-zoom-out').click();
+  await page.waitForTimeout(1500);
+  await page.screenshot({ path: `${OUT}/${file}.png` });
+}
+
+/**
+ * Put a real image into the Deploy runbook page and return its id.
+ *
+ * Done through the API rather than in the seed because an image is not just a
+ * row: the bytes have to go through the storage driver, which is the whole
+ * point of the feature being documented.
+ */
+async function seedPageImage(page: Page, projectId: string): Promise<string | null> {
+  const pages = (await api(page, `/projects/${projectId}/pages/tree`)) as {
+    id: string;
+    title: string;
+    children?: { id: string; title: string }[];
+  }[];
+  const flat: { id: string; title: string }[] = [];
+  const walk = (ns: { id: string; title: string; children?: never[] }[]) => {
+    for (const n of ns) {
+      flat.push({ id: n.id, title: n.title });
+      if (Array.isArray(n.children)) walk(n.children);
+    }
+  };
+  walk(pages as never);
+  const runbook = flat.find((p) => p.title === 'Deploy runbook');
+  if (!runbook) return null;
+
+  const token = await page.evaluate(() => localStorage.getItem('nl_token'));
+  const up = await page.request.post(`${API_URL}/api/pages/${runbook.id}/images`, {
+    headers: { Authorization: `Bearer ${token}` },
+    multipart: {
+      file: { name: 'ingestion-lag.png', mimeType: 'image/png', buffer: sampleChart() },
+    },
+  });
+  if (!up.ok()) return null;
+  const imgs = (await api(page, `/pages/${runbook.id}/images`)) as { id: string }[];
+  if (!imgs[0]) return null;
+
+  await page.request.patch(`${API_URL}/api/pages/${runbook.id}`, {
+    headers: { Authorization: `Bearer ${token}` },
+    data: {
+      content:
+        '# Deploy runbook\n\n1. Drain the ingestion node.\n2. Roll the pipeline.\n' +
+        '3. Watch the error rate for ten minutes.\n\n' +
+        `![Ingestion lag during the last roll](nl-image:${imgs[0].id})\n\n` +
+        'See also: [[Runbooks]], [[Rollback procedure]].\n',
+    },
+  });
+  return runbook.id;
+}
+
 test.describe('desktop', () => {
   test.skip(({ viewport }) => (viewport?.width ?? 0) < 1000, 'desktop only');
 
   test('capture', async ({ page }) => {
-    // Login screen first, while logged out.
     await page.goto('/login');
-    await shot(page, 'login-desktop');
-
     await login(page);
-    await shot(page, 'home-desktop');
 
     // Widen the Docs page tree before the Docs shots. At the 240px default the
     // seeded page titles truncate to "Architectur…", which is precisely the
@@ -150,79 +245,44 @@ test.describe('desktop', () => {
     await page.evaluate(() => localStorage.setItem('nl_pages_tree_width', '320'));
 
     const nova = await novaProject(page);
+    const runbookId = await seedPageImage(page, nova.id);
 
-    await page.goto(`/projects/${nova.id}/board`);
-    await shot(page, 'board-desktop');
+    for (const dark of [false, true]) {
+      await setTheme(page, dark);
 
-    await page.goto(`/projects/${nova.id}/backlog`);
-    await shot(page, 'backlog-desktop');
+      await page.goto('/login-preview-noop', { waitUntil: 'commit' }).catch(() => {});
+      await page.goto(`/projects/${nova.id}/board`);
+      await shot(page, name('board-desktop', dark));
 
-    // Docs — the two shots the README has had marked as "planned, not yet
-    // captured" since the knowledge graph shipped.
-    await page.goto(`/projects/${nova.id}/pages`);
-    await shot(page, 'pages-desktop');
-    await page.goto(`/projects/${nova.id}/pages/graph`);
-    // The force layout settles asynchronously, so `settle` is not enough. Then
-    // reset the camera: left to its own devices the simulation drifts and the
-    // graph sprawls off the bottom of the frame, which photographs as a broken
-    // layout rather than a knowledge graph.
-    await page.waitForTimeout(3000);
-    // Reset restores 100% zoom but does NOT fit the layout to the viewport, so
-    // on a graph this size some nodes sit below the fold. Zooming out twice
-    // frames the whole thing. (Filed as a UX gap in docs/UI-REVIEW.md — a
-    // knowledge graph that opens with nodes off-screen is a real papercut, and
-    // having to work around it here is the evidence.)
-    await page.getByTestId('page-graph-zoom-reset').click();
-    await page.getByTestId('page-graph-zoom-out').click();
-    await page.getByTestId('page-graph-zoom-out').click();
-    await page.waitForTimeout(1200);
-    await page.screenshot({ path: `${OUT}/pages-graph-desktop.png` });
+      await page.goto(`/projects/${nova.id}/backlog`);
+      await shot(page, name('backlog-desktop', dark));
 
-    // A doc page with an embedded image — the newest Docs capability, and one
-    // nothing in the shipped screenshot set showed.
-    const pages = (await api(page, `/projects/${nova.id}/pages/tree`)) as {
-      id: string;
-      title: string;
-    }[];
-    const runbook = pages.find((p) => p.title === 'Deploy runbook');
-    if (runbook) {
-      const token = await page.evaluate(() => localStorage.getItem('nl_token'));
-      await page.request.post(`${API_URL}/api/pages/${runbook.id}/images`, {
-        headers: { Authorization: `Bearer ${token}` },
-        multipart: {
-          file: {
-            name: 'ingestion-lag.png',
-            mimeType: 'image/png',
-            buffer: sampleChart(),
-          },
-        },
-      });
-      const imgs = (await api(page, `/pages/${runbook.id}/images`)) as { id: string }[];
-      if (imgs[0]) {
-        await page.request.patch(`${API_URL}/api/pages/${runbook.id}`, {
-          headers: { Authorization: `Bearer ${token}` },
-          data: {
-            content:
-              '# Deploy runbook\n\n1. Drain the ingestion node.\n2. Roll the pipeline.\n3. Watch the error rate for ten minutes.\n\n' +
-              `![Ingestion lag during the last roll](nl-image:${imgs[0].id})\n\n` +
-              'Escalation path: [[Incident response]].\n',
-          },
-        });
+      await page.goto('/');
+      await shot(page, name('home-desktop', dark));
+
+      await page.goto(`/projects/${nova.id}/pages`);
+      await shot(page, name('pages-desktop', dark));
+
+      if (runbookId) {
+        await page.goto(`/projects/${nova.id}/pages/${runbookId}`);
+        await expect(
+          page.getByTestId('page-content').locator('img[data-nl-image]'),
+        ).toHaveAttribute('src', /^blob:/, { timeout: 15_000 });
+        await shot(page, name('pages-image-desktop', dark));
       }
-      await page.goto(`/projects/${nova.id}/pages/${runbook.id}`);
-      // The image resolves through an authorized fetch, so wait for the blob
-      // rather than for the markup.
-      await expect(
-        page.getByTestId('page-content').locator('img[data-nl-image]'),
-      ).toHaveAttribute('src', /^blob:/, { timeout: 15_000 });
-      await shot(page, 'pages-image-desktop');
+
+      await captureGraph(page, `/projects/${nova.id}/pages/graph`, name('pages-graph-desktop', dark));
     }
 
-    // Dark mode, on the board — the docs site's default theme.
-    await page.emulateMedia({ colorScheme: 'dark' });
-    await page.goto(`/projects/${nova.id}/board`);
-    await shot(page, 'board-dark-desktop');
-    await page.emulateMedia({ colorScheme: 'light' });
+    // The login screen, both themes — captured last because it logs out.
+    for (const dark of [false, true]) {
+      await page.goto('/');
+      await setTheme(page, dark);
+      await page.evaluate(() => localStorage.removeItem('nl_token'));
+      await page.goto('/login');
+      await setTheme(page, dark);
+      await shot(page, name('login-desktop', dark));
+    }
   });
 });
 
@@ -231,34 +291,43 @@ test.describe('mobile', () => {
 
   test('capture', async ({ page }) => {
     await page.goto('/login');
-    await shot(page, 'login-mobile');
-
     await login(page);
-    await shot(page, 'home-mobile');
-
     const nova = await novaProject(page);
-    await page.goto(`/projects/${nova.id}/board`);
-    await shot(page, 'board-mobile');
 
-    await page.goto(`/projects/${nova.id}/pages`);
-    await shot(page, 'pages-mobile');
+    for (const dark of [false, true]) {
+      await setTheme(page, dark);
 
-    await page.goto(`/projects/${nova.id}/pages/graph`);
-    await page.waitForTimeout(3000);
-    await page.getByTestId('page-graph-zoom-reset').click();
-    await page.getByTestId('page-graph-zoom-out').click();
-    await page.getByTestId('page-graph-zoom-out').click();
-    await page.waitForTimeout(1200);
-    await page.screenshot({ path: `${OUT}/pages-graph-mobile.png` });
+      await page.goto('/');
+      await shot(page, name('home-mobile', dark));
 
-    // Mobile nav drawer open — the shot the README indexes as sidebar-mobile.
-    await page.goto(`/projects/${nova.id}/board`);
-    await settle(page);
-    const navToggle = page.getByRole('button', { name: /open (main )?navigation|menu/i }).first();
-    if (await navToggle.isVisible().catch(() => false)) {
-      await navToggle.click();
-      await page.waitForTimeout(600);
-      await page.screenshot({ path: `${OUT}/sidebar-mobile.png` });
+      await page.goto(`/projects/${nova.id}/board`);
+      await shot(page, name('board-mobile', dark));
+
+      await page.goto(`/projects/${nova.id}/pages`);
+      await shot(page, name('pages-mobile', dark));
+
+      await captureGraph(page, `/projects/${nova.id}/pages/graph`, name('pages-graph-mobile', dark));
+
+      // Nav drawer open.
+      await page.goto(`/projects/${nova.id}/board`);
+      await settle(page);
+      const navToggle = page
+        .getByRole('button', { name: /open (main )?navigation|menu/i })
+        .first();
+      if (await navToggle.isVisible().catch(() => false)) {
+        await navToggle.click();
+        await page.waitForTimeout(600);
+        await page.screenshot({ path: `${OUT}/${name('sidebar-mobile', dark)}.png` });
+      }
+    }
+
+    for (const dark of [false, true]) {
+      await page.goto('/');
+      await setTheme(page, dark);
+      await page.evaluate(() => localStorage.removeItem('nl_token'));
+      await page.goto('/login');
+      await setTheme(page, dark);
+      await shot(page, name('login-mobile', dark));
     }
   });
 });

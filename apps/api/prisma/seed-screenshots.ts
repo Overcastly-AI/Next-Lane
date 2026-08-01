@@ -256,53 +256,163 @@ async function main() {
     },
   });
 
-  // ── Docs: a wiki with real cross-links, so the graph view has a shape ─────
-  const pageRanks = initialRanks(6);
-  const page = async (title: string, content: string, rank: string, parentId?: string) =>
-    prisma.page.create({
+  // ── Docs: a wiki big enough that the graph view has a real shape ─────────
+  //
+  // 100 pages, not six. A knowledge graph of six nodes photographs as an empty
+  // canvas and tells a reader nothing about what the feature is for; the point
+  // of a force-directed view is the structure that only emerges at scale —
+  // clusters per area, hubs with high in-degree, a few bridges between them.
+  //
+  // The link topology is deliberate rather than random: every page links to
+  // its section's hub, hubs link to each other, and a handful of pages link
+  // across sections. That produces visible clusters joined by bridges, which
+  // is what a real engineering wiki looks like — uniform random edges would
+  // render as an undifferentiated hairball.
+  const SECTIONS: { hub: string; prefix: string; items: string[] }[] = [
+    {
+      hub: 'Architecture overview',
+      prefix: 'Architecture',
+      items: [
+        'Ingestion API', 'Event schema and versioning', 'Hourly rollup job',
+        'Idempotency and deduplication', 'Storage layout', 'Read path and caching',
+        'Multi-tenancy model', 'Rate limiting', 'Backpressure and queueing',
+        'Schema migration strategy', 'Data retention', 'Service boundaries',
+        'Failure domains', 'Capacity model', 'Cost model',
+      ],
+    },
+    {
+      hub: 'Billing model',
+      prefix: 'Billing',
+      items: [
+        'Plans and entitlements', 'Metered vs seat pricing', 'Proration rules',
+        'Invoice assembly', 'Tax handling', 'Dunning and retries',
+        'Credits and refunds', 'Currency support', 'Usage caps and overage',
+        'Trials and grandfathering', 'Stripe integration', 'Revenue recognition',
+        'Billing reconciliation', 'Disputes and chargebacks',
+      ],
+    },
+    {
+      hub: 'Runbooks',
+      prefix: 'Runbook',
+      items: [
+        'Deploy runbook', 'Rollback procedure', 'Database failover',
+        'Rotating credentials', 'Scaling the ingestion tier', 'Clearing a stuck queue',
+        'Restoring from backup', 'Cache invalidation', 'Draining a node',
+        'Certificate renewal', 'Hotfix process', 'Region failover',
+        'Replaying dropped events', 'On-call handover',
+      ],
+    },
+    {
+      hub: 'Decision records',
+      prefix: 'ADR',
+      items: [
+        'ADR 001 — event-sourced metering', 'ADR 002 — Postgres over Cassandra',
+        'ADR 003 — hourly not real-time rollups', 'ADR 004 — proration strategy',
+        'ADR 005 — idempotency keys at the edge', 'ADR 006 — single-region first',
+        'ADR 007 — no customer-managed keys in v1', 'ADR 008 — REST over gRPC',
+        'ADR 009 — fractional indexing for ordering', 'ADR 010 — self-hosted object storage',
+        'ADR 011 — soft delete for invoices', 'ADR 012 — synchronous webhooks',
+      ],
+    },
+    {
+      hub: 'Engineering handbook',
+      prefix: 'Handbook',
+      items: [
+        'Code review expectations', 'Testing strategy', 'Definition of done',
+        'Branching and release', 'Incident severities', 'Postmortem template',
+        'Security review checklist', 'Accessibility baseline', 'Performance budgets',
+        'Dependency policy', 'Feature flags', 'Documentation standards',
+        'Onboarding a new engineer',
+      ],
+    },
+    {
+      hub: 'Postmortems',
+      prefix: 'Postmortem',
+      items: [
+        'Postmortem — duplicate invoices, March', 'Postmortem — ingestion lag spike',
+        'Postmortem — timezone drift in rollups', 'Postmortem — expired cert outage',
+        'Postmortem — runaway backfill', 'Postmortem — Stripe webhook storm',
+        'Postmortem — cache stampede', 'Postmortem — failed region failover',
+        'Postmortem — duplicate webhook deliveries', 'Postmortem — invoice rounding drift',
+        'Postmortem — SAML metadata expiry', 'Postmortem — noisy-neighbour tenant',
+        'Postmortem — backfill exhausted disk',
+      ],
+    },
+    {
+      hub: 'Product specs',
+      prefix: 'Spec',
+      items: [
+        'Spec — usage alerts', 'Spec — scheduled PDF export', 'Spec — cohort retention',
+        'Spec — self-serve downgrade', 'Spec — anomaly detection', 'Spec — warehouse export',
+        'Spec — dashboard sharing', 'Spec — funnel charts', 'Spec — SSO for enterprise',
+        'Spec — audit log export', 'Spec — multi-currency invoicing',
+        'Spec — per-org rate limits', 'Spec — public status page',
+      ],
+    },
+  ];
+
+  const hubs = SECTIONS.map((s) => s.hub);
+  const titles: { title: string; body: string; parent?: string }[] = [];
+
+  for (const [si, section] of SECTIONS.entries()) {
+    // The hub links to every other hub — these become the bridges between
+    // clusters, and the reason the graph reads as one wiki rather than seven.
+    const siblingHubs = hubs.filter((h) => h !== section.hub);
+    titles.push({
+      title: section.hub,
+      body:
+        `# ${section.hub}\n\n` +
+        `The index for ${section.prefix.toLowerCase()} material.\n\n` +
+        `## Contents\n\n` +
+        section.items.map((t) => `- [[${t}]]`).join('\n') +
+        `\n\n## Related areas\n\n` +
+        siblingHubs.map((h) => `- [[${h}]]`).join('\n') +
+        '\n',
+    });
+
+    for (const [ii, item] of section.items.entries()) {
+      // Each page links back to its hub, forward to the next page in its own
+      // section (a readable chain), and — every third page — across to another
+      // section. Cross-links are what stop the clusters from being islands.
+      const next = section.items[(ii + 1) % section.items.length];
+      const crossSection = SECTIONS[(si + 1 + (ii % 3)) % SECTIONS.length];
+      const cross = crossSection.items[ii % crossSection.items.length];
+      const links = [section.hub, next];
+      if (ii % 3 === 0 && cross !== item) links.push(cross);
+      titles.push({
+        title: item,
+        parent: section.hub,
+        body:
+          `# ${item}\n\n` +
+          `Owned by the platform team. Last reviewed this quarter.\n\n` +
+          `See also: ${links.map((l) => `[[${l}]]`).join(', ')}.\n`,
+      });
+    }
+  }
+
+  const pageRanks = initialRanks(titles.length);
+  const pageIdByTitle = new Map<string, string>();
+
+  // Hubs first, so a child can resolve its parent by title in one pass.
+  const ordered = [
+    ...titles.filter((t) => !t.parent),
+    ...titles.filter((t) => t.parent),
+  ];
+  for (const [i, t] of ordered.entries()) {
+    const row = await prisma.page.create({
       data: {
-        title,
-        content,
-        rank,
+        title: t.title,
+        content: t.body,
+        rank: pageRanks[i],
         workspaceId: ws.id,
         projectId: project.id,
-        parentId: parentId ?? null,
+        parentId: t.parent ? (pageIdByTitle.get(t.parent) ?? null) : null,
         authorId: maya.id,
         lastEditedById: maya.id,
       },
     });
-
-  const arch = await page(
-    'Architecture overview',
-    '# Architecture overview\n\nNova ingests metered events, rolls them up hourly, and bills from the rollups.\n\nSee [[Metering pipeline]] and [[Billing model]].\n',
-    pageRanks[0],
-  );
-  await page(
-    'Metering pipeline',
-    '# Metering pipeline\n\nEvents land on the ingestion API, are deduplicated by idempotency key, then rolled up.\n\nFailure modes are covered in [[Deploy runbook]].\n',
-    pageRanks[1],
-  );
-  await page(
-    'Billing model',
-    '# Billing model\n\nPlans, entitlements and proration. Invoices are assembled from hourly rollups.\n\nDecisions live in [[ADR 004 — proration strategy]].\n',
-    pageRanks[2],
-  );
-  await page(
-    'Deploy runbook',
-    '# Deploy runbook\n\n1. Drain the ingestion node.\n2. Roll the pipeline.\n3. Watch the error rate for ten minutes.\n\nEscalation path: [[Incident response]].\n',
-    pageRanks[3],
-  );
-  await page(
-    'Incident response',
-    '# Incident response\n\nSeverities, who to page, and how to write the postmortem.\n\nContext: [[Architecture overview]].\n',
-    pageRanks[4],
-  );
-  await page(
-    'ADR 004 — proration strategy',
-    '# ADR 004 — proration strategy\n\n**Status:** accepted\n\nWe prorate to the second, not the day, because a plan change on the last day of a cycle otherwise rounds to a full period.\n\nSupersedes the approach in [[Billing model]].\n',
-    pageRanks[5],
-    arch.id,
-  );
+    pageIdByTitle.set(t.title, row.id);
+  }
 
   // Wiki-link edges. `PagesService` syncs these on every save, but this seed
   // writes pages through Prisma directly, so nothing ran that sync — the first
