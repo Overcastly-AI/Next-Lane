@@ -222,7 +222,23 @@
   --nl-purple-900: #581c87;
 
   /* Canvas — cool graphite-ink paper, faint blue undertone */
-  --nl-canvas:         #f4f6f9; /* graphite-50: slightly cooler than slate-50 */
+  /*
+   * Canvas sits one step BELOW `--nl-ink-50` on purpose.
+   *
+   * These two were byte-identical (#f4f6f9), which meant the board page and
+   * the lane columns resting on it were literally the same colour — the lanes
+   * had no figure/ground and the whole board read as one undifferentiated
+   * grey field with hairlines drawn on it. The DISPATCH thesis is ink on
+   * paper, and that needs three tiers, not two:
+   *
+   *   canvas  (the desk)   #eef1f6  ← recessed
+   *   ink-50  (the lane)   #f4f6f9
+   *   surface (the card)   #ffffff  ← raised, the "paper"
+   *
+   * Kept deliberately shallow. A darker canvas would read as a modal scrim
+   * and fight the cards for attention; the job here is separation, not drama.
+   */
+  --nl-canvas:         #eef1f6;
   --nl-surface:        #ffffff;
   --nl-surface-raised: #ffffff;
   --nl-surface-overlay:#ffffff;
@@ -439,6 +455,8 @@
   --nl-accent-faint:   var(--nl-signal-50);
 
   /* Canvas / surfaces — deep graphite-blue, NOT pure black */
+  /* Same three-tier separation in dark: canvas #0d0f14 < lane ink-50 #161a23
+     < card surface. Dark already had the gap; light did not. */
   --nl-canvas:         #0d0f14;
   --nl-surface:        #141821; /* cards, inputs */
   --nl-surface-raised: #181c26; /* dropdowns, popovers */
