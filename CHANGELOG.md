@@ -16,6 +16,22 @@ staged here by hand (see [`RELEASING.md`](./RELEASING.md))._
 
 ---
 
+## [0.8.0] — 2026-08-01
+
+[Compare with v0.7.0](https://github.com/Overcastly-AI/Next-Lane/compare/v0.7.0...v0.8.0)
+
+### Features
+
+* **web:** board design pass — lane depth, a capacity rail, and a toolbar with a hierarchy ([38ae463](https://github.com/Overcastly-AI/Next-Lane/commit/38ae463ecd599798aa68b66be65d9ce87df9b3a4)), closes [#f4f6f9](https://github.com/Overcastly-AI/Next-Lane/issues/f4f6f9) [#eef1f6](https://github.com/Overcastly-AI/Next-Lane/issues/eef1f6)
+* **web:** one source of truth for project views, a skip link, and a card footer with rhythm ([e6d8b29](https://github.com/Overcastly-AI/Next-Lane/commit/e6d8b292ef5dbfa56d6e076f869fc0322d2e9c94))
+
+### Bug Fixes
+
+* **web:** a workspace you cannot see says so, instead of pretending you lack admin ([4505015](https://github.com/Overcastly-AI/Next-Lane/commit/4505015f1420aed59053fbc25e6265cd21822589))
+* **web:** header search trigger was 4px taller than every control beside it ([d5b1337](https://github.com/Overcastly-AI/Next-Lane/commit/d5b13374406c333d3f634a78ec266a23f1cdd3f3))
+* **web:** reorganise the left nav — Home, a named Workspace group, and two labels that lied ([222eb19](https://github.com/Overcastly-AI/Next-Lane/commit/222eb19c01e62a7632aa374c61e40be491fff434))
+* **web:** the knowledge graph frames itself, and a share link you just made shows up ([1a07417](https://github.com/Overcastly-AI/Next-Lane/commit/1a074173bc78d787c0ec2ee6805a7fa2e274799c))
+
 ## [0.7.0] — 2026-08-01
 
 [Compare with v0.6.0](https://github.com/Overcastly-AI/Next-Lane/compare/v0.6.0...v0.7.0)
