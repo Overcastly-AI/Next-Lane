@@ -194,3 +194,20 @@ export function ViewPagesIcon({ className }: { className?: string }) {
     </svg>
   );
 }
+
+/**
+ * Home — the workspace landing page.
+ *
+ * A house rather than a grid or a compass: the destination is the place you
+ * start from, and the sidebar already spends a grid glyph on Board and a
+ * chart on Insights. Matches the 24px/stroke-2 geometry of every icon above.
+ */
+export function HomeIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M3 10.5 12 3l9 7.5" />
+      <path d="M5.5 9.5V20a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1V9.5" />
+      <path d="M9.75 21v-5.5h4.5V21" />
+    </svg>
+  );
+}

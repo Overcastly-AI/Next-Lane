@@ -2324,6 +2324,47 @@ riskiest/rarest group (Instance admin) sits at the bottom instead of the middle.
 - `/tmp/nav-audit/keyboard-focus-1.png` — Pulse Dashboard home page, showing its own
   "PROJECTS" section heading (context for the breadcrumb mislabel finding).
 
+### ✅ Closed 2026-08-01 (design-elevation pass)
+
+Four of the five below are now shipped. Ticking them here rather than deleting
+them so the audit stays readable as a record of what was wrong.
+
+- [x] **#2 De-duplicate the two `Docs` labels** — the workspace one is now
+      **"Workspace docs"**. The project one keeps the short name; it is already
+      nested under its project, so the scope word only earns its place on the
+      row that has no other context.
+- [x] **#3 Give the unlabeled group a heading** — it is **WORKSPACE**, and it
+      now says so. It was the only one of four groups without a heading, which
+      is what made it read as leftovers.
+- [x] **#3 Add a `Home` row** — there was no way back to the landing page from
+      the primary nav at all, only an implicit logo click and a breadcrumb
+      segment that reads as a label. It sits above the group headings because
+      it belongs to no group.
+- [x] **#4 Resolve `Insights` vs "My Analytics"** — the page heading now reads
+      **Insights**, matching the nav item you arrive from. The nav label won
+      rather than the heading: two specs and every user's muscle memory
+      already use it, and a destination that renames itself on arrival makes a
+      reader doubt they landed in the right place.
+
+**Still open** — deliberately, as separate work:
+
+- [ ] **#1 Sidebar/ProjectNav view mismatch.** Triage, Analytics, Poker,
+      Standup and Automation are reachable from the project tab bar but
+      invisible in the sidebar. The real fix is sourcing both from one ordered
+      list, which is a refactor rather than a label change, so it is not in
+      this pass.
+- [ ] **#5 Skip-link + sidebar-first tab order.** Every keyboard user still
+      tabs 10+ times before reaching page content. Unchanged by this pass.
+
+Also filed during this pass:
+
+- [ ] **Knowledge graph has no fit-to-content.** On first open, nodes sit
+      outside the frame and `Reset` restores 100% zoom without reframing. The
+      screenshot capture script has to zoom out three times to photograph the
+      graph — that workaround is the evidence.
+
+---
+
 ### Top 5 for the dev team (priority order)
 
 1. **Fix the sidebar/ProjectNav project-view mismatch** — Triage, Analytics, Poker,
