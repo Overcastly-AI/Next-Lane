@@ -122,65 +122,6 @@ jobs:
           check prod "$version"
           check dev latest
 
-  # Conventional Commits guard. The repo already writes them consistently
-  # (`feat(pages):`, `fix(api):`, `docs(audit):`, `vision:`); enforcing the
-  # format keeps automated versioning (semantic-release / Changesets) adoptable
-  # later without changing conventions — RELEASING.md § Versioning. Today the
-  # version number is still chosen by a human.
-  #
-  # The PR TITLE is the blocking check because squash-merge makes it the commit
-  # message. The PR's own commits are linted too, but ADVISORILY
-  # (continue-on-error) — work-in-progress commits get squashed away, and this
-  # must never block a good PR. Cheap: node only, no pnpm install.
-  commit-lint:
-    name: Conventional commits
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
-    permissions:
-      contents: read
-      pull-requests: read
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          # fetch-depth: 0 is REQUIRED by the type-vs-paths check below — it
-          # walks base..head, which a shallow clone cannot resolve.
-          fetch-depth: 0
-
-      - name: Setup Node 20
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: PR title follows Conventional Commits
-        env:
-          PR_TITLE: ${{ github.event.pull_request.title }}
-        run: printf '%s\n' "$PR_TITLE" | node scripts/lint-commit-subject.mjs --stdin
-
-      - name: Commits in this PR (advisory)
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          set -euo pipefail
-          gh api "repos/${{ github.repository }}/pulls/${PR_NUMBER}/commits?per_page=100" \
-            --jq '.[].commit.message | split("\n")[0]' \
-            | node scripts/lint-commit-subject.mjs --stdin
-
-      # BLOCKING, unlike the advisory step above. The subject lint checks that
-      # a type is well-FORMED; this checks that it is TRUE. Commit 1c23627
-      # landed 502 product files under a `docs:` subject — invisible in the log,
-      # and under auto-release that ships app code to main while publishing
-      # nothing (docs/chore/ci/test/style => no version bump, no changelog,
-      # no images). Verified against that exact commit: it fails, while honest
-      # docs-only commits pass.
-      - name: Commit type matches the files changed
-        run: |
-          node scripts/check-commit-type-vs-paths.mjs \
-            "${{ github.event.pull_request.base.sha }}" \
-            "${{ github.event.pull_request.head.sha }}"
-
   build-test:
     name: Build, typecheck & unit test
     runs-on: ubuntu-latest

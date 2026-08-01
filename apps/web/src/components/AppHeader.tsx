@@ -225,14 +225,25 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
         onClick={openPalette}
         aria-label="Open command palette"
         aria-keyshortcuts="Meta+K Control+K"
-        className="hidden shrink-0 items-center gap-2 rounded border border-ink-200 bg-ink-50 px-2.5 py-1.5 text-sm text-ink-400 transition-all duration-[120ms] hover:border-ink-300 hover:bg-ink-100 hover:text-ink-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal-500 focus-visible:ring-offset-1 sm:flex"
+        // h-9 pins this to the 36px of every other control in this cluster
+        // (notifications, quick links, avatar). Before, its height was whatever
+        // the ⌘K chip happened to compute to — 40px — so the one element with a
+        // visible border was also the only one 2px proud of its neighbours top
+        // and bottom, which reads as sloppy padding even though the padding
+        // itself was fine. Height set explicitly rather than tuning py-*, so a
+        // future change to the chip cannot silently resize the button again.
+        className="hidden h-9 shrink-0 items-center gap-2 rounded-md border border-ink-200 bg-ink-50 px-2.5 text-sm text-ink-400 transition-all duration-[120ms] hover:border-ink-300 hover:bg-ink-100 hover:text-ink-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal-500 focus-visible:ring-offset-1 sm:flex"
       >
         <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
           <circle cx="11" cy="11" r="7" />
           <path strokeLinecap="round" d="M21 21l-4.3-4.3" />
         </svg>
         <span className="text-xs">Search</span>
-        <kbd className="rounded border border-ink-200 bg-surface px-1 py-0.5 font-mono text-[10px] text-ink-400">
+        {/* `leading-none` matters: Tailwind's text-sm on the button sets an
+            ABSOLUTE line-height of 20px, which this 10px chip inherits — so a
+            10px glyph occupied a 26px box and was what made the button 40px
+            tall in the first place. */}
+        <kbd className="rounded border border-ink-200 bg-surface px-1 py-0.5 font-mono text-[10px] leading-none text-ink-400">
           ⌘K
         </kbd>
       </button>

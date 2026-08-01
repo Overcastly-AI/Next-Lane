@@ -69,7 +69,12 @@ export function PersonalAnalyticsPage() {
       <div className="flex items-center justify-between border-b border-ink-100 bg-surface px-4 py-2.5">
         <div>
           <h1 className="font-display text-sm font-bold tracking-[-0.01em] text-ink-900">
-            My Analytics
+            {/* "Insights", not "My Analytics" — this page is reached from a
+                nav item labelled Insights, and a destination whose heading
+                renames itself on arrival makes a reader wonder whether they
+                landed where they meant to. The nav label wins because two
+                specs and every user's muscle memory already use it. */}
+            Insights
           </h1>
           <p className="text-xs text-ink-400">
             Your personal delivery metrics across all projects.

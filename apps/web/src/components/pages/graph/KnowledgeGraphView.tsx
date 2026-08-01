@@ -44,13 +44,15 @@
  * workspace, whether it's one of its projects' pages or a workspace-docs
  * page itself).
  *
- * The SVG's `viewBox` is sized to the container's ACTUAL measured pixel
- * dimensions (not a fixed large "world" that gets shrunk to fit) — so node
- * labels render at a legible, constant pixel size on mobile too. Every
- * rendered node center is ADDITIONALLY clamped to the canvas bounds at
- * render time (`clampCenter`), independent of the force layout's own
- * margin math — a defensive guarantee that a node box can never render
- * clipped past the canvas edge, regardless of simulation internals.
+ * The SVG's `viewBox` is the container's ACTUAL measured pixel dimensions, so
+ * at 100% a node label renders at a legible, constant pixel size on mobile
+ * too. The LAYOUT, however, runs in a `world` that grows with √n (see the
+ * `world` memo): a small graph's world is the canvas itself, and a dense one
+ * gets proportionally more room so the simulation can actually separate its
+ * nodes. `fitToContent` then scales the world back into the canvas — capped
+ * at 100%, so fitting never magnifies a sparse graph. Every rendered node
+ * centre is ADDITIONALLY clamped to the world bounds at render time
+ * (`clampCenter`), independent of the force layout's own margin math.
  */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { PageGraphNode } from '@next-lane/shared';
@@ -67,9 +69,29 @@ import { GraphMinimap } from './GraphMinimap';
 import { GraphSideRail } from './GraphSideRail';
 import { PROJECT_HUE_CLASSES, isStalePage, projectHue } from './graphColors';
 
-const MIN_SCALE = 0.35;
+/**
+ * 0.15, not the old 0.35: a dense graph on a phone needs to fit into ~390px,
+ * and the previous floor was above the scale required to do it — so fit-to-
+ * content would clamp and still leave nodes off-frame. The floor also has to
+ * be reachable by the − button, or the readout would show a zoom level the
+ * user cannot get back to manually.
+ */
+const MIN_SCALE = 0.15;
 const MAX_SCALE = 3;
 const TOTAL_ITERATIONS = 220;
+/**
+ * Breathing room (px²) the layout is given per node when sizing the WORLD.
+ * A node's label box is 108×54; budgeting ~200×200 leaves roughly a node's
+ * width of gap between neighbours at rest, which is what stops a dense graph
+ * from resolving into a solid mat.
+ */
+const WORLD_AREA_PER_NODE = 200 * 200;
+/** Gap (px) kept between the content's bounding box and the canvas edge when fitting. */
+const FIT_PADDING = 32;
+/** At/above this zoom every node is named. */
+const LABEL_ALL_SCALE = 0.62;
+/** Between this and `LABEL_ALL_SCALE`, only hubs are named. Below it, none are. */
+const LABEL_HUB_SCALE = 0.34;
 const ANIMATE_NODE_CAP = 150; // above this, skip incremental frames even with motion allowed
 const MINIMAP_NODE_THRESHOLD = 8; // below this, an overview panel is just clutter
 
@@ -167,12 +189,33 @@ export function KnowledgeGraphView({ scope, onOpenPage, viewToggle }: KnowledgeG
   const nodeById = useMemo(() => new Map(nodes.map((n) => [n.id, n] as const)), [nodes]);
   const graphNodeIds = useMemo(() => new Set(nodes.map((n) => n.id)), [nodes]);
 
+  /**
+   * The world the layout runs in — the visible canvas for a small graph, and
+   * a proportionally larger surface for a dense one.
+   *
+   * Previously the world WAS the canvas, so past a few dozen nodes the
+   * simulation had nowhere to put them: repulsion pushed nodes outward, the
+   * edge clamp caught them, and they stacked into perfectly straight rails
+   * along the top and bottom of the frame with their labels overprinting each
+   * other. Growing the world with √n keeps the per-node density constant, and
+   * fit-to-content then scales the whole thing back down to the canvas — so a
+   * bigger graph reads as *smaller nodes*, which is true, rather than as a
+   * wall of text, which is not.
+   */
+  const world = useMemo(() => {
+    if (width === 0 || height === 0) return { width, height };
+    const factor = Math.max(1, Math.sqrt((nodes.length * WORLD_AREA_PER_NODE) / (width * height)));
+    return { width: Math.round(width * factor), height: Math.round(height * factor) };
+  }, [nodes.length, width, height]);
+
   const [positions, setPositions] = useState<Map<string, Point>>(new Map());
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [searchMatches, setSearchMatches] = useState<Set<string>>(new Set());
   const [camera, setCamera] = useState({ x: 0, y: 0, scale: 1 });
   const [smooth, setSmooth] = useState(false);
+  /** Bumped each time the force simulation finishes, to trigger a re-fit. */
+  const [layoutEpoch, setLayoutEpoch] = useState(0);
   const smoothTimeoutRef = useRef<number | undefined>(undefined);
   const nodeButtonRefs = useRef(new Map<string, HTMLButtonElement>());
 
@@ -220,15 +263,15 @@ export function KnowledgeGraphView({ scope, onOpenPage, viewToggle }: KnowledgeG
   // chunks off a single stateful stepper so a large graph's O(n²) budget
   // never blocks the main thread in one long call.
   useEffect(() => {
-    if (nodes.length === 0 || width === 0 || height === 0) {
+    if (nodes.length === 0 || world.width === 0 || world.height === 0) {
       setPositions(new Map());
       return;
     }
     const nodeIds = nodes.map((n) => n.id);
     const edgePairs: Array<readonly [string, string]> = edges.map((e) => [e.sourceId, e.targetId] as const);
     const sim = createForceSimulation(nodeIds, edgePairs, {
-      width,
-      height,
+      width: world.width,
+      height: world.height,
       iterations: TOTAL_ITERATIONS,
       padding: { x: NODE_W / 2 + 2, y: NODE_H - NODE_DOT_SLOT / 2 + 4 },
     });
@@ -248,6 +291,8 @@ export function KnowledgeGraphView({ scope, onOpenPage, viewToggle }: KnowledgeG
       const done = sim.ranIterations >= sim.totalIterations;
       if (animate || done) setPositions(sim.positions());
       if (!done) raf = requestAnimationFrame(step);
+      // Settled: let the fit effect frame the finished layout.
+      else setLayoutEpoch((e) => e + 1);
     };
     raf = requestAnimationFrame(step);
     return () => {
@@ -257,7 +302,7 @@ export function KnowledgeGraphView({ scope, onOpenPage, viewToggle }: KnowledgeG
     // Deliberately depend on `graphQuery.data` (stable object identity per
     // fetch) rather than the derived `nodes`/`edges` arrays, which are new
     // array literals on every render and would re-trigger this effect.
-  }, [graphQuery.data, width, height, reducedMotion]);
+  }, [graphQuery.data, world.width, world.height, reducedMotion]);
 
   // Render-time safety net: clamp every node's center into the canvas so a
   // box can never render clipped past the edge (see `clampCenter`), and use
@@ -265,20 +310,35 @@ export function KnowledgeGraphView({ scope, onOpenPage, viewToggle }: KnowledgeG
   // the minimap) so an edge always visually terminates exactly at its
   // node's rendered dot.
   const safePositions = useMemo(() => {
-    if (width === 0 || height === 0) return positions;
+    if (world.width === 0 || world.height === 0) return positions;
     const out = new Map<string, Point>();
-    for (const [id, p] of positions) out.set(id, clampCenter(p, width, height));
+    for (const [id, p] of positions) out.set(id, clampCenter(p, world.width, world.height));
     return out;
-  }, [positions, width, height]);
+  }, [positions, world.width, world.height]);
 
-  // Reset camera + selection whenever a fresh graph is loaded (new scope) so
-  // the user isn't left panned off-canvas or looking at a stale rail.
+  // Reset selection whenever a fresh graph is loaded (new scope) so the user
+  // isn't left looking at a stale rail.
   useEffect(() => {
-    setCamera({ x: 0, y: 0, scale: 1 });
     setSelectedId(null);
     setHoveredId(null);
     setSearchMatches(new Set());
   }, [scope.kind, scope.id]);
+
+  // Pre-frame the WORLD the moment its size is known, before the simulation
+  // has placed anything. `fitToContent` can only run once there are positions
+  // to measure, so without this a dense graph spends its whole settle
+  // animation overflowing the canvas and then snaps into frame at the end.
+  // Framing the world up front means it is only ever *tightened*.
+  useEffect(() => {
+    if (width === 0 || height === 0 || world.width === 0) return;
+    const scale = clamp(Math.min(width / world.width, height / world.height), MIN_SCALE, 1);
+    setSmooth(false);
+    setCamera({
+      x: scale * (width / 2 - world.width / 2),
+      y: scale * (height / 2 - world.height / 2),
+      scale,
+    });
+  }, [world.width, world.height, width, height]);
 
   // Escape closes the side rail from anywhere — a modal-ish overlay needs a
   // keyboard way out that isn't "tab all the way to the close button".
@@ -293,6 +353,72 @@ export function KnowledgeGraphView({ scope, onOpenPage, viewToggle }: KnowledgeG
 
   const cx = width / 2;
   const cy = height / 2;
+
+  /**
+   * Frame the whole graph: centre the content's bounding box and scale it to
+   * fill the canvas, with `FIT_PADDING` to spare.
+   *
+   * Deliberately never zooms IN past 100% — a three-node graph blown up to
+   * 300% is disorienting, and "fit" should mean "you can see everything", not
+   * "fill the pixels". So a small graph fits at exactly 1, and only a graph
+   * genuinely larger than the canvas scales down.
+   *
+   * The bounding box is taken over each node's rendered BOX, not its centre
+   * point, so the outermost labels land inside the frame rather than half off
+   * the edge.
+   */
+  const fitToContent = useCallback(
+    (animated: boolean) => {
+      if (width === 0 || height === 0 || safePositions.size === 0) return;
+      let minX = Infinity;
+      let minY = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+      for (const p of safePositions.values()) {
+        minX = Math.min(minX, p.x - NODE_W / 2);
+        maxX = Math.max(maxX, p.x + NODE_W / 2);
+        minY = Math.min(minY, p.y - NODE_DOT_SLOT / 2);
+        maxY = Math.max(maxY, p.y + (NODE_H - NODE_DOT_SLOT / 2));
+      }
+      const boxW = Math.max(1, maxX - minX);
+      const boxH = Math.max(1, maxY - minY);
+      const scale = clamp(
+        Math.min((width - 2 * FIT_PADDING) / boxW, (height - 2 * FIT_PADDING) / boxH),
+        MIN_SCALE,
+        1,
+      );
+      // Solve the camera transform for "bbox centre lands on canvas centre":
+      // screen = scale·p + (1 − scale)·c + cam  ⇒  cam = scale·(c − boxCentre).
+      const next = {
+        x: scale * (cx - (minX + maxX) / 2),
+        y: scale * (cy - (minY + maxY) / 2),
+        scale,
+      };
+      if (!animated || reducedMotion) {
+        setSmooth(false);
+        setCamera(next);
+        return;
+      }
+      window.clearTimeout(smoothTimeoutRef.current);
+      setSmooth(true);
+      setCamera(next);
+      smoothTimeoutRef.current = window.setTimeout(() => setSmooth(false), 340);
+    },
+    [safePositions, width, height, cx, cy, reducedMotion],
+  );
+
+  // Frame the layout as soon as the simulation settles (and again if it
+  // re-runs after a resize or a data change). Without this the camera sat at
+  // 100% on a world that no longer fit, which is how the graph came to open
+  // with nodes off-frame and no way back other than repeated zoom-out clicks.
+  useEffect(() => {
+    if (layoutEpoch === 0) return;
+    fitToContent(false);
+    // Fit on settle only — re-running on every `fitToContent` identity change
+    // (it closes over `safePositions`, which changes each animation frame)
+    // would fight the user's own panning.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [layoutEpoch]);
 
   /** Animate the camera to center world point (x, y) — the one "fly"
    * primitive shared by search-to-fly, node selection, and the minimap's
@@ -430,9 +556,14 @@ export function KnowledgeGraphView({ scope, onOpenPage, viewToggle }: KnowledgeG
     setSmooth(false);
     setCamera((c) => ({ ...c, scale: clamp(c.scale * factor, MIN_SCALE, MAX_SCALE) }));
   }
+  /**
+   * "Get me back to seeing everything." Fits rather than snapping to 100% at
+   * the origin: on a graph that fits the canvas the two are identical (fit is
+   * capped at 1), and on one that doesn't, resetting to 100% used to leave
+   * you exactly where you were stuck.
+   */
   function resetCamera() {
-    setSmooth(!reducedMotion);
-    setCamera({ x: 0, y: 0, scale: 1 });
+    fitToContent(true);
   }
   function onCanvasKeyDown(e: React.KeyboardEvent<SVGSVGElement>) {
     const step = 40;
@@ -569,6 +700,17 @@ export function KnowledgeGraphView({ scope, onOpenPage, viewToggle }: KnowledgeG
                 const size = dotSize(n.id);
                 const authority = inboundCount.get(n.id) ?? 0;
                 const isHub = authority >= HUB_AUTHORITY;
+                // Level of detail. Zoomed out far enough that a 10.5px label
+                // renders as ~6px of grey mush, printing all of them turns a
+                // constellation into a smear — so below the thresholds only
+                // the hubs are named, and below that nothing is. Whatever
+                // you're pointing at, searching for, or have selected is
+                // always named, because that's the one you're asking about.
+                const showLabel =
+                  isActive ||
+                  isSearchMatch ||
+                  camera.scale >= LABEL_ALL_SCALE ||
+                  (isHub && camera.scale >= LABEL_HUB_SCALE);
 
                 const dotClass =
                   isActive || isNeighborActive
@@ -640,8 +782,14 @@ export function KnowledgeGraphView({ scope, onOpenPage, viewToggle }: KnowledgeG
                       <span
                         className={cn(
                           'mt-0.5 w-full truncate px-1 text-[10.5px] font-medium leading-tight',
+                          'transition-opacity duration-200 motion-reduce:transition-none',
                           isActive ? 'text-signal-700' : 'text-ink-500',
+                          !showLabel && 'opacity-0',
                         )}
+                        // Hidden by opacity, never by `display`, so the node
+                        // box keeps its size: `fitToContent` measures those
+                        // boxes, and a label that collapsed the layout would
+                        // change the frame every time you zoomed.
                       >
                         {n.title}
                       </span>
@@ -653,8 +801,20 @@ export function KnowledgeGraphView({ scope, onOpenPage, viewToggle }: KnowledgeG
           </svg>
         )}
 
-        {/* Zoom controls — keyboard/screen-reader reachable alternative to wheel/pinch. */}
-        <div className="absolute bottom-2 right-2 z-10 flex items-center gap-1 rounded-md border border-ink-200 bg-surface/95 p-1 shadow-xs backdrop-blur-sm">
+        {/* Zoom controls — keyboard/screen-reader reachable alternative to wheel/pinch.
+            They sit bottom-right, which is where the side rail also lives: with a
+            node selected the rail (z-20, 22rem wide from `sm` up) covered them
+            completely, so inspecting a node silently cost you zoom and fit. Slide
+            them clear of the rail instead. Below `sm` the rail is a full-width
+            sheet, so there is nowhere to slide to and nothing worth showing. */}
+        <div
+          className={cn(
+            'absolute bottom-2 right-2 z-10 flex items-center gap-1 rounded-md border border-ink-200',
+            'bg-surface/95 p-1 shadow-xs backdrop-blur-sm',
+            'transition-[right] duration-200 ease-out motion-reduce:transition-none',
+            selectedNode && 'max-sm:hidden sm:right-[calc(22rem+0.5rem)]',
+          )}
+        >
           <button
             type="button"
             aria-label="Zoom out"
@@ -666,7 +826,8 @@ export function KnowledgeGraphView({ scope, onOpenPage, viewToggle }: KnowledgeG
           </button>
           <button
             type="button"
-            aria-label="Reset zoom"
+            aria-label="Fit graph to view"
+            title="Fit graph to view"
             data-testid="page-graph-zoom-reset"
             onClick={resetCamera}
             className="px-1.5 text-xs font-medium text-ink-500 hover:text-ink-800"
@@ -690,8 +851,10 @@ export function KnowledgeGraphView({ scope, onOpenPage, viewToggle }: KnowledgeG
           <div className="absolute bottom-2 left-2 z-10">
             <GraphMinimap
               positions={safePositions}
-              width={width}
-              height={height}
+              width={world.width}
+              height={world.height}
+              viewportWidth={width}
+              viewportHeight={height}
               camera={camera}
               activeId={activeId}
               onJump={(x, y) => flyTo(x, y)}

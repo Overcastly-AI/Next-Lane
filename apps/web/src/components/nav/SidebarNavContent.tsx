@@ -31,19 +31,16 @@ import { WorkspaceSwitcherMenuContent } from './WorkspaceSwitcherMenuContent';
 import {
   BrandingIcon,
   ChevronDownSmallIcon,
+  HomeIcon,
   InsightsIcon,
   MyBoardIcon,
   MyWorkIcon,
   NotificationsIcon,
   SettingsIcon,
   ShieldIcon,
-  ViewBacklogIcon,
-  ViewBoardIcon,
-  ViewDashboardsIcon,
   ViewPagesIcon,
-  ViewReportsIcon,
-  ViewRoadmapIcon,
 } from './sidebarIcons';
+import { PRIMARY_PROJECT_VIEWS } from '@/components/project/projectViews';
 
 // Reused verbatim from the project Docs nav (`ProjectViewsSubNav`, below) —
 // the workspace Docs entry is the same "knowledge base" concept one level
@@ -154,14 +151,16 @@ function ProjectRow({
 // context — this is purely additive.
 // ---------------------------------------------------------------------------
 
-const PROJECT_VIEWS = [
-  { to: 'board', label: 'Board', Icon: ViewBoardIcon },
-  { to: 'backlog', label: 'Backlog', Icon: ViewBacklogIcon },
-  { to: 'pages', label: 'Docs', Icon: ViewPagesIcon },
-  { to: 'dashboards', label: 'Dashboards', Icon: ViewDashboardsIcon },
-  { to: 'roadmap', label: 'Roadmap', Icon: ViewRoadmapIcon },
-  { to: 'reports', label: 'Reports', Icon: ViewReportsIcon },
-] as const;
+/*
+ * Was a third hand-maintained list of project views, and the one that had
+ * drifted furthest: it knew about six views while the tab bar knew about
+ * eleven, and the two disagreed about which mattered — Dashboards and Roadmap
+ * were rows here but "More" items there, while Triage was a tab and nothing
+ * here at all. Both surfaces now read the same `primary` flag, so the sidebar
+ * gains Triage and the tab bar gains Dashboards and Roadmap, and neither can
+ * silently drift from the other again. See `projectViews.ts`.
+ */
+const PROJECT_VIEWS = PRIMARY_PROJECT_VIEWS;
 
 function ProjectViewsSubNav({
   projectId,
@@ -327,6 +326,25 @@ export function SidebarNavContent({ collapsed, onNavigate }: SidebarNavContentPr
     <>
       <WorkspaceSection collapsed={collapsed} />
 
+      {/*
+       * Home. There was no way back to the workspace landing page from the
+       * primary nav at all — only an implicit logo click, which nothing tells
+       * you about, and a breadcrumb segment that reads as a label rather than
+       * a link. Sits above the group headings because it belongs to no group;
+       * it is the root the rest hangs off.
+       */}
+      <div className="px-2 pt-1">
+        <SidebarRow
+          to="/"
+          active={location.pathname === '/'}
+          icon={<HomeIcon className="h-4 w-4" />}
+          label="Home"
+          collapsed={collapsed}
+          onNavigate={onNavigate}
+          testId="nav-sidebar-home"
+        />
+      </div>
+
       <nav aria-label="Projects" className="nl-scroll flex-1 overflow-y-auto overflow-x-hidden px-2 py-1">
         {!collapsed && (
           <p className="px-2.5 pb-1 pt-1.5 text-[11px] font-semibold uppercase tracking-wide text-ink-400">
@@ -416,6 +434,14 @@ export function SidebarNavContent({ collapsed, onNavigate }: SidebarNavContentPr
 
       {activeWorkspace && (
         <div className="space-y-0.5 border-t border-ink-100 px-2 py-2">
+          {/* This group had no heading while the three above it did, which is
+              why it read as leftovers rather than a section. It is the things
+              that belong to the WORKSPACE rather than to a project or to you. */}
+          {!collapsed && (
+            <p className="px-2.5 pb-1 pt-0.5 text-[11px] font-semibold uppercase tracking-wide text-ink-400">
+              Workspace
+            </p>
+          )}
           {/* Docs — the workspace's org-wide docs space (handbook/runbooks/
               ADRs that aren't project-specific), NOT a project tab. Visible
               to every workspace member (VIEWER-readable), same gate as the
@@ -426,7 +452,15 @@ export function SidebarNavContent({ collapsed, onNavigate }: SidebarNavContentPr
             to={`/workspaces/${activeWorkspace.id}/docs`}
             active={location.pathname.startsWith(`/workspaces/${activeWorkspace.id}/docs`)}
             icon={<ViewPagesIcon className="h-4 w-4" />}
-            label="Docs"
+            /*
+             * "Workspace docs", not "Docs". The project sub-nav already has a
+             * row labelled exactly "Docs" pointing at a completely different
+             * content tree, so told to "check the Docs" a reader had no way to
+             * know which of two wikis was meant. The scope word does the
+             * disambiguating; the project one keeps the short name because it
+             * is already nested under its project.
+             */
+            label="Workspace docs"
             collapsed={collapsed}
             onNavigate={onNavigate}
             testId="nav-sidebar-workspace-docs"

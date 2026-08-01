@@ -220,6 +220,63 @@ test.describe('Public share link', () => {
     });
   });
 
+  test('a create that races the list load still shows the new token', async ({
+    page,
+    request,
+  }) => {
+    const user = await registerNewUser(request, 'share-race');
+    const workspaceId = await createWorkspace(request, user.token);
+    const project = await createProject(request, user.token, workspaceId, {
+      name: 'Race Share Test',
+    });
+
+    /*
+     * Hold the on-mount list GET back until well after the create has landed.
+     *
+     * This is the deterministic form of a real failure: under parallel load
+     * the test above showed the new-token banner over a list still reading
+     * "No share links yet", and it never recovered. The cause is that
+     * `invalidateQueries` does NOT start a second fetch while one is already
+     * in flight — so the response that eventually arrives is the pre-create
+     * one, and it becomes the final state. Delaying the first response makes
+     * that ordering certain rather than a matter of luck.
+     */
+    let gets = 0;
+    await page.route(/\/api\/projects\/[^/]+\/share-tokens$/, async (route) => {
+      if (route.request().method() !== 'GET') return route.fallback();
+      gets++;
+      if (gets > 1) return route.continue();
+      const res = await route.fetch();
+      const body = await res.text();
+      await new Promise((r) => setTimeout(r, 2_500));
+      return route.fulfill({ response: res, body });
+    });
+
+    await page.goto('/login');
+    await page.getByLabel(/email/i).fill(user.email);
+    await page.getByLabel(/password/i).fill(user.password);
+    await page.getByRole('button', { name: /(log ?in|sign ?in)/i }).click();
+    await expect(page).not.toHaveURL(/\/login/, { timeout: 15_000 });
+
+    await page.goto(`/projects/${project.id}/settings`);
+    await expect(page.getByText(/public share link/i)).toBeVisible({
+      timeout: 15_000,
+    });
+
+    await page.getByTestId('create-share-token-btn').click();
+    await expect(page.getByTestId('new-share-token-banner')).toBeVisible({
+      timeout: 10_000,
+    });
+
+    // Long enough for the held-back stale response to arrive and, if the
+    // regression returned, to overwrite the list.
+    await expect(page.getByTestId('share-token-row')).toBeVisible({
+      timeout: 15_000,
+    });
+    await page.waitForTimeout(3_000);
+    await expect(page.getByTestId('share-token-row')).toBeVisible();
+  });
+
   test('mobile: public board renders without auth on small screen', async ({
     page,
     request,

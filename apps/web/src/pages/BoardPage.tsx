@@ -797,7 +797,37 @@ export function BoardPage() {
       }
     >
       {/* Toolbar */}
-      <div className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
+      {/*
+       * Toolbar — two intentional rows, not one wrapping soup.
+       *
+       * It previously flex-wrapped ~16 controls of identical visual weight
+       * into three ragged rows, which put "+ Create issue" — the single most
+       * important action on the page — at the bottom-right, below two rows of
+       * filter chrome. Now:
+       *
+       *   ACT    what you came to do: pick a board, find a card, make one.
+       *   REFINE how you narrow what you are looking at.
+       *
+       * The split is by intent rather than by control type, which is why the
+       * CSV and colour controls sit in REFINE: they act on the current view,
+       * not on the project.
+       */}
+      <div className="flex flex-col gap-2 px-4 py-3">
+        {/* ── Act ─────────────────────────────────────────────────────── */}
+        {/*
+         * `contents` below sm, a real flex row from sm up.
+         *
+         * On a phone there is no "top right", so promoting the action cluster
+         * into this row just stacked another 40px of buttons between the
+         * search field and the filters — measured, and it pushed the Type
+         * filter from y=173 to y=217 (the mobile toolbar-height guard in
+         * board-type-priority-filters.spec.ts caught it). With `display:
+         * contents` this wrapper stops generating a box on mobile, so its
+         * children join the outer column directly and the action cluster can
+         * `order` itself to the end — phone gets search → filters → actions,
+         * desktop gets the primary action top-right. One DOM, no duplication.
+         */}
+        <div className="contents sm:flex sm:flex-wrap sm:items-center sm:gap-3">
         {/* Row 1: board switcher + search + assignee */}
         <div className="flex items-center gap-3">
           {/* Board switcher */}
@@ -864,6 +894,136 @@ export function BoardPage() {
           )}
         </div>
 
+        <div className="order-1 flex items-center gap-2 sm:order-none sm:ml-auto">
+        <div className="flex flex-wrap items-center gap-2 sm:ml-auto sm:flex-nowrap sm:gap-3">
+          <PresenceAvatars viewers={presenceViewers} />
+
+          {/* Card colors button */}
+          {editable && (
+            <button
+              type="button"
+              data-testid="card-colors-open"
+              aria-label="Manage card colors"
+              title="Card colors"
+              onClick={() => setOpenColorsTab(true)}
+              className={cn(
+                /*
+                 * Icon-only and border-less by default. This is a view
+                 * preference, not an action on the project, and it was
+                 * previously drawn with the same weight as "Create issue".
+                 * When rules ARE active it earns its label back — the board is
+                 * painted differently and the reason for that should be
+                 * visible, not hidden behind a hover.
+                 */
+                'inline-flex h-9 items-center gap-1.5 rounded-lg text-sm transition-colors',
+                'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200',
+                colorRules.length > 0
+                  ? 'border border-signal-300 bg-signal-50 px-3 text-signal-700 hover:bg-signal-100'
+                  : 'w-9 justify-center text-ink-400 hover:bg-ink-100 hover:text-ink-700',
+              )}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                <circle cx="12" cy="12" r="4" />
+                <path strokeLinecap="round" d="M12 2v2M12 20v2M2 12h2M20 12h2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+              </svg>
+              {colorRules.length > 0 && `Colors (${colorRules.length})`}
+            </button>
+          )}
+
+          {board?.issuesTruncated && (
+            <span
+              data-testid="board-truncated-hint"
+              className="inline-flex items-center gap-1 rounded-md bg-amber-50 border border-amber-200 px-2 py-1 text-xs font-medium text-amber-700"
+              title="This board has more than 500 issues. Showing the first 500."
+            >
+              Showing first 500 issues
+            </span>
+          )}
+          {!editable && (
+            <span
+              data-testid="readonly-hint"
+              className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-500"
+              title="You have view-only access to this workspace."
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+              View only
+            </span>
+          )}
+          {/* Icon-only: an export is a rare, secondary act and does not need
+              to compete with the primary button beside it. The accessible name
+              lives on `aria-label`, and the tooltip surfaces it on hover. */}
+          <Button
+            variant="ghost"
+            size="md"
+            className="w-9 justify-center px-0"
+            title="Export issues as CSV"
+            data-testid="export-csv"
+            aria-label="Export issues as CSV"
+            loading={isExporting}
+            disabled={isExporting}
+            onClick={exportCsv}
+          >
+            {!isExporting && (
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                aria-hidden="true"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+                <polyline strokeLinecap="round" strokeLinejoin="round" points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" strokeLinecap="round" />
+              </svg>
+            )}
+          </Button>
+          {editable && (
+            <Button
+              variant="ghost"
+              size="md"
+              className="w-9 justify-center px-0"
+              title="Import issues from CSV"
+              data-testid="import-csv"
+              aria-label="Import issues from CSV"
+              onClick={() => setImportOpen(true)}
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                aria-hidden="true"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+                <polyline strokeLinecap="round" strokeLinejoin="round" points="7 14 12 9 17 14" />
+                <line x1="12" y1="9" x2="12" y2="21" strokeLinecap="round" />
+              </svg>
+            </Button>
+          )}
+          {editable && (
+            <>
+              <FromTemplateMenu
+                projectId={projectId}
+                onCreated={(id) => openIssue(id)}
+              />
+              <Button onClick={() => setCreateForStatus(statuses[0]?.id ?? null)}>
+                + Create issue
+              </Button>
+            </>
+          )}
+        </div>
+        </div>
+        </div>
+
+        {/* ── Refine ──────────────────────────────────────────────────── */}
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
         {/* Row 2: filter pills + group-by */}
         <div className="nl-scroll flex items-center gap-3 overflow-x-auto pb-0.5 sm:overflow-x-visible sm:pb-0">
           <LabelFilter
@@ -956,116 +1116,6 @@ export function BoardPage() {
           </div>
         )}
 
-        <div className="flex flex-wrap items-center gap-2 sm:ml-auto sm:flex-nowrap sm:gap-3">
-          <PresenceAvatars viewers={presenceViewers} />
-
-          {/* Card colors button */}
-          {editable && (
-            <button
-              type="button"
-              data-testid="card-colors-open"
-              aria-label="Manage card colors"
-              title="Card colors"
-              onClick={() => setOpenColorsTab(true)}
-              className={cn(
-                'inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-sm transition-colors',
-                'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200',
-                colorRules.length > 0
-                  ? 'border-signal-300 bg-signal-50 text-signal-700 hover:bg-signal-100'
-                  : 'border-ink-200 bg-surface text-ink-600 hover:bg-ink-50',
-              )}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                <circle cx="12" cy="12" r="4" />
-                <path strokeLinecap="round" d="M12 2v2M12 20v2M2 12h2M20 12h2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
-              </svg>
-              {colorRules.length > 0 ? `Colors (${colorRules.length})` : 'Colors'}
-            </button>
-          )}
-
-          {board?.issuesTruncated && (
-            <span
-              data-testid="board-truncated-hint"
-              className="inline-flex items-center gap-1 rounded-md bg-amber-50 border border-amber-200 px-2 py-1 text-xs font-medium text-amber-700"
-              title="This board has more than 500 issues. Showing the first 500."
-            >
-              Showing first 500 issues
-            </span>
-          )}
-          {!editable && (
-            <span
-              data-testid="readonly-hint"
-              className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-500"
-              title="You have view-only access to this workspace."
-            >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" />
-                <circle cx="12" cy="12" r="3" />
-              </svg>
-              View only
-            </span>
-          )}
-          <Button
-            variant="secondary"
-            size="md"
-            data-testid="export-csv"
-            aria-label="Export issues as CSV"
-            loading={isExporting}
-            disabled={isExporting}
-            onClick={exportCsv}
-          >
-            {!isExporting && (
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                aria-hidden="true"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
-                <polyline strokeLinecap="round" strokeLinejoin="round" points="7 10 12 15 17 10" />
-                <line x1="12" y1="15" x2="12" y2="3" strokeLinecap="round" />
-              </svg>
-            )}
-            Export CSV
-          </Button>
-          {editable && (
-            <Button
-              variant="secondary"
-              size="md"
-              data-testid="import-csv"
-              aria-label="Import issues from CSV"
-              onClick={() => setImportOpen(true)}
-            >
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                aria-hidden="true"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
-                <polyline strokeLinecap="round" strokeLinejoin="round" points="7 14 12 9 17 14" />
-                <line x1="12" y1="9" x2="12" y2="21" strokeLinecap="round" />
-              </svg>
-              Import CSV
-            </Button>
-          )}
-          {editable && (
-            <>
-              <FromTemplateMenu
-                projectId={projectId}
-                onCreated={(id) => openIssue(id)}
-              />
-              <Button onClick={() => setCreateForStatus(statuses[0]?.id ?? null)}>
-                + Create issue
-              </Button>
-            </>
-          )}
         </div>
       </div>
 

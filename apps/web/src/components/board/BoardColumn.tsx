@@ -16,10 +16,16 @@ import { cn } from '@/lib/cn';
  *
  * Applied as a top accent bar (2px border-top on the column).
  */
-const CATEGORY_ACCENT: Record<string, string> = {
-  TODO:        'border-t-2 border-t-ink-400',
-  IN_PROGRESS: 'border-t-2 border-t-signal-600',
-  DONE:        'border-t-2 border-t-emerald-500',
+/*
+ * Lane rail fill — the status colour, used by the capacity rail at the top of
+ * each column. Replaces a `border-t-2` accent, which drew the same 2px line
+ * whether a lane held one card or was over its limit: decoration, not
+ * information.
+ */
+const CATEGORY_RAIL: Record<string, string> = {
+  TODO:        'bg-ink-400',
+  IN_PROGRESS: 'bg-signal-600',
+  DONE:        'bg-emerald-500',
 };
 
 /* Status dot color — used in column header */
@@ -67,7 +73,7 @@ export function BoardColumn({
     data: { type: 'column', statusId: status.id },
   });
 
-  const accentClass = CATEGORY_ACCENT[status.category] ?? 'border-t-2 border-t-ink-300';
+  const railClass   = CATEGORY_RAIL[status.category]   ?? 'bg-ink-400';
   const dotClass    = CATEGORY_DOT[status.category]    ?? 'bg-ink-400';
   const countClass  = CATEGORY_COUNT[status.category]  ?? 'bg-ink-100 text-ink-600';
 
@@ -85,13 +91,42 @@ export function BoardColumn({
          * - ink-50 fill (not flat white, not harsh slate)
          * - status accent bar on top
          */
-        'flex w-72 shrink-0 flex-col rounded-xl shadow-xs',
+        'relative flex w-72 shrink-0 flex-col overflow-hidden rounded-xl shadow-xs',
         'bg-ink-50 border border-ink-200',
-        accentClass,
       )}
     >
+      {/*
+       * THE LANE CAPACITY RAIL — this board's signature element.
+       *
+       * A dispatch lane has a capacity, so the strip at the top of the lane
+       * shows how full it is rather than just naming its colour. It fills
+       * left-to-right in proportion to count/limit, and turns red the moment
+       * the lane is over. Across four columns you read the board's load in one
+       * glance, before reading a single word.
+       *
+       * Lanes with NO WIP limit have no capacity to report, so they get a flat
+       * low-opacity track — present for colour identity, deliberately not
+       * pretending to be a measurement. Showing a full bar there would be a
+       * lie about a limit that does not exist.
+       */}
+      <div className="absolute inset-x-0 top-0 h-[3px] bg-ink-200/70" aria-hidden="true">
+        <div
+          className={cn(
+            'h-full transition-[width] duration-240 ease-out',
+            isOverLimit ? 'bg-red-500' : railClass,
+            wipLimit === null && 'opacity-40',
+          )}
+          style={{
+            width:
+              wipLimit === null
+                ? '100%'
+                : `${Math.min(100, (count / Math.max(1, wipLimit)) * 100)}%`,
+          }}
+        />
+      </div>
+
       {/* Column header — lane label + signal dot + count pill */}
-      <div className="flex items-center justify-between px-3 py-2.5">
+      <div className="flex items-center justify-between px-3 pb-2.5 pt-3">
         <div className="flex min-w-0 items-center gap-2">
           {/* Signal dot — status category color */}
           <span

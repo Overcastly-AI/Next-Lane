@@ -102,10 +102,15 @@ test.describe('Roadmap', () => {
       sprintId,
     });
 
-    // Open the Roadmap tab from ProjectNav — it lives in the "More" menu.
+    // Roadmap is a top-level ProjectNav tab. It used to live in the "More"
+    // menu; it was promoted when the sidebar and the tab bar were unified onto
+    // one list of project views, because the sidebar already treated it as a
+    // first-class destination and the two surfaces disagreed.
     await page.goto(`/projects/${project.id}/board`);
-    await page.getByRole('button', { name: /^more/i }).click();
-    await page.getByRole('menuitem', { name: 'Roadmap' }).click();
+    await page
+      .locator('nav[aria-label="Project navigation"]')
+      .getByRole('link', { name: 'Roadmap', exact: true })
+      .click();
     await expect(page).toHaveURL(/\/roadmap$/, { timeout: 15_000 });
     await expect(
       page.getByRole('heading', { name: 'Roadmap', level: 1 }),
@@ -174,8 +179,10 @@ test.describe('Roadmap', () => {
 
     // And confirm the bar actually renders on the timeline for this epic.
     await page.goto(`/projects/${project.id}/board`);
-    await page.getByRole('button', { name: /^more/i }).click();
-    await page.getByRole('menuitem', { name: 'Roadmap' }).click();
+    await page
+      .locator('nav[aria-label="Project navigation"]')
+      .getByRole('link', { name: 'Roadmap', exact: true })
+      .click();
     await expect(page).toHaveURL(/\/roadmap$/, { timeout: 15_000 });
 
     const epicBar = page.getByTestId('roadmap-epic-bar').first();

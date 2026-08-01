@@ -147,7 +147,12 @@ test.describe('Pages — unsaved-changes guard', () => {
     await expect(editor).toBeVisible(); // still editing
 
     // A ProjectNav tab (Board) is a real in-app "nav link" — must also gate.
-    const boardTab = page.locator('nav[aria-label="Project navigation"]').getByRole('link', { name: 'Board' });
+    // `exact: true` matters: Playwright matches accessible names by SUBSTRING,
+    // and the project nav also has a "Dashboards" tab — which contains
+    // "board". Without it this resolves to two links and fails strict mode.
+    const boardTab = page
+      .locator('nav[aria-label="Project navigation"]')
+      .getByRole('link', { name: 'Board', exact: true });
     await boardTab.click();
     await expect(dialog).toBeVisible();
     await dialog.getByRole('button', { name: 'Discard changes' }).click();

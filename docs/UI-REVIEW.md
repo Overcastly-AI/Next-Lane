@@ -2324,6 +2324,106 @@ riskiest/rarest group (Instance admin) sits at the bottom instead of the middle.
 - `/tmp/nav-audit/keyboard-focus-1.png` — Pulse Dashboard home page, showing its own
   "PROJECTS" section heading (context for the breadcrumb mislabel finding).
 
+### ✅ Closed 2026-08-01 (design-elevation pass)
+
+Four of the five below are now shipped. Ticking them here rather than deleting
+them so the audit stays readable as a record of what was wrong.
+
+- [x] **#2 De-duplicate the two `Docs` labels** — the workspace one is now
+      **"Workspace docs"**. The project one keeps the short name; it is already
+      nested under its project, so the scope word only earns its place on the
+      row that has no other context.
+- [x] **#3 Give the unlabeled group a heading** — it is **WORKSPACE**, and it
+      now says so. It was the only one of four groups without a heading, which
+      is what made it read as leftovers.
+- [x] **#3 Add a `Home` row** — there was no way back to the landing page from
+      the primary nav at all, only an implicit logo click and a breadcrumb
+      segment that reads as a label. It sits above the group headings because
+      it belongs to no group.
+- [x] **#4 Resolve `Insights` vs "My Analytics"** — the page heading now reads
+      **Insights**, matching the nav item you arrive from. The nav label won
+      rather than the heading: two specs and every user's muscle memory
+      already use it, and a destination that renames itself on arrival makes a
+      reader doubt they landed in the right place.
+
+- [x] **#1 Sidebar/ProjectNav view mismatch** — both surfaces now read one
+      ordered list, `components/project/projectViews.ts`. There were THREE
+      hand-maintained lists that had drifted: the tab bar knew eleven views,
+      the sidebar six, and they disagreed on which mattered (Dashboards and
+      Roadmap were sidebar rows but "More" items; Triage was a tab and absent
+      from the sidebar). A single `primary` flag now decides, so the sidebar
+      gained Triage and the tab bar gained Dashboards and Roadmap. The type
+      makes the invariant structural rather than conventional: a primary view
+      without an icon is a compile error, verified by introducing one.
+- [x] **#5 Skip-link** — "Skip to content" is now the first tab stop, visible
+      on focus, and it moves FOCUS rather than only scroll (the target carries
+      `tabindex="-1"`; without it the browser scrolls but leaves focus on the
+      link, and the next Tab drops the user straight back into the sidebar).
+      `skip-link.spec.ts` asserts all three properties, including that the tab
+      after activation stays inside the main region.
+
+**Still open:**
+
+- [ ] **Sidebar-first tab order itself.** The skip link makes the content
+      reachable in one press, which is the standard remedy, but the DOM order
+      is unchanged — a user who tabs past the link still traverses the whole
+      sidebar. Reordering the shell is a larger change and is not in this pass.
+
+Also filed during this pass:
+
+- [x] **Knowledge graph has no fit-to-content.** ✅ **RESOLVED 2026-08-01.**
+      On first open, nodes sat outside the frame and `Reset` restored 100% zoom
+      without reframing. The screenshot capture script had to zoom out three
+      times to photograph the graph — that workaround was the evidence.
+
+      Root cause was upstream of the camera: the force layout ran inside a
+      world the exact size of the visible canvas, so past a few dozen pages
+      there was nowhere to put nodes. Repulsion pushed them outward, the render
+      clamp caught them, and they stacked into perfectly straight rails along
+      the top and bottom of the frame with their labels overprinting — visible
+      in the 2026-08-01 `pages-graph-desktop` capture.
+
+      Fixed in three parts: the layout world now grows with √n so per-node
+      density stays constant; `fitToContent` frames the content's bounding box
+      (measured over rendered node *boxes*, so edge labels land inside) on
+      settle and on the toolbar button, which is relabelled **Fit graph to
+      view**; and the world is pre-framed the moment its size is known, so a
+      dense graph never spends its settle animation overflowing. Fit is capped
+      at 100% — it means "you can see everything", not "fill the pixels", so a
+      three-node graph is not blown up to 300%. `MIN_SCALE` dropped 0.35 → 0.15,
+      because a dense graph on a 393px phone needs a scale below the old floor
+      and would otherwise clamp and *still* sit off-frame.
+
+      New `knowledge-graph-fit.spec.ts` seeds 40 linked pages and asserts no
+      node's box escapes the canvas on open, then zooms and pans away (checking
+      that nodes really do go off-frame, so the recovery assertion cannot pass
+      vacuously) and asserts Fit brings them all back. The existing graph specs
+      used two- and three-node graphs, which fit trivially — which is exactly
+      why nothing caught this.
+
+- [x] **Selecting a graph node made the zoom controls unreachable.** ✅
+      **RESOLVED 2026-08-01.** The zoom/fit cluster sits bottom-right, and so
+      does the focus/orbit side rail — which is `z-20` and 22rem wide from `sm`
+      up, so it covered the controls completely. Inspecting a node silently
+      cost you zoom and fit until you closed the rail. The controls now slide
+      clear of the rail (and hide below `sm`, where the rail is a full-width
+      sheet and there is nowhere to slide to). Found by Playwright, which
+      reported the rail "intercepts pointer events" while retrying a Fit click
+      268 times — the click a user would also have found dead.
+
+- [ ] **None of the 86 `queryFn`s pass React Query's `AbortSignal`, and a
+      mutation's invalidation cannot fix a read already in flight.** Filed
+      2026-08-01 off a proven instance in the share-token list (see BACKLOG).
+      `invalidateQueries` does NOT start a second fetch while one is running,
+      so the response that lands is the one issued *before* the write, and it
+      becomes the final state with nothing scheduled to correct it. The pattern
+      "open a settings page, immediately act" hits it, and the window is
+      exactly one list round trip. The share-token hooks now
+      `cancelQueries` first (which needs the signal threaded to actually abort);
+      the same audit is owed to every other list-plus-mutation pair.
+
+---
+
 ### Top 5 for the dev team (priority order)
 
 1. **Fix the sidebar/ProjectNav project-view mismatch** — Triage, Analytics, Poker,

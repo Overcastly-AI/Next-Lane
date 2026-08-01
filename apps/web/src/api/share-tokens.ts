@@ -16,9 +16,42 @@ import { getApiUrl } from './config';
 export function useShareTokens(projectId: string) {
   return useQuery<ShareTokenDto[]>({
     queryKey: ['share-tokens', projectId],
-    queryFn: () => request(`/projects/${projectId}/share-tokens`),
+    // `signal` matters here, and not only as good hygiene. Creating a token
+    // invalidates this query, and if the on-mount GET is still in flight the
+    // two responses can land out of order — the stale `[]` arriving last and
+    // overwriting the fresh list, permanently, with no further refetch to
+    // correct it. React Query aborts the superseded fetch, but only reaches
+    // the actual `fetch()` if the signal is threaded through. Reproduced
+    // deterministically by holding the first response back.
+    queryFn: ({ signal }) =>
+      request(`/projects/${projectId}/share-tokens`, { signal }),
     enabled: !!projectId,
   });
+}
+
+/**
+ * Invalidate the token list so it reflects a write that just landed.
+ *
+ * `cancelQueries` first, and it is not defensive noise. A plain
+ * `invalidateQueries` is absorbed by a list fetch that is ALREADY in flight:
+ * React Query does not start a second one, so the response that eventually
+ * arrives is the one issued *before* the write — and it becomes the final
+ * state, with nothing scheduled to correct it. Click "+ Create link" quickly
+ * enough after opening Project Settings and you get the new-token banner above
+ * a list that reads "No share links yet", permanently, until you reload.
+ *
+ * That is exactly how `share-link.spec.ts:178` failed under parallel load, and
+ * it reproduces deterministically by holding the on-mount GET back until after
+ * the POST. Cancelling first aborts the stale read (which is why the queries
+ * above thread `signal`) and lets the invalidation issue a genuinely new one.
+ */
+async function refreshTokens(
+  qc: ReturnType<typeof useQueryClient>,
+  projectId: string,
+): Promise<void> {
+  const queryKey = ['share-tokens', projectId];
+  await qc.cancelQueries({ queryKey });
+  await qc.invalidateQueries({ queryKey });
 }
 
 export function useCreateShareToken(projectId: string) {
@@ -27,7 +60,7 @@ export function useCreateShareToken(projectId: string) {
     mutationFn: () =>
       request(`/projects/${projectId}/share-tokens`, { method: 'POST' }),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['share-tokens', projectId] });
+      void refreshTokens(qc, projectId);
     },
   });
 }
@@ -40,7 +73,7 @@ export function useRevokeShareToken(projectId: string) {
         method: 'DELETE',
       }),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['share-tokens', projectId] });
+      void refreshTokens(qc, projectId);
     },
   });
 }

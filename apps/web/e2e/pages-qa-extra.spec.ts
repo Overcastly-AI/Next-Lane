@@ -274,14 +274,31 @@ test.describe('Pages QA extra: hierarchy, reorder correctness, title validation,
     await expect(graph).toBeVisible();
     await expect(page.getByTestId(`page-graph-node-${aId}`)).toBeVisible();
 
+    /*
+     * The graph fits itself to its content on open, so the resting zoom is
+     * whatever framing this viewport needs — 100% on desktop, but ~89% at
+     * 393px, where three 108px-wide node boxes don't quite fit side by side.
+     * Asserting a hard "100%" here tested the old behaviour (snap to 100%
+     * regardless of whether you could see anything); what matters now is that
+     * the button RESTORES the fitted view, whatever it is. Capture it.
+     */
     const zoomLabel = page.getByTestId('page-graph-zoom-reset');
-    await expect(zoomLabel).toHaveText('100%');
-    await page.getByTestId('page-graph-zoom-in').click();
-    await expect(zoomLabel).toHaveText('125%');
-    await page.getByTestId('page-graph-zoom-in').click();
-    await expect(zoomLabel).not.toHaveText('125%');
+    // Click Fit before reading the baseline: the layout settles
+    // asynchronously and the automatic fit runs on settle, so reading the
+    // label straight after load can catch the pre-settle 100%.
     await page.getByTestId('page-graph-zoom-reset').click();
-    await expect(zoomLabel).toHaveText('100%');
+    const fitted = (await zoomLabel.textContent())?.trim() ?? '';
+    expect(fitted).toMatch(/^\d+%$/);
+    // Fit never magnifies: a graph this small must sit at or below 100%.
+    expect(Number.parseInt(fitted, 10)).toBeLessThanOrEqual(100);
+
+    await page.getByTestId('page-graph-zoom-in').click();
+    await expect(zoomLabel).not.toHaveText(fitted);
+    const zoomedIn = (await zoomLabel.textContent())?.trim() ?? '';
+    await page.getByTestId('page-graph-zoom-in').click();
+    await expect(zoomLabel).not.toHaveText(zoomedIn);
+    await page.getByTestId('page-graph-zoom-reset').click();
+    await expect(zoomLabel).toHaveText(fitted);
 
     // Pan: drag on the canvas background (not on a node button) should move
     // the group's transform. Read the <g> transform before/after. Scoped to

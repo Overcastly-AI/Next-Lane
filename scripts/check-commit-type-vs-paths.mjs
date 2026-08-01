@@ -32,6 +32,27 @@ const NO_RELEASE_TYPES = new Set(['docs', 'chore', 'ci', 'test', 'style']);
 const PRODUCT_PATH = /^(apps\/(api|web|mcp)\/src\/|packages\/shared\/src\/|apps\/api\/prisma\/)/;
 const NOT_PRODUCT = /(\.spec\.[jt]sx?|\.test\.[jt]sx?|\.stories\.[jt]sx?)$/;
 
+/**
+ * Files that sit under a product tree but are not the product.
+ *
+ * Listed by exact path, not by pattern, on purpose. `apps/api/prisma/` is in
+ * PRODUCT_PATH because the schema, the migrations and `seed.ts` all genuinely
+ * ship — `pnpm db:seed` is a documented user command, so a `docs:` commit that
+ * changes it must still be blocked. A loose `seed-*.ts` rule would punch a hole
+ * big enough to drive that through.
+ *
+ * `seed-screenshots.ts` is documentation tooling that happens to need Prisma:
+ * it stages the demo workspace the screenshots are photographed from. Nothing
+ * imports it, no package.json script runs it, it is not in the image's runtime
+ * path, and its only references are the capture harness and
+ * docs/screenshots/README.md. It cannot make an install diverge from its
+ * source, which is the entire hazard this guard exists to catch. Its other
+ * half, `apps/web/e2e/screenshots.capture.ts`, is already outside PRODUCT_PATH
+ * — so without this the same tooling change was blocked on one side of the
+ * repo and waved through on the other.
+ */
+const NOT_PRODUCT_PATHS = new Set(['apps/api/prisma/seed-screenshots.ts']);
+
 const [, , baseRef, headRef] = process.argv;
 if (!baseRef || !headRef) {
   console.error('usage: check-commit-type-vs-paths.mjs <base-ref> <head-ref>');
@@ -85,7 +106,10 @@ for (const sha of shas) {
   const files = git('show', '--name-only', '--format=', sha)
     .split('\n')
     .filter(Boolean)
-    .filter((f) => PRODUCT_PATH.test(f) && !NOT_PRODUCT.test(f));
+    .filter(
+      (f) =>
+        PRODUCT_PATH.test(f) && !NOT_PRODUCT.test(f) && !NOT_PRODUCT_PATHS.has(f),
+    );
 
   if (files.length > 0) {
     violations.push({ sha: sha.slice(0, 7), type, subject, files });
