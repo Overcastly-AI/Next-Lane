@@ -21,6 +21,7 @@ import { test, expect, type APIRequestContext, type Page } from '@playwright/tes
 import {
   setupIsolatedProject,
   createIssue,
+  trackApiWrites,
   API_URL,
   type IsolatedContext,
 } from './helpers';
@@ -624,18 +625,28 @@ test.describe('Enforcement felt by the user — board surfaces (desktop)', () =>
     await page.goto(`/projects/${ctx.project.id}/board`);
     await expect(page.getByTestId('board-workflow-badge')).toBeVisible({ timeout: 15_000 });
 
+    const writes = trackApiWrites(page);
     const card = page.getByTestId('issue-card').filter({ hasText: issue.key });
     await card.getByTestId('card-status-trigger').click();
     await page.getByTestId(`card-status-option-${inProg.id}`).click();
     await expect(page.getByTestId('card-status-menu')).toHaveCount(0, { timeout: 8_000 });
-    // Wait for the trigger's own accessible name to reflect the settled
-    // server state (optimistic UI closes the menu before the mutation
-    // round-trip completes).
     await expect(card.getByTestId('card-status-trigger')).toHaveAttribute(
       'aria-label',
       new RegExp(inProg.name, 'i'),
       { timeout: 8_000 },
     );
+
+    // The assertion above CANNOT tell optimistic from settled: the cache write
+    // lands the instant the click is handled, so the accessible name flips
+    // while the PATCH is still in flight — and `page.reload()` then aborts it,
+    // leaving the card back on To Do. That is the exact failure this line
+    // fixes (seen under 6 parallel workers, which widens the window), and the
+    // same class the 2026-07-29 flakiness sweep caught in six other specs;
+    // this one was missed. Wait for the server to actually ACK the write.
+    await writes.settle({
+      match: (w) => w.method === 'POST' && w.path.endsWith(`/api/issues/${issue.id}/move`),
+      atLeast: 1,
+    });
 
     // Reload to confirm the move truly persisted server-side (not just
     // optimistic-UI theater) — a durable check, unlike an immediate isolated

@@ -8,9 +8,21 @@ import type { Point } from '@/lib/forceLayout';
 
 export interface GraphMinimapProps {
   positions: Map<string, Point>;
-  /** The world/canvas pixel dimensions the positions are laid out within. */
+  /**
+   * The WORLD pixel dimensions the positions are laid out within. For a dense
+   * graph the world is deliberately larger than the visible canvas (the
+   * layout needs room to spread), so this is NOT the same as the viewport —
+   * which is exactly why the minimap exists.
+   */
   width: number;
   height: number;
+  /**
+   * The VIEWPORT (visible canvas) pixel dimensions. The camera transform is
+   * anchored on the viewport's centre, so the "what you can currently see"
+   * rectangle has to be derived from these, not from the world size.
+   */
+  viewportWidth: number;
+  viewportHeight: number;
   camera: { x: number; y: number; scale: number };
   activeId: string | null;
   onJump: (worldX: number, worldY: number) => void;
@@ -19,8 +31,17 @@ export interface GraphMinimapProps {
 const MAX_W = 132;
 const MAX_H = 96;
 
-export function GraphMinimap({ positions, width, height, camera, activeId, onJump }: GraphMinimapProps) {
-  if (width <= 0 || height <= 0) return null;
+export function GraphMinimap({
+  positions,
+  width,
+  height,
+  viewportWidth,
+  viewportHeight,
+  camera,
+  activeId,
+  onJump,
+}: GraphMinimapProps) {
+  if (width <= 0 || height <= 0 || viewportWidth <= 0 || viewportHeight <= 0) return null;
   const aspect = width / height;
   let mmW = MAX_W;
   let mmH = Math.round(MAX_W / aspect);
@@ -30,15 +51,20 @@ export function GraphMinimap({ positions, width, height, camera, activeId, onJum
   }
   const scale = mmW / width;
 
-  const cx = width / 2;
-  const cy = height / 2;
+  // Invert the canvas camera transform to get the world coordinates of the
+  // viewport's two corners. The transform pivots on the VIEWPORT centre
+  // (see `groupTransform` in KnowledgeGraphView), so that is the centre used
+  // here — mixing in the world centre would skew the rectangle whenever the
+  // world is bigger than the canvas.
+  const cx = viewportWidth / 2;
+  const cy = viewportHeight / 2;
   const topLeft = {
     x: (0 - camera.x - cx) / camera.scale + cx,
     y: (0 - camera.y - cy) / camera.scale + cy,
   };
   const bottomRight = {
-    x: (width - camera.x - cx) / camera.scale + cx,
-    y: (height - camera.y - cy) / camera.scale + cy,
+    x: (viewportWidth - camera.x - cx) / camera.scale + cx,
+    y: (viewportHeight - camera.y - cy) / camera.scale + cy,
   };
   const rect = {
     x: topLeft.x * scale,

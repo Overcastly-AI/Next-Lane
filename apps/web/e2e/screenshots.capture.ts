@@ -163,21 +163,18 @@ async function setTheme(page: Page, dark: boolean): Promise<void> {
 }
 
 /**
- * The knowledge graph needs its own routine: the force layout settles
- * asynchronously (so `settle` is not enough), and reset restores 100% zoom
- * without fitting the layout to the viewport — on a graph of this size some
- * nodes end up outside the frame. Zooming out three times frames the whole
- * thing.
+ * The knowledge graph needs its own routine only because the force layout
+ * settles asynchronously — `settle` is not enough, so wait for it.
  *
- * That workaround is itself the evidence for a real gap: a knowledge graph
- * that opens with nodes off-screen and offers no fit-to-content. Filed in
- * docs/UI-REVIEW.md.
+ * This used to also click zoom-out three times, because the graph opened with
+ * nodes outside the frame and "reset" restored 100% zoom without reframing.
+ * That workaround was the evidence for the gap; the graph now fits itself to
+ * the content on settle, so a plain wait is all that's left.
  */
 async function captureGraph(page: Page, url: string, file: string): Promise<void> {
   await page.goto(url);
   await page.waitForTimeout(4000);
   await page.getByTestId('page-graph-zoom-reset').click();
-  for (let i = 0; i < 3; i++) await page.getByTestId('page-graph-zoom-out').click();
   await page.waitForTimeout(1500);
   await page.screenshot({ path: `${OUT}/${file}.png` });
 }

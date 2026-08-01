@@ -2371,10 +2371,56 @@ them so the audit stays readable as a record of what was wrong.
 
 Also filed during this pass:
 
-- [ ] **Knowledge graph has no fit-to-content.** On first open, nodes sit
-      outside the frame and `Reset` restores 100% zoom without reframing. The
-      screenshot capture script has to zoom out three times to photograph the
-      graph — that workaround is the evidence.
+- [x] **Knowledge graph has no fit-to-content.** ✅ **RESOLVED 2026-08-01.**
+      On first open, nodes sat outside the frame and `Reset` restored 100% zoom
+      without reframing. The screenshot capture script had to zoom out three
+      times to photograph the graph — that workaround was the evidence.
+
+      Root cause was upstream of the camera: the force layout ran inside a
+      world the exact size of the visible canvas, so past a few dozen pages
+      there was nowhere to put nodes. Repulsion pushed them outward, the render
+      clamp caught them, and they stacked into perfectly straight rails along
+      the top and bottom of the frame with their labels overprinting — visible
+      in the 2026-08-01 `pages-graph-desktop` capture.
+
+      Fixed in three parts: the layout world now grows with √n so per-node
+      density stays constant; `fitToContent` frames the content's bounding box
+      (measured over rendered node *boxes*, so edge labels land inside) on
+      settle and on the toolbar button, which is relabelled **Fit graph to
+      view**; and the world is pre-framed the moment its size is known, so a
+      dense graph never spends its settle animation overflowing. Fit is capped
+      at 100% — it means "you can see everything", not "fill the pixels", so a
+      three-node graph is not blown up to 300%. `MIN_SCALE` dropped 0.35 → 0.15,
+      because a dense graph on a 393px phone needs a scale below the old floor
+      and would otherwise clamp and *still* sit off-frame.
+
+      New `knowledge-graph-fit.spec.ts` seeds 40 linked pages and asserts no
+      node's box escapes the canvas on open, then zooms and pans away (checking
+      that nodes really do go off-frame, so the recovery assertion cannot pass
+      vacuously) and asserts Fit brings them all back. The existing graph specs
+      used two- and three-node graphs, which fit trivially — which is exactly
+      why nothing caught this.
+
+- [x] **Selecting a graph node made the zoom controls unreachable.** ✅
+      **RESOLVED 2026-08-01.** The zoom/fit cluster sits bottom-right, and so
+      does the focus/orbit side rail — which is `z-20` and 22rem wide from `sm`
+      up, so it covered the controls completely. Inspecting a node silently
+      cost you zoom and fit until you closed the rail. The controls now slide
+      clear of the rail (and hide below `sm`, where the rail is a full-width
+      sheet and there is nowhere to slide to). Found by Playwright, which
+      reported the rail "intercepts pointer events" while retrying a Fit click
+      268 times — the click a user would also have found dead.
+
+- [ ] **None of the 86 `queryFn`s pass React Query's `AbortSignal`, and a
+      mutation's invalidation cannot fix a read already in flight.** Filed
+      2026-08-01 off a proven instance in the share-token list (see BACKLOG).
+      `invalidateQueries` does NOT start a second fetch while one is running,
+      so the response that lands is the one issued *before* the write, and it
+      becomes the final state with nothing scheduled to correct it. The pattern
+      "open a settings page, immediately act" hits it, and the window is
+      exactly one list round trip. The share-token hooks now
+      `cancelQueries` first (which needs the signal threaded to actually abort);
+      the same audit is owed to every other list-plus-mutation pair.
 
 ---
 
