@@ -817,6 +817,14 @@ _Hardening Night close-out ingest (2026-07-06) — P2s:_
 
 ## Already Done (recent shipments — ticked for reference)
 
+- [x] (P2, XS) **Header search trigger was 4px taller than every control beside it** ✅ 2026-08-01 [founder: *"fix the padding around the search bar"*]
+  - **Measured, not eyeballed.** The trigger rendered at **40px** while notifications, quick links and the avatar were all **36px** — and since the cluster is `align-items: center`, the one element in the group with a visible border was also the only one standing 2px proud top and bottom. That reads as bad padding even though the padding values themselves were fine.
+  - **Root cause was an inherited line-height.** Nobody had specified the button's height; it was whatever its contents computed to. The `⌘K` chip is `text-[10px]`, but Tailwind's `text-sm` on the button sets an ABSOLUTE `line-height: 20px`, which the chip inherited — so a 10px glyph occupied a 26px box and dragged the button to 40px.
+  - **Fix:** `leading-none` on the chip so it stops driving layout, and an explicit `h-9` on the button so it is pinned to the cluster's 36px rather than depending on its contents. Height set explicitly on purpose: tuning `py-*` would have worked today and broken again the next time the chip changed.
+  - **Verified both directions.** New `header-alignment.spec.ts` asserts every visible control in the cluster shares one height and one top edge, and that the chip is shorter than the button. Reintroducing the old classes makes it fail with `mixed heights: [40, 36, 36, 36]`; restoring them makes it pass. It asserts GEOMETRY, not class names — a class assertion would have passed throughout the bug's life.
+  - **Checked the other search inputs while there** — the board's "Search cards…" is already 36px with 12px padding, identical to its toolbar peers. No change needed; the defect was specific to the header.
+  - **Evidence:** `header-alignment.spec.ts` 1/1 (skipped on mobile, where the trigger is icon-only); `command-palette` + `nav-sidebar` 31/31 desktop+mobile as regression siblings; web unit 33/33; `tsc --noEmit` clean.
+
 - [x] (P1, M) **Screenshots reshot + reshooting made reproducible** ✅ 2026-08-01 [founder: *"the docs need new screenshots and updated"*]
   - **Root cause was process.** The dressed "Nova Analytics" workspace lived only in whoever staged it last, so reshooting meant rebuilding it from memory — which is why the set sat at 2026-07-03 and two `pages-graph-*` entries stayed marked "planned" from the day the knowledge graph shipped. Now: `apps/api/prisma/seed-screenshots.ts` + `apps/web/e2e/screenshots.capture.ts` + `playwright.screenshots.config.ts`. Two commands, documented in `docs/screenshots/README.md`.
   - **Kept separate from `seed.ts` deliberately.** That one is the honest first-run experience a self-hoster gets from `docker compose up` and should stay small; this one is a showroom.
