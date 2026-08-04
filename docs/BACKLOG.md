@@ -817,6 +817,15 @@ _Hardening Night close-out ingest (2026-07-06) — P2s:_
 
 ## Already Done (recent shipments — ticked for reference)
 
+- [x] (P0, L) **Roadmap: child dates roll up, and the Gantt is editable** ✅ 2026-08-02 [founder: *"the dates do not trickle up to the epic level"* + *"edit, add, adjust timelines all from the gnatt chart"*]
+  - **The bug was one `select`.** The rollup read each child's SPRINT and never the child's own `startDate`/`dueDate`. A story with real dates and no sprint contributed nothing, and its epic rendered as a zero-width dot on its creation date. Every roadmap fixture in the suite put its children in sprints, so nothing caught it.
+  - **Plan vs reality kept separate.** `rollupStart`/`rollupEnd` now ship alongside the displayed window, with `overrunDays`/`underrunDays`/`childrenOutside`. The bar keeps its committed length and grows a hatched tail; widening it to match reality would erase the one fact a manager needs.
+  - **Asymmetric cascade, per the founder's rule.** Child dragged past its epic → the epic grows (grow-only, logged against the epic). Epic shrunk → children stay and show as overrun.
+  - **Gantt rebuilt on a pixel scale.** Percentages can't day-snap or drag coherently. Week/Month/Quarter zoom, drag-move, edge-resize, `Alt+←/→` keyboard nudge, expand-to-stories, release milestones, BLOCKS dependency arrows with violation highlighting.
+  - **Four bugs found by looking at the output, not the test summary:** row layout didn't advance past expanded children (fetch lifted to the parent); the dependency overlay sat one lane high; backward dependencies drew through other bars; and the click that follows a drag reopened the drawer every time.
+  - **Touch does not drag** — the grid pans, and on a phone that pan matters more.
+  - MCP: `get_roadmap` + `list_epic_children` (132 tools now; README counts corrected).
+
 - [x] (P1, S) **A share link you just created didn't appear in the list — permanently** ✅ 2026-08-01 (found chasing an e2e failure under parallel load)
   - **The symptom looked impossible:** the new-token banner shows the freshly minted URL, and directly beneath it the list reads "No share links yet". Reloading fixes it; nothing else does.
   - **Cause:** `invalidateQueries` does not start a second fetch while one is already in flight. Open Project Settings and click "+ Create link" before the on-mount list GET has answered, and the invalidation is absorbed by that request — whose response predates the token. It lands, becomes the final state, and nothing is scheduled to correct it.

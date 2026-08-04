@@ -851,7 +851,14 @@ export class IssuesService {
   ): Promise<IssueDto> {
     const prep = await this.prepareUpdate(userId, id, dto, opts);
     const issue = await this.prisma.$transaction((tx) =>
-      this.writeIssueUpdate(tx, id, dto, prep.activities, prep.mergedCustomFields),
+      this.writeIssueUpdate(
+        tx,
+        id,
+        dto,
+        prep.activities,
+        prep.mergedCustomFields,
+        userId,
+      ),
     );
     return this.finishUpdate(userId, issue, prep.existing, dto, prep.changedFields, opts);
   }
@@ -1078,6 +1085,7 @@ export class IssuesService {
     dto: UpdateIssueDto,
     activities: Prisma.ActivityLogCreateManyInput[],
     mergedCustomFields: Prisma.InputJsonValue | undefined,
+    actorId: string,
   ): Promise<IssueWithRelations> {
     if (dto.parentId != null) {
       await this.assertNoParentCycleCTE(tx, id, dto.parentId);
@@ -1125,11 +1133,97 @@ export class IssuesService {
       include: listInclude,
     });
 
+    if (dto.startDate !== undefined || dto.dueDate !== undefined) {
+      await this.growParentEpicToFit(tx, updated, activities, actorId);
+    }
+
     if (activities.length > 0) {
       await tx.activityLog.createMany({ data: activities });
     }
 
     return updated;
+  }
+
+  /**
+   * Widen a parent EPIC's own date window so it still contains a child whose
+   * dates just moved outside it.
+   *
+   * Founder rule (2026-08-02), and the asymmetry is the point:
+   *  - Drag a CHILD past its epic → the epic grows to cover it. You extended
+   *    the work; the epic that contains that work cannot honestly claim to end
+   *    sooner.
+   *  - Shrink the EPIC itself → children are left exactly where they are and
+   *    the roadmap marks the overrun. Pulling a deadline in does not do the
+   *    work faster, and silently dragging a dozen stories with it would hide
+   *    precisely the problem you need to see.
+   *
+   * So this only ever GROWS, and only from the child side.
+   *
+   * It applies to any date edit, not just ones made on the Gantt — a story's
+   * due date moved in the issue drawer means the same thing as one moved on
+   * the timeline, and two paths with different semantics would be a bug
+   * waiting to be reported.
+   *
+   * No-ops when the epic states no dates of its own: the roadmap already
+   * derives its window from the children, so there is nothing to correct.
+   */
+  private async growParentEpicToFit(
+    tx: Prisma.TransactionClient,
+    child: IssueWithRelations,
+    activities: Prisma.ActivityLogCreateManyInput[],
+    actorId: string,
+  ): Promise<void> {
+    if (!child.parentId) return;
+    const childStart = child.startDate;
+    const childEnd = child.dueDate;
+    if (!childStart && !childEnd) return;
+
+    const parent = await tx.issue.findUnique({
+      where: { id: child.parentId },
+      select: { id: true, type: true, startDate: true, dueDate: true },
+    });
+    if (!parent || parent.type !== IssueType.EPIC) return;
+    // No stated window → the rollup covers it; writing dates here would
+    // invent a commitment the user never made.
+    if (!parent.startDate && !parent.dueDate) return;
+
+    const parentStart = parent.startDate ?? parent.dueDate;
+    const parentEnd = parent.dueDate ?? parent.startDate;
+    const lo = childStart ?? childEnd;
+    const hi = childEnd ?? childStart;
+
+    const data: { startDate?: Date; dueDate?: Date } = {};
+    if (lo && parentStart && lo.getTime() < parentStart.getTime()) {
+      data.startDate = lo;
+    }
+    if (hi && parentEnd && hi.getTime() > parentEnd.getTime()) {
+      data.dueDate = hi;
+    }
+    if (data.startDate === undefined && data.dueDate === undefined) return;
+
+    await tx.issue.update({ where: { id: parent.id }, data });
+
+    // Log it on the EPIC. An epic's dates changing without anyone editing the
+    // epic is exactly the kind of silent write that makes people distrust a
+    // planning tool; it belongs in that epic's history.
+    if (data.startDate) {
+      activities.push({
+        issueId: parent.id,
+        actorId,
+        field: 'startDate',
+        from: parent.startDate?.toISOString() ?? null,
+        to: data.startDate.toISOString(),
+      });
+    }
+    if (data.dueDate) {
+      activities.push({
+        issueId: parent.id,
+        actorId,
+        field: 'dueDate',
+        from: parent.dueDate?.toISOString() ?? null,
+        to: data.dueDate.toISOString(),
+      });
+    }
   }
 
   /**
@@ -2186,6 +2280,7 @@ export class IssuesService {
             updateDto,
             prep.activities,
             prep.mergedCustomFields,
+            userId,
           );
           if (changes.addLabelIds && changes.addLabelIds.length > 0) {
             for (const labelId of changes.addLabelIds) {

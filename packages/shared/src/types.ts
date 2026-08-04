@@ -626,12 +626,25 @@ export interface ProjectAnalyticsDto {
 }
 
 /**
- * One epic on the roadmap timeline. The date window is derived: from the
- * earliest start to the latest end of the sprints its child issues belong to;
- * when no child has a dated sprint, it falls back to the epic's own createdAt.
- * `start`/`end` are ISO datetimes, or null when no date context exists (the
- * epic then lands in the "No dates" lane). `progress` is the fraction (0–1) of
- * child issues currently in a DONE-category status.
+ * One epic on the roadmap timeline.
+ *
+ * TWO windows are reported, and the distinction is the whole point:
+ *
+ *  - `start`/`end` is the window the bar DRAWS — the epic's own
+ *    `startDate`/`dueDate` when it has them (the plan you committed to),
+ *    otherwise the rollup, otherwise a zero-width `createdAt` marker.
+ *  - `rollupStart`/`rollupEnd` is what the CHILDREN actually span, computed
+ *    from each child's own dates and, failing that, the dates of the sprint it
+ *    sits in.
+ *
+ * When the children spill outside the committed window, `overrunDays` /
+ * `underrunDays` say by how much and `childrenOutside` how many are involved,
+ * so the UI can mark the bar rather than quietly widening it. That asymmetry
+ * is deliberate: shrinking an epic must SHOW you what no longer fits instead of
+ * hiding it, while dragging a child past its epic grows the epic to cover it
+ * (see the cascade in IssuesService).
+ *
+ * `progress` is the fraction (0–1) of child issues in a DONE-category status.
  */
 export interface RoadmapEpicDto {
   id: string;
@@ -643,18 +656,92 @@ export interface RoadmapEpicDto {
   doneCount: number;
   /** Fraction of children done (0–1); 0 when the epic has no children. */
   progress: number;
-  /** Derived window start (ISO), or null when no date context. */
+  /** Displayed window start (ISO), or null when no date context. */
   start: string | null;
-  /** Derived window end (ISO), or null when no date context. */
+  /** Displayed window end (ISO), or null when no date context. */
   end: string | null;
-  /** True when the window came from child sprint dates (vs. createdAt fallback). */
+  /** Earliest date across the children themselves (ISO), or null if none are dated. */
+  rollupStart: string | null;
+  /** Latest date across the children themselves (ISO), or null if none are dated. */
+  rollupEnd: string | null;
+  /** Whole days the children run PAST `end`. 0 when they fit. */
+  overrunDays: number;
+  /** Whole days the children start BEFORE `start`. 0 when they fit. */
+  underrunDays: number;
+  /** How many children fall outside the displayed window at either end. */
+  childrenOutside: number;
+  /**
+   * True when the DISPLAYED window was derived from the children (their own
+   * dates, or the sprints they sit in) rather than stated on the epic or
+   * fallen back to `createdAt`. Whether the children are dated at all is a
+   * separate question, answered by `rollupStart`/`rollupEnd`.
+   */
   fromSprints: boolean;
   /**
-   * True when the window came from the epic issue's own `startDate`/`dueDate`
-   * (highest priority — takes precedence over both `fromSprints` and the
-   * createdAt fallback, which are mutually exclusive with this flag).
+   * True when the displayed window came from the epic issue's own
+   * `startDate`/`dueDate`. Takes precedence over `fromSprints` and the
+   * `createdAt` fallback.
    */
   fromOwnDates: boolean;
+}
+
+/**
+ * A child issue of an epic, as drawn on the timeline when its epic is
+ * expanded. `start`/`end` come from the issue's own dates when set and
+ * otherwise from its sprint — `fromSprint` says which, because a bar you can
+ * drag (own dates) and a bar that merely reflects a sprint are different
+ * things and must not look identical.
+ */
+export interface RoadmapChildDto {
+  id: string;
+  key: string;
+  title: string;
+  type: IssueType;
+  statusCategory: StatusCategory;
+  start: string | null;
+  end: string | null;
+  /** True when the window came from the child's sprint rather than its own dates. */
+  fromSprint: boolean;
+  /** Name of the sprint the child belongs to, when it has one. */
+  sprintName: string | null;
+}
+
+/** Children of one epic, for the expand-a-row interaction. */
+export interface RoadmapEpicChildrenDto {
+  epicId: string;
+  children: RoadmapChildDto[];
+  /** True when the child list hit the server cap and more exist. */
+  truncated: boolean;
+}
+
+/**
+ * A release marker on the timeline, sourced from a project Version that has a
+ * `releaseDate`. No new concept — the roadmap just draws what release
+ * management already tracks.
+ */
+export interface RoadmapMilestoneDto {
+  id: string;
+  name: string;
+  releaseDate: string;
+  state: VersionState;
+  /** Issues assigned to this version that are not yet in a DONE status. */
+  openIssueCount: number;
+}
+
+/**
+ * A `BLOCKS` relationship between two epics on the roadmap, drawn as an arrow.
+ *
+ * `violated` is the reason this is worth rendering: it is true when the
+ * blocking epic is scheduled to finish AFTER the epic it blocks is due to
+ * start — a plan that cannot happen in the order it claims.
+ */
+export interface RoadmapDependencyDto {
+  /** The epic that must finish first. */
+  fromEpicId: string;
+  /** The epic that cannot start until `fromEpicId` is done. */
+  toEpicId: string;
+  /** True when `from` ends after `to` starts — an impossible schedule. */
+  violated: boolean;
 }
 
 /**
@@ -666,6 +753,10 @@ export interface RoadmapDto {
   projectId: string;
   epics: RoadmapEpicDto[];
   sprints: SprintDto[];
+  /** Dated project versions, drawn as release diamonds. */
+  milestones: RoadmapMilestoneDto[];
+  /** BLOCKS relationships between the returned epics, drawn as arrows. */
+  dependencies: RoadmapDependencyDto[];
   /**
    * True when the epic list was capped at the server-side limit and more epics
    * exist that are not shown. The UI should surface a hint so users know

@@ -235,6 +235,170 @@ async function main() {
     }
   }
 
+  // ── Roadmap: epics, dated stories, releases and dependencies ────────────
+  //
+  // Staged to exercise every case the Gantt has to get right, because a
+  // roadmap screenshot of three tidy bars proves nothing:
+  //   - an epic that FITS its committed window,
+  //   - an epic whose children OVERRUN it (the hatched tail),
+  //   - an epic with NO dates of its own whose window is rolled up from its
+  //     children — the exact case the founder reported as broken,
+  //   - two release milestones,
+  //   - one satisfiable dependency and one VIOLATED one (blocker finishes
+  //     after the epic it blocks is due to start).
+  //
+  // Anchored to the start of the current month so the chart always straddles
+  // "today" and the today-marker means something in every reshoot.
+  const monthStart = new Date(
+    Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1),
+  );
+  const d = (dayOffset: number) =>
+    new Date(monthStart.getTime() + dayOffset * DAY);
+
+  type ChildSpec = {
+    title: string;
+    from: number;
+    to: number;
+    done?: boolean;
+    points?: number;
+  };
+  type EpicSpec = {
+    title: string;
+    /** Omitted = the epic states no window and must roll up from its children. */
+    own?: { from: number; to: number };
+    children: ChildSpec[];
+  };
+
+  const epicSpecs: EpicSpec[] = [
+    {
+      title: 'Usage-based billing GA',
+      own: { from: -10, to: 55 },
+      children: [
+        { title: 'Metering pipeline hardening', from: -8, to: 12, done: true, points: 8 },
+        { title: 'Invoice preview API', from: 10, to: 30, points: 5 },
+        { title: 'Plan migration tooling', from: 26, to: 50, points: 8 },
+      ],
+    },
+    {
+      // Committed to end at day 70; the work reaches day 88. This is the
+      // overrun the founder asked to be able to SEE rather than have hidden.
+      title: 'Insights v2',
+      own: { from: 20, to: 70 },
+      children: [
+        { title: 'Query engine rewrite', from: 22, to: 55, points: 13 },
+        { title: 'Saved views and sharing', from: 50, to: 72, points: 5 },
+        { title: 'Cohort explorer', from: 60, to: 88, points: 8 },
+      ],
+    },
+    {
+      // No own dates at all — everything here comes from the children. Before
+      // 2026-08-02 this rendered as a one-pixel dot on its creation date.
+      title: 'Data platform hardening',
+      children: [
+        { title: 'Partition the events table', from: 5, to: 34, points: 8 },
+        { title: 'Replay tooling for dropped batches', from: 30, to: 62, points: 5 },
+        { title: 'Multi-region failover drill', from: 58, to: 95, points: 8 },
+      ],
+    },
+    {
+      title: 'Enterprise readiness',
+      own: { from: 55, to: 120 },
+      children: [
+        { title: 'SAML and SCIM provisioning', from: 58, to: 92, points: 13 },
+        { title: 'Audit log retention policies', from: 88, to: 115, points: 5 },
+      ],
+    },
+    {
+      title: 'Self-serve onboarding',
+      own: { from: 95, to: 150 },
+      children: [
+        { title: 'Guided workspace setup', from: 98, to: 126, points: 8 },
+        { title: 'Sample dataset generator', from: 120, to: 148, points: 5 },
+      ],
+    },
+  ];
+
+  let roadmapNumber = specs.length;
+  const totalRoadmapIssues =
+    epicSpecs.length + epicSpecs.reduce((n, e) => n + e.children.length, 0);
+  const roadmapRanks = initialRanks(totalRoadmapIssues);
+  let rankIdx = 0;
+  const epicIdByTitle = new Map<string, string>();
+
+  for (const spec of epicSpecs) {
+    roadmapNumber += 1;
+    const epic = await prisma.issue.create({
+      data: {
+        number: roadmapNumber,
+        title: spec.title,
+        type: IssueType.EPIC,
+        priority: Priority.HIGH,
+        rank: roadmapRanks[rankIdx++],
+        projectId: project.id,
+        statusId: spec.own && spec.own.from < 0 ? inProgress.id : todo.id,
+        reporterId: maya.id,
+        startDate: spec.own ? d(spec.own.from) : null,
+        dueDate: spec.own ? d(spec.own.to) : null,
+      },
+    });
+    epicIdByTitle.set(spec.title, epic.id);
+
+    for (const c of spec.children) {
+      roadmapNumber += 1;
+      await prisma.issue.create({
+        data: {
+          number: roadmapNumber,
+          title: c.title,
+          type: IssueType.STORY,
+          priority: Priority.MEDIUM,
+          storyPoints: c.points,
+          rank: roadmapRanks[rankIdx++],
+          projectId: project.id,
+          statusId: c.done ? done.id : c.from < 0 ? inProgress.id : todo.id,
+          reporterId: maya.id,
+          parentId: epic.id,
+          // The point of the whole exercise: stories carry their OWN dates
+          // and belong to no sprint, so only a real rollup surfaces them.
+          startDate: d(c.from),
+          dueDate: d(c.to),
+        },
+      });
+    }
+  }
+
+  // Satisfiable: billing GA ends day 55, onboarding starts day 95.
+  await prisma.issueLink.create({
+    data: {
+      sourceId: epicIdByTitle.get('Usage-based billing GA')!,
+      targetId: epicIdByTitle.get('Self-serve onboarding')!,
+      type: IssueLinkType.BLOCKS,
+      createdById: maya.id,
+    },
+  });
+  // VIOLATED: platform hardening rolls up to day 95, but Insights v2 is due to
+  // start on day 20 — a plan that cannot happen in the order it claims.
+  await prisma.issueLink.create({
+    data: {
+      sourceId: epicIdByTitle.get('Data platform hardening')!,
+      targetId: epicIdByTitle.get('Insights v2')!,
+      type: IssueLinkType.BLOCKS,
+      createdById: maya.id,
+    },
+  });
+
+  for (const [name, dayOffset] of [
+    ['v2.0 — Billing GA', 58],
+    ['v2.1 — Insights', 92],
+  ] as const) {
+    await prisma.version.create({
+      data: { projectId: project.id, name, releaseDate: d(dayOffset) },
+    });
+  }
+
+  console.log(
+    `  Roadmap: ${epicSpecs.length} epics, ${totalRoadmapIssues - epicSpecs.length} dated stories, 2 releases, 2 dependencies.`,
+  );
+
   // The board is CREATED here, not updated. Nothing has created one yet at
   // seed time (the API makes a default board lazily, on first board fetch), so
   // an `updateMany` matched zero rows and silently left a Kanban "Main Board"

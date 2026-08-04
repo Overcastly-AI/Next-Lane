@@ -271,9 +271,30 @@ the same Share panel.
 
 - **Per-project reports** (`/projects/:id/reports`): **burndown**,
   **velocity**, and **cumulative flow diagram** (14/30/90-day windows).
-- **Roadmap / timeline** (`/projects/:id/roadmap`) — Gantt-style epic
-  timeline; an epic's own start/due dates take priority, falling back to its
-  children's sprint dates.
+- **Roadmap / Gantt** (`/projects/:id/roadmap`) — an editable timeline of
+  epics, their stories, sprints and releases:
+  - **Dates roll up.** An epic's window comes from its own start/due dates when
+    it has them; otherwise it is derived from its children — each child's own
+    dates first, and the sprint it sits in only as a fallback.
+  - **Plan vs reality.** When an epic states a window and its children run past
+    it, the bar keeps its committed length and grows a hatched **overrun tail**
+    with a `+Nd` badge, rather than quietly widening to hide the slip.
+  - **Drag to reschedule.** Drag a bar to move it, or either edge to resize;
+    with a bar focused, `Alt + ←/→` moves it a day and `Alt + Shift + ←/→`
+    changes its end. Writes go to the issue's own dates.
+  - **The cascade.** Drag a *story* past its epic and the epic grows to cover
+    it. Shrink the *epic* and the children stay put and show as overrun —
+    pulling a deadline in doesn't make the work fit, so it shows you what no
+    longer does.
+  - **Expand an epic** to see and drag its stories. A story whose dates come
+    from its sprint is drawn dashed and isn't draggable.
+  - **Milestones** from dated project versions, and **dependency arrows** from
+    `BLOCKS` links — drawn red when a blocker is scheduled to finish after the
+    epic it blocks is due to start.
+  - **Week / Month / Quarter** zoom, a today marker, and a jump-to-today control.
+
+  Available to agents too: `get_roadmap` and `list_epic_children` in
+  `@next-lane/mcp`.
 - **Project analytics** (`/projects/:id/analytics`) — flow, cycle-time
   distribution, and per-assignee workload.
 - **Personal analytics** (`/me/analytics`) — your own throughput, cycle time,

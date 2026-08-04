@@ -1,277 +1,1195 @@
-import { useMemo } from 'react';
-import { SprintState, type RoadmapDto, type RoadmapEpicDto } from '@next-lane/shared';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  SprintState,
+  VersionState,
+  type RoadmapChildDto,
+  type RoadmapDto,
+  type RoadmapEpicDto,
+} from '@next-lane/shared';
 import { cn } from '@/lib/cn';
+import { useExpandedEpicChildren } from '@/api/roadmap';
+import {
+  MS_PER_DAY,
+  ZOOMS,
+  addDays,
+  applyDrag,
+  buildScale,
+  daysBetween,
+  planBounds,
+  startOfDayUTC,
+  zoomById,
+  type Scale,
+  type ZoomId,
+} from './ganttScale';
 
 /**
- * Hand-rolled responsive timeline (no Gantt dependency). The time axis is laid
- * out in CSS percentages over a derived [min, max] date window; sprints and
- * epics are absolutely-positioned bars within their lanes. A "today" marker line
- * is drawn when today falls inside the window. Epics with no date context are
- * listed in a separate "No dates" lane below. Clicking an epic calls onOpenEpic.
+ * The roadmap Gantt.
+ *
+ * A fixed left rail of row labels beside a horizontally scrolling time grid —
+ * the conventional Gantt shape, because a stakeholder should not have to learn
+ * a novel one. Everything on the right is positioned in pixels off a shared
+ * `Scale` (see ganttScale.ts), which is what makes dragging, day-snapping and
+ * three zoom levels all fall out of the same arithmetic.
+ *
+ * What it draws, and why each earns its place:
+ *  - EPIC BARS, draggable to move and resizable from either edge. Writes land
+ *    on the epic's own startDate/dueDate.
+ *  - THE OVERRUN MARK. When an epic states a window and its children spill
+ *    past it, the bar keeps its committed length and grows a hatched tail to
+ *    where the work actually reaches. Widening the bar silently would erase
+ *    the single most useful fact on the chart.
+ *  - CHILD ROWS, on expanding an epic. A child whose window comes from its
+ *    sprint rather than its own dates is drawn differently and is not
+ *    draggable — dragging it would silently detach it from its sprint.
+ *  - MILESTONES, from dated project Versions, as diamonds with full-height
+ *    guide lines.
+ *  - DEPENDENCY ARROWS between epics that BLOCK one another, drawn red when
+ *    the blocker is scheduled to finish after the thing it blocks starts.
+ *
+ * Dragging is pointer-based and also fully keyboard-operable: focus a bar and
+ * Alt+← / Alt+→ moves it a day, Alt+Shift+← / → resizes the end. A planning
+ * tool where the plan can only be changed with a mouse is not one everybody
+ * can use.
  */
-function startOfMonthUTC(d: Date): Date {
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
-}
-function addMonthsUTC(d: Date, n: number): Date {
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + n, 1));
-}
-function monthLabel(d: Date): string {
-  return d.toLocaleDateString(undefined, {
-    month: 'short',
-    year: 'numeric',
-    timeZone: 'UTC',
-  });
-}
 
-interface Window {
-  min: number;
-  max: number;
-  months: { ts: number; label: string }[];
-}
-
-/** Derive the overall window from every dated sprint + dated epic, padded to
- *  whole months, with at least a one-month span so a single point is visible. */
-function deriveWindow(data: RoadmapDto): Window | null {
-  const stamps: number[] = [];
-  for (const s of data.sprints) {
-    if (s.startDate) stamps.push(Date.parse(s.startDate));
-    if (s.endDate) stamps.push(Date.parse(s.endDate));
-  }
-  for (const e of data.epics) {
-    if (e.start) stamps.push(Date.parse(e.start));
-    if (e.end) stamps.push(Date.parse(e.end));
-  }
-  if (stamps.length === 0) return null;
-
-  let lo = Math.min(...stamps);
-  let hi = Math.max(...stamps);
-  // Include "today" so the marker is always meaningful when in range-adjacent.
-  const now = Date.now();
-  lo = Math.min(lo, now);
-  hi = Math.max(hi, now);
-
-  let cur = startOfMonthUTC(new Date(lo));
-  const end = addMonthsUTC(startOfMonthUTC(new Date(hi)), 1); // exclusive upper
-  const months: { ts: number; label: string }[] = [];
-  let guard = 0;
-  while (cur.getTime() < end.getTime() && guard < 120) {
-    months.push({ ts: cur.getTime(), label: monthLabel(cur) });
-    cur = addMonthsUTC(cur, 1);
-    guard += 1;
-  }
-  return { min: months[0].ts, max: end.getTime(), months };
-}
+const ROW_H = 34;
+const BAR_H = 20;
+const RAIL_W = 248;
+const AXIS_H = 44;
+const LANE_GAP = 8;
+/** Pointer movement below this is a click, above it is a drag. */
+const DRAG_THRESHOLD_PX = 4;
 
 const SPRINT_COLORS: Record<SprintState, { bar: string; dot: string; label: string }> = {
-  [SprintState.PLANNED]: { bar: 'bg-slate-200 text-slate-700', dot: 'bg-gray-400', label: 'Planned' },
-  [SprintState.ACTIVE]: { bar: 'bg-brand-500 text-white', dot: 'bg-brand-500', label: 'Active' },
+  [SprintState.PLANNED]: { bar: 'bg-ink-200 text-ink-700', dot: 'bg-ink-400', label: 'Planned' },
+  [SprintState.ACTIVE]: { bar: 'bg-signal-500 text-white', dot: 'bg-signal-500', label: 'Active' },
   [SprintState.COMPLETED]: { bar: 'bg-emerald-500 text-white', dot: 'bg-emerald-500', label: 'Completed' },
 };
+
+type DragMode = 'move' | 'resize-start' | 'resize-end';
+
+interface DragState {
+  id: string;
+  mode: DragMode;
+  pointerId: number;
+  originX: number;
+  dayDelta: number;
+  moved: boolean;
+}
+
+export interface RoadmapTimelineProps {
+  data: RoadmapDto;
+  onOpenEpic: (epicId: string) => void;
+  /** Commit a new window for an issue. Absent = read-only (no drag affordances). */
+  onSchedule?: (input: {
+    issueId: string;
+    startDate: string;
+    dueDate: string;
+    parentEpicId?: string;
+  }) => void;
+  projectId?: string;
+  /** True while a schedule write is in flight, to damp the UI. */
+  isSaving?: boolean;
+}
 
 export function RoadmapTimeline({
   data,
   onOpenEpic,
-}: {
-  data: RoadmapDto;
-  onOpenEpic: (epicId: string) => void;
-}) {
-  const win = useMemo(() => deriveWindow(data), [data]);
+  onSchedule,
+  projectId,
+  isSaving,
+}: RoadmapTimelineProps) {
+  const [zoomId, setZoomId] = useState<ZoomId>('month');
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [drag, setDrag] = useState<DragState | null>(null);
+  const [liveMessage, setLiveMessage] = useState('');
+  const scrollRef = useRef<HTMLDivElement>(null);
+  /*
+   * A pointer drag is ALSO followed by a native `click` on the same element.
+   * Guarding on drag state does not work: the window pointerup handler clears
+   * that state first, so by the time onClick runs the component has already
+   * re-rendered with `drag === null` and the guard passes. Every drag opened
+   * the issue drawer. A ref survives the re-render; the click that follows the
+   * drag consumes it.
+   */
+  const suppressClickRef = useRef(false);
 
-  const datedEpics = data.epics.filter((e) => e.start && e.end);
-  const noDateEpics = data.epics.filter((e) => !e.start || !e.end);
+  const editable = !!onSchedule;
+  const zoom = zoomById(zoomId);
 
-  // Position helper: clamp a timestamp to [0, 100]% of the window.
-  const pct = (ts: number): number => {
-    if (!win) return 0;
-    const span = win.max - win.min;
-    if (span <= 0) return 0;
-    return Math.min(100, Math.max(0, ((ts - win.min) / span) * 100));
-  };
+  const expandedIds = useMemo(() => [...expanded], [expanded]);
+  const childrenByEpic = useExpandedEpicChildren(projectId, expandedIds);
 
-  const todayPct = win ? pct(Date.now()) : 0;
-  const todayInRange = win && Date.now() >= win.min && Date.now() <= win.max;
+  const datedEpics = useMemo(
+    () => data.epics.filter((e) => e.start && e.end),
+    [data.epics],
+  );
+  const noDateEpics = useMemo(
+    () => data.epics.filter((e) => !e.start || !e.end),
+    [data.epics],
+  );
+
+  const bounds = useMemo(
+    () =>
+      planBounds([
+        ...data.sprints.flatMap((s) => [s.startDate, s.endDate]),
+        ...data.epics.flatMap((e) => [e.start, e.end, e.rollupStart, e.rollupEnd]),
+        ...data.milestones.map((m) => m.releaseDate),
+      ]),
+    [data],
+  );
+
+  const scale = useMemo(
+    () => (bounds ? buildScale(bounds.from, bounds.to, zoom) : null),
+    [bounds, zoom],
+  );
+
+  // ── Drag plumbing ─────────────────────────────────────────────────────────
+  //
+  // Tracked on `window` rather than the bar: a drag that outruns React's
+  // re-render leaves the 20px-tall bar and the gesture dies mid-flight. Pointer
+  // capture plus window listeners means the drag survives leaving the element,
+  // the row, and the scroll container.
+  useEffect(() => {
+    if (!drag) return;
+    const onMove = (e: PointerEvent) => {
+      if (e.pointerId !== drag.pointerId) return;
+      const dx = e.clientX - drag.originX;
+      const dayDelta = Math.round(dx / zoom.pxPerDay);
+      setDrag((d) =>
+        d && (d.dayDelta !== dayDelta || !d.moved)
+          ? {
+              ...d,
+              dayDelta,
+              moved: d.moved || Math.abs(dx) > DRAG_THRESHOLD_PX,
+            }
+          : d,
+      );
+    };
+    const onUp = (e: PointerEvent) => {
+      if (e.pointerId !== drag.pointerId) return;
+      setDrag(null);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+    };
+  }, [drag, zoom.pxPerDay]);
+
+  const commit = useCallback(
+    (
+      issueId: string,
+      startMs: number,
+      endMs: number,
+      parentEpicId?: string,
+      label?: string,
+    ) => {
+      if (!onSchedule) return;
+      onSchedule({
+        issueId,
+        startDate: new Date(startOfDayUTC(startMs)).toISOString(),
+        dueDate: new Date(startOfDayUTC(endMs)).toISOString(),
+        parentEpicId,
+      });
+      if (label) setLiveMessage(label);
+    },
+    [onSchedule],
+  );
+
+  /** Finish a pointer drag: commit if it actually moved, otherwise it was a click. */
+  const endDrag = useCallback(
+    (
+      item: { id: string; start: string; end: string },
+      parentEpicId: string | undefined,
+      d: DragState,
+    ) => {
+      // A press that never moved is a click; let the native click handle it.
+      if (!d.moved || d.dayDelta === 0) return;
+      suppressClickRef.current = true;
+      const next = applyDrag(
+        Date.parse(item.start),
+        Date.parse(item.end),
+        d.mode,
+        d.dayDelta,
+      );
+      commit(
+        item.id,
+        next.start,
+        next.end,
+        parentEpicId,
+        `Moved to ${fmtRange(next.start, next.end)}`,
+      );
+    },
+    [commit],
+  );
+
+  /** Alt+arrow nudging — the keyboard equivalent of a drag. */
+  const nudge = useCallback(
+    (
+      e: React.KeyboardEvent,
+      item: { id: string; start: string; end: string },
+      parentEpicId?: string,
+    ) => {
+      if (!editable || !e.altKey) return;
+      const dir = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+      if (dir === 0) return;
+      e.preventDefault();
+      const mode: DragMode = e.shiftKey ? 'resize-end' : 'move';
+      const next = applyDrag(
+        Date.parse(item.start),
+        Date.parse(item.end),
+        mode,
+        dir,
+      );
+      commit(
+        item.id,
+        next.start,
+        next.end,
+        parentEpicId,
+        `${e.shiftKey ? 'Resized' : 'Moved'} to ${fmtRange(next.start, next.end)}`,
+      );
+    },
+    [commit, editable],
+  );
+
+  const scrollToToday = useCallback(() => {
+    if (!scale || !scrollRef.current) return;
+    const x = scale.xOf(Date.now());
+    scrollRef.current.scrollTo({
+      left: Math.max(0, x - scrollRef.current.clientWidth / 2),
+      behavior: 'smooth',
+    });
+  }, [scale]);
+
+  function toggleExpand(epicId: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(epicId)) next.delete(epicId);
+      else next.add(epicId);
+      return next;
+    });
+  }
+
+  // ── Row layout ────────────────────────────────────────────────────────────
+  //
+  // One flat list of rows with explicit y offsets, built from the ACTUAL child
+  // counts. The dependency overlay is absolutely positioned, so it needs real
+  // offsets; an earlier version pushed an opaque "children" row without
+  // advancing y, and every epic below an expanded one had an offset short by
+  // the height of that block — arrows pointed into empty space.
+  const rows = useMemo(() => {
+    const out: Array<
+      | { kind: 'epic'; epic: RoadmapEpicDto; y: number }
+      | { kind: 'child'; epicId: string; child: RoadmapChildDto; y: number }
+      | { kind: 'child-note'; epicId: string; text: string; y: number }
+    > = [];
+    let y = 0;
+    for (const epic of datedEpics) {
+      out.push({ kind: 'epic', epic, y });
+      y += ROW_H;
+      if (!expanded.has(epic.id)) continue;
+      const kids = childrenByEpic.get(epic.id);
+      if (kids === undefined) {
+        out.push({ kind: 'child-note', epicId: epic.id, text: 'Loading stories…', y });
+        y += ROW_H;
+      } else if (kids.length === 0) {
+        out.push({ kind: 'child-note', epicId: epic.id, text: 'No child issues.', y });
+        y += ROW_H;
+      } else {
+        for (const child of kids) {
+          out.push({ kind: 'child', epicId: epic.id, child, y });
+          y += ROW_H;
+        }
+      }
+    }
+    return out;
+  }, [datedEpics, expanded, childrenByEpic]);
+
+  const totalRowsHeight = rows.length > 0 ? rows[rows.length - 1].y + ROW_H : 0;
+
+  const epicYById = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const r of rows) if (r.kind === 'epic') m.set(r.epic.id, r.y);
+    return m;
+  }, [rows]);
+
+  if (!scale || !bounds) {
+    return (
+      <NoDatesOnly epics={noDateEpics} onOpenEpic={onOpenEpic} />
+    );
+  }
+
+  const todayX = scale.xOf(Date.now());
+  const todayVisible =
+    Date.now() >= scale.originMs && Date.now() <= scale.endMs;
 
   return (
-    <div className="flex flex-col gap-6">
-      {/* Legend */}
-      <div className="flex flex-wrap items-center gap-4">
-        {(Object.keys(SPRINT_COLORS) as SprintState[]).map((st) => (
-          <span key={st} className="flex items-center gap-1.5">
-            <span className={cn('inline-block h-2.5 w-2.5 rounded-sm', SPRINT_COLORS[st].dot)} />
-            <span className="text-xs text-slate-500">{SPRINT_COLORS[st].label} sprint</span>
+    <div className="flex flex-col gap-4">
+      {/* Controls */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div
+          className="inline-flex items-center rounded-lg border border-ink-200 bg-surface p-0.5"
+          role="group"
+          aria-label="Timeline zoom"
+        >
+          {ZOOMS.map((z) => (
+            <button
+              key={z.id}
+              type="button"
+              onClick={() => setZoomId(z.id)}
+              data-testid={`roadmap-zoom-${z.id}`}
+              aria-pressed={zoomId === z.id}
+              className={cn(
+                'rounded-md px-2.5 py-1 text-xs font-medium transition-colors',
+                zoomId === z.id
+                  ? 'bg-ink-900 text-white'
+                  : 'text-ink-500 hover:bg-ink-100 hover:text-ink-800',
+              )}
+            >
+              {z.label}
+            </button>
+          ))}
+        </div>
+
+        <button
+          type="button"
+          onClick={scrollToToday}
+          data-testid="roadmap-jump-today"
+          className="rounded-md border border-ink-200 bg-surface px-2.5 py-1 text-xs font-medium text-ink-600 hover:bg-ink-100 hover:text-ink-900"
+        >
+          Today
+        </button>
+
+        <div className="ml-auto flex flex-wrap items-center gap-3 text-xs text-ink-500">
+          {(Object.keys(SPRINT_COLORS) as SprintState[]).map((st) => (
+            <span key={st} className="flex items-center gap-1.5">
+              <span className={cn('inline-block h-2.5 w-2.5 rounded-sm', SPRINT_COLORS[st].dot)} />
+              {SPRINT_COLORS[st].label}
+            </span>
+          ))}
+          <span className="flex items-center gap-1.5">
+            <span className="inline-block h-3 w-0.5 bg-red-500" />
+            Today
           </span>
-        ))}
-        <span className="flex items-center gap-1.5">
-          <span className="inline-block h-3 w-0.5 bg-rose-500" />
-          <span className="text-xs text-slate-500">Today</span>
-        </span>
+          <span className="flex items-center gap-1.5">
+            <span className="nl-gantt-overrun inline-block h-2.5 w-4 rounded-sm" />
+            Overruns plan
+          </span>
+        </div>
       </div>
 
-      {win && (
-        <div className="overflow-x-auto">
-          <div className="min-w-[640px]">
-            {/* Month axis */}
-            <div className="relative mb-2 h-6 border-b border-slate-200">
-              {win.months.map((m) => (
+      {editable && (
+        <p className="text-xs text-ink-400">
+          Drag a bar to move it, drag either edge to resize. With a bar focused,
+          Alt + ← / → moves it a day and Alt + Shift + ← / → changes its end.
+        </p>
+      )}
+
+      {/* Chart */}
+      <div className="flex overflow-hidden rounded-lg border border-ink-200">
+        {/* Left rail */}
+        <div
+          className="shrink-0 border-r border-ink-200 bg-ink-50/60"
+          style={{ width: RAIL_W }}
+        >
+          <div
+            className="flex items-end border-b border-ink-200 px-3 pb-1.5 text-[11px] font-semibold uppercase tracking-wide text-ink-400"
+            style={{ height: AXIS_H }}
+          >
+            Epic
+          </div>
+          {data.sprints.length > 0 && (
+            <div
+              className="flex items-center border-b border-ink-100 px-3 text-[11px] font-semibold uppercase tracking-wide text-ink-400"
+              style={{ height: ROW_H + LANE_GAP }}
+            >
+              Sprints
+            </div>
+          )}
+          {rows.map((r) =>
+            r.kind === 'epic' ? (
+              <EpicRailRow
+                key={r.epic.id}
+                epic={r.epic}
+                expanded={expanded.has(r.epic.id)}
+                onToggle={() => toggleExpand(r.epic.id)}
+                onOpen={() => onOpenEpic(r.epic.id)}
+              />
+            ) : r.kind === 'child' ? (
+              <div
+                key={`rail-${r.child.id}`}
+                className="flex items-center gap-1.5 border-b border-ink-100 bg-ink-50/40 pl-8 pr-2"
+                style={{ height: ROW_H }}
+                title={`${r.child.key} · ${r.child.title}`}
+              >
+                <span className="nl-issue-key shrink-0 text-[10px]">{r.child.key}</span>
+                <span className="truncate text-[11px] text-ink-600">{r.child.title}</span>
+              </div>
+            ) : (
+              <div
+                key={`note-${r.epicId}`}
+                className="border-b border-ink-100 bg-ink-50/40 pl-8 pr-2 text-[11px] text-ink-400"
+                style={{ height: ROW_H, lineHeight: `${ROW_H}px` }}
+              >
+                {r.text}
+              </div>
+            ),
+          )}
+        </div>
+
+        {/* Scrollable time grid */}
+        <div ref={scrollRef} className="min-w-0 flex-1 overflow-x-auto">
+          <div style={{ width: scale.widthPx }}>
+            {/* Axis */}
+            <div
+              className="relative border-b border-ink-200 bg-surface"
+              style={{ height: AXIS_H }}
+            >
+              {scale.majorTicks.map((t) => (
                 <div
-                  key={m.ts}
-                  className="absolute top-0 flex h-full items-center border-l border-slate-100 pl-1 text-[11px] font-medium text-slate-400"
-                  style={{ left: `${pct(m.ts)}%` }}
+                  key={t.ms}
+                  className="absolute bottom-1 whitespace-nowrap border-l border-ink-200 pl-1 text-[11px] font-medium text-ink-500"
+                  style={{ left: t.x, top: 6 }}
                 >
-                  {m.label}
+                  {t.label}
                 </div>
+              ))}
+              {data.milestones.map((m) => (
+                <MilestoneMarker key={m.id} milestone={m} x={scale.xOf(Date.parse(m.releaseDate))} />
               ))}
             </div>
 
-            {/* Lanes container with today marker overlay */}
-            <div className="relative">
-              {todayInRange && (
+            {/* Lanes */}
+            <div className="relative bg-surface">
+              {/* Minor gridlines */}
+              {scale.minorTicks.map((t) => (
                 <div
-                  className="pointer-events-none absolute top-0 bottom-0 z-10 w-px bg-rose-500"
-                  style={{ left: `${todayPct}%` }}
+                  key={t.ms}
+                  className="pointer-events-none absolute top-0 bottom-0 w-px bg-ink-100"
+                  style={{ left: t.x }}
+                  aria-hidden="true"
+                />
+              ))}
+              {/* Milestone guide lines */}
+              {data.milestones.map((m) => (
+                <div
+                  key={`guide-${m.id}`}
+                  className="pointer-events-none absolute top-0 bottom-0 w-px border-l border-dashed border-amber-400/70"
+                  style={{ left: scale.xOf(Date.parse(m.releaseDate)) }}
+                  aria-hidden="true"
+                />
+              ))}
+              {todayVisible && (
+                <div
+                  className="pointer-events-none absolute top-0 bottom-0 z-20 w-px bg-red-500"
+                  style={{ left: todayX }}
                   aria-hidden="true"
                 />
               )}
 
-              {/* Sprints lane */}
+              {/* Sprint lane */}
               {data.sprints.length > 0 && (
-                <Section title="Sprints">
+                <div
+                  className="relative border-b border-ink-100"
+                  style={{ height: ROW_H + LANE_GAP }}
+                >
                   {data.sprints.map((s) => {
                     const sStart = s.startDate ? Date.parse(s.startDate) : null;
                     const sEnd = s.endDate ? Date.parse(s.endDate) : null;
-                    const left = pct(sStart ?? sEnd ?? win.min);
-                    const right = pct(sEnd ?? sStart ?? win.min);
-                    const width = Math.max(1.5, right - left);
-                    const colors = SPRINT_COLORS[s.state as SprintState];
+                    const from = sStart ?? sEnd ?? scale.originMs;
+                    const to = sEnd ?? sStart ?? scale.originMs;
+                    const left = scale.xOf(from);
+                    const width = Math.max(6, scale.xOf(to) - left);
+                    const c = SPRINT_COLORS[s.state as SprintState];
                     return (
-                      <Lane key={s.id}>
-                        <div
-                          className={cn(
-                            'absolute top-1.5 flex h-7 items-center overflow-hidden rounded-md px-2 text-xs font-medium shadow-sm',
-                            colors.bar,
-                          )}
-                          style={{ left: `${left}%`, width: `${width}%` }}
-                          data-testid="roadmap-sprint-bar"
-                          title={`${s.name} (${colors.label})`}
-                        >
-                          <span className="truncate">{s.name}</span>
-                        </div>
-                      </Lane>
+                      <div
+                        key={s.id}
+                        data-testid="roadmap-sprint-bar"
+                        title={`${s.name} (${c.label})`}
+                        className={cn(
+                          'absolute flex items-center overflow-hidden rounded px-2 text-[11px] font-medium shadow-xs',
+                          c.bar,
+                        )}
+                        style={{ left, width, top: LANE_GAP, height: BAR_H }}
+                      >
+                        <span className="truncate">{s.name}</span>
+                      </div>
                     );
                   })}
-                </Section>
+                </div>
               )}
 
-              {/* Epics lane */}
-              {datedEpics.length > 0 && (
-                <Section title="Epics">
-                  {datedEpics.map((e) => (
-                    <EpicRow
-                      key={e.id}
-                      epic={e}
-                      left={pct(Date.parse(e.start as string))}
-                      right={pct(Date.parse(e.end as string))}
-                      onOpen={() => onOpenEpic(e.id)}
-                    />
-                  ))}
-                </Section>
+              {/* Dependency arrows, under the bars so they never eat a click. */}
+              <DependencyLayer
+                data={data}
+                scale={scale}
+                epicYById={epicYById}
+                height={totalRowsHeight}
+                // Row offsets are measured from the first EPIC row, but the
+                // sprint lane renders above them inside the same container.
+                // Without this the overlay sat one lane high and every arrow
+                // pointed at the row above its target.
+                offsetY={data.sprints.length > 0 ? ROW_H + LANE_GAP : 0}
+              />
+
+              {/* Epic + child rows */}
+              {rows.map((r) =>
+                r.kind === 'epic' ? (
+                  <EpicBarRow
+                    key={r.epic.id}
+                    epic={r.epic}
+                    scale={scale}
+                    editable={editable}
+                    drag={drag?.id === r.epic.id ? drag : null}
+                    onDragStart={(mode, e) => {
+                      setDrag({
+                        id: r.epic.id,
+                        mode,
+                        pointerId: e.pointerId,
+                        originX: e.clientX,
+                        dayDelta: 0,
+                        moved: false,
+                      });
+                    }}
+                    onDragEnd={(d) =>
+                      endDrag(
+                        { id: r.epic.id, start: r.epic.start as string, end: r.epic.end as string },
+                        undefined,
+                        d,
+                      )
+                    }
+                    onKeyDown={(e) =>
+                      nudge(e, {
+                        id: r.epic.id,
+                        start: r.epic.start as string,
+                        end: r.epic.end as string,
+                      })
+                    }
+                    onOpen={() => {
+                      if (suppressClickRef.current) {
+                        suppressClickRef.current = false;
+                        return;
+                      }
+                      onOpenEpic(r.epic.id);
+                    }}
+                  />
+                ) : r.kind === 'child' ? (
+                  <ChildBar
+                    key={`bar-${r.child.id}`}
+                    child={r.child}
+                    epicId={r.epicId}
+                    scale={scale}
+                    editable={editable}
+                    drag={drag?.id === r.child.id ? drag : null}
+                    setDrag={setDrag}
+                    endDrag={endDrag}
+                    nudge={nudge}
+                  />
+                ) : (
+                  <div
+                    key={`barnote-${r.epicId}`}
+                    className="border-b border-ink-100 bg-ink-50/40"
+                    style={{ height: ROW_H }}
+                  />
+                ),
+              )}
+
+              {rows.length === 0 && (
+                <div className="px-3 py-6 text-sm text-ink-400">
+                  No epics with dates yet.
+                </div>
               )}
             </div>
           </div>
         </div>
-      )}
+      </div>
 
-      {/* No-dates lane (rendered outside the time grid) */}
-      {noDateEpics.length > 0 && (
-        <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-3">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
-            No dates
-          </p>
-          <div className="flex flex-col gap-1.5">
-            {noDateEpics.map((e) => (
-              <button
-                key={e.id}
-                type="button"
-                onClick={() => onOpenEpic(e.id)}
-                data-testid="roadmap-epic-nodate"
-                className="flex items-center justify-between rounded-md border border-slate-200 bg-surface px-3 py-2 text-left text-sm hover:border-brand-300 hover:bg-brand-50"
-              >
-                <span className="flex items-center gap-2">
-                  <span className="font-mono text-xs text-slate-400">{e.key}</span>
-                  <span className="truncate font-medium text-slate-800">{e.title}</span>
+      {isSaving && (
+        <p className="text-xs text-ink-400" role="status">
+          Saving…
+        </p>
+      )}
+      <p className="sr-only" role="status" aria-live="polite">
+        {liveMessage}
+      </p>
+
+      {/* Milestone list — the diamonds are a glance, this is the detail. */}
+      {data.milestones.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {data.milestones.map((m) => (
+            <span
+              key={m.id}
+              data-testid="roadmap-milestone-chip"
+              className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs text-amber-800"
+            >
+              <span className="inline-block h-2 w-2 rotate-45 bg-amber-500" aria-hidden="true" />
+              <span className="font-medium">{m.name}</span>
+              <span className="text-amber-600">
+                {new Date(m.releaseDate).toLocaleDateString(undefined, {
+                  month: 'short',
+                  day: 'numeric',
+                  timeZone: 'UTC',
+                })}
+              </span>
+              {m.state === VersionState.UNRELEASED && m.openIssueCount > 0 && (
+                <span className="rounded-full bg-amber-200/70 px-1.5 font-semibold">
+                  {m.openIssueCount} open
                 </span>
-                <ProgressBadge epic={e} />
-              </button>
-            ))}
-          </div>
+              )}
+            </span>
+          ))}
         </div>
       )}
+
+      {noDateEpics.length > 0 && (
+        <NoDatesLane epics={noDateEpics} onOpenEpic={onOpenEpic} />
+      )}
     </div>
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="border-t border-slate-100 py-2 first:border-t-0">
-      <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-        {title}
-      </p>
-      <div className="flex flex-col">{children}</div>
-    </div>
-  );
-}
+// ── Left-rail rows ──────────────────────────────────────────────────────────
 
-function Lane({ children }: { children: React.ReactNode }) {
-  return <div className="relative h-10">{children}</div>;
-}
-
-function EpicRow({
+function EpicRailRow({
   epic,
-  left,
-  right,
+  expanded,
+  onToggle,
   onOpen,
 }: {
   epic: RoadmapEpicDto;
-  left: number;
-  right: number;
+  expanded: boolean;
+  onToggle: () => void;
   onOpen: () => void;
 }) {
-  const width = Math.max(2, right - left);
-  const fill = Math.round(epic.progress * 100);
   return (
-    <Lane>
+    <div
+      className="flex items-center gap-1 border-b border-ink-100 pl-1 pr-2"
+      style={{ height: ROW_H }}
+    >
+      <button
+        type="button"
+        onClick={onToggle}
+        data-testid={`roadmap-epic-expand-${epic.id}`}
+        aria-expanded={expanded}
+        aria-label={`${expanded ? 'Collapse' : 'Expand'} ${epic.key} ${epic.title}`}
+        disabled={epic.childCount === 0}
+        className={cn(
+          'flex h-5 w-5 shrink-0 items-center justify-center rounded text-ink-400',
+          epic.childCount === 0
+            ? 'invisible'
+            : 'hover:bg-ink-200 hover:text-ink-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-400',
+        )}
+      >
+        <svg
+          width="12"
+          height="12"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.5"
+          aria-hidden="true"
+          className={cn('transition-transform', expanded && 'rotate-90')}
+        >
+          <path d="M9 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
       <button
         type="button"
         onClick={onOpen}
-        data-testid="roadmap-epic-bar"
-        title={`${epic.key} · ${epic.title} — ${epic.doneCount}/${epic.childCount} done`}
-        className="group absolute top-1 flex h-8 items-center overflow-hidden rounded-md border border-violet-300 bg-violet-100 text-left shadow-sm transition-colors hover:border-violet-400"
-        style={{ left: `${left}%`, width: `${width}%` }}
+        className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+        title={`${epic.key} · ${epic.title}`}
       >
-        {/* progress fill */}
-        <span
-          className="absolute inset-y-0 left-0 bg-violet-300/70"
-          style={{ width: `${fill}%` }}
-          aria-hidden="true"
-        />
-        <span className="relative z-10 flex w-full items-center gap-2 px-2">
-          <span className="truncate text-xs font-medium text-violet-900">
-            <span className="font-mono text-violet-500">{epic.key}</span> {epic.title}
-          </span>
-          <span className="ml-auto shrink-0 text-[10px] font-semibold text-violet-700">
-            {fill}%
-          </span>
-        </span>
+        <span className="nl-issue-key shrink-0 text-[10px]">{epic.key}</span>
+        <span className="truncate text-xs font-medium text-ink-800">{epic.title}</span>
       </button>
-    </Lane>
+      <span className="shrink-0 text-[10px] font-semibold tabular-nums text-ink-400">
+        {Math.round(epic.progress * 100)}%
+      </span>
+    </div>
   );
 }
 
-function ProgressBadge({ epic }: { epic: RoadmapEpicDto }) {
+// ── Bars ────────────────────────────────────────────────────────────────────
+
+function EpicBarRow({
+  epic,
+  scale,
+  editable,
+  drag,
+  onDragStart,
+  onDragEnd,
+  onKeyDown,
+  onOpen,
+}: {
+  epic: RoadmapEpicDto;
+  scale: Scale;
+  editable: boolean;
+  drag: DragState | null;
+  onDragStart: (mode: DragMode, e: React.PointerEvent) => void;
+  onDragEnd: (d: DragState) => void;
+  onKeyDown: (e: React.KeyboardEvent) => void;
+  onOpen: () => void;
+}) {
+  const baseStart = Date.parse(epic.start as string);
+  const baseEnd = Date.parse(epic.end as string);
+  const preview = drag
+    ? applyDrag(baseStart, baseEnd, drag.mode, drag.dayDelta)
+    : { start: baseStart, end: baseEnd };
+
+  const left = scale.xOf(preview.start);
+  const width = Math.max(8, scale.xOf(preview.end) - left);
   const fill = Math.round(epic.progress * 100);
+
+  // The overrun tail: from the committed end to where the children actually
+  // reach. Drawn as a separate hatched element rather than by lengthening the
+  // bar, so the commitment stays legible next to the reality.
+  const rollupEnd = epic.rollupEnd ? Date.parse(epic.rollupEnd) : null;
+  const overrunX =
+    epic.overrunDays > 0 && rollupEnd ? scale.xOf(rollupEnd) : null;
+
+  useEffect(() => {
+    if (!drag) return;
+    const onUp = () => onDragEnd(drag);
+    window.addEventListener('pointerup', onUp, { once: true });
+    window.addEventListener('pointercancel', onUp, { once: true });
+    return () => {
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+    };
+  }, [drag, onDragEnd]);
+
   return (
-    <span className="shrink-0 rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-semibold text-violet-700">
-      {epic.doneCount}/{epic.childCount} · {fill}%
-    </span>
+    <div className="relative border-b border-ink-100" style={{ height: ROW_H }}>
+      {overrunX !== null && (
+        <div
+          className="nl-gantt-overrun pointer-events-none absolute rounded-r"
+          style={{
+            left: left + width,
+            width: Math.max(4, overrunX - (left + width)),
+            top: (ROW_H - BAR_H) / 2,
+            height: BAR_H,
+          }}
+          aria-hidden="true"
+        />
+      )}
+      <button
+        type="button"
+        data-testid="roadmap-epic-bar"
+        data-epic-id={epic.id}
+        onPointerDown={(e) => {
+          if (!canDragWith(e) || !editable) return;
+          onDragStart('move', e);
+        }}
+        data-draggable={editable ? 'true' : 'false'}
+        onKeyDown={onKeyDown}
+        // `onOpen` itself consumes the post-drag click (see suppressClickRef).
+        onClick={onOpen}
+        title={epicTitle(epic)}
+        aria-label={epicTitle(epic)}
+        className={cn(
+          'group absolute flex items-center overflow-visible rounded-md border text-left shadow-xs transition-shadow',
+          'border-signal-300 bg-signal-100 hover:shadow-card focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-400',
+          editable && 'cursor-grab active:cursor-grabbing',
+          drag?.moved && 'z-30 shadow-card ring-2 ring-signal-400',
+        )}
+        style={{ left, width, top: (ROW_H - BAR_H) / 2, height: BAR_H }}
+      >
+        <span
+          className="absolute inset-y-0 left-0 rounded-l-md bg-signal-300/70"
+          style={{ width: `${fill}%` }}
+          aria-hidden="true"
+        />
+        <span className="relative z-10 flex w-full items-center gap-1.5 overflow-hidden px-1.5">
+          <span className="truncate text-[11px] font-medium text-signal-900">
+            {epic.title}
+          </span>
+          {epic.childrenOutside > 0 && (
+            <span className="ml-auto shrink-0 rounded bg-amber-400/90 px-1 text-[9px] font-bold text-amber-950">
+              +{epic.overrunDays}d
+            </span>
+          )}
+        </span>
+
+        {editable && (
+          <>
+            <ResizeGrip side="start" onPointerDown={(e) => onDragStart('resize-start', e)} />
+            <ResizeGrip side="end" onPointerDown={(e) => onDragStart('resize-end', e)} />
+          </>
+        )}
+      </button>
+    </div>
   );
 }
+
+function ResizeGrip({
+  side,
+  onPointerDown,
+}: {
+  side: 'start' | 'end';
+  onPointerDown: (e: React.PointerEvent) => void;
+}) {
+  return (
+    <span
+      role="presentation"
+      onPointerDown={(e) => {
+        if (!canDragWith(e)) return;
+        e.stopPropagation();
+        onPointerDown(e);
+      }}
+      className={cn(
+        'absolute inset-y-0 z-20 w-2 cursor-ew-resize opacity-0 transition-opacity group-hover:opacity-100',
+        side === 'start' ? 'left-0 rounded-l-md' : 'right-0 rounded-r-md',
+        'bg-signal-500/40',
+      )}
+    />
+  );
+}
+
+function ChildBar({
+  child,
+  epicId,
+  scale,
+  editable,
+  drag,
+  setDrag,
+  endDrag,
+  nudge,
+}: {
+  child: RoadmapChildDto;
+  epicId: string;
+  scale: Scale;
+  editable: boolean;
+  drag: DragState | null;
+  setDrag: (d: DragState) => void;
+  endDrag: (
+    item: { id: string; start: string; end: string },
+    parentEpicId: string | undefined,
+    d: DragState,
+  ) => void;
+  nudge: (
+    e: React.KeyboardEvent,
+    item: { id: string; start: string; end: string },
+    parentEpicId?: string,
+  ) => void;
+}) {
+  // A child whose window comes from its SPRINT has no dates of its own to
+  // move. Dragging it would either silently detach it from the sprint or
+  // silently move the sprint — both worse than not offering the gesture.
+  const draggable = editable && !child.fromSprint && !!child.start && !!child.end;
+
+  const hasWindow = !!child.start && !!child.end;
+  const baseStart = hasWindow ? Date.parse(child.start as string) : 0;
+  const baseEnd = hasWindow ? Date.parse(child.end as string) : 0;
+  const preview =
+    drag && hasWindow
+      ? applyDrag(baseStart, baseEnd, drag.mode, drag.dayDelta)
+      : { start: baseStart, end: baseEnd };
+
+  useEffect(() => {
+    if (!drag || !hasWindow) return;
+    const onUp = () =>
+      endDrag(
+        { id: child.id, start: child.start as string, end: child.end as string },
+        epicId,
+        drag,
+      );
+    window.addEventListener('pointerup', onUp, { once: true });
+    window.addEventListener('pointercancel', onUp, { once: true });
+    return () => {
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+    };
+  }, [drag, hasWindow, child.id, child.start, child.end, epicId, endDrag]);
+
+  if (!hasWindow) {
+    return (
+      <div
+        className="relative border-b border-ink-100 bg-ink-50/40"
+        style={{ height: ROW_H }}
+      >
+        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] italic text-ink-400">
+          no dates
+        </span>
+      </div>
+    );
+  }
+
+  const left = scale.xOf(preview.start);
+  const width = Math.max(6, scale.xOf(preview.end) - left);
+
+  return (
+    <div
+      className="relative border-b border-ink-100 bg-ink-50/40"
+      style={{ height: ROW_H }}
+    >
+      <button
+        type="button"
+        data-testid="roadmap-child-bar"
+        data-child-id={child.id}
+        onPointerDown={(e) => {
+          if (!draggable || !canDragWith(e)) return;
+          setDrag({
+            id: child.id,
+            mode: 'move',
+            pointerId: e.pointerId,
+            originX: e.clientX,
+            dayDelta: 0,
+            moved: false,
+          });
+        }}
+        onKeyDown={(e) =>
+          draggable &&
+          nudge(
+            e,
+            { id: child.id, start: child.start as string, end: child.end as string },
+            epicId,
+          )
+        }
+        title={
+          child.fromSprint
+            ? `${child.key} · ${child.title} — dates come from ${child.sprintName ?? 'its sprint'}, so this bar is not draggable`
+            : `${child.key} · ${child.title}`
+        }
+        aria-label={`${child.key} ${child.title}`}
+        className={cn(
+          'group absolute flex items-center overflow-hidden rounded text-left text-[10px] font-medium shadow-xs',
+          'focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-400',
+          child.fromSprint
+            ? 'border border-dashed border-ink-300 bg-ink-100 text-ink-500'
+            : 'border border-ink-300 bg-surface text-ink-700',
+          draggable && 'cursor-grab active:cursor-grabbing hover:border-signal-400',
+          drag?.moved && 'z-30 ring-2 ring-signal-400',
+        )}
+        style={{ left, width, top: (ROW_H - 14) / 2, height: 14 }}
+      >
+        <span className="truncate px-1.5">{child.title}</span>
+      </button>
+    </div>
+  );
+}
+
+// ── Overlays ────────────────────────────────────────────────────────────────
+
+function MilestoneMarker({
+  milestone,
+  x,
+}: {
+  milestone: RoadmapDto['milestones'][number];
+  x: number;
+}) {
+  return (
+    <span
+      data-testid="roadmap-milestone-marker"
+      title={`${milestone.name} — ${new Date(milestone.releaseDate).toLocaleDateString(undefined, { timeZone: 'UTC' })}`}
+      className="absolute bottom-0 z-10 h-2.5 w-2.5 -translate-x-1/2 translate-y-1/2 rotate-45 border border-amber-600 bg-amber-400"
+      style={{ left: x }}
+    />
+  );
+}
+
+/**
+ * BLOCKS arrows between epic bars.
+ *
+ * Rendered as one SVG overlay beneath the bars rather than per-row elements:
+ * an arrow spans two rows, so it cannot live inside either of them, and
+ * `pointer-events: none` keeps it from stealing clicks meant for a bar.
+ */
+function DependencyLayer({
+  data,
+  scale,
+  epicYById,
+  height,
+  offsetY,
+}: {
+  data: RoadmapDto;
+  scale: Scale;
+  epicYById: Map<string, number>;
+  height: number;
+  offsetY: number;
+}) {
+  const epicById = useMemo(
+    () => new Map(data.epics.map((e) => [e.id, e])),
+    [data.epics],
+  );
+
+  const paths = data.dependencies.flatMap((dep) => {
+    const from = epicById.get(dep.fromEpicId);
+    const to = epicById.get(dep.toEpicId);
+    const fromY = epicYById.get(dep.fromEpicId);
+    const toY = epicYById.get(dep.toEpicId);
+    if (!from?.end || !to?.start || fromY === undefined || toY === undefined) {
+      return [];
+    }
+    const x1 = scale.xOf(Date.parse(from.end));
+    const y1 = fromY + ROW_H / 2;
+    const x2 = scale.xOf(Date.parse(to.start));
+    const y2 = toY + ROW_H / 2;
+    const STUB = 10;
+
+    /*
+     * Two routes, because a violated dependency is precisely the one that runs
+     * BACKWARDS in time, and the forward elbow degenerates for it.
+     *
+     * Forward (blocker ends before the blocked starts): the standard elbow —
+     * out of the blocker's right edge, across at a midpoint, into the left
+     * edge of the blocked bar.
+     *
+     * Backward (blocker ends AFTER the blocked starts): a midpoint elbow would
+     * put a long horizontal segment along the destination row, straight
+     * through whatever bars live there — it reads as a bar rather than a line,
+     * which is what the first version did. Route it around instead: out right,
+     * into the GUTTER between the two rows, back left, then into the target.
+     * The horizontal run then follows a row divider and crosses nothing.
+     */
+    const forward = x2 >= x1 + 2 * STUB;
+    const gutterY =
+      y1 < y2 ? Math.max(y1, y2 - ROW_H / 2) : Math.min(y1, y2 + ROW_H / 2);
+    const d = forward
+      ? `M ${x1} ${y1} H ${Math.max(x1 + STUB, x2 - STUB)} V ${y2} H ${x2}`
+      : `M ${x1} ${y1} H ${x1 + STUB} V ${gutterY} H ${x2 - STUB} V ${y2} H ${x2}`;
+
+    return [
+      {
+        key: `${dep.fromEpicId}-${dep.toEpicId}`,
+        d,
+        violated: dep.violated,
+        arrowX: x2,
+        arrowY: y2,
+      },
+    ];
+  });
+
+  if (paths.length === 0 || height === 0) return null;
+
+  return (
+    <svg
+      className="pointer-events-none absolute left-0 z-10"
+      style={{ top: offsetY }}
+      width={scale.widthPx}
+      height={height}
+      aria-hidden="true"
+      data-testid="roadmap-dependency-layer"
+    >
+      {paths.map((p) => (
+        <g key={p.key}>
+          <path
+            d={p.d}
+            fill="none"
+            strokeWidth={1.5}
+            strokeDasharray={p.violated ? undefined : '3 3'}
+            className={p.violated ? 'stroke-red-500' : 'stroke-ink-400'}
+          />
+          <circle
+            cx={p.arrowX}
+            cy={p.arrowY}
+            r={3}
+            className={p.violated ? 'fill-red-500' : 'fill-ink-400'}
+          />
+        </g>
+      ))}
+    </svg>
+  );
+}
+
+// ── No-date lanes ───────────────────────────────────────────────────────────
+
+function NoDatesLane({
+  epics,
+  onOpenEpic,
+}: {
+  epics: RoadmapEpicDto[];
+  onOpenEpic: (id: string) => void;
+}) {
+  return (
+    <div className="rounded-lg border border-dashed border-ink-300 bg-ink-50 p-3">
+      <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-ink-400">
+        No dates
+      </p>
+      <div className="flex flex-col gap-1.5">
+        {epics.map((e) => (
+          <button
+            key={e.id}
+            type="button"
+            onClick={() => onOpenEpic(e.id)}
+            data-testid="roadmap-epic-nodate"
+            className="flex items-center justify-between rounded-md border border-ink-200 bg-surface px-3 py-2 text-left text-sm hover:border-signal-300 hover:bg-signal-50"
+          >
+            <span className="flex min-w-0 items-center gap-2">
+              <span className="nl-issue-key shrink-0 text-[10px]">{e.key}</span>
+              <span className="truncate font-medium text-ink-800">{e.title}</span>
+            </span>
+            <span className="shrink-0 rounded-full bg-signal-100 px-2 py-0.5 text-[10px] font-semibold text-signal-700">
+              {e.doneCount}/{e.childCount}
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function NoDatesOnly({
+  epics,
+  onOpenEpic,
+}: {
+  epics: RoadmapEpicDto[];
+  onOpenEpic: (id: string) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-sm text-ink-500">
+        Nothing on this project has dates yet. Give an epic a start and due
+        date, or put its stories in a sprint, and it will appear on the
+        timeline.
+      </p>
+      {epics.length > 0 && <NoDatesLane epics={epics} onOpenEpic={onOpenEpic} />}
+    </div>
+  );
+}
+
+// ── Small helpers ───────────────────────────────────────────────────────────
+
+/**
+ * Whether this pointer should start a bar drag.
+ *
+ * TOUCH IS DELIBERATELY EXCLUDED. The time grid scrolls horizontally, and on a
+ * phone that pan is the primary gesture — the chart is mostly something you
+ * read there. Claiming a touch-drag on a bar would hijack the pan and leave
+ * the rest of the timeline unreachable, which is a far worse trade than not
+ * offering drag on a 393px screen. Rescheduling from a phone is still
+ * available where it always was: the date fields in the issue drawer.
+ */
+function canDragWith(e: React.PointerEvent): boolean {
+  return e.pointerType !== 'touch' && e.button === 0;
+}
+
+function fmtRange(startMs: number, endMs: number): string {
+  const f = (ms: number) =>
+    new Date(ms).toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      timeZone: 'UTC',
+    });
+  return `${f(startMs)} – ${f(endMs)}`;
+}
+
+function epicTitle(epic: RoadmapEpicDto): string {
+  const base = `${epic.key} · ${epic.title} — ${epic.doneCount}/${epic.childCount} done`;
+  if (epic.overrunDays > 0) {
+    return `${base}. ${epic.childrenOutside} ${
+      epic.childrenOutside === 1 ? 'child runs' : 'children run'
+    } ${epic.overrunDays} day${epic.overrunDays === 1 ? '' : 's'} past this window.`;
+  }
+  if (epic.underrunDays > 0) {
+    return `${base}. Work starts ${epic.underrunDays} day${
+      epic.underrunDays === 1 ? '' : 's'
+    } before this window.`;
+  }
+  return base;
+}
+
+export { MS_PER_DAY, addDays, daysBetween };
