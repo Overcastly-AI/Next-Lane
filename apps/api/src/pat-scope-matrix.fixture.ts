@@ -263,6 +263,7 @@ export const MATRIX: MatrixRow[] = [
 
   // roadmap
   { controller: 'roadmap', method: 'GET', path: `/projects/${X}/roadmap`, scope: 'projects:read' },
+  { controller: 'roadmap', method: 'GET', path: `/projects/${X}/roadmap/epics/${X}/children`, scope: 'projects:read' },
 
   // saved-filters
   { controller: 'saved-filters', method: 'GET', path: `/projects/${X}/saved-filters`, scope: 'projects:read' },
