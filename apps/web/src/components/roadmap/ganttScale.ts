@@ -139,6 +139,14 @@ export function buildScale(
   toMs: number,
   zoom: Zoom,
   maxTicks = 800,
+  /**
+   * Available width in px. A zoom level is a MINIMUM density, not a fixed one:
+   * if the plan at this zoom would be narrower than the panel, the day width
+   * stretches to fill it. Otherwise Month and Quarter left most of the chart
+   * as empty gutter — the coarser the zoom, the more wasted space, which is
+   * backwards.
+   */
+  containerPx = 0,
 ): Scale {
   const padUnit =
     zoom.major === 'week' ? 7 * MS_PER_DAY : zoom.major === 'month' ? 0 : 0;
@@ -166,10 +174,14 @@ export function buildScale(
   }
 
   const totalDays = daysBetween(origin, end);
-  const widthPx = totalDays * zoom.pxPerDay;
-  const xOf = (ms: number) => ((ms - origin) / MS_PER_DAY) * zoom.pxPerDay;
+  const pxPerDay =
+    containerPx > 0 && totalDays > 0
+      ? Math.max(zoom.pxPerDay, containerPx / totalDays)
+      : zoom.pxPerDay;
+  const widthPx = totalDays * pxPerDay;
+  const xOf = (ms: number) => ((ms - origin) / MS_PER_DAY) * pxPerDay;
   const dayAtX = (x: number) =>
-    startOfDayUTC(origin + (x / zoom.pxPerDay) * MS_PER_DAY);
+    startOfDayUTC(origin + (x / pxPerDay) * MS_PER_DAY);
 
   const majorTicks: Tick[] = [];
   const minorTicks: Tick[] = [];
@@ -231,7 +243,7 @@ export function buildScale(
     }
   }
 
-  return { originMs: origin, endMs: end, pxPerDay: zoom.pxPerDay, widthPx, xOf, dayAtX, majorTicks, minorTicks };
+  return { originMs: origin, endMs: end, pxPerDay, widthPx, xOf, dayAtX, majorTicks, minorTicks };
 }
 
 /**

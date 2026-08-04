@@ -90,6 +90,8 @@ export interface RoadmapTimelineProps {
   projectId?: string;
   /** True while a schedule write is in flight, to damp the UI. */
   isSaving?: boolean;
+  /** Create an epic, or a story under one. Absent = read-only. */
+  onCreate?: (input: { title: string; parentEpicId?: string }) => Promise<void>;
 }
 
 export function RoadmapTimeline({
@@ -98,11 +100,26 @@ export function RoadmapTimeline({
   onSchedule,
   projectId,
   isSaving,
+  onCreate,
 }: RoadmapTimelineProps) {
   const [zoomId, setZoomId] = useState<ZoomId>('month');
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [drag, setDrag] = useState<DragState | null>(null);
   const [liveMessage, setLiveMessage] = useState('');
+  /*
+   * Extra months of empty future kept on the axis beyond what the plan spans.
+   *
+   * Without this the timeline stopped dead at the last dated thing, so there
+   * was nowhere to drag work TO — planning the next quarter meant first
+   * inventing a date somewhere else. Grows when you scroll to the right edge,
+   * so the horizon extends as you explore rather than rendering years nobody
+   * asked for up front.
+   */
+  const [horizonMonths, setHorizonMonths] = useState(3);
+  /** Which row's inline "add" form is open: an epic id, or 'epic' for a new epic. */
+  const [creatingUnder, setCreatingUnder] = useState<string | null>(null);
+  /** Measured width of the scrolling grid, so a zoom can stretch to fill it. */
+  const [gridWidth, setGridWidth] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
   /*
    * A pointer drag is ALSO followed by a native `click` on the same element.
@@ -129,7 +146,7 @@ export function RoadmapTimeline({
     [data.epics],
   );
 
-  const bounds = useMemo(
+  const rawBounds = useMemo(
     () =>
       planBounds([
         ...data.sprints.flatMap((s) => [s.startDate, s.endDate]),
@@ -139,10 +156,28 @@ export function RoadmapTimeline({
     [data],
   );
 
-  const scale = useMemo(
-    () => (bounds ? buildScale(bounds.from, bounds.to, zoom) : null),
-    [bounds, zoom],
+  const bounds = useMemo(
+    () =>
+      rawBounds
+        ? { from: rawBounds.from, to: addDays(rawBounds.to, horizonMonths * 30) }
+        : null,
+    [rawBounds, horizonMonths],
   );
+
+  const scale = useMemo(
+    () => (bounds ? buildScale(bounds.from, bounds.to, zoom, 800, gridWidth) : null),
+    [bounds, zoom, gridWidth],
+  );
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const measure = () => setGridWidth(el.clientWidth);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   // ── Drag plumbing ─────────────────────────────────────────────────────────
   //
@@ -155,7 +190,9 @@ export function RoadmapTimeline({
     const onMove = (e: PointerEvent) => {
       if (e.pointerId !== drag.pointerId) return;
       const dx = e.clientX - drag.originX;
-      const dayDelta = Math.round(dx / zoom.pxPerDay);
+      // The EFFECTIVE day width, not the nominal zoom one — a stretched
+      // scale would otherwise move the bar further than the cursor.
+      const dayDelta = Math.round(dx / (scale?.pxPerDay ?? zoom.pxPerDay));
       setDrag((d) =>
         d && (d.dayDelta !== dayDelta || !d.moved)
           ? {
@@ -178,7 +215,7 @@ export function RoadmapTimeline({
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onUp);
     };
-  }, [drag, zoom.pxPerDay]);
+  }, [drag, zoom.pxPerDay, scale]);
 
   const commit = useCallback(
     (
@@ -270,6 +307,14 @@ export function RoadmapTimeline({
     [commit],
   );
 
+  /** Extend the future horizon when the user reaches the right-hand edge. */
+  const onGridScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const remaining = el.scrollWidth - el.scrollLeft - el.clientWidth;
+    if (remaining < 240) setHorizonMonths((m) => Math.min(m + 3, 48));
+  }, []);
+
   const scrollToToday = useCallback(() => {
     if (!scale || !scrollRef.current) return;
     const x = scale.xOf(Date.now());
@@ -359,8 +404,11 @@ export function RoadmapTimeline({
               aria-pressed={zoomId === z.id}
               className={cn(
                 'rounded-md px-2.5 py-1 text-xs font-medium transition-colors',
+                // Theme tokens, not a hardcoded near-black: `bg-ink-900` is
+                // almost the dark theme's own surface, so the selected segment
+                // vanished into the control in dark mode.
                 zoomId === z.id
-                  ? 'bg-ink-900 text-white'
+                  ? 'bg-signal-600 text-white shadow-xs'
                   : 'text-ink-500 hover:bg-ink-100 hover:text-ink-800',
               )}
             >
@@ -368,6 +416,17 @@ export function RoadmapTimeline({
             </button>
           ))}
         </div>
+
+        {onCreate && (
+          <button
+            type="button"
+            onClick={() => setCreatingUnder('epic')}
+            data-testid="roadmap-add-epic"
+            className="rounded-md border border-signal-300 bg-signal-50 px-2.5 py-1 text-xs font-medium text-signal-700 hover:bg-signal-100"
+          >
+            + Epic
+          </button>
+        )}
 
         <button
           type="button"
@@ -395,6 +454,27 @@ export function RoadmapTimeline({
           </span>
         </div>
       </div>
+
+      {onCreate && creatingUnder && (
+        <InlineCreate
+          label={
+            creatingUnder === 'epic'
+              ? 'New epic'
+              : `New story in ${datedEpics.find((e) => e.id === creatingUnder)?.key ?? 'epic'}`
+          }
+          onCancel={() => setCreatingUnder(null)}
+          onSubmit={async (title) => {
+            await onCreate({
+              title,
+              parentEpicId: creatingUnder === 'epic' ? undefined : creatingUnder,
+            });
+            setCreatingUnder(null);
+            if (creatingUnder !== 'epic') {
+              setExpanded((prev) => new Set(prev).add(creatingUnder));
+            }
+          }}
+        />
+      )}
 
       {editable && (
         <p className="text-xs text-ink-400">
@@ -432,6 +512,9 @@ export function RoadmapTimeline({
                 expanded={expanded.has(r.epic.id)}
                 onToggle={() => toggleExpand(r.epic.id)}
                 onOpen={() => onOpenEpic(r.epic.id)}
+                onAddStory={
+                  onCreate ? () => setCreatingUnder(r.epic.id) : undefined
+                }
               />
             ) : r.kind === 'child' ? (
               <div
@@ -456,7 +539,14 @@ export function RoadmapTimeline({
         </div>
 
         {/* Scrollable time grid */}
-        <div ref={scrollRef} className="min-w-0 flex-1 overflow-x-auto">
+        <div
+          ref={scrollRef}
+          onScroll={onGridScroll}
+          className="min-w-0 flex-1 overflow-x-auto"
+        >
+          {/* `minWidth: 100%` so a short plan at Month or Quarter still fills
+              the panel instead of leaving a wide empty gutter to its right.
+              Bars stay pixel-positioned off the scale either way. */}
           <div style={{ width: scale.widthPx }}>
             {/* Axis */}
             <div
@@ -674,15 +764,17 @@ function EpicRailRow({
   expanded,
   onToggle,
   onOpen,
+  onAddStory,
 }: {
   epic: RoadmapEpicDto;
   expanded: boolean;
   onToggle: () => void;
   onOpen: () => void;
+  onAddStory?: () => void;
 }) {
   return (
     <div
-      className="flex items-center gap-1 border-b border-ink-100 pl-1 pr-2"
+      className="group/rail flex items-center gap-1 border-b border-ink-100 pl-1 pr-2"
       style={{ height: ROW_H }}
     >
       <button
@@ -721,10 +813,85 @@ function EpicRailRow({
         <span className="nl-issue-key shrink-0 text-[10px]">{epic.key}</span>
         <span className="truncate text-xs font-medium text-ink-800">{epic.title}</span>
       </button>
+      {onAddStory && (
+        <button
+          type="button"
+          onClick={onAddStory}
+          data-testid={`roadmap-add-story-${epic.id}`}
+          aria-label={`Add a story to ${epic.key}`}
+          title={`Add a story to ${epic.key}`}
+          className="shrink-0 rounded px-1 text-sm leading-none text-ink-400 opacity-0 transition-opacity hover:bg-ink-200 hover:text-ink-800 focus:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-400 group-hover/rail:opacity-100"
+        >
+          +
+        </button>
+      )}
       <span className="shrink-0 text-[10px] font-semibold tabular-nums text-ink-400">
         {Math.round(epic.progress * 100)}%
       </span>
     </div>
+  );
+}
+
+/**
+ * A one-field inline creator. Deliberately title-only: the point is to capture
+ * the thing while you are looking at the plan, then place it by dragging. A
+ * modal with six fields would send you right back to context-switching, which
+ * is the problem this screen is trying to remove.
+ */
+function InlineCreate({
+  label,
+  onSubmit,
+  onCancel,
+}: {
+  label: string;
+  onSubmit: (title: string) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const [title, setTitle] = useState('');
+  const [busy, setBusy] = useState(false);
+  return (
+    <form
+      data-testid="roadmap-inline-create"
+      className="flex items-center gap-2 rounded-lg border border-signal-200 bg-signal-50/60 p-2"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        const t = title.trim();
+        if (!t || busy) return;
+        setBusy(true);
+        try {
+          await onSubmit(t);
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
+      <span className="shrink-0 text-xs font-medium text-signal-800">{label}</span>
+      <input
+        autoFocus
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+        onKeyDown={(e) => e.key === 'Escape' && onCancel()}
+        placeholder="Title…"
+        aria-label={label}
+        data-testid="roadmap-inline-create-title"
+        className="min-w-0 flex-1 rounded-md border border-ink-200 bg-surface px-2 py-1 text-sm text-ink-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-400"
+      />
+      <button
+        type="submit"
+        disabled={busy || !title.trim()}
+        data-testid="roadmap-inline-create-submit"
+        className="rounded-md bg-signal-600 px-2.5 py-1 text-xs font-medium text-white disabled:opacity-50"
+      >
+        {busy ? 'Adding…' : 'Add'}
+      </button>
+      <button
+        type="button"
+        onClick={onCancel}
+        className="rounded-md px-2 py-1 text-xs text-ink-500 hover:bg-ink-100"
+      >
+        Cancel
+      </button>
+    </form>
   );
 }
 
@@ -818,6 +985,14 @@ function EpicBarRow({
           style={{ width: `${fill}%` }}
           aria-hidden="true"
         />
+        {/* Live feedback while dragging: how many days you have moved, and
+            what the window becomes. Without it a drag is guesswork — you drop
+            the bar and only then find out where it landed. */}
+        {drag?.moved && (
+          <span className="pointer-events-none absolute -top-6 left-0 z-40 whitespace-nowrap rounded bg-ink-900 px-1.5 py-0.5 text-[10px] font-semibold text-white shadow-card">
+            {signedDays(drag.dayDelta)} · {fmtRange(preview.start, preview.end)}
+          </span>
+        )}
         <span className="relative z-10 flex w-full items-center gap-1.5 overflow-hidden px-1.5">
           <span className="truncate text-[11px] font-medium text-signal-900">
             {epic.title}
@@ -1000,6 +1175,11 @@ function ChildBar({
         style={{ left, width, top: (ROW_H - 14) / 2, height: 14 }}
       >
         <span className="truncate px-1.5">{child.title}</span>
+        {drag?.moved && (
+          <span className="pointer-events-none absolute -top-6 left-0 z-40 whitespace-nowrap rounded bg-ink-900 px-1.5 py-0.5 text-[10px] font-semibold text-white shadow-card">
+            {signedDays(drag.dayDelta)} · {fmtRange(preview.start, preview.end)}
+          </span>
+        )}
       </button>
     </div>
   );
@@ -1088,6 +1268,10 @@ function UnscheduledChildRow({
       }}
     >
       {paint ? (
+        <>
+        <span className="pointer-events-none absolute -top-1 z-40 whitespace-nowrap rounded bg-ink-900 px-1.5 py-0.5 text-[10px] font-semibold text-white shadow-card" style={{ left }}>
+          {Math.max(1, daysBetween(scale.dayAtX(Math.min(paint.fromX, paint.toX)), scale.dayAtX(Math.max(paint.fromX, paint.toX))))}d
+        </span>
         <div
           className="pointer-events-none absolute rounded border border-signal-400 bg-signal-200/70"
           style={{
@@ -1098,6 +1282,7 @@ function UnscheduledChildRow({
           }}
           aria-hidden="true"
         />
+        </>
       ) : (
         <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-[10px] italic text-ink-400">
           {editable ? 'drag here to schedule' : 'no dates'}
@@ -1300,6 +1485,12 @@ function NoDatesOnly({
  */
 function canDragWith(e: React.PointerEvent): boolean {
   return e.pointerType !== 'touch' && e.button === 0;
+}
+
+/** "+7d" / "−3d" — a signed day delta for the drag readout. */
+function signedDays(n: number): string {
+  if (n === 0) return '0d';
+  return n > 0 ? `+${n}d` : `\u2212${Math.abs(n)}d`;
 }
 
 function fmtRange(startMs: number, endMs: number): string {

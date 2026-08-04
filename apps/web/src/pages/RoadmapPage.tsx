@@ -1,9 +1,11 @@
 import { useMemo } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useParams, useSearchParams } from 'react-router-dom';
 import type { StatusDto } from '@next-lane/shared';
 import { useUsers } from '@/api/meta';
 import { IssueDetailDrawer } from '@/components/issue/IssueDetailDrawer';
-import { useBoard } from '@/api/issues';
+import { useBoard, useCreateIssue } from '@/api/issues';
+import { IssueType, Priority } from '@next-lane/shared';
 import { useRoadmap, useScheduleIssue } from '@/api/roadmap';
 import { useToast } from '@/components/ui/Toast';
 import { errorMessage } from '@/lib/errorMessage';
@@ -42,6 +44,8 @@ export function RoadmapPage() {
   const myRole = useMyRole(boardQuery.data?.project.workspaceId);
   const editable = canEdit(myRole);
   const schedule = useScheduleIssue(projectId);
+  const createIssue = useCreateIssue(projectId);
+  const queryClient = useQueryClient();
 
   const projectName = boardQuery.data?.project.name;
   const data = roadmapQuery.data;
@@ -97,6 +101,28 @@ export function RoadmapPage() {
     });
   }
 
+  /*
+   * Create an epic, or a story under one, without leaving the chart. Title
+   * only — you place it by dragging, which is the whole reason to be here.
+   * A new story lands undated on purpose: its epic's row then shows an empty
+   * scheduling lane you can paint a window onto.
+   */
+  async function onCreate(input: { title: string; parentEpicId?: string }) {
+    await createIssue.mutateAsync({
+      projectId,
+      title: input.title,
+      type: input.parentEpicId ? IssueType.STORY : IssueType.EPIC,
+      priority: Priority.MEDIUM,
+      ...(input.parentEpicId ? { parentId: input.parentEpicId } : {}),
+    });
+    await queryClient.invalidateQueries({ queryKey: ['roadmap', projectId] });
+    if (input.parentEpicId) {
+      await queryClient.invalidateQueries({
+        queryKey: ['roadmap-epic-children', projectId, input.parentEpicId],
+      });
+    }
+  }
+
   return (
     <Shell projectId={projectId} projectName={projectName}>
       <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6 p-4 sm:p-6">
@@ -146,6 +172,7 @@ export function RoadmapPage() {
               projectId={projectId}
               onOpenEpic={openEpic}
               onSchedule={editable ? onSchedule : undefined}
+              onCreate={editable ? onCreate : undefined}
               isSaving={schedule.isPending}
             />
           ) : null}
