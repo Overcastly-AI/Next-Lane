@@ -16,6 +16,14 @@ staged here by hand (see [`RELEASING.md`](./RELEASING.md))._
 
 ---
 
+## [0.9.0] — 2026-08-04
+
+[Compare with v0.8.0](https://github.com/Overcastly-AI/Next-Lane/compare/v0.8.0...v0.9.0)
+
+### Features
+
+* **roadmap:** roll child dates up to epics, and make the Gantt editable ([b38e3a5](https://github.com/Overcastly-AI/Next-Lane/commit/b38e3a5cd970dc049dd0397f15d651e9c516f7ab))
+
 ## [0.8.0] — 2026-08-01
 
 [Compare with v0.7.0](https://github.com/Overcastly-AI/Next-Lane/compare/v0.7.0...v0.8.0)
