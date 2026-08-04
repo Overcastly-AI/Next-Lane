@@ -256,6 +256,20 @@ export function RoadmapTimeline({
     [commit, editable],
   );
 
+  /** Commit a window painted onto an empty child row. */
+  const onSchedulePainted = useCallback(
+    (issueId: string, parentEpicId: string, startMs: number, endMs: number) => {
+      commit(
+        issueId,
+        startMs,
+        endMs,
+        parentEpicId,
+        `Scheduled ${fmtRange(startMs, endMs)}`,
+      );
+    },
+    [commit],
+  );
+
   const scrollToToday = useCallback(() => {
     if (!scale || !scrollRef.current) return;
     const x = scale.xOf(Date.now());
@@ -588,6 +602,7 @@ export function RoadmapTimeline({
                     setDrag={setDrag}
                     endDrag={endDrag}
                     nudge={nudge}
+                    onSchedulePainted={onSchedulePainted}
                   />
                 ) : (
                   <div
@@ -858,6 +873,7 @@ function ChildBar({
   setDrag,
   endDrag,
   nudge,
+  onSchedulePainted,
 }: {
   child: RoadmapChildDto;
   epicId: string;
@@ -874,6 +890,12 @@ function ChildBar({
     e: React.KeyboardEvent,
     item: { id: string; start: string; end: string },
     parentEpicId?: string,
+  ) => void;
+  onSchedulePainted: (
+    issueId: string,
+    epicId: string,
+    startMs: number,
+    endMs: number,
   ) => void;
 }) {
   // A child whose window comes from its SPRINT has no dates of its own to
@@ -905,16 +927,27 @@ function ChildBar({
     };
   }, [drag, hasWindow, child.id, child.start, child.end, epicId, endDrag]);
 
+  /*
+   * An undated story had no affordance at all: the row rendered the words "no
+   * dates" and nothing else, so the one thing you actually wanted to do on the
+   * timeline — put it somewhere — was the one thing you couldn't. Founder
+   * report: "if dates are not set I cannot assign or drag them into place."
+   *
+   * The row is now a scheduling surface. Drag across it to paint a window, or
+   * click once for a default week starting at the day you clicked. Both snap
+   * to whole days on the same scale as every other bar, and both go through
+   * the same commit path, so the epic cascade applies exactly as it would to a
+   * bar you moved.
+   */
   if (!hasWindow) {
     return (
-      <div
-        className="relative border-b border-ink-100 bg-ink-50/40"
-        style={{ height: ROW_H }}
-      >
-        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] italic text-ink-400">
-          no dates
-        </span>
-      </div>
+      <UnscheduledChildRow
+        child={child}
+        epicId={epicId}
+        scale={scale}
+        editable={editable}
+        onSchedule={onSchedulePainted}
+      />
     );
   }
 
@@ -968,6 +1001,108 @@ function ChildBar({
       >
         <span className="truncate px-1.5">{child.title}</span>
       </button>
+    </div>
+  );
+}
+
+/**
+ * The row for a story that has no dates yet — a scheduling surface rather than
+ * a dead label.
+ *
+ * Drag across it to paint a window; click once for a default week. The painted
+ * range snaps to whole days off the same `Scale` as every bar, so what you
+ * release on is what gets written.
+ */
+function UnscheduledChildRow({
+  child,
+  epicId,
+  scale,
+  editable,
+  onSchedule,
+}: {
+  child: RoadmapChildDto;
+  epicId: string;
+  scale: Scale;
+  editable: boolean;
+  onSchedule: (
+    issueId: string,
+    epicId: string,
+    startMs: number,
+    endMs: number,
+  ) => void;
+}) {
+  const rowRef = useRef<HTMLDivElement>(null);
+  const [paint, setPaint] = useState<{ fromX: number; toX: number } | null>(null);
+
+  /** Default length for a click rather than a drag. A week reads as a real
+   *  piece of work and is trivially resized afterwards; a single day would be
+   *  a sliver most people would immediately have to fix. */
+  const CLICK_DAYS = 7;
+
+  const xInRow = (clientX: number): number => {
+    const box = rowRef.current?.getBoundingClientRect();
+    return box ? clientX - box.left : 0;
+  };
+
+  useEffect(() => {
+    if (!paint) return;
+    const onMove = (e: PointerEvent) =>
+      setPaint((p) => (p ? { ...p, toX: xInRow(e.clientX) } : p));
+    const onUp = () => {
+      setPaint((p) => {
+        if (!p) return null;
+        const a = scale.dayAtX(Math.min(p.fromX, p.toX));
+        const b = scale.dayAtX(Math.max(p.fromX, p.toX));
+        const end = b <= a ? addDays(a, CLICK_DAYS) : b;
+        onSchedule(child.id, epicId, a, end);
+        return null;
+      });
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp, { once: true });
+    window.addEventListener('pointercancel', onUp, { once: true });
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+    };
+  }, [paint, scale, child.id, epicId, onSchedule]);
+
+  const left = paint ? Math.min(paint.fromX, paint.toX) : 0;
+  const width = paint ? Math.abs(paint.toX - paint.fromX) : 0;
+
+  return (
+    <div
+      ref={rowRef}
+      data-testid="roadmap-child-unscheduled"
+      data-child-id={child.id}
+      className={cn(
+        'group relative border-b border-ink-100 bg-ink-50/40',
+        editable && 'cursor-crosshair hover:bg-signal-50/60',
+      )}
+      style={{ height: ROW_H }}
+      onPointerDown={(e) => {
+        if (!editable || !canDragWith(e)) return;
+        const x = xInRow(e.clientX);
+        setPaint({ fromX: x, toX: x });
+      }}
+    >
+      {paint ? (
+        <div
+          className="pointer-events-none absolute rounded border border-signal-400 bg-signal-200/70"
+          style={{
+            left,
+            width: Math.max(2, width),
+            top: (ROW_H - 14) / 2,
+            height: 14,
+          }}
+          aria-hidden="true"
+        />
+      ) : (
+        <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-[10px] italic text-ink-400">
+          {editable ? 'drag here to schedule' : 'no dates'}
+        </span>
+      )}
     </div>
   );
 }

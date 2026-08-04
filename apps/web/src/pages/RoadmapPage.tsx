@@ -1,4 +1,8 @@
-import { useParams, useNavigate } from 'react-router-dom';
+import { useMemo } from 'react';
+import { useParams, useSearchParams } from 'react-router-dom';
+import type { StatusDto } from '@next-lane/shared';
+import { useUsers } from '@/api/meta';
+import { IssueDetailDrawer } from '@/components/issue/IssueDetailDrawer';
 import { useBoard } from '@/api/issues';
 import { useRoadmap, useScheduleIssue } from '@/api/roadmap';
 import { useToast } from '@/components/ui/Toast';
@@ -30,8 +34,9 @@ import { RoadmapTimeline } from '@/components/roadmap/RoadmapTimeline';
  */
 export function RoadmapPage() {
   const { projectId = '' } = useParams();
-  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const boardQuery = useBoard(projectId);
+  const usersQuery = useUsers();
   const roadmapQuery = useRoadmap(projectId);
   const toast = useToast();
   const myRole = useMyRole(boardQuery.data?.project.workspaceId);
@@ -43,9 +48,40 @@ export function RoadmapPage() {
   const isEmpty =
     !!data && data.epics.length === 0 && data.sprints.length === 0;
 
+  /*
+   * Open the issue IN PLACE rather than navigating to the board.
+   *
+   * This used to jump to `/board?issue=…`, which threw you off the roadmap
+   * entirely: you clicked a bar to check a date and landed on a kanban board,
+   * having lost your zoom level and every epic you had expanded. Reported by
+   * the founder as "why does the page change if I click into an epic?" — the
+   * honest answer was that the roadmap shipped before the drawer was
+   * reusable, and nobody revisited it.
+   *
+   * `?issue=` on this route, same as the board uses, so the URL is still
+   * shareable and the back button still closes the drawer.
+   */
+  const openIssueId = searchParams.get('issue');
+
   function openEpic(epicId: string) {
-    navigate(`/projects/${projectId}/board?issue=${epicId}`);
+    const next = new URLSearchParams(searchParams);
+    next.set('issue', epicId);
+    setSearchParams(next, { replace: false });
   }
+
+  function closeIssue() {
+    const next = new URLSearchParams(searchParams);
+    next.delete('issue');
+    setSearchParams(next, { replace: false });
+  }
+
+  const statuses = useMemo<StatusDto[]>(
+    () =>
+      boardQuery.data
+        ? [...boardQuery.data.statuses].sort((a, b) => a.order - b.order)
+        : [],
+    [boardQuery.data],
+  );
 
   function onSchedule(input: {
     issueId: string;
@@ -115,6 +151,19 @@ export function RoadmapPage() {
           ) : null}
         </section>
       </div>
+
+      {openIssueId && (
+        <IssueDetailDrawer
+          issueId={openIssueId}
+          projectId={projectId}
+          statuses={statuses}
+          users={usersQuery.data ?? []}
+          editable={editable}
+          viewerRole={myRole ?? undefined}
+          onClose={closeIssue}
+          onOpenIssue={openEpic}
+        />
+      )}
     </Shell>
   );
 }

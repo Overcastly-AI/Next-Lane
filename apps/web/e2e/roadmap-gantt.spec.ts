@@ -209,9 +209,10 @@ test.describe('Roadmap Gantt', () => {
     expect(dayOf(after.startDate)).toBe('2026-04-08');
     expect(dayOf(after.dueDate)).toBe('2026-05-07');
 
-    // A click (no movement) must still navigate rather than reschedule.
+    // A click (no movement) must still OPEN the issue rather than reschedule —
+    // in place on the roadmap, not by navigating to the board.
     await page.getByTestId('roadmap-epic-bar').first().click();
-    await expect(page).toHaveURL(new RegExp(`/board\\?issue=${epic.id}`), {
+    await expect(page).toHaveURL(new RegExp(`/roadmap\\?issue=${epic.id}`), {
       timeout: 15_000,
     });
   });
@@ -340,5 +341,73 @@ test.describe('Roadmap Gantt', () => {
     // view, and it must still be on screen in both.
     expect(weekWidth).toBeGreaterThan(quarterWidth * 3);
     await expect(bar).toBeVisible();
+  });
+
+  test('an undated story can be scheduled by dragging across its empty row', async ({
+    page,
+    request,
+  }) => {
+    test.skip(
+      test.info().project.name !== 'chromium-desktop',
+      'pointer drag is desktop-only by design — see the note above',
+    );
+    const { token, project } = await setupIsolatedProject(page, request, {
+      label: 'rm-paint',
+      projectName: 'Roadmap Paint QA',
+      openBoard: false,
+    });
+    const epic = await createIssue(request, token, {
+      projectId: project.id,
+      type: 'EPIC',
+      title: 'Paint Epic',
+      startDate: iso('2026-04-01'),
+      dueDate: iso('2026-04-30'),
+    });
+    // No dates at all — previously this row said "no dates" and offered
+    // nothing, so the one thing you wanted to do on a timeline was impossible.
+    const story = await createIssue(request, token, {
+      projectId: project.id,
+      title: 'Needs scheduling',
+      parentId: epic.id,
+    });
+
+    await page.goto(`/projects/${project.id}/roadmap`);
+    await expect(page.getByTestId('roadmap-epic-bar').first()).toBeVisible({
+      timeout: 15_000,
+    });
+    await page.getByTestId('roadmap-zoom-week').click();
+    await page.getByTestId(`roadmap-epic-expand-${epic.id}`).click();
+
+    const row = page.getByTestId('roadmap-child-unscheduled').first();
+    await expect(row).toBeVisible({ timeout: 15_000 });
+
+    const writes = trackApiWrites(page);
+    const box = (await row.boundingBox())!;
+    // Paint a 10-day window starting a little way into the row.
+    await page.mouse.move(box.x + 40, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 40 + 10 * 22, box.y + box.height / 2, {
+      steps: 10,
+    });
+    await page.mouse.up();
+
+    await writes.settle({
+      match: (w) => w.method === 'PATCH' && w.path.endsWith(`/api/issues/${story.id}`),
+      atLeast: 1,
+    });
+
+    const after = await getIssue(request, token, story.id);
+    expect(after.startDate).not.toBeNull();
+    expect(after.dueDate).not.toBeNull();
+    // Ten days painted at 22px/day, snapped to whole days.
+    const days = Math.round(
+      (Date.parse(after.dueDate!) - Date.parse(after.startDate!)) / 86_400_000,
+    );
+    expect(days).toBe(10);
+
+    // It is now a real, draggable bar rather than an empty row.
+    await expect(page.getByTestId('roadmap-child-bar').first()).toBeVisible({
+      timeout: 15_000,
+    });
   });
 });
