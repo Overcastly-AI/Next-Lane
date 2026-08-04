@@ -16,7 +16,10 @@ import {
   buildScale,
   daysBetween,
   planBounds,
+  snapWindowToWorkdays,
   startOfDayUTC,
+  weekendBands,
+  workdaysBetween,
   zoomById,
   type Scale,
   type ZoomId,
@@ -120,6 +123,15 @@ export function RoadmapTimeline({
   const [creatingUnder, setCreatingUnder] = useState<string | null>(null);
   /** Measured width of the scrolling grid, so a zoom can stretch to fill it. */
   const [gridWidth, setGridWidth] = useState(0);
+  /*
+   * Skip weekends. Off by default because plenty of teams genuinely do run
+   * across a weekend and forcing working-days on them would silently move
+   * their dates; persisted per browser because it is a preference about how
+   * YOU plan, not a property of the project.
+   */
+  const [skipWeekends, setSkipWeekends] = useState(
+    () => localStorage.getItem('nl_roadmap_skip_weekends') === '1',
+  );
   const scrollRef = useRef<HTMLDivElement>(null);
   /*
    * A pointer drag is ALSO followed by a native `click` on the same element.
@@ -226,15 +238,21 @@ export function RoadmapTimeline({
       label?: string,
     ) => {
       if (!onSchedule) return;
+      // Snap at COMMIT time rather than during the drag: nudging the bar under
+      // the cursor mid-gesture feels like the chart fighting you. It lands on
+      // working days when you let go.
+      const win = skipWeekends
+        ? snapWindowToWorkdays(startMs, endMs)
+        : { start: startMs, end: endMs };
       onSchedule({
         issueId,
-        startDate: new Date(startOfDayUTC(startMs)).toISOString(),
-        dueDate: new Date(startOfDayUTC(endMs)).toISOString(),
+        startDate: new Date(startOfDayUTC(win.start)).toISOString(),
+        dueDate: new Date(startOfDayUTC(win.end)).toISOString(),
         parentEpicId,
       });
       if (label) setLiveMessage(label);
     },
-    [onSchedule],
+    [onSchedule, skipWeekends],
   );
 
   /** Finish a pointer drag: commit if it actually moved, otherwise it was a click. */
@@ -417,6 +435,27 @@ export function RoadmapTimeline({
           ))}
         </div>
 
+        <button
+          type="button"
+          role="switch"
+          aria-checked={skipWeekends}
+          data-testid="roadmap-skip-weekends"
+          onClick={() => {
+            const next = !skipWeekends;
+            setSkipWeekends(next);
+            localStorage.setItem('nl_roadmap_skip_weekends', next ? '1' : '0');
+          }}
+          title="Shade weekends and keep scheduled dates on working days"
+          className={cn(
+            'rounded-md border px-2.5 py-1 text-xs font-medium transition-colors',
+            skipWeekends
+              ? 'border-signal-300 bg-signal-50 text-signal-700'
+              : 'border-ink-200 bg-surface text-ink-500 hover:bg-ink-100 hover:text-ink-900',
+          )}
+        >
+          Skip weekends
+        </button>
+
         {onCreate && (
           <button
             type="button"
@@ -569,6 +608,18 @@ export function RoadmapTimeline({
 
             {/* Lanes */}
             <div className="relative bg-surface">
+              {/* Weekend bands, behind everything. Only drawn when a day is
+                  wide enough to read as a band — see `weekendBands`. */}
+              {skipWeekends &&
+                weekendBands(scale).map((b) => (
+                  <div
+                    key={`wk-${b.x}`}
+                    className="pointer-events-none absolute top-0 bottom-0 bg-ink-200/35"
+                    style={{ left: b.x, width: b.width }}
+                    aria-hidden="true"
+                  />
+                ))}
+
               {/* Minor gridlines */}
               {scale.minorTicks.map((t) => (
                 <div
@@ -673,6 +724,7 @@ export function RoadmapTimeline({
                         end: r.epic.end as string,
                       })
                     }
+                    skipWeekends={skipWeekends}
                     onOpen={() => {
                       if (suppressClickRef.current) {
                         suppressClickRef.current = false;
@@ -906,10 +958,12 @@ function EpicBarRow({
   onDragEnd,
   onKeyDown,
   onOpen,
+  skipWeekends,
 }: {
   epic: RoadmapEpicDto;
   scale: Scale;
   editable: boolean;
+  skipWeekends: boolean;
   drag: DragState | null;
   onDragStart: (mode: DragMode, e: React.PointerEvent) => void;
   onDragEnd: (d: DragState) => void;
@@ -991,6 +1045,11 @@ function EpicBarRow({
         {drag?.moved && (
           <span className="pointer-events-none absolute -top-6 left-0 z-40 whitespace-nowrap rounded bg-ink-900 px-1.5 py-0.5 text-[10px] font-semibold text-white shadow-card">
             {signedDays(drag.dayDelta)} · {fmtRange(preview.start, preview.end)}
+            {skipWeekends && (
+              <span className="ml-1 opacity-70">
+                ({workdaysBetween(preview.start, preview.end)}wd)
+              </span>
+            )}
           </span>
         )}
         <span className="relative z-10 flex w-full items-center gap-1.5 overflow-hidden px-1.5">

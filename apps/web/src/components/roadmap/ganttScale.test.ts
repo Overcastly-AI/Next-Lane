@@ -1,6 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import {
   MS_PER_DAY,
+  isWeekendUTC,
+  nextWorkday,
+  prevWorkday,
+  snapWindowToWorkdays,
+  workdaysBetween,
   applyDrag,
   buildScale,
   daysBetween,
@@ -121,5 +126,44 @@ describe('ganttScale — applyDrag', () => {
 
   it('is a no-op for a zero delta', () => {
     expect(applyDrag(start, end, 'move', 0)).toEqual({ start, end });
+  });
+});
+
+describe('ganttScale — working days', () => {
+  // 2026-05-09 is a Saturday, 05-10 a Sunday, 05-11 a Monday.
+  it('identifies weekends in UTC', () => {
+    expect(isWeekendUTC(day('2026-05-09'))).toBe(true);
+    expect(isWeekendUTC(day('2026-05-10'))).toBe(true);
+    expect(isWeekendUTC(day('2026-05-11'))).toBe(false);
+    expect(isWeekendUTC(day('2026-05-08'))).toBe(false);
+  });
+
+  it('pushes a start forward to Monday and pulls an end back to Friday', () => {
+    expect(nextWorkday(day('2026-05-09'))).toBe(day('2026-05-11'));
+    expect(prevWorkday(day('2026-05-10'))).toBe(day('2026-05-08'));
+    // A weekday is left exactly where it is.
+    expect(nextWorkday(day('2026-05-12'))).toBe(day('2026-05-12'));
+    expect(prevWorkday(day('2026-05-12'))).toBe(day('2026-05-12'));
+  });
+
+  it('never inverts a window that lands entirely on a weekend', () => {
+    // Snapping each end independently would give start=Mon 11th, end=Fri 8th —
+    // a due date three days before its own start, which the API rejects.
+    const r = snapWindowToWorkdays(day('2026-05-09'), day('2026-05-10'));
+    expect(r.start).toBe(r.end);
+    expect(r.end).toBeGreaterThanOrEqual(r.start);
+    expect(isWeekendUTC(r.start)).toBe(false);
+  });
+
+  it('snaps a normal window without moving weekday ends', () => {
+    const r = snapWindowToWorkdays(day('2026-05-11'), day('2026-05-15'));
+    expect(r.start).toBe(day('2026-05-11'));
+    expect(r.end).toBe(day('2026-05-15'));
+  });
+
+  it('counts weekdays only, skipping the weekend in between', () => {
+    // Mon 11th → Mon 18th spans 7 calendar days but only 5 working ones.
+    expect(workdaysBetween(day('2026-05-11'), day('2026-05-18'))).toBe(5);
+    expect(daysBetween(day('2026-05-11'), day('2026-05-18'))).toBe(7);
   });
 });

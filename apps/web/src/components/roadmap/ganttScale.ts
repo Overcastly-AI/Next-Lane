@@ -84,6 +84,85 @@ export function daysBetween(a: number, b: number): number {
   return Math.round((b - a) / MS_PER_DAY);
 }
 
+// ── Working days ────────────────────────────────────────────────────────────
+
+/** Saturday or Sunday, in UTC. */
+export function isWeekendUTC(ms: number): boolean {
+  const dow = new Date(ms).getUTCDay();
+  return dow === 0 || dow === 6;
+}
+
+/** The same day, or the next Monday if it lands on a weekend. */
+export function nextWorkday(ms: number): number {
+  let d = startOfDayUTC(ms);
+  while (isWeekendUTC(d)) d = addDays(d, 1);
+  return d;
+}
+
+/** The same day, or the previous Friday if it lands on a weekend. */
+export function prevWorkday(ms: number): number {
+  let d = startOfDayUTC(ms);
+  while (isWeekendUTC(d)) d = addDays(d, -1);
+  return d;
+}
+
+/**
+ * Pull a window onto working days: a start that lands on a weekend moves
+ * forward to Monday, an end that lands on one moves back to Friday.
+ *
+ * The order matters. Snapping independently can invert a window that began
+ * valid — a Saturday→Sunday range would give start=Monday, end=Friday, i.e. a
+ * due date three days before its own start, which the API rejects outright. So
+ * if the two ends cross, the whole thing collapses onto a single working day
+ * rather than producing something unsaveable.
+ */
+export function snapWindowToWorkdays(
+  startMs: number,
+  endMs: number,
+): { start: number; end: number } {
+  const start = nextWorkday(startMs);
+  const end = prevWorkday(endMs);
+  if (end < start) {
+    const day = nextWorkday(startMs);
+    return { start: day, end: day };
+  }
+  return { start, end };
+}
+
+/** Whole weekdays from `a` to `b` inclusive of `a`, exclusive of `b`. */
+export function workdaysBetween(a: number, b: number): number {
+  const lo = startOfDayUTC(Math.min(a, b));
+  const hi = startOfDayUTC(Math.max(a, b));
+  let n = 0;
+  for (let d = lo; d < hi; d = addDays(d, 1)) if (!isWeekendUTC(d)) n += 1;
+  return a <= b ? n : -n;
+}
+
+/**
+ * Weekend bands to shade, as [xStart, width] pairs.
+ *
+ * Only worth drawing when a day is wide enough to read as a band — below that
+ * the stripes are visual noise on top of the gridlines, so the caller gets an
+ * empty list and shades nothing.
+ */
+export function weekendBands(
+  scale: Scale,
+  minPxPerDay = 3,
+): { x: number; width: number }[] {
+  if (scale.pxPerDay < minPxPerDay) return [];
+  const out: { x: number; width: number }[] = [];
+  let guard = 0;
+  for (
+    let d = startOfDayUTC(scale.originMs);
+    d < scale.endMs && guard < 2000;
+    d = addDays(d, 1), guard += 1
+  ) {
+    if (!isWeekendUTC(d)) continue;
+    out.push({ x: scale.xOf(d), width: scale.pxPerDay });
+  }
+  return out;
+}
+
 // ── Scale ───────────────────────────────────────────────────────────────────
 
 export interface Tick {
