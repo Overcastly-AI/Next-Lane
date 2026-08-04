@@ -19,4 +19,18 @@ export class RoadmapController {
   ) {
     return this.roadmap.getRoadmap(user.id, projectId);
   }
+
+  /**
+   * Children of one epic, for expanding a roadmap row. Split from the payload
+   * above so a 500-epic project doesn't pay for children nobody opened.
+   */
+  @Get('projects/:projectId/roadmap/epics/:epicId/children')
+  @RequireScope('projects:read')
+  getEpicChildren(
+    @CurrentUser() user: AuthUser,
+    @Param('projectId') projectId: string,
+    @Param('epicId') epicId: string,
+  ) {
+    return this.roadmap.getEpicChildren(user.id, projectId, epicId);
+  }
 }

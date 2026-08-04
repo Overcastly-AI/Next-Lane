@@ -1,6 +1,10 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useBoard } from '@/api/issues';
-import { useRoadmap } from '@/api/roadmap';
+import { useRoadmap, useScheduleIssue } from '@/api/roadmap';
+import { useToast } from '@/components/ui/Toast';
+import { errorMessage } from '@/lib/errorMessage';
+import { useMyRole } from '@/api/workspaces';
+import { canEdit } from '@/lib/permissions';
 import { AppHeader } from '@/components/AppHeader';
 import { ProjectNav } from '@/components/project/ProjectNav';
 import { ProjectBreadcrumb } from '@/components/project/ProjectBreadcrumb';
@@ -13,15 +17,26 @@ import {
 import { RoadmapTimeline } from '@/components/roadmap/RoadmapTimeline';
 
 /**
- * Stakeholder-facing roadmap: epics and sprints laid out across a shared time
- * axis. Read-only (VIEWERs can view). Clicking an epic opens it on the board via
- * the ?issue= drawer. Data is composed server-side by GET /projects/:id/roadmap.
+ * Stakeholder-facing roadmap: a Gantt of epics, their stories, sprints and
+ * release milestones on a shared time axis.
+ *
+ * Editable in place for anyone above VIEWER — dragging a bar writes the
+ * issue's own start/due dates through `PATCH /issues/:id`. VIEWERs get the
+ * identical chart with no drag affordances at all, rather than affordances
+ * that fail on drop.
+ *
+ * Clicking an epic opens it on the board via the ?issue= drawer. Data is
+ * composed server-side by GET /projects/:id/roadmap.
  */
 export function RoadmapPage() {
   const { projectId = '' } = useParams();
   const navigate = useNavigate();
   const boardQuery = useBoard(projectId);
   const roadmapQuery = useRoadmap(projectId);
+  const toast = useToast();
+  const myRole = useMyRole(boardQuery.data?.project.workspaceId);
+  const editable = canEdit(myRole);
+  const schedule = useScheduleIssue(projectId);
 
   const projectName = boardQuery.data?.project.name;
   const data = roadmapQuery.data;
@@ -32,14 +47,31 @@ export function RoadmapPage() {
     navigate(`/projects/${projectId}/board?issue=${epicId}`);
   }
 
+  function onSchedule(input: {
+    issueId: string;
+    startDate: string;
+    dueDate: string;
+    parentEpicId?: string;
+  }) {
+    schedule.mutate(input, {
+      onError: (err) =>
+        // The chart refetches on settle either way, so a rejected write
+        // snaps the bar back to the truth rather than leaving a lie on screen.
+        toast.error(errorMessage(err, 'Could not reschedule that item.')),
+    });
+  }
+
   return (
     <Shell projectId={projectId} projectName={projectName}>
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 p-4 sm:p-6">
+      <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6 p-4 sm:p-6">
         <div className="flex items-center justify-between gap-3">
           <div>
             <h1 className="text-lg font-semibold text-ink-900">Roadmap</h1>
             <p className="text-sm text-ink-500">
-              Epics and sprints across time. Click an epic to open it.
+              Epics, stories, sprints and releases across time.{' '}
+              {editable
+                ? 'Drag a bar to reschedule it; expand an epic to see its stories.'
+                : 'Expand an epic to see its stories.'}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -73,7 +105,13 @@ export function RoadmapPage() {
               description="Create an epic or sprint to see the roadmap."
             />
           ) : data ? (
-            <RoadmapTimeline data={data} onOpenEpic={openEpic} />
+            <RoadmapTimeline
+              data={data}
+              projectId={projectId}
+              onOpenEpic={openEpic}
+              onSchedule={editable ? onSchedule : undefined}
+              isSaving={schedule.isPending}
+            />
           ) : null}
         </section>
       </div>

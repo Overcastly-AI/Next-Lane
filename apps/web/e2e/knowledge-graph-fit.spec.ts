@@ -170,7 +170,14 @@ test.describe('Knowledge graph — fit to content', () => {
     // zoom is therefore at most 100% — and on a 393px viewport it may be a
     // little under, since even two 108px node boxes can need framing.
     const zoomLabel = page.getByTestId('page-graph-zoom-reset');
-    // Fit first, so the baseline can't be read before the layout settles.
+    // Let the force layout SETTLE before touching the zoom. The view fits
+    // itself automatically when the simulation finishes, so a zoom-in issued
+    // while it is still running is undone a moment later by that settle-fit —
+    // which is exactly how this failed: 125% snapped back to 100%.
+    await expect(page.locator('[data-testid^="page-graph-node-"]')).toHaveCount(2, {
+      timeout: 15_000,
+    });
+    await page.waitForTimeout(1500);
     await page.getByTestId('page-graph-zoom-reset').click();
     const fitted = (await zoomLabel.textContent())?.trim() ?? '';
     expect(Number.parseInt(fitted, 10)).toBeLessThanOrEqual(100);

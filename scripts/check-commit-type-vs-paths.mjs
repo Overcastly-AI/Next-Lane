@@ -30,7 +30,15 @@ const NO_RELEASE_TYPES = new Set(['docs', 'chore', 'ci', 'test', 'style']);
  * excluded below rather than being flagged.
  */
 const PRODUCT_PATH = /^(apps\/(api|web|mcp)\/src\/|packages\/shared\/src\/|apps\/api\/prisma\/)/;
-const NOT_PRODUCT = /(\.spec\.[jt]sx?|\.test\.[jt]sx?|\.stories\.[jt]sx?)$/;
+/*
+ * `.fixture.ts` joins the list for the same reason the others are on it: it is
+ * test data that happens to live under a product tree. `pat-scope-matrix.fixture.ts`
+ * is imported by two integration specs and by nothing in the app, so a commit
+ * that only adds a row to it genuinely ships nothing — blocking it as a
+ * "no-release commit touching product code" was a false positive.
+ */
+const NOT_PRODUCT =
+  /(\.spec\.[jt]sx?|\.test\.[jt]sx?|\.stories\.[jt]sx?|\.fixture\.[jt]sx?)$/;
 
 /**
  * Files that sit under a product tree but are not the product.

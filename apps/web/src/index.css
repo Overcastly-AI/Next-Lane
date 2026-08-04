@@ -537,6 +537,30 @@ h1, h2, h3, h4, h5, h6,
 }
 
 /* ── Issue key — mono data signature ─────────────────────────────────────── */
+/*
+ * Roadmap Gantt — the overrun tail.
+ *
+ * Drawn when an epic's children run past the window the epic committed to.
+ * Diagonal hatching rather than a solid fill because it is deliberately NOT
+ * the same kind of thing as the bar beside it: the bar is a plan, this is the
+ * part of reality that escaped it. A solid extension would read as "the epic
+ * is simply longer", which is the misreading the whole feature exists to
+ * prevent. Theme-aware via the token, and it degrades to a flat amber wash
+ * wherever repeating-linear-gradient isn't supported.
+ */
+.nl-gantt-overrun {
+  background-color: rgb(251 191 36 / 0.18);
+  background-image: repeating-linear-gradient(
+    -45deg,
+    rgb(217 119 6 / 0.55) 0,
+    rgb(217 119 6 / 0.55) 1.5px,
+    transparent 1.5px,
+    transparent 6px
+  );
+  border: 1px dashed rgb(217 119 6 / 0.6);
+  border-left: none;
+}
+
 .nl-issue-key {
   font-family: 'IBM Plex Mono', ui-monospace, monospace;
   font-size: 0.6875rem;

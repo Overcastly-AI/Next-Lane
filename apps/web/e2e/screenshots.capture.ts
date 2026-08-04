@@ -269,6 +269,22 @@ test.describe('desktop', () => {
       }
 
       await captureGraph(page, `/projects/${nova.id}/pages/graph`, name('pages-graph-desktop', dark));
+
+      // Roadmap. Expanded on the epic that has NO dates of its own, so the
+      // shot shows the rollup doing its job — its bar spans exactly the
+      // stories beneath it — next to the hatched overrun tail on the epic
+      // that committed to a window its children escaped.
+      await page.goto(`/projects/${nova.id}/roadmap`);
+      await expect(page.getByTestId('roadmap-epic-bar').first()).toBeVisible({
+        timeout: 15_000,
+      });
+      const rollupRow = page.locator('[data-testid^="roadmap-epic-expand-"]').nth(2);
+      await rollupRow.click();
+      await expect(page.getByTestId('roadmap-child-bar').first()).toBeVisible({
+        timeout: 15_000,
+      });
+      await page.waitForTimeout(600);
+      await shot(page, name('roadmap-desktop', dark));
     }
 
     // The login screen, both themes — captured last because it logs out.

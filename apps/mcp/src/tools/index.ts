@@ -1122,6 +1122,81 @@ const readTools: ToolDef[] = [
         .then((data) => pageResult(paginateCompact(data, args, compactVersion))),
   },
   {
+    name: 'get_roadmap',
+    group: 'read',
+    description:
+      'Project roadmap: every epic with its scheduled window, how far its ' +
+      'children overrun that window, plus dated sprints, release milestones ' +
+      'and BLOCKS dependencies between epics. Built for the questions an ' +
+      'agent is actually asked — "what is slipping?" is `overrunDays > 0`, ' +
+      'and "is the plan even possible?" is a dependency with ' +
+      '`violated: true` (a blocker scheduled to finish after the epic it ' +
+      'blocks is due to start). Compact by default: epics are ' +
+      '`{id, key, title, start, end, progress, overrunDays, childrenOutside}` ' +
+      '— pass `verbose: true` for the full payload including rollup dates.',
+    inputSchema: {
+      projectId: z.string().describe('Project id.'),
+      verbose: z
+        .boolean()
+        .optional()
+        .describe('Return the full roadmap payload instead of the compact projection.'),
+    },
+    handler: (args, client) =>
+      client
+        .get<ApiItem>(`/projects/${args.projectId}/roadmap`)
+        .then((data) => {
+          if (args.verbose) return jsonResult(data);
+          const epics = (data.epics as ApiItem[] | undefined) ?? [];
+          const deps = (data.dependencies as ApiItem[] | undefined) ?? [];
+          const milestones = (data.milestones as ApiItem[] | undefined) ?? [];
+          const sprints = (data.sprints as ApiItem[] | undefined) ?? [];
+          return jsonResult({
+            epics: epics.map((e) => ({
+              id: e.id,
+              key: e.key,
+              title: e.title,
+              start: e.start,
+              end: e.end,
+              progress: e.progress,
+              overrunDays: e.overrunDays,
+              childrenOutside: e.childrenOutside,
+            })),
+            milestones: milestones.map((m) => ({
+              id: m.id,
+              name: m.name,
+              releaseDate: m.releaseDate,
+              openIssueCount: m.openIssueCount,
+            })),
+            sprints: sprints.map((sp) => ({
+              id: sp.id,
+              name: sp.name,
+              state: sp.state,
+              startDate: sp.startDate,
+              endDate: sp.endDate,
+            })),
+            dependencies: deps,
+            epicsTruncated: data.epicsTruncated,
+          });
+        }),
+  },
+  {
+    name: 'list_epic_children',
+    group: 'read',
+    description:
+      'The child issues of one roadmap epic with their scheduled windows. ' +
+      '`fromSprint: true` means the window is inherited from the sprint the ' +
+      'issue sits in rather than set on the issue itself — those dates cannot ' +
+      'be changed by scheduling the issue directly.',
+    inputSchema: {
+      projectId: z.string().describe('Project id.'),
+      epicId: z.string().describe('Epic issue id.'),
+    },
+    handler: (args, client) =>
+      client
+        .get(`/projects/${args.projectId}/roadmap/epics/${args.epicId}/children`)
+        .then(jsonResult),
+  },
+  {
     name: 'list_custom_fields',
     group: 'read',
     description:
