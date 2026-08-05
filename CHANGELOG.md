@@ -16,6 +16,14 @@ staged here by hand (see [`RELEASING.md`](./RELEASING.md))._
 
 ---
 
+## [0.14.1] — 2026-08-05
+
+[Compare with v0.14.0](https://github.com/Overcastly-AI/Next-Lane/compare/v0.14.0...v0.14.1)
+
+### Bug Fixes
+
+* **roadmap:** refresh the Gantt when an issue is edited, without a reload ([#79](https://github.com/Overcastly-AI/Next-Lane/issues/79)) ([b3ed496](https://github.com/Overcastly-AI/Next-Lane/commit/b3ed4962d95a350d09fc9333ca9d53ffce982e7b))
+
 ## [0.14.0] — 2026-08-05
 
 [Compare with v0.13.1](https://github.com/Overcastly-AI/Next-Lane/compare/v0.13.1...v0.14.0)

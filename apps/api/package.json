@@ -1,6 +1,6 @@
 {
   "name": "@next-lane/api",
-  "version": "0.14.0",
+  "version": "0.14.1",
   "private": true,
   "description": "Next Lane API — NestJS backend",
   "scripts": {
