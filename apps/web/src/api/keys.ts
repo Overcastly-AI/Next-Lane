@@ -252,6 +252,24 @@ export function invalidateBoardFamily(
 ): void {
   void qc.invalidateQueries({ queryKey: qk.board(projectId) });
   void qc.invalidateQueries({ queryKey: ['boardView'] });
+  /*
+   * The roadmap is derived from the same issues, so it goes stale for exactly
+   * the same reasons the board does — and it wasn't listed here, so editing a
+   * story's title or dates in the drawer left the Gantt showing the old values
+   * until a full page reload. Founder report: "when I change information on
+   * the epic or story it should automatically update in the Gantt chart. I
+   * have to reload the page for it to work."
+   *
+   * Fixed at this chokepoint rather than in the drawer, because every issue
+   * mutation in the app already funnels through here — drawer edits, board
+   * moves, triage, bulk edit, custom fields — and fixing one call site would
+   * have left the other fourteen with the same bug.
+   *
+   * Free when the roadmap isn't open: React Query only refetches ACTIVE
+   * queries, so this just marks the cache stale on every other screen.
+   */
+  void qc.invalidateQueries({ queryKey: ['roadmap', projectId] });
+  void qc.invalidateQueries({ queryKey: ['roadmap-epic-children', projectId] });
 }
 
 /**

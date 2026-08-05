@@ -305,6 +305,8 @@ function DrawerBody({
           <div className="space-y-5 md:col-span-2">
             {/* Title — Space Grotesk for the display weight */}
             <input
+              data-testid="issue-title-input"
+              aria-label="Issue title"
               value={title}
               disabled={!editable}
               onChange={(e) => setTitle(e.target.value)}

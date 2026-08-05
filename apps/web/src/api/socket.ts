@@ -146,6 +146,14 @@ export function useBoardRealtime(
           invalidateBoardFamily(qc, projectId);
         }
         if (ISSUE_EVENTS.includes(event)) {
+          // The roadmap is derived from the project's issue set too, so a
+          // teammate's edit must land on an open Gantt without a reload.
+          // `invalidateBoardFamily` covers your OWN mutations; this covers
+          // everyone else's.
+          void qc.invalidateQueries({ queryKey: ['roadmap', projectId] });
+          void qc.invalidateQueries({
+            queryKey: ['roadmap-epic-children', projectId],
+          });
           // Dashboard gadget data is derived from the project's issue set —
           // refresh every open dashboard's evaluated data so STAT/TABLE/
           // BREAKDOWN/BURNDOWN numbers don't silently go stale while a

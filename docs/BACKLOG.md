@@ -817,6 +817,13 @@ _Hardening Night close-out ingest (2026-07-06) — P2s:_
 
 ## Already Done (recent shipments — ticked for reference)
 
+- [x] (P1, S) **Issue edits refresh the Gantt live** ✅ 2026-08-05 [founder: *"I have to reload the page for it to work"*]
+  - `invalidateBoardFamily` — the chokepoint all 15 issue-mutation call sites funnel through — refreshed the board and board views but had never been told about the roadmap. Any edit from any surface left the chart stale until a reload.
+  - Fixed at the chokepoint, not in the drawer: one call site would have left fourteen with the same bug. Costs nothing when the roadmap is closed (React Query only refetches active queries).
+  - **Two gaps found while fixing it:** the roadmap pages subscribed to no realtime at all, so a teammate's edit still never landed — `useBoardRealtime` wired into the chart and presenting mode, and the socket's issue-event branch now invalidates the roadmap. Own writes via the mutation path, everyone else's via the socket.
+  - Drawer title input had no `data-testid` or `aria-label`; added.
+  - e2e renames an epic through the real drawer and asserts the bar's accessible name changes with **no reload** — verified to fail against the unfixed code first. 77 passed across roadmap/gantt/present/board/triage/issue-detail/drawer-overlay.
+
 - [x] (P1, S) **Sticky Gantt date axis** ✅ 2026-08-05 [founder: *"the Gantt chart header should become sticky as I scroll down"*]
   - The axis sat inside the horizontal scroller, which is a scroll container on BOTH axes — so `sticky` there means sticking to something that never moves vertically. Lifted into its own band, horizontal scroll mirrored from the grid via `scrollLeft` (not state: it runs every scroll frame).
   - Chart wrapper `overflow-hidden` → `overflow-clip`: same rounded corners, no scrollport for the sticky element to resolve against.

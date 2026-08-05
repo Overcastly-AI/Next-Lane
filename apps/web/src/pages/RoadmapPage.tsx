@@ -15,6 +15,7 @@ import {
 import { useToast } from '@/components/ui/Toast';
 import { errorMessage } from '@/lib/errorMessage';
 import { useMyRole } from '@/api/workspaces';
+import { useBoardRealtime } from '@/api/socket';
 import { canEdit } from '@/lib/permissions';
 import { AppHeader } from '@/components/AppHeader';
 import { ProjectNav } from '@/components/project/ProjectNav';
@@ -49,6 +50,13 @@ export function RoadmapPage() {
   const myRole = useMyRole(boardQuery.data?.project.workspaceId);
   const editable = canEdit(myRole);
   const schedule = useScheduleIssue(projectId);
+  /*
+   * Realtime. Without this the chart only ever refreshed on your own writes:
+   * a teammate rescheduling an epic, or you editing the same issue in another
+   * tab, left this Gantt showing yesterday's plan until a reload.
+   */
+  useBoardRealtime(projectId);
+
   const linkEpics = useLinkEpics(projectId);
   const unlinkEpics = useUnlinkEpics(projectId);
   const createIssue = useCreateIssue(projectId);

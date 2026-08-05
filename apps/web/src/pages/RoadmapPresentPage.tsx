@@ -3,6 +3,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useUsers } from '@/api/meta';
 import { useBoard } from '@/api/issues';
 import { useRoadmap } from '@/api/roadmap';
+import { useBoardRealtime } from '@/api/socket';
 import { IssueDetailDrawer } from '@/components/issue/IssueDetailDrawer';
 import { RoadmapTimeline } from '@/components/roadmap/RoadmapTimeline';
 import { ErrorState, LoadingState, EmptyState } from '@/components/ui/States';
@@ -34,6 +35,13 @@ export function RoadmapPresentPage() {
   const boardQuery = useBoard(projectId);
   const usersQuery = useUsers();
   const roadmapQuery = useRoadmap(projectId);
+  /*
+   * Realtime. Without this the chart only ever refreshed on your own writes:
+   * a teammate rescheduling an epic, or you editing the same issue in another
+   * tab, left this Gantt showing yesterday's plan until a reload.
+   */
+  useBoardRealtime(projectId);
+
   const openIssueId = searchParams.get('issue');
 
   const exit = useCallback(() => {
