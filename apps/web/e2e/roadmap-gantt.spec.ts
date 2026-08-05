@@ -617,4 +617,125 @@ test.describe('Roadmap Gantt', () => {
       openBg,
     );
   });
+
+  test('a dependency can be drawn between two epics and removed, without leaving the chart', async ({
+    page,
+    request,
+  }) => {
+    test.skip(
+      test.info().project.name !== 'chromium-desktop',
+      'pointer drag is desktop-only by design — see the note above',
+    );
+    const { token, project } = await setupIsolatedProject(page, request, {
+      label: 'rm-link',
+      projectName: 'Roadmap Link QA',
+      openBoard: false,
+    });
+
+    /*
+     * Dependencies used to be draw-only: the chart rendered BLOCKS arrows but
+     * the only way to create one was to open the epic's drawer, which is the
+     * context switch this screen exists to remove.
+     *
+     * The gesture is a handle past the bar's right edge dragged onto another
+     * bar. Asserted end to end — the arrow must appear AND the link must exist
+     * server-side, because a purely visual pass would survive the write being
+     * dropped.
+     */
+    const blocker = await createIssue(request, token, {
+      projectId: project.id,
+      type: 'EPIC',
+      title: 'Blocker Epic',
+      startDate: iso('2026-04-01'),
+      dueDate: iso('2026-04-20'),
+    });
+    const blocked = await createIssue(request, token, {
+      projectId: project.id,
+      type: 'EPIC',
+      title: 'Blocked Epic',
+      startDate: iso('2026-05-01'),
+      dueDate: iso('2026-05-20'),
+    });
+
+    await page.goto(`/projects/${project.id}/roadmap`);
+    const src = page.locator(`[data-epic-id="${blocker.id}"]`);
+    const dst = page.locator(`[data-epic-id="${blocked.id}"]`);
+    await expect(src).toBeVisible({ timeout: 15_000 });
+    await expect(dst).toBeVisible({ timeout: 15_000 });
+
+    // No arrows yet.
+    await expect(page.getByTestId('roadmap-dependency-layer')).toHaveCount(0);
+
+    // The handle is hover-revealed, so hover the bar before reaching for it.
+    const sb = (await src.boundingBox())!;
+    await page.mouse.move(sb.x + sb.width / 2, sb.y + sb.height / 2);
+    const handle = page.locator(`[data-link-from="${blocker.id}"]`);
+    const hb = (await handle.boundingBox())!;
+    const db = (await dst.boundingBox())!;
+
+    const writes = trackApiWrites(page);
+    await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(db.x + db.width / 2, db.y + db.height / 2, {
+      steps: 12,
+    });
+    await page.mouse.up();
+
+    await writes.settle({
+      match: (w) =>
+        w.method === 'POST' && w.path.endsWith(`/api/issues/${blocker.id}/links`),
+      atLeast: 1,
+    });
+
+    // Drawn on the chart...
+    await expect(page.getByTestId('roadmap-dependency-layer')).toBeVisible({
+      timeout: 15_000,
+    });
+    // ...and real on the server, as a BLOCKS from the blocker.
+    const linksRes = await request.get(
+      `${API_URL}/api/issues/${blocker.id}/links`,
+      { headers: auth(token) },
+    );
+    expect(linksRes.ok()).toBeTruthy();
+    const links = (await linksRes.json()) as {
+      id: string;
+      type: string;
+      relatedIssue: { id: string };
+    }[];
+    expect(links).toHaveLength(1);
+    expect(links[0].type).toBe('BLOCKS');
+    expect(links[0].relatedIssue.id).toBe(blocked.id);
+
+    // Removing it: hover the line, click the × that appears.
+    const remove = page.getByTestId('roadmap-dependency-remove');
+    /*
+     * A forward elbow leaves the blocker's right edge, drops at a vertical run
+     * just short of the blocked bar, and comes in at its left edge. The
+     * vertical run is the only part guaranteed to sit in empty grid, so aim
+     * there — sweeping y across the gap between the two rows, and nudging x a
+     * few pixels either side because the exact stub width is the component's
+     * business, not this test's.
+     */
+    const y1 = sb.y + sb.height / 2;
+    const y2 = db.y + db.height / 2;
+    outer: for (const dx of [-10, -6, -14, -2]) {
+      for (let i = 0; i <= 10; i++) {
+        await page.mouse.move(db.x + dx, y1 + ((y2 - y1) * i) / 10);
+        if ((await remove.count()) > 0) break outer;
+      }
+    }
+    await expect(remove).toBeVisible({ timeout: 5_000 });
+
+    const deletes = trackApiWrites(page);
+    await remove.click();
+    await deletes.settle({
+      match: (w) => w.method === 'DELETE' && w.path.includes('/api/issue-links/'),
+      atLeast: 1,
+    });
+
+    const after = await request.get(`${API_URL}/api/issues/${blocker.id}/links`, {
+      headers: auth(token),
+    });
+    expect((await after.json()) as unknown[]).toHaveLength(0);
+  });
 });

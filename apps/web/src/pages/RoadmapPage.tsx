@@ -6,7 +6,12 @@ import { useUsers } from '@/api/meta';
 import { IssueDetailDrawer } from '@/components/issue/IssueDetailDrawer';
 import { useBoard, useCreateIssue } from '@/api/issues';
 import { IssueType, Priority } from '@next-lane/shared';
-import { useRoadmap, useScheduleIssue } from '@/api/roadmap';
+import {
+  useLinkEpics,
+  useRoadmap,
+  useScheduleIssue,
+  useUnlinkEpics,
+} from '@/api/roadmap';
 import { useToast } from '@/components/ui/Toast';
 import { errorMessage } from '@/lib/errorMessage';
 import { useMyRole } from '@/api/workspaces';
@@ -44,6 +49,8 @@ export function RoadmapPage() {
   const myRole = useMyRole(boardQuery.data?.project.workspaceId);
   const editable = canEdit(myRole);
   const schedule = useScheduleIssue(projectId);
+  const linkEpics = useLinkEpics(projectId);
+  const unlinkEpics = useUnlinkEpics(projectId);
   const createIssue = useCreateIssue(projectId);
   const queryClient = useQueryClient();
 
@@ -98,6 +105,32 @@ export function RoadmapPage() {
         // The chart refetches on settle either way, so a rejected write
         // snaps the bar back to the truth rather than leaving a lie on screen.
         toast.error(errorMessage(err, 'Could not reschedule that item.')),
+    });
+  }
+
+  /*
+   * Dependencies, drawn by dragging between two bars.
+   *
+   * The server owns every rule (self-link, duplicate, reverse-duplicate,
+   * cross-project, MEMBER+), so the failure path here is to say what it said.
+   * A silent no-op would be worse than the old "go open the epic": you would
+   * have made the gesture, seen no arrow, and had nothing to explain it.
+   */
+  function onLink(input: { fromEpicId: string; toEpicId: string }) {
+    linkEpics.mutate(input, {
+      onError: (err) =>
+        toast.error(errorMessage(err, 'Could not add that dependency.')),
+    });
+  }
+
+  function onUnlink(input: {
+    linkId: string;
+    fromEpicId: string;
+    toEpicId: string;
+  }) {
+    unlinkEpics.mutate(input, {
+      onError: (err) =>
+        toast.error(errorMessage(err, 'Could not remove that dependency.')),
     });
   }
 
@@ -173,7 +206,9 @@ export function RoadmapPage() {
               onOpenEpic={openEpic}
               onSchedule={editable ? onSchedule : undefined}
               onCreate={editable ? onCreate : undefined}
-              isSaving={schedule.isPending}
+              onLink={editable ? onLink : undefined}
+              onUnlink={editable ? onUnlink : undefined}
+              isSaving={schedule.isPending || linkEpics.isPending || unlinkEpics.isPending}
             />
           ) : null}
         </section>

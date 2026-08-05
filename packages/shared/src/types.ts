@@ -736,6 +736,11 @@ export interface RoadmapMilestoneDto {
  * start — a plan that cannot happen in the order it claims.
  */
 export interface RoadmapDependencyDto {
+  /**
+   * The underlying `IssueLink` row id, so the chart can delete the dependency
+   * it just drew without a lookup round-trip.
+   */
+  id: string;
   /** The epic that must finish first. */
   fromEpicId: string;
   /** The epic that cannot start until `fromEpicId` is done. */
