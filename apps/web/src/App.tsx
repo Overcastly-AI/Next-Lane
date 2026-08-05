@@ -31,6 +31,7 @@ import { BacklogPage } from '@/pages/BacklogPage';
 import { DashboardsPage } from '@/pages/DashboardsPage';
 import { ReportsPage } from '@/pages/ReportsPage';
 import { RoadmapPage } from '@/pages/RoadmapPage';
+import { RoadmapPresentPage } from '@/pages/RoadmapPresentPage';
 import { SettingsPage } from '@/pages/SettingsPage';
 import { TriagePage } from '@/pages/TriagePage';
 import { ProfileSettingsPage } from '@/pages/ProfileSettingsPage';
@@ -82,6 +83,16 @@ const CHROMELESS_PREFIXES = [
 ];
 
 /**
+ * Chromeless by TERMINAL SEGMENT rather than by prefix.
+ *
+ * The prefixes above are whole route families that live at the root. A
+ * presenting view isn't a family — it's a leaf on a page that otherwise has
+ * full chrome (`/projects/:id/roadmap/present`), so it can't be expressed as a
+ * prefix without also hiding the shell for `/projects/:id/roadmap` itself.
+ */
+const CHROMELESS_SUFFIXES = ['/present'];
+
+/**
  * App.tsx-level shell: renders the persistent sidebar + mobile drawer as
  * SIBLINGS of the routed page content, not inside any per-page layout — so
  * they mount ONCE and simply re-render on navigation instead of remounting
@@ -93,7 +104,9 @@ const CHROMELESS_PREFIXES = [
 function AppShellFrame({ children }: { children: ReactNode }) {
   const { isAuthenticated } = useAuth();
   const { pathname } = useLocation();
-  const isChromeless = CHROMELESS_PREFIXES.some((p) => pathname.startsWith(p));
+  const isChromeless =
+    CHROMELESS_PREFIXES.some((p) => pathname.startsWith(p)) ||
+    CHROMELESS_SUFFIXES.some((p) => pathname.endsWith(p));
 
   if (!isAuthenticated || isChromeless) {
     return <>{children}</>;
@@ -245,6 +258,10 @@ export default function App() {
               <Route path="reports" element={<ReportsPage />} />
               <Route path="analytics" element={<ProjectAnalyticsPage />} />
               <Route path="roadmap" element={<RoadmapPage />} />
+              <Route
+                path="roadmap/present"
+                element={<RoadmapPresentPage />}
+              />
               <Route path="triage" element={<TriagePage />} />
               <Route path="automations" element={<AutomationsPage />} />
               <Route path="settings" element={<SettingsPage />} />

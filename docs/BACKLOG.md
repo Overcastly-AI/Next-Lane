@@ -817,6 +817,16 @@ _Hardening Night close-out ingest (2026-07-06) — P2s:_
 
 ## Already Done (recent shipments — ticked for reference)
 
+- [x] (P1, M) **Presenting mode: full-bleed read-only roadmap** ✅ 2026-08-05 [founder: *"we need a kiosk mode full bleed view for presenting the road map"*]
+  - `/projects/:id/roadmap/present`, entered from a **Present** button beside the chart. No sidebar, header, project nav, page title, or card — full-bleed reads as one surface.
+  - **Read-only by construction:** no mutation handlers are passed, and the chart already hides every affordance when they're absent. e2e asserts the *same admin* sees Create-epic and link handles on the normal chart and neither here.
+  - **Scoped with the founder first; declines recorded:** no health strip, no release countdown, no scaled type, no pre-flight filter, no unattended auto-scroll. Live presentation, mouse-driven. In-app full-bleed over the Fullscreen API (their call) keeps it deep-linkable.
+  - **Signature:** chrome fades after 2.5s of pointer stillness, returns on movement. Off under `prefers-reduced-motion`; never hidden while focused, since a keyboard user can't move a pointer to recover it.
+  - **Escape leaves only when nothing else is open** — closing the drawer and ending the presentation on one press would be a bad surprise mid-room.
+  - Chart is **centred, not stretched**: row geometry feeds the dependency-arrow offsets. `min-h-full` on the inner column keeps it from clipping the top once the plan outgrows the frame.
+  - New `CHROMELESS_SUFFIXES` in App.tsx: the existing prefixes are root-level route families, and this is a leaf under a fully-chromed page.
+  - `roadmap-present.spec.ts` 4/4 desktop+mobile; roadmap-gantt / roadmap / nav-sidebar regression 49 passed / 5 skipped; tsc + build clean.
+
 - [x] (P1, M) **Draw and remove epic dependencies on the Gantt** ✅ 2026-08-05 [founder: asked how epic linking works on the chart → *"Yes please"*]
   - The chart rendered BLOCKS arrows but couldn't create one — you had to open the epic's drawer, the exact context switch this screen removes.
   - **Draw:** hover an epic, drag the violet dot past its right edge onto another epic. Outside the bar, beyond the resize grip, so resize and link can't be confused. Dashed violet rubber band, target bar rings violet, Escape cancels.
