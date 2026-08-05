@@ -817,6 +817,12 @@ _Hardening Night close-out ingest (2026-07-06) — P2s:_
 
 ## Already Done (recent shipments — ticked for reference)
 
+- [x] (P1, S) **Done epics show green; drag tooltip legible in dark mode** ✅ 2026-08-05 [founder: *"If an epic is marked done it does not show green on the chart… the tooltip when dragging items for dates. It's white on white."*]
+  - **A field that shipped and was never read.** `RoadmapEpicDto.statusCategory` says *"for tinting the row"* in its own comment; the bar hardcoded `bg-signal-100`. A closed epic looked identical to an untouched one — and worse after the previous day's pass, because its child stories *did* go green, so the parent reads as bad data. `EPIC_COLORS` now drives bar, text, progress track, fill and resize grip together.
+  - **Dark-mode token bug.** The tooltip is `bg-ink-900` + hardcoded `text-white`, and `--nl-ink-900` is `#f3f5f8` in dark mode — white on white. Switched to `text-surface` (3 sites). The other `text-white`s sit on non-flipping palette colours and are correct.
+  - Legend group relabelled `Stories` → `Epics & stories`.
+  - Regression test **verified to fail against the old code** before keeping: computed background of a DONE epic bar must differ from an open one. roadmap-gantt 16 passed / 4 skipped, roadmap 4/4, tsc + build clean.
+
 - [x] (P0, M) **Roadmap Gantt visual audit — seven findings, all fixed** ✅ 2026-08-05 [founder: *"Launch and audit on this chart and find ways to improve. Then work on it"*]
   - **P0: mobile had no chart.** A fixed 248px rail on a 393px viewport left ~145px of grid — five epic rows, zero bars. Rail drops to 132px below 640px and sheds the key badge and `%`. (116px was worse: badge overlapped `%`, title collapsed to zero width — the re-shot screenshot showed it, an e2e failure confirmed it.)
   - **Status was unreadable.** Story bars were one grey outline whatever their state. Children now colour by `statusCategory`; `fromSprint` becomes a dashed border instead of owning the fill.
