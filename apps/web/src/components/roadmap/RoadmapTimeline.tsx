@@ -1173,10 +1173,22 @@ function ChildBar({
     endMs: number,
   ) => void;
 }) {
-  // A child whose window comes from its SPRINT has no dates of its own to
-  // move. Dragging it would either silently detach it from the sprint or
-  // silently move the sprint — both worse than not offering the gesture.
-  const draggable = editable && !child.fromSprint && !!child.start && !!child.end;
+  /*
+   * Every dated story is draggable, including one showing its SPRINT's dates.
+   *
+   * This used to refuse them, on the theory that dragging would "silently
+   * detach the story from its sprint". That was simply wrong: the sprint link
+   * is its own field, and writing startDate/dueDate does not touch it. The
+   * story stays in the sprint and gains explicit dates, which then take
+   * precedence for display — exactly the rollup rule the rest of this feature
+   * is built on.
+   *
+   * The practical cost of being wrong was severe: most teams put their stories
+   * in sprints, so in a real project nearly every story bar refused to move,
+   * which is the founder's report — "still cannot click and drag the stories
+   * to fix the schedule".
+   */
+  const draggable = editable && !!child.start && !!child.end;
 
   const hasWindow = !!child.start && !!child.end;
   const baseStart = hasWindow ? Date.parse(child.start as string) : 0;
@@ -1259,7 +1271,7 @@ function ChildBar({
         }
         title={
           child.fromSprint
-            ? `${child.key} · ${child.title} — dates come from ${child.sprintName ?? 'its sprint'}, so this bar is not draggable`
+            ? `${child.key} · ${child.title} — showing ${child.sprintName ?? 'its sprint'}'s dates. Drag to give it its own; it stays in the sprint.`
             : `${child.key} · ${child.title}`
         }
         aria-label={`${child.key} ${child.title}`}

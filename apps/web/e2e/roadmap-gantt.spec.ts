@@ -459,4 +459,90 @@ test.describe('Roadmap Gantt', () => {
       page.getByTestId('roadmap-child-unscheduled').first(),
     ).toBeVisible({ timeout: 15_000 });
   });
+
+  test('a story that shows its SPRINT dates is still draggable, and keeps its sprint', async ({
+    page,
+    request,
+  }) => {
+    test.skip(
+      test.info().project.name !== 'chromium-desktop',
+      'pointer drag is desktop-only by design — see the note above',
+    );
+    const { token, project } = await setupIsolatedProject(page, request, {
+      label: 'rm-sprintdrag',
+      projectName: 'Roadmap Sprint Drag QA',
+      openBoard: false,
+    });
+
+    const sprintRes = await request.post(
+      `${API_URL}/api/projects/${project.id}/sprints`,
+      {
+        headers: auth(token),
+        data: {
+          name: 'Sprint Z',
+          startDate: iso('2026-04-06'),
+          endDate: iso('2026-04-17'),
+        },
+      },
+    );
+    expect(sprintRes.ok()).toBeTruthy();
+    const sprintId = ((await sprintRes.json()) as { id: string }).id;
+
+    const epic = await createIssue(request, token, {
+      projectId: project.id,
+      type: 'EPIC',
+      title: 'Sprinted Epic',
+      startDate: iso('2026-04-01'),
+      dueDate: iso('2026-04-30'),
+    });
+    // NO dates of its own — its bar shows the sprint's window. This is the
+    // shape that refused to move, and it is the common one: most teams put
+    // their stories in sprints.
+    const story = await createIssue(request, token, {
+      projectId: project.id,
+      title: 'Story in a sprint',
+      parentId: epic.id,
+      sprintId,
+    });
+
+    await page.goto(`/projects/${project.id}/roadmap`);
+    await expect(page.getByTestId('roadmap-epic-bar').first()).toBeVisible({
+      timeout: 15_000,
+    });
+    await page.getByTestId('roadmap-zoom-week').click();
+    await page.getByTestId(`roadmap-epic-expand-${epic.id}`).click();
+
+    const childBar = page.getByTestId('roadmap-child-bar').first();
+    await expect(childBar).toBeVisible({ timeout: 15_000 });
+
+    const writes = trackApiWrites(page);
+    const box = (await childBar.boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(
+      box.x + box.width / 2 + 5 * 22,
+      box.y + box.height / 2,
+      { steps: 8 },
+    );
+    await page.mouse.up();
+
+    await writes.settle({
+      match: (w) => w.method === 'PATCH' && w.path.endsWith(`/api/issues/${story.id}`),
+      atLeast: 1,
+    });
+
+    // It gained its own dates, five days on from the sprint window...
+    const res = await request.get(`${API_URL}/api/issues/${story.id}`, {
+      headers: auth(token),
+    });
+    const after = (await res.json()) as {
+      startDate: string | null;
+      dueDate: string | null;
+      sprintId: string | null;
+    };
+    expect(dayOf(after.startDate)).toBe('2026-04-11');
+    expect(dayOf(after.dueDate)).toBe('2026-04-22');
+    // ...and is STILL in its sprint. Dragging schedules, it does not unassign.
+    expect(after.sprintId).toBe(sprintId);
+  });
 });
