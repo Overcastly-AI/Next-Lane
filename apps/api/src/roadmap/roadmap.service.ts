@@ -114,6 +114,7 @@ export class RoadmapService {
       orderBy: [{ createdAt: 'asc' }],
       include: {
         status: { select: { category: true } },
+        labels: { select: { labelId: true } },
         children: {
           select: {
             statusId: true,
@@ -223,6 +224,8 @@ export class RoadmapService {
         childrenOutside,
         fromSprints,
         fromOwnDates,
+        assigneeId: epic.assigneeId,
+        labelIds: epic.labels.map((l) => l.labelId),
       };
     });
 
@@ -291,6 +294,8 @@ export class RoadmapService {
         startDate: true,
         dueDate: true,
         status: { select: { category: true } },
+        assigneeId: true,
+        labels: { select: { labelId: true } },
         sprint: { select: { name: true, startDate: true, endDate: true } },
       },
       take: ROADMAP_EPIC_CHILDREN_CAP + 1,
@@ -317,6 +322,8 @@ export class RoadmapService {
         end: win.end ? win.end.toISOString() : null,
         fromSprint: win.fromSprint,
         sprintName: c.sprint?.name ?? null,
+        assigneeId: c.assigneeId,
+        labelIds: c.labels.map((l) => l.labelId),
       };
     });
 

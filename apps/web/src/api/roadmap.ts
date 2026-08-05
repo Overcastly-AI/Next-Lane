@@ -169,6 +169,40 @@ export function useLinkEpics(projectId: string) {
   });
 }
 
+/**
+ * Move an issue to a different epic and change NOTHING else.
+ *
+ * Distinct from `useScheduleIssue` because an UNDATED story has no window to
+ * send: routing it through the schedule mutation would post
+ * `startDate: null, dueDate: null` and write two "cleared" entries into the
+ * activity log for fields that were already empty. Reparenting is one fact;
+ * this sends one field.
+ */
+export function useReparentIssue(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation<
+    IssueDto,
+    Error,
+    { issueId: string; fromEpicId: string; toEpicId: string }
+  >({
+    mutationFn: ({ issueId, toEpicId }) =>
+      request<IssueDto>(`/issues/${issueId}`, {
+        method: 'PATCH',
+        body: { parentId: toEpicId },
+      }),
+    onSuccess: async (_r, vars) => {
+      await qc.cancelQueries({ queryKey: ['roadmap', projectId] });
+      await qc.invalidateQueries({ queryKey: ['roadmap', projectId] });
+      for (const epicId of [vars.fromEpicId, vars.toEpicId]) {
+        void qc.invalidateQueries({
+          queryKey: ['roadmap-epic-children', projectId, epicId],
+        });
+      }
+      void qc.invalidateQueries({ queryKey: qk.issue(vars.issueId) });
+    },
+  });
+}
+
 /** Remove a dependency drawn on the chart, by its `IssueLink` id. */
 export function useUnlinkEpics(projectId: string) {
   const qc = useQueryClient();

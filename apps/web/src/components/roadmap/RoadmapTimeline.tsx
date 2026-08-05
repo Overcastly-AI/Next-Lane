@@ -161,6 +161,13 @@ type RoadmapRow =
   | { kind: 'add-child'; epicId: string; y: number }
   | { kind: 'add-epic'; y: number };
 
+/**
+ * Sentinel for "has no assignee". A filter list that offers every person but
+ * not "nobody" cannot answer the question you usually have on a roadmap —
+ * which of this plan has an owner at all.
+ */
+const UNASSIGNED = '__unassigned__';
+
 type DragMode = 'move' | 'resize-start' | 'resize-end';
 
 interface DragState {
@@ -206,6 +213,15 @@ export interface RoadmapTimelineProps {
   isSaving?: boolean;
   /** Create an epic, or a story under one. Absent = read-only. */
   onCreate?: (input: { title: string; parentEpicId?: string }) => Promise<void>;
+  /** Move an issue to a different epic, changing nothing else. */
+  onReparent?: (input: {
+    issueId: string;
+    fromEpicId: string;
+    toEpicId: string;
+  }) => void;
+  /** People and labels for the filter pickers. Empty = that picker is hidden. */
+  users?: { id: string; name: string }[];
+  labels?: { id: string; name: string; color?: string | null }[];
   /** Draw a BLOCKS dependency between two epics. Absent = read-only. */
   onLink?: (input: { fromEpicId: string; toEpicId: string }) => void;
   /** Remove a dependency by its link id. Absent = read-only. */
@@ -225,6 +241,9 @@ export function RoadmapTimeline({
   onCreate,
   onLink,
   onUnlink,
+  users = [],
+  labels = [],
+  onReparent,
 }: RoadmapTimelineProps) {
   const [zoomId, setZoomId] = useState<ZoomId>('month');
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -263,6 +282,25 @@ export function RoadmapTimeline({
   const [gridWidth, setGridWidth] = useState(0);
   /** Which side of the time grid still has timeline off-screen. */
   const [edges, setEdges] = useState({ left: false, right: false });
+  /*
+   * Filters.
+   *
+   * The chart is capped at 500 epics and, until now, drew every one of them —
+   * which is unreadable, and the reason "is this better than Jira" was still a
+   * no on a real backlog. Filtering is CLIENT-side on purpose: the payload is
+   * already bounded by the cap, so re-querying the server to hide rows would
+   * add a round trip and a loading state to a control that should feel like a
+   * switch. It also means the rollups, the overrun marks and the dependency
+   * arrows keep being computed from the WHOLE plan — hiding a row must not
+   * quietly change what the remaining rows say about it.
+   */
+  const [hideDone, setHideDone] = useState(false);
+  const [assigneeFilter, setAssigneeFilter] = useState<string | null>(null);
+  const [labelFilter, setLabelFilter] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
+  const filtersActive =
+    hideDone || !!assigneeFilter || !!labelFilter || query.trim() !== '';
+
   const [narrow, setNarrow] = useState(
     () => typeof window !== 'undefined' && window.innerWidth < NARROW_PX,
   );
@@ -363,6 +401,82 @@ export function RoadmapTimeline({
     [railPref],
   );
 
+  /*
+   * Dragging an UNDATED story to another epic.
+   *
+   * It cannot ride the normal child drag, because that gesture is built on a
+   * window — an undated story has no bar to grab and nothing to move
+   * horizontally. Its row is a scheduling surface (drag across it to paint
+   * dates), so the reparent handle is a separate grip at the left of the row
+   * and this is its own small gesture: vertical only, one field written.
+   */
+  const [reparenting, setReparenting] = useState<{
+    childId: string;
+    fromEpicId: string;
+    pointerId: number;
+    overEpicId: string | null;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!reparenting) return;
+    const onMove = (e: PointerEvent) => {
+      if (e.pointerId !== reparenting.pointerId) return;
+      const lanes = lanesRef.current;
+      if (!lanes) return;
+      const y =
+        e.clientY - lanes.getBoundingClientRect().top - laneOffsetRef.current;
+      const row = rowsRef.current.find((r) => y >= r.y && y < r.y + ROW_H);
+      const owner =
+        row === undefined
+          ? null
+          : row.kind === 'epic'
+            ? row.epic.id
+            : 'epicId' in row
+              ? row.epicId
+              : null;
+      const over = owner && owner !== reparenting.fromEpicId ? owner : null;
+      setReparenting((p) => (p && p.overEpicId !== over ? { ...p, overEpicId: over } : p));
+    };
+    const onUp = () => {
+      setReparenting((p) => {
+        if (p?.overEpicId && onReparent) {
+          onReparent({
+            issueId: p.childId,
+            fromEpicId: p.fromEpicId,
+            toEpicId: p.overEpicId,
+          });
+        }
+        return null;
+      });
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setReparenting(null);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [reparenting, onReparent]);
+
+  const startReparent = useCallback(
+    (childId: string, fromEpicId: string, e: React.PointerEvent) => {
+      (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+      setReparenting({
+        childId,
+        fromEpicId,
+        pointerId: e.pointerId,
+        overEpicId: null,
+      });
+    },
+    [],
+  );
+
   const onDragKind = useCallback((kind: 'child', fromEpicId: string) => {
     dragKindRef.current = kind;
     dragParentRef.current = fromEpicId;
@@ -389,13 +503,41 @@ export function RoadmapTimeline({
   const expandedIds = useMemo(() => [...expanded], [expanded]);
   const childrenByEpic = useExpandedEpicChildren(projectId, expandedIds);
 
+  const matchesFilters = useCallback(
+    (e: { statusCategory: StatusCategory; assigneeId: string | null; labelIds: string[]; title: string; key: string }) => {
+      if (hideDone && e.statusCategory === StatusCategory.DONE) return false;
+      if (assigneeFilter === UNASSIGNED) {
+        if (e.assigneeId) return false;
+      } else if (assigneeFilter && e.assigneeId !== assigneeFilter) {
+        return false;
+      }
+      if (labelFilter && !e.labelIds.includes(labelFilter)) return false;
+      const q = query.trim().toLowerCase();
+      if (
+        q &&
+        !e.title.toLowerCase().includes(q) &&
+        !e.key.toLowerCase().includes(q)
+      ) {
+        return false;
+      }
+      return true;
+    },
+    [hideDone, assigneeFilter, labelFilter, query],
+  );
+
   const datedEpics = useMemo(
-    () => data.epics.filter((e) => e.start && e.end),
-    [data.epics],
+    () => data.epics.filter((e) => e.start && e.end).filter(matchesFilters),
+    [data.epics, matchesFilters],
+  );
+  /** How many dated epics the filters are currently hiding. */
+  const hiddenCount = useMemo(
+    () =>
+      data.epics.filter((e) => e.start && e.end).length - datedEpics.length,
+    [data.epics, datedEpics.length],
   );
   const noDateEpics = useMemo(
-    () => data.epics.filter((e) => !e.start || !e.end),
-    [data.epics],
+    () => data.epics.filter((e) => !e.start || !e.end).filter(matchesFilters),
+    [data.epics, matchesFilters],
   );
 
   const rawBounds = useMemo(
@@ -951,15 +1093,142 @@ export function RoadmapTimeline({
             <span className="inline-block h-3 w-0.5 bg-red-500" />
             Today
           </span>
+          {/*
+           * Two entries, not one.
+           *
+           * The legend said "Blocks" beside a grey line and stopped there, so
+           * the solid red state — the one that means the plan is impossible —
+           * was undocumented. Founder, having to ask: "why do some links show
+           * up as a red line and others are dotted". A legend that explains
+           * only the healthy case is why.
+           */}
           <span className="flex items-center gap-1.5">
-            <span className="inline-block h-0.5 w-4 bg-ink-400" />
+            <svg width="18" height="4" aria-hidden="true">
+              <line
+                x1="0"
+                y1="2"
+                x2="18"
+                y2="2"
+                strokeWidth="1.5"
+                strokeDasharray="3 3"
+                className="stroke-ink-400"
+              />
+            </svg>
             Blocks
+          </span>
+          <span className="flex items-center gap-1.5">
+            <svg width="18" height="4" aria-hidden="true">
+              <line
+                x1="0"
+                y1="2"
+                x2="18"
+                y2="2"
+                strokeWidth="1.5"
+                className="stroke-red-500"
+              />
+            </svg>
+            Blocker ends too late
           </span>
           <span className="flex items-center gap-1.5">
             <span className="nl-gantt-overrun inline-block h-2.5 w-4 rounded-sm" />
             Overruns plan
           </span>
         </div>
+      </div>
+
+      {/*
+       * Filters, on their own row.
+       *
+       * Not merged into the zoom/Today row: those change how you LOOK at the
+       * plan, these change what the plan IS on screen, and running them
+       * together made a single strip nobody could scan. The row also carries
+       * the count of what it is hiding — a filtered chart that looks like a
+       * short plan is the failure mode here, and a number is cheaper than
+       * discovering it later.
+       */}
+      <div className="flex flex-wrap items-center gap-2" data-testid="roadmap-filters">
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Filter by title or key"
+          aria-label="Filter epics by title or key"
+          data-testid="roadmap-filter-query"
+          className="w-48 rounded-md border border-ink-200 bg-surface px-2.5 py-1 text-xs text-ink-800 placeholder:text-ink-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-400"
+        />
+        <button
+          type="button"
+          role="switch"
+          aria-checked={hideDone}
+          data-testid="roadmap-filter-hide-done"
+          onClick={() => setHideDone((v) => !v)}
+          className={cn(
+            'rounded-md border px-2.5 py-1 text-xs font-medium transition-colors',
+            hideDone
+              ? 'border-signal-300 bg-signal-50 text-signal-700'
+              : 'border-ink-200 bg-surface text-ink-500 hover:bg-ink-100 hover:text-ink-900',
+          )}
+        >
+          Hide done
+        </button>
+        {users.length > 0 && (
+          <select
+            value={assigneeFilter ?? ''}
+            onChange={(e) => setAssigneeFilter(e.target.value || null)}
+            aria-label="Filter by assignee"
+            data-testid="roadmap-filter-assignee"
+            className={'rounded-md border border-ink-200 bg-surface px-2 py-1 text-xs font-medium text-ink-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-400'}
+          >
+            <option value="">Anyone</option>
+            <option value={UNASSIGNED}>Unassigned</option>
+            {users.map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.name}
+              </option>
+            ))}
+          </select>
+        )}
+        {labels.length > 0 && (
+          <select
+            value={labelFilter ?? ''}
+            onChange={(e) => setLabelFilter(e.target.value || null)}
+            aria-label="Filter by label"
+            data-testid="roadmap-filter-label"
+            className={'rounded-md border border-ink-200 bg-surface px-2 py-1 text-xs font-medium text-ink-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-400'}
+          >
+            <option value="">Any label</option>
+            {labels.map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.name}
+              </option>
+            ))}
+          </select>
+        )}
+        {filtersActive && (
+          <>
+            <span
+              data-testid="roadmap-filter-hidden-count"
+              className="text-xs text-ink-500"
+            >
+              {hiddenCount === 0
+                ? 'No epics hidden'
+                : `${hiddenCount} epic${hiddenCount === 1 ? '' : 's'} hidden`}
+            </span>
+            <button
+              type="button"
+              data-testid="roadmap-filter-clear"
+              onClick={() => {
+                setHideDone(false);
+                setAssigneeFilter(null);
+                setLabelFilter(null);
+                setQuery('');
+              }}
+              className="rounded-md px-2 py-1 text-xs font-medium text-signal-600 hover:bg-signal-50"
+            >
+              Clear
+            </button>
+          </>
+        )}
       </div>
 
       {editable && (
@@ -1317,7 +1586,10 @@ export function RoadmapTimeline({
                     linkable={!!onLink}
                     linking={linking?.fromEpicId === r.epic.id}
                     linkTarget={linking?.overEpicId === r.epic.id}
-                    reparentTarget={drag?.overEpicId === r.epic.id}
+                    reparentTarget={
+                      drag?.overEpicId === r.epic.id ||
+                      reparenting?.overEpicId === r.epic.id
+                    }
                     onLinkStart={(e) => startLink(r.epic.id, e)}
                     drag={drag?.id === r.epic.id ? drag : null}
                     onDragStart={(mode, e) => {
@@ -1370,6 +1642,12 @@ export function RoadmapTimeline({
                     onSchedulePainted={onSchedulePainted}
                     onDragKind={onDragKind}
                     epicKeyOf={(id) => epicKeyById.get(id) ?? 'epic'}
+                    reparentingId={reparenting?.childId ?? null}
+                    onReparentStart={
+                      onReparent
+                        ? (e) => startReparent(r.child.id, r.epicId, e)
+                        : undefined
+                    }
                   />
                 ) : r.kind === 'child-note' ? (
                   <div
@@ -1978,6 +2256,8 @@ function ChildBar({
   onSchedulePainted,
   onDragKind,
   epicKeyOf,
+  onReparentStart,
+  reparentingId,
 }: {
   child: RoadmapChildDto;
   epicId: string;
@@ -1985,6 +2265,10 @@ function ChildBar({
   onDragKind: (kind: 'child', fromEpicId: string) => void;
   /** Resolves an epic id to its key, for the reparent tooltip. */
   epicKeyOf: (epicId: string) => string;
+  /** Begin dragging an UNDATED story to another epic. Absent = not allowed. */
+  onReparentStart?: (e: React.PointerEvent) => void;
+  /** Id of the story currently being dragged between epics, if any. */
+  reparentingId?: string | null;
   scale: Scale;
   editable: boolean;
   drag: DragState | null;
@@ -2067,6 +2351,8 @@ function ChildBar({
         scale={scale}
         editable={editable}
         onSchedule={onSchedulePainted}
+        onReparentStart={onReparentStart}
+        moving={reparentingId === child.id}
       />
     );
   }
@@ -2158,6 +2444,8 @@ function UnscheduledChildRow({
   scale,
   editable,
   onSchedule,
+  onReparentStart,
+  moving,
 }: {
   child: RoadmapChildDto;
   epicId: string;
@@ -2169,6 +2457,10 @@ function UnscheduledChildRow({
     startMs: number,
     endMs: number,
   ) => void;
+  /** Absent when the chart cannot reparent — then no grip is drawn. */
+  onReparentStart?: (e: React.PointerEvent) => void;
+  /** This row is the one currently being dragged to another epic. */
+  moving?: boolean;
 }) {
   const rowRef = useRef<HTMLDivElement>(null);
   const [paint, setPaint] = useState<{ fromX: number; toX: number } | null>(null);
@@ -2243,9 +2535,53 @@ function UnscheduledChildRow({
         />
         </>
       ) : (
-        <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-[10px] italic text-ink-400">
-          {editable ? 'drag here to schedule' : 'no dates'}
-        </span>
+        <>
+          {/*
+           * The reparent grip.
+           *
+           * An undated story had no bar, so it was the one thing on this chart
+           * you could not move between epics — the row itself is a scheduling
+           * surface, and hijacking it for a second gesture would have made
+           * "drag here to schedule" a lie. A separate grip keeps both:
+           * anywhere on the row paints dates, the grip moves the story.
+           */}
+          {editable && onReparentStart && (
+            <span
+              role="button"
+              tabIndex={-1}
+              data-testid="roadmap-unscheduled-grip"
+              data-reparent-child={child.id}
+              title={`Drag ${child.key} onto another epic to move it there`}
+              aria-label={`Move ${child.key} ${child.title} to another epic`}
+              onPointerDown={(e) => {
+                if (!canDragWith(e)) return;
+                // The row underneath would otherwise start painting a window.
+                e.stopPropagation();
+                e.preventDefault();
+                onReparentStart(e);
+              }}
+              className={cn(
+                'absolute left-1.5 top-1/2 z-30 flex h-4 w-4 -translate-y-1/2 cursor-grab items-center justify-center rounded text-ink-400 transition-opacity active:cursor-grabbing',
+                'hover:bg-ink-200 hover:text-ink-700',
+                moving ? 'opacity-100' : 'opacity-0 group-hover:opacity-100',
+              )}
+            >
+              <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+                <g fill="currentColor">
+                  <circle cx="3" cy="2" r="1" />
+                  <circle cx="7" cy="2" r="1" />
+                  <circle cx="3" cy="5" r="1" />
+                  <circle cx="7" cy="5" r="1" />
+                  <circle cx="3" cy="8" r="1" />
+                  <circle cx="7" cy="8" r="1" />
+                </g>
+              </svg>
+            </span>
+          )}
+          <span className="pointer-events-none absolute left-7 top-1/2 -translate-y-1/2 text-[10px] italic text-ink-400">
+            {editable ? 'drag here to schedule' : 'no dates'}
+          </span>
+        </>
       )}
     </div>
   );
@@ -2355,6 +2691,20 @@ function DependencyLayer({
       : (x1 + STUB + (x2 - STUB)) / 2;
     const midY = forward ? (y1 + y2) / 2 : gutterY;
 
+    /*
+     * What this line means, in words, on hover.
+     *
+     * Colour and dash pattern encode it, and the legend now names both states
+     * — but neither tells you WHICH two epics, or by how much a red one
+     * misses. That is the question you actually have when you spot a red line
+     * on someone else's plan.
+     */
+    const endsOn = fmtDay(Date.parse(from.end));
+    const startsOn = fmtDay(Date.parse(to.start));
+    const label = dep.violated
+      ? `${from.key} blocks ${to.key}, but ${from.key} ends ${endsOn} — after ${to.key} starts ${startsOn}`
+      : `${from.key} blocks ${to.key} — ends ${endsOn}, before ${to.key} starts ${startsOn}`;
+
     return [
       {
         key: `${dep.fromEpicId}-${dep.toEpicId}`,
@@ -2363,6 +2713,7 @@ function DependencyLayer({
         toEpicId: dep.toEpicId,
         d,
         violated: dep.violated,
+        label,
         arrowX: x2,
         arrowY: y2,
         midX,
@@ -2400,6 +2751,7 @@ function DependencyLayer({
     >
       {paths.map((p) => (
         <g key={p.key}>
+          <title>{p.label}</title>
           {/*
            * A 1.5px line is not a pointer target. This invisible 14px-wide
            * twin carries the hover, and only the STROKE is hittable — the
@@ -2544,6 +2896,15 @@ function canDragWith(e: React.PointerEvent): boolean {
 }
 
 /** "+7d" / "−3d" — a signed day delta for the drag readout. */
+/** A single date, in the same short form the bars use for their windows. */
+function fmtDay(ms: number): string {
+  return new Date(ms).toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    timeZone: 'UTC',
+  });
+}
+
 function signedDays(n: number): string {
   if (n === 0) return '0d';
   return n > 0 ? `+${n}d` : `\u2212${Math.abs(n)}d`;

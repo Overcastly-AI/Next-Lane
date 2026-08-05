@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import type { StatusDto } from '@next-lane/shared';
-import { useUsers } from '@/api/meta';
+import { useLabels, useUsers } from '@/api/meta';
 import { IssueDetailDrawer } from '@/components/issue/IssueDetailDrawer';
 import { useBoard, useCreateIssue } from '@/api/issues';
 import { IssueType, Priority } from '@next-lane/shared';
@@ -10,6 +10,7 @@ import {
   useLinkEpics,
   useRoadmap,
   useScheduleIssue,
+  useReparentIssue,
   useUnlinkEpics,
 } from '@/api/roadmap';
 import { useToast } from '@/components/ui/Toast';
@@ -45,6 +46,7 @@ export function RoadmapPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const boardQuery = useBoard(projectId);
   const usersQuery = useUsers();
+  const labelsQuery = useLabels(projectId);
   const roadmapQuery = useRoadmap(projectId);
   const toast = useToast();
   const myRole = useMyRole(boardQuery.data?.project.workspaceId);
@@ -59,6 +61,7 @@ export function RoadmapPage() {
 
   const linkEpics = useLinkEpics(projectId);
   const unlinkEpics = useUnlinkEpics(projectId);
+  const reparent = useReparentIssue(projectId);
   const createIssue = useCreateIssue(projectId);
   const queryClient = useQueryClient();
 
@@ -129,6 +132,21 @@ export function RoadmapPage() {
     linkEpics.mutate(input, {
       onError: (err) =>
         toast.error(errorMessage(err, 'Could not add that dependency.')),
+    });
+  }
+
+  /*
+   * Move an undated story to another epic. Dated ones ride the schedule drag,
+   * which carries a window; this one has nothing to carry but the new parent.
+   */
+  function onReparent(input: {
+    issueId: string;
+    fromEpicId: string;
+    toEpicId: string;
+  }) {
+    reparent.mutate(input, {
+      onError: (err) =>
+        toast.error(errorMessage(err, 'Could not move that story.')),
     });
   }
 
@@ -238,6 +256,9 @@ export function RoadmapPage() {
               onOpenEpic={openEpic}
               onSchedule={editable ? onSchedule : undefined}
               onCreate={editable ? onCreate : undefined}
+              users={usersQuery.data ?? []}
+              labels={labelsQuery.data ?? []}
+              onReparent={editable ? onReparent : undefined}
               onLink={editable ? onLink : undefined}
               onUnlink={editable ? onUnlink : undefined}
               isSaving={schedule.isPending || linkEpics.isPending || unlinkEpics.isPending}
