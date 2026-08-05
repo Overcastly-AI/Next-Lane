@@ -144,6 +144,7 @@ export function RoadmapTimeline({
   const suppressClickRef = useRef(false);
 
   const editable = !!onSchedule;
+  const canCreate = !!onCreate;
   const zoom = zoomById(zoomId);
 
   const expandedIds = useMemo(() => [...expanded], [expanded]);
@@ -363,6 +364,8 @@ export function RoadmapTimeline({
       | { kind: 'epic'; epic: RoadmapEpicDto; y: number }
       | { kind: 'child'; epicId: string; child: RoadmapChildDto; y: number }
       | { kind: 'child-note'; epicId: string; text: string; y: number }
+      | { kind: 'add-child'; epicId: string; y: number }
+      | { kind: 'add-epic'; y: number }
     > = [];
     let y = 0;
     for (const epic of datedEpics) {
@@ -382,9 +385,21 @@ export function RoadmapTimeline({
           y += ROW_H;
         }
       }
+      // The create affordance sits directly under the last story of the epic
+      // it belongs to, the way Jira Cloud does it — a row in the chart rather
+      // than a control in a toolbar, so "add" is where the thing being added
+      // will appear.
+      if (canCreate && kids !== undefined) {
+        out.push({ kind: 'add-child', epicId: epic.id, y });
+        y += ROW_H;
+      }
+    }
+    if (canCreate) {
+      out.push({ kind: 'add-epic', y });
+      y += ROW_H;
     }
     return out;
-  }, [datedEpics, expanded, childrenByEpic]);
+  }, [datedEpics, expanded, childrenByEpic, canCreate]);
 
   const totalRowsHeight = rows.length > 0 ? rows[rows.length - 1].y + ROW_H : 0;
 
@@ -456,16 +471,6 @@ export function RoadmapTimeline({
           Skip weekends
         </button>
 
-        {onCreate && (
-          <button
-            type="button"
-            onClick={() => setCreatingUnder('epic')}
-            data-testid="roadmap-add-epic"
-            className="rounded-md border border-signal-300 bg-signal-50 px-2.5 py-1 text-xs font-medium text-signal-700 hover:bg-signal-100"
-          >
-            + Epic
-          </button>
-        )}
 
         <button
           type="button"
@@ -493,27 +498,6 @@ export function RoadmapTimeline({
           </span>
         </div>
       </div>
-
-      {onCreate && creatingUnder && (
-        <InlineCreate
-          label={
-            creatingUnder === 'epic'
-              ? 'New epic'
-              : `New story in ${datedEpics.find((e) => e.id === creatingUnder)?.key ?? 'epic'}`
-          }
-          onCancel={() => setCreatingUnder(null)}
-          onSubmit={async (title) => {
-            await onCreate({
-              title,
-              parentEpicId: creatingUnder === 'epic' ? undefined : creatingUnder,
-            });
-            setCreatingUnder(null);
-            if (creatingUnder !== 'epic') {
-              setExpanded((prev) => new Set(prev).add(creatingUnder));
-            }
-          }}
-        />
-      )}
 
       {editable && (
         <p className="text-xs text-ink-400">
@@ -551,9 +535,7 @@ export function RoadmapTimeline({
                 expanded={expanded.has(r.epic.id)}
                 onToggle={() => toggleExpand(r.epic.id)}
                 onOpen={() => onOpenEpic(r.epic.id)}
-                onAddStory={
-                  onCreate ? () => setCreatingUnder(r.epic.id) : undefined
-                }
+                canCreate={canCreate}
               />
             ) : r.kind === 'child' ? (
               <div
@@ -565,7 +547,7 @@ export function RoadmapTimeline({
                 <span className="nl-issue-key shrink-0 text-[10px]">{r.child.key}</span>
                 <span className="truncate text-[11px] text-ink-600">{r.child.title}</span>
               </div>
-            ) : (
+            ) : r.kind === 'child-note' ? (
               <div
                 key={`note-${r.epicId}`}
                 className="border-b border-ink-100 bg-ink-50/40 pl-8 pr-2 text-[11px] text-ink-400"
@@ -573,6 +555,31 @@ export function RoadmapTimeline({
               >
                 {r.text}
               </div>
+            ) : r.kind === 'add-child' ? (
+              <AddRow
+                key={`add-${r.epicId}`}
+                testId={`roadmap-add-story-${r.epicId}`}
+                label="Create story"
+                indented
+                active={creatingUnder === r.epicId}
+                onActivate={() => setCreatingUnder(r.epicId)}
+                onCancel={() => setCreatingUnder(null)}
+                onSubmit={async (title) => {
+                  await onCreate?.({ title, parentEpicId: r.epicId });
+                }}
+              />
+            ) : (
+              <AddRow
+                key="add-epic"
+                testId="roadmap-add-epic"
+                label="Create epic"
+                active={creatingUnder === 'epic'}
+                onActivate={() => setCreatingUnder('epic')}
+                onCancel={() => setCreatingUnder(null)}
+                onSubmit={async (title) => {
+                  await onCreate?.({ title });
+                }}
+              />
             ),
           )}
         </div>
@@ -746,10 +753,17 @@ export function RoadmapTimeline({
                     nudge={nudge}
                     onSchedulePainted={onSchedulePainted}
                   />
-                ) : (
+                ) : r.kind === 'child-note' ? (
                   <div
                     key={`barnote-${r.epicId}`}
                     className="border-b border-ink-100 bg-ink-50/40"
+                    style={{ height: ROW_H }}
+                  />
+                ) : (
+                  // Spacer keeping the grid aligned with the rail's add-rows.
+                  <div
+                    key={r.kind === 'add-child' ? `addbar-${r.epicId}` : 'addbar-epic'}
+                    className="border-b border-ink-100"
                     style={{ height: ROW_H }}
                   />
                 ),
@@ -816,13 +830,14 @@ function EpicRailRow({
   expanded,
   onToggle,
   onOpen,
-  onAddStory,
+  canCreate,
 }: {
   epic: RoadmapEpicDto;
   expanded: boolean;
   onToggle: () => void;
   onOpen: () => void;
-  onAddStory?: () => void;
+  /** Expanding a CHILDLESS epic is still useful when you can create one. */
+  canCreate: boolean;
 }) {
   return (
     <div
@@ -835,10 +850,13 @@ function EpicRailRow({
         data-testid={`roadmap-epic-expand-${epic.id}`}
         aria-expanded={expanded}
         aria-label={`${expanded ? 'Collapse' : 'Expand'} ${epic.key} ${epic.title}`}
-        disabled={epic.childCount === 0}
+        // An epic with no children was previously un-expandable, which made
+        // its "Create story" row unreachable — you could never add the FIRST
+        // story to an epic from the chart. Caught by e2e.
+        disabled={epic.childCount === 0 && !canCreate}
         className={cn(
           'flex h-5 w-5 shrink-0 items-center justify-center rounded text-ink-400',
-          epic.childCount === 0
+          epic.childCount === 0 && !canCreate
             ? 'invisible'
             : 'hover:bg-ink-200 hover:text-ink-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-400',
         )}
@@ -865,18 +883,6 @@ function EpicRailRow({
         <span className="nl-issue-key shrink-0 text-[10px]">{epic.key}</span>
         <span className="truncate text-xs font-medium text-ink-800">{epic.title}</span>
       </button>
-      {onAddStory && (
-        <button
-          type="button"
-          onClick={onAddStory}
-          data-testid={`roadmap-add-story-${epic.id}`}
-          aria-label={`Add a story to ${epic.key}`}
-          title={`Add a story to ${epic.key}`}
-          className="shrink-0 rounded px-1 text-sm leading-none text-ink-400 opacity-0 transition-opacity hover:bg-ink-200 hover:text-ink-800 focus:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-400 group-hover/rail:opacity-100"
-        >
-          +
-        </button>
-      )}
       <span className="shrink-0 text-[10px] font-semibold tabular-nums text-ink-400">
         {Math.round(epic.progress * 100)}%
       </span>
@@ -885,65 +891,100 @@ function EpicRailRow({
 }
 
 /**
- * A one-field inline creator. Deliberately title-only: the point is to capture
- * the thing while you are looking at the plan, then place it by dragging. A
- * modal with six fields would send you right back to context-switching, which
- * is the problem this screen is trying to remove.
+ * A create affordance shaped like a row, sitting directly beneath the things
+ * it creates — "+ Create epic" under the last epic, "+ Create story" under the
+ * last story of its epic. Jira Cloud puts it here and it is the right place:
+ * the control lives where the result will appear, so there is no hunting in a
+ * toolbar for something whose target is a specific row.
+ *
+ * Title only, on purpose. You place the thing by dragging it, and a modal with
+ * six fields would restore exactly the context switch this screen removes.
  */
-function InlineCreate({
+function AddRow({
+  testId,
   label,
-  onSubmit,
+  indented,
+  active,
+  onActivate,
   onCancel,
+  onSubmit,
 }: {
+  testId: string;
   label: string;
-  onSubmit: (title: string) => Promise<void>;
+  indented?: boolean;
+  active: boolean;
+  onActivate: () => void;
   onCancel: () => void;
+  onSubmit: (title: string) => Promise<void>;
 }) {
   const [title, setTitle] = useState('');
   const [busy, setBusy] = useState(false);
+
+  async function submit() {
+    const t = title.trim();
+    if (!t || busy) return;
+    setBusy(true);
+    try {
+      await onSubmit(t);
+      // Stay open so several can be added in a row — the common case when you
+      // are filling in a plan.
+      setTitle('');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!active) {
+    return (
+      <div
+        className={cn('border-b border-ink-100', indented && 'bg-ink-50/40')}
+        style={{ height: ROW_H }}
+      >
+        <button
+          type="button"
+          onClick={onActivate}
+          data-testid={testId}
+          className={cn(
+            'flex h-full w-full items-center gap-1.5 pr-2 text-left text-[11px] font-medium text-ink-400',
+            'hover:bg-ink-100 hover:text-ink-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-400',
+            indented ? 'pl-8' : 'pl-2',
+          )}
+        >
+          <span aria-hidden="true" className="text-sm leading-none">+</span>
+          {label}
+        </button>
+      </div>
+    );
+  }
+
   return (
-    <form
-      data-testid="roadmap-inline-create"
-      className="flex items-center gap-2 rounded-lg border border-signal-200 bg-signal-50/60 p-2"
-      onSubmit={async (e) => {
-        e.preventDefault();
-        const t = title.trim();
-        if (!t || busy) return;
-        setBusy(true);
-        try {
-          await onSubmit(t);
-        } finally {
-          setBusy(false);
-        }
-      }}
+    <div
+      className={cn(
+        'flex items-center gap-1 border-b border-ink-100 pr-1',
+        indented ? 'bg-ink-50/40 pl-7' : 'pl-1',
+      )}
+      style={{ height: ROW_H }}
     >
-      <span className="shrink-0 text-xs font-medium text-signal-800">{label}</span>
       <input
         autoFocus
         value={title}
+        disabled={busy}
         onChange={(e) => setTitle(e.target.value)}
-        onKeyDown={(e) => e.key === 'Escape' && onCancel()}
-        placeholder="Title…"
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            void submit();
+          } else if (e.key === 'Escape') {
+            onCancel();
+          }
+        }}
+        onBlur={() => !title.trim() && onCancel()}
+        placeholder={`${label}…`}
         aria-label={label}
-        data-testid="roadmap-inline-create-title"
-        className="min-w-0 flex-1 rounded-md border border-ink-200 bg-surface px-2 py-1 text-sm text-ink-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-400"
+        data-testid={`${testId}-input`}
+        className="min-w-0 flex-1 rounded border border-signal-300 bg-surface px-1.5 py-0.5 text-[11px] text-ink-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-400"
       />
-      <button
-        type="submit"
-        disabled={busy || !title.trim()}
-        data-testid="roadmap-inline-create-submit"
-        className="rounded-md bg-signal-600 px-2.5 py-1 text-xs font-medium text-white disabled:opacity-50"
-      >
-        {busy ? 'Adding…' : 'Add'}
-      </button>
-      <button
-        type="button"
-        onClick={onCancel}
-        className="rounded-md px-2 py-1 text-xs text-ink-500 hover:bg-ink-100"
-      >
-        Cancel
-      </button>
-    </form>
+    </div>
   );
 }
 

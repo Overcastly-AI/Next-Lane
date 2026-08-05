@@ -410,4 +410,53 @@ test.describe('Roadmap Gantt', () => {
       timeout: 15_000,
     });
   });
+
+  test('create rows sit under what they create, and adding stays open for the next one', async ({
+    page,
+    request,
+  }) => {
+    const { token, project } = await setupIsolatedProject(page, request, {
+      label: 'rm-create',
+      projectName: 'Roadmap Create QA',
+      openBoard: false,
+    });
+    const epic = await createIssue(request, token, {
+      projectId: project.id,
+      type: 'EPIC',
+      title: 'Host Epic',
+      startDate: iso('2026-04-01'),
+      dueDate: iso('2026-04-30'),
+    });
+
+    await page.goto(`/projects/${project.id}/roadmap`);
+    await expect(page.getByTestId('roadmap-epic-bar').first()).toBeVisible({
+      timeout: 15_000,
+    });
+
+    // "Create epic" is a row in the chart, below the epics — not a toolbar
+    // button. Adding one should leave the field open so a plan can be typed in
+    // one go.
+    await page.getByTestId('roadmap-add-epic').click();
+    const epicInput = page.getByTestId('roadmap-add-epic-input');
+    await epicInput.fill('Second Epic');
+    await epicInput.press('Enter');
+    await expect(page.getByText('Second Epic').first()).toBeVisible({ timeout: 15_000 });
+    await expect(epicInput).toBeVisible();
+
+    // "Create story" appears under the epic's own stories once it is expanded.
+    await page.keyboard.press('Escape');
+    await page.getByTestId(`roadmap-epic-expand-${epic.id}`).click();
+    const addStory = page.getByTestId(`roadmap-add-story-${epic.id}`);
+    await expect(addStory).toBeVisible({ timeout: 15_000 });
+    await addStory.click();
+    const storyInput = page.getByTestId(`roadmap-add-story-${epic.id}-input`);
+    await storyInput.fill('Fresh story');
+    await storyInput.press('Enter');
+
+    // It lands undated on purpose, so its row is an empty scheduling lane.
+    await expect(page.getByText('Fresh story').first()).toBeVisible({ timeout: 15_000 });
+    await expect(
+      page.getByTestId('roadmap-child-unscheduled').first(),
+    ).toBeVisible({ timeout: 15_000 });
+  });
 });
