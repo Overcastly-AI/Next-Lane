@@ -4,6 +4,7 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
+import { IssueLinkType } from '@next-lane/shared';
 import type {
   IssueDto,
   RoadmapChildDto,
@@ -126,6 +127,46 @@ export function useScheduleIssue(projectId: string) {
       }
       void qc.invalidateQueries({ queryKey: qk.issue(vars.issueId) });
       void qc.invalidateQueries({ queryKey: qk.board(projectId) });
+    },
+  });
+}
+
+/**
+ * Create a BLOCKS dependency between two epics by dragging on the chart.
+ *
+ * The server owns every rule worth enforcing — self-links, cross-project
+ * targets, duplicates and reverse-duplicates all come back as 400/404/409 with
+ * a usable message — so this deliberately validates nothing beyond what the
+ * gesture already guarantees, and surfaces the server's own wording.
+ */
+export function useLinkEpics(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation<unknown, Error, { fromEpicId: string; toEpicId: string }>({
+    mutationFn: ({ fromEpicId, toEpicId }) =>
+      request(`/issues/${fromEpicId}/links`, {
+        method: 'POST',
+        body: { target: toEpicId, type: IssueLinkType.BLOCKS },
+      }),
+    onSuccess: async (_r, vars) => {
+      await qc.cancelQueries({ queryKey: ['roadmap', projectId] });
+      await qc.invalidateQueries({ queryKey: ['roadmap', projectId] });
+      void qc.invalidateQueries({ queryKey: qk.issueLinks(vars.fromEpicId) });
+      void qc.invalidateQueries({ queryKey: qk.issueLinks(vars.toEpicId) });
+    },
+  });
+}
+
+/** Remove a dependency drawn on the chart, by its `IssueLink` id. */
+export function useUnlinkEpics(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation<void, Error, { linkId: string; fromEpicId: string; toEpicId: string }>({
+    mutationFn: ({ linkId }) =>
+      request<void>(`/issue-links/${linkId}`, { method: 'DELETE' }),
+    onSuccess: async (_r, vars) => {
+      await qc.cancelQueries({ queryKey: ['roadmap', projectId] });
+      await qc.invalidateQueries({ queryKey: ['roadmap', projectId] });
+      void qc.invalidateQueries({ queryKey: qk.issueLinks(vars.fromEpicId) });
+      void qc.invalidateQueries({ queryKey: qk.issueLinks(vars.toEpicId) });
     },
   });
 }

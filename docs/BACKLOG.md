@@ -817,6 +817,15 @@ _Hardening Night close-out ingest (2026-07-06) — P2s:_
 
 ## Already Done (recent shipments — ticked for reference)
 
+- [x] (P1, M) **Draw and remove epic dependencies on the Gantt** ✅ 2026-08-05 [founder: asked how epic linking works on the chart → *"Yes please"*]
+  - The chart rendered BLOCKS arrows but couldn't create one — you had to open the epic's drawer, the exact context switch this screen removes.
+  - **Draw:** hover an epic, drag the violet dot past its right edge onto another epic. Outside the bar, beyond the resize grip, so resize and link can't be confused. Dashed violet rubber band, target bar rings violet, Escape cancels.
+  - **Drop target via `elementFromPoint`,** not enter/leave: the source holds pointer capture, so bars under the cursor never get a `pointerover`. Band coordinates are grid-relative so it stays glued to the calendar when the grid scrolls mid-drag.
+  - **Remove:** hover a line → × at the elbow (a gap between bars by construction). A 1.5px stroke isn't a pointer target, so an invisible 14px twin carries the hover with `pointer-events: stroke`; the layer stays `pointer-events-none` so an elbow's empty bounding box never steals a bar's click. `RoadmapDependencyDto` gained `id`.
+  - **No client-side validation on purpose** — the server rejects self-links, cross-project, duplicates and reverse-duplicates with usable messages and enforces MEMBER+; the UI surfaces its wording. A silent no-op would be worse than the old behaviour.
+  - **Bug found by looking at the result:** the overrun badge was gated on `childrenOutside > 0` but printed `overrunDays` — a child starting *before* its epic gave a meaningless "+0d". Now `−Nd` / `+Nd`, or nothing.
+  - e2e drives the real gesture and asserts the arrow **and** the server-side link, then removes it and asserts the DELETE. roadmap-gantt 16 / 5 skipped, roadmap 4/4, 53 api unit tests, tsc + build clean.
+
 - [x] (P1, S) **Done epics show green; drag tooltip legible in dark mode** ✅ 2026-08-05 [founder: *"If an epic is marked done it does not show green on the chart… the tooltip when dragging items for dates. It's white on white."*]
   - **A field that shipped and was never read.** `RoadmapEpicDto.statusCategory` says *"for tinting the row"* in its own comment; the bar hardcoded `bg-signal-100`. A closed epic looked identical to an untouched one — and worse after the previous day's pass, because its child stories *did* go green, so the parent reads as bad data. `EPIC_COLORS` now drives bar, text, progress track, fill and resize grip together.
   - **Dark-mode token bug.** The tooltip is `bg-ink-900` + hardcoded `text-white`, and `--nl-ink-900` is `#f3f5f8` in dark mode — white on white. Switched to `text-surface` (3 sites). The other `text-white`s sit on non-flipping palette colours and are correct.

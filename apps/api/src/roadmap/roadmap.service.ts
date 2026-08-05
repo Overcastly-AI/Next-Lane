@@ -383,7 +383,7 @@ export class RoadmapService {
         sourceId: { in: ids },
         targetId: { in: ids },
       },
-      select: { sourceId: true, targetId: true },
+      select: { id: true, sourceId: true, targetId: true },
     });
 
     return links.map((l) => {
@@ -392,6 +392,7 @@ export class RoadmapService {
       const fromEnd = from?.end ? Date.parse(from.end) : null;
       const toStart = to?.start ? Date.parse(to.start) : null;
       return {
+        id: l.id,
         fromEpicId: l.sourceId,
         toEpicId: l.targetId,
         violated:

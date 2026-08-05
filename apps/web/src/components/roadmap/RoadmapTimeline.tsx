@@ -167,6 +167,14 @@ export interface RoadmapTimelineProps {
   isSaving?: boolean;
   /** Create an epic, or a story under one. Absent = read-only. */
   onCreate?: (input: { title: string; parentEpicId?: string }) => Promise<void>;
+  /** Draw a BLOCKS dependency between two epics. Absent = read-only. */
+  onLink?: (input: { fromEpicId: string; toEpicId: string }) => void;
+  /** Remove a dependency by its link id. Absent = read-only. */
+  onUnlink?: (input: {
+    linkId: string;
+    fromEpicId: string;
+    toEpicId: string;
+  }) => void;
 }
 
 export function RoadmapTimeline({
@@ -176,10 +184,29 @@ export function RoadmapTimeline({
   projectId,
   isSaving,
   onCreate,
+  onLink,
+  onUnlink,
 }: RoadmapTimelineProps) {
   const [zoomId, setZoomId] = useState<ZoomId>('month');
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [drag, setDrag] = useState<DragState | null>(null);
+  /*
+   * Drawing a dependency. Held here rather than in the bar because the gesture
+   * spans two bars and a rubber-band line that belongs to neither: the source
+   * releases the pointer the moment you leave it.
+   *
+   * `x`/`y` are in GRID coordinates (the scrolling content, not the viewport),
+   * so the rubber band stays glued to the calendar if the grid scrolls
+   * mid-drag — which it does, because dragging toward the edge is how you
+   * reach an epic that is off-screen.
+   */
+  const [linking, setLinking] = useState<{
+    fromEpicId: string;
+    pointerId: number;
+    x: number;
+    y: number;
+    overEpicId: string | null;
+  } | null>(null);
   const [liveMessage, setLiveMessage] = useState('');
   /*
    * Extra months of empty future kept on the axis beyond what the plan spans.
@@ -561,6 +588,79 @@ export function RoadmapTimeline({
 
   const totalRowsHeight = rows.length > 0 ? rows[rows.length - 1].y + ROW_H : 0;
 
+  const lanesRef = useRef<HTMLDivElement>(null);
+
+  /*
+   * Drawing a dependency: window-level pointer tracking, same reasoning as the
+   * schedule drag. The gesture starts on the source bar's connector dot and
+   * ends anywhere — pointer capture on the source plus window listeners is the
+   * only way it survives leaving a 20px-tall element.
+   *
+   * The drop target is resolved with `elementFromPoint` rather than per-bar
+   * enter/leave handlers: the source bar has pointer capture, so the bars
+   * underneath the cursor never receive a pointerover at all.
+   */
+  useEffect(() => {
+    if (!linking) return;
+    const onMove = (e: PointerEvent) => {
+      if (e.pointerId !== linking.pointerId) return;
+      const lanes = lanesRef.current;
+      if (!lanes) return;
+      const box = lanes.getBoundingClientRect();
+      const hit = document.elementFromPoint(e.clientX, e.clientY);
+      const bar = hit?.closest?.('[data-epic-id]') as HTMLElement | null;
+      const over = bar?.dataset.epicId ?? null;
+      setLinking((prev) =>
+        prev
+          ? {
+              ...prev,
+              x: e.clientX - box.left,
+              y: e.clientY - box.top,
+              overEpicId: over && over !== prev.fromEpicId ? over : null,
+            }
+          : prev,
+      );
+    };
+    const onUp = () => {
+      setLinking((prev) => {
+        if (prev?.overEpicId && onLink) {
+          onLink({ fromEpicId: prev.fromEpicId, toEpicId: prev.overEpicId });
+        }
+        return null;
+      });
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setLinking(null);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [linking, onLink]);
+
+  const startLink = useCallback(
+    (epicId: string, e: React.PointerEvent) => {
+      const lanes = lanesRef.current;
+      if (!lanes) return;
+      const box = lanes.getBoundingClientRect();
+      (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+      setLinking({
+        fromEpicId: epicId,
+        pointerId: e.pointerId,
+        x: e.clientX - box.left,
+        y: e.clientY - box.top,
+        overEpicId: null,
+      });
+    },
+    [],
+  );
+
   const epicYById = useMemo(() => {
     const m = new Map<string, number>();
     for (const r of rows) if (r.kind === 'epic') m.set(r.epic.id, r.y);
@@ -669,6 +769,10 @@ export function RoadmapTimeline({
             Today
           </span>
           <span className="flex items-center gap-1.5">
+            <span className="inline-block h-0.5 w-4 bg-ink-400" />
+            Blocks
+          </span>
+          <span className="flex items-center gap-1.5">
             <span className="nl-gantt-overrun inline-block h-2.5 w-4 rounded-sm" />
             Overruns plan
           </span>
@@ -679,6 +783,14 @@ export function RoadmapTimeline({
         <p className="text-xs text-ink-400">
           Drag a bar to move it, drag either edge to resize. With a bar focused,
           Alt + ← / → moves it a day and Alt + Shift + ← / → changes its end.
+          {onLink && (
+            <>
+              {' '}
+              Hover an epic and drag the dot past its right edge onto another
+              epic to say it blocks that one; hover a dependency line to remove
+              it.
+            </>
+          )}
         </p>
       )}
 
@@ -810,7 +922,7 @@ export function RoadmapTimeline({
             </div>
 
             {/* Lanes */}
-            <div className="relative bg-surface">
+            <div ref={lanesRef} className="relative bg-surface">
               {/* Weekend bands, behind everything. Only drawn when a day is
                   wide enough to read as a band — see `weekendBands`. */}
               {skipWeekends &&
@@ -887,6 +999,7 @@ export function RoadmapTimeline({
                 scale={scale}
                 epicYById={epicYById}
                 height={totalRowsHeight}
+                onUnlink={onUnlink}
                 // Row offsets are measured from the first EPIC row, but the
                 // sprint lane renders above them inside the same container.
                 // Without this the overlay sat one lane high and every arrow
@@ -902,6 +1015,10 @@ export function RoadmapTimeline({
                     epic={r.epic}
                     scale={scale}
                     editable={editable}
+                    linkable={!!onLink}
+                    linking={linking?.fromEpicId === r.epic.id}
+                    linkTarget={linking?.overEpicId === r.epic.id}
+                    onLinkStart={(e) => startLink(r.epic.id, e)}
                     drag={drag?.id === r.epic.id ? drag : null}
                     onDragStart={(mode, e) => {
                       setDrag({
@@ -963,6 +1080,50 @@ export function RoadmapTimeline({
                     style={{ height: ROW_H }}
                   />
                 ),
+              )}
+
+              {/*
+               * The rubber band. Drawn last so it is above every bar — a line
+               * that disappears behind the thing you are aiming at tells you
+               * nothing. Dashed and violet to match the handle, and distinct
+               * from both the grey committed arrows and the red violated ones.
+               */}
+              {linking && (
+                <svg
+                  className="pointer-events-none absolute inset-0 z-40"
+                  width={scale.widthPx}
+                  height={
+                    totalRowsHeight +
+                    (data.sprints.length > 0 ? ROW_H + LANE_GAP : 0)
+                  }
+                  aria-hidden="true"
+                  data-testid="roadmap-link-rubberband"
+                >
+                  {(() => {
+                    const epic = datedEpics.find(
+                      (e) => e.id === linking.fromEpicId,
+                    );
+                    const y0 = epicYById.get(linking.fromEpicId);
+                    if (!epic?.end || y0 === undefined) return null;
+                    const laneOffset =
+                      data.sprints.length > 0 ? ROW_H + LANE_GAP : 0;
+                    const x0 = scale.xOf(Date.parse(epic.end));
+                    return (
+                      <path
+                        d={`M ${x0} ${y0 + laneOffset + ROW_H / 2} L ${linking.x} ${linking.y}`}
+                        fill="none"
+                        strokeWidth={2}
+                        strokeDasharray="4 3"
+                        strokeLinecap="round"
+                        className={
+                          linking.overEpicId
+                            ? 'stroke-violet-600'
+                            : 'stroke-violet-400'
+                        }
+                      />
+                    );
+                  })()}
+                </svg>
               )}
 
               {rows.length === 0 && (
@@ -1214,6 +1375,10 @@ function EpicBarRow({
   epic,
   scale,
   editable,
+  linkable,
+  linking,
+  linkTarget,
+  onLinkStart,
   drag,
   onDragStart,
   onDragEnd,
@@ -1224,6 +1389,14 @@ function EpicBarRow({
   epic: RoadmapEpicDto;
   scale: Scale;
   editable: boolean;
+  /** Dependencies can be drawn (MEMBER+). Separate from `editable` only so a
+   *  read-only chart never shows a handle that would fail on drop. */
+  linkable: boolean;
+  /** This bar is the source of the dependency currently being drawn. */
+  linking: boolean;
+  /** The pointer is over this bar while a dependency is being drawn. */
+  linkTarget: boolean;
+  onLinkStart: (e: React.PointerEvent) => void;
   skipWeekends: boolean;
   drag: DragState | null;
   onDragStart: (mode: DragMode, e: React.PointerEvent) => void;
@@ -1294,6 +1467,8 @@ function EpicBarRow({
           tone.bar,
           editable && 'cursor-grab active:cursor-grabbing',
           drag?.moved && 'z-30 shadow-card ring-2 ring-signal-400',
+          linkTarget && 'z-30 ring-2 ring-violet-500',
+          linking && 'ring-2 ring-violet-400',
         )}
         style={{ left, width, top: (ROW_H - BAR_H) / 2, height: BAR_H }}
       >
@@ -1356,9 +1531,32 @@ function EpicBarRow({
               {fmtRange(preview.start, preview.end)}
             </span>
           )}
-          {epic.childrenOutside > 0 && (
-            <span className="ml-auto shrink-0 rounded bg-amber-400/90 px-1 text-[9px] font-bold text-amber-950">
-              +{epic.overrunDays}d
+          {/*
+           * Gated on the number it is about to print, not on
+           * `childrenOutside`. Those are different questions: a child that
+           * starts BEFORE its epic is outside the window but contributes
+           * `underrunDays`, not `overrunDays` — so the badge rendered a
+           * meaningless "+0d". It now says which end is spilling, and says
+           * nothing when neither does.
+           */}
+          {(epic.overrunDays > 0 || epic.underrunDays > 0) && (
+            <span
+              data-testid="roadmap-epic-spill"
+              title={[
+                epic.underrunDays > 0
+                  ? `Children start ${epic.underrunDays}d before this epic`
+                  : null,
+                epic.overrunDays > 0
+                  ? `Children run ${epic.overrunDays}d past this epic`
+                  : null,
+              ]
+                .filter(Boolean)
+                .join(' · ')}
+              className="ml-auto shrink-0 rounded bg-amber-400/90 px-1 text-[9px] font-bold text-amber-950"
+            >
+              {epic.underrunDays > 0 && `−${epic.underrunDays}d`}
+              {epic.underrunDays > 0 && epic.overrunDays > 0 && ' '}
+              {epic.overrunDays > 0 && `+${epic.overrunDays}d`}
             </span>
           )}
         </span>
@@ -1376,6 +1574,44 @@ function EpicBarRow({
               onPointerDown={(e) => onDragStart('resize-end', e)}
             />
           </>
+        )}
+
+        {/*
+         * Dependency handle. Sits OUTSIDE the bar's right edge, past the
+         * resize grip, so the two gestures can't be confused: grabbing the
+         * edge resizes, grabbing the dot draws a dependency.
+         *
+         * Visible on hover and focus only — one dot per epic, always shown,
+         * would add a column of noise to a chart whose whole problem is
+         * density. It stays visible for the duration of a draw so you can see
+         * where the line is anchored.
+         */}
+        {linkable && (
+          <span
+            role="button"
+            tabIndex={-1}
+            data-testid="roadmap-link-handle"
+            data-link-from={epic.id}
+            title={`Drag to an epic that ${epic.key} blocks`}
+            aria-label={`Draw a dependency from ${epic.key}`}
+            onPointerDown={(e) => {
+              if (!canDragWith(e)) return;
+              e.stopPropagation();
+              e.preventDefault();
+              onLinkStart(e);
+            }}
+            // A pointerdown on the handle never becomes a click on the bar,
+            // but the browser still fires one on pointerup; swallow it so
+            // finishing a draw doesn't also open the issue drawer.
+            onClick={(e) => e.stopPropagation()}
+            className={cn(
+              'absolute top-1/2 z-30 -mt-[5px] -mr-[13px] right-0 h-2.5 w-2.5 cursor-crosshair rounded-full',
+              'border-2 border-surface bg-violet-500 shadow-xs transition-opacity',
+              linking
+                ? 'opacity-100'
+                : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100',
+            )}
+          />
         )}
       </button>
 
@@ -1711,13 +1947,21 @@ function DependencyLayer({
   epicYById,
   height,
   offsetY,
+  onUnlink,
 }: {
   data: RoadmapDto;
   scale: Scale;
   epicYById: Map<string, number>;
   height: number;
   offsetY: number;
+  /** Absent on a read-only chart: no hover target, no remove control. */
+  onUnlink?: (input: {
+    linkId: string;
+    fromEpicId: string;
+    toEpicId: string;
+  }) => void;
 }) {
+  const [hovered, setHovered] = useState<string | null>(null);
   const epicById = useMemo(
     () => new Map(data.epics.map((e) => [e.id, e])),
     [data.epics],
@@ -1759,13 +2003,30 @@ function DependencyLayer({
       ? `M ${x1} ${y1} H ${Math.max(x1 + STUB, x2 - STUB)} V ${y2} H ${x2}`
       : `M ${x1} ${y1} H ${x1 + STUB} V ${gutterY} H ${x2 - STUB} V ${y2} H ${x2}`;
 
+    /*
+     * Where the remove control sits. On a forward elbow that is the vertical
+     * run between the two rows; on a backward one it is the gutter segment.
+     * Both are gaps between bars by construction, which is the whole point —
+     * a control parked on top of a bar would be unreachable at the density
+     * this chart runs at.
+     */
+    const midX = forward
+      ? Math.max(x1 + STUB, x2 - STUB)
+      : (x1 + STUB + (x2 - STUB)) / 2;
+    const midY = forward ? (y1 + y2) / 2 : gutterY;
+
     return [
       {
         key: `${dep.fromEpicId}-${dep.toEpicId}`,
+        id: dep.id,
+        fromEpicId: dep.fromEpicId,
+        toEpicId: dep.toEpicId,
         d,
         violated: dep.violated,
         arrowX: x2,
         arrowY: y2,
+        midX,
+        midY,
       },
     ];
   });
@@ -1778,15 +2039,34 @@ function DependencyLayer({
       style={{ top: offsetY }}
       width={scale.widthPx}
       height={height}
-      aria-hidden="true"
+      aria-hidden={onUnlink ? undefined : true}
       data-testid="roadmap-dependency-layer"
     >
       {paths.map((p) => (
         <g key={p.key}>
+          {/*
+           * A 1.5px line is not a pointer target. This invisible 14px-wide
+           * twin carries the hover, and only the STROKE is hittable — the
+           * layer stays `pointer-events-none` overall, so the large empty
+           * bounding box of an elbow never steals a click meant for a bar.
+           */}
+          {onUnlink && (
+            <path
+              d={p.d}
+              fill="none"
+              stroke="transparent"
+              strokeWidth={14}
+              style={{ pointerEvents: 'stroke' }}
+              onPointerEnter={() => setHovered(p.key)}
+              onPointerLeave={() =>
+                setHovered((h) => (h === p.key ? null : h))
+              }
+            />
+          )}
           <path
             d={p.d}
             fill="none"
-            strokeWidth={1.5}
+            strokeWidth={hovered === p.key ? 2.5 : 1.5}
             strokeDasharray={p.violated ? undefined : '3 3'}
             className={p.violated ? 'stroke-red-500' : 'stroke-ink-400'}
           />
@@ -1796,6 +2076,39 @@ function DependencyLayer({
             r={3}
             className={p.violated ? 'fill-red-500' : 'fill-ink-400'}
           />
+          {onUnlink && hovered === p.key && (
+            <g
+              data-testid="roadmap-dependency-remove"
+              data-link-id={p.id}
+              role="button"
+              tabIndex={-1}
+              aria-label="Remove dependency"
+              style={{ pointerEvents: 'all', cursor: 'pointer' }}
+              onPointerEnter={() => setHovered(p.key)}
+              onClick={() =>
+                onUnlink({
+                  linkId: p.id,
+                  fromEpicId: p.fromEpicId,
+                  toEpicId: p.toEpicId,
+                })
+              }
+            >
+              <title>Remove dependency</title>
+              <circle
+                cx={p.midX}
+                cy={p.midY}
+                r={7}
+                className="fill-surface stroke-ink-400"
+                strokeWidth={1}
+              />
+              <path
+                d={`M ${p.midX - 3} ${p.midY - 3} L ${p.midX + 3} ${p.midY + 3} M ${p.midX + 3} ${p.midY - 3} L ${p.midX - 3} ${p.midY + 3}`}
+                strokeWidth={1.5}
+                strokeLinecap="round"
+                className="stroke-ink-600"
+              />
+            </g>
+          )}
         </g>
       ))}
     </svg>
