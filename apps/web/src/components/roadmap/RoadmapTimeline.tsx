@@ -81,6 +81,43 @@ const SPRINT_COLORS: Record<SprintState, { bar: string; dot: string; label: stri
 };
 
 /**
+ * Epic bars. `RoadmapEpicDto.statusCategory` has always shipped — its own
+ * comment says "for tinting the row" — and the bar ignored it, so an epic you
+ * had marked Done stayed the same blue as one nobody had started. The story
+ * bars beneath it went green; their parent didn't, which read as a bug in the
+ * data rather than a gap in the chart.
+ *
+ * `track`/`fill` keep the progress bar in the same family as the bar it sits
+ * on, so a done epic isn't a green bar with a blue stripe under it.
+ */
+const EPIC_COLORS: Record<
+  StatusCategory,
+  { bar: string; text: string; track: string; fill: string; grip: string }
+> = {
+  [StatusCategory.TODO]: {
+    bar: 'border-ink-300 bg-ink-100 hover:shadow-card focus-visible:ring-ink-400',
+    text: 'text-ink-800',
+    track: 'bg-ink-200',
+    fill: 'bg-ink-400',
+    grip: 'bg-ink-400',
+  },
+  [StatusCategory.IN_PROGRESS]: {
+    bar: 'border-signal-300 bg-signal-100 hover:shadow-card focus-visible:ring-signal-400',
+    text: 'text-signal-900',
+    track: 'bg-signal-200',
+    fill: 'bg-signal-500',
+    grip: 'bg-signal-500',
+  },
+  [StatusCategory.DONE]: {
+    bar: 'border-emerald-400 bg-emerald-100 hover:shadow-card focus-visible:ring-emerald-500',
+    text: 'text-emerald-900',
+    track: 'bg-emerald-200',
+    fill: 'bg-emerald-500',
+    grip: 'bg-emerald-500',
+  },
+};
+
+/**
  * Story bars used to be one flat grey outline whatever their state, so a
  * finished story and a not-started one were pixel-identical. On a roadmap the
  * first question is "are we on track", and the chart could not answer it
@@ -619,7 +656,7 @@ export function RoadmapTimeline({
             ))}
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="font-medium text-ink-400">Stories</span>
+            <span className="font-medium text-ink-400">Epics &amp; stories</span>
             {(Object.keys(CHILD_COLORS) as StatusCategory[]).map((sc) => (
               <span key={sc} className="flex items-center gap-1">
                 <span className={cn('inline-block h-2.5 w-2.5 rounded-sm', CHILD_COLORS[sc].dot)} />
@@ -1203,6 +1240,7 @@ function EpicBarRow({
   const left = scale.xOf(preview.start);
   const width = Math.max(8, scale.xOf(preview.end) - left);
   const fill = Math.round(epic.progress * 100);
+  const tone = EPIC_COLORS[epic.statusCategory];
 
   // The overrun tail: from the committed end to where the children actually
   // reach. Drawn as a separate hatched element rather than by lengthening the
@@ -1252,7 +1290,8 @@ function EpicBarRow({
         aria-label={epicTitle(epic)}
         className={cn(
           'group absolute flex items-center overflow-visible rounded-md border text-left shadow-xs transition-shadow',
-          'border-signal-300 bg-signal-100 hover:shadow-card focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-400',
+          'focus:outline-none focus-visible:ring-2',
+          tone.bar,
           editable && 'cursor-grab active:cursor-grabbing',
           drag?.moved && 'z-30 shadow-card ring-2 ring-signal-400',
         )}
@@ -1269,11 +1308,14 @@ function EpicBarRow({
          * across the row, and it never competes with the label above it.
          */}
         <span
-          className="absolute inset-x-0 bottom-0 h-1 overflow-hidden rounded-b-md bg-signal-200"
+          className={cn(
+            'absolute inset-x-0 bottom-0 h-1 overflow-hidden rounded-b-md',
+            tone.track,
+          )}
           aria-hidden="true"
         >
           <span
-            className="block h-full rounded-r-sm bg-signal-500"
+            className={cn('block h-full rounded-r-sm', tone.fill)}
             style={{ width: `${fill}%` }}
           />
         </span>
@@ -1281,7 +1323,7 @@ function EpicBarRow({
             what the window becomes. Without it a drag is guesswork — you drop
             the bar and only then find out where it landed. */}
         {drag?.moved && (
-          <span className="pointer-events-none absolute -top-6 left-0 z-40 whitespace-nowrap rounded bg-ink-900 px-1.5 py-0.5 text-[10px] font-semibold text-white shadow-card">
+          <span className="pointer-events-none absolute -top-6 left-0 z-40 whitespace-nowrap rounded bg-ink-900 px-1.5 py-0.5 text-[10px] font-semibold text-surface shadow-card">
             {signedDays(drag.dayDelta)} · {fmtRange(preview.start, preview.end)}
             {skipWeekends && (
               <span className="ml-1 opacity-70">
@@ -1291,7 +1333,7 @@ function EpicBarRow({
           </span>
         )}
         <span className="relative z-10 flex w-full items-center gap-1.5 overflow-hidden px-1.5">
-          <span className="truncate text-[11px] font-medium text-signal-900">
+          <span className={cn('truncate text-[11px] font-medium', tone.text)}>
             {epic.title}
           </span>
           {/* The window in words. Until now the only way to read an epic's
@@ -1306,7 +1348,10 @@ function EpicBarRow({
           {width >= 170 && !drag?.moved && (
             <span
               data-testid="roadmap-epic-dates"
-              className="shrink-0 whitespace-nowrap text-[10px] tabular-nums text-signal-700"
+              className={cn(
+                'shrink-0 whitespace-nowrap text-[10px] tabular-nums opacity-80',
+                tone.text,
+              )}
             >
               {fmtRange(preview.start, preview.end)}
             </span>
@@ -1320,8 +1365,16 @@ function EpicBarRow({
 
         {editable && (
           <>
-            <ResizeGrip side="start" onPointerDown={(e) => onDragStart('resize-start', e)} />
-            <ResizeGrip side="end" onPointerDown={(e) => onDragStart('resize-end', e)} />
+            <ResizeGrip
+              side="start"
+              tone={tone.grip}
+              onPointerDown={(e) => onDragStart('resize-start', e)}
+            />
+            <ResizeGrip
+              side="end"
+              tone={tone.grip}
+              onPointerDown={(e) => onDragStart('resize-end', e)}
+            />
           </>
         )}
       </button>
@@ -1333,9 +1386,12 @@ function EpicBarRow({
 function ResizeGrip({
   side,
   onPointerDown,
+  tone,
 }: {
   side: 'start' | 'end';
   onPointerDown: (e: React.PointerEvent) => void;
+  /** Matches the bar it grips, so a done epic's handle isn't blue. */
+  tone: string;
 }) {
   return (
     <span
@@ -1346,9 +1402,10 @@ function ResizeGrip({
         onPointerDown(e);
       }}
       className={cn(
-        'absolute inset-y-0 z-20 w-2 cursor-ew-resize opacity-0 transition-opacity group-hover:opacity-100',
+        'absolute inset-y-0 z-20 w-2 cursor-ew-resize transition-opacity',
         side === 'start' ? 'left-0 rounded-l-md' : 'right-0 rounded-r-md',
-        'bg-signal-500/40',
+        tone,
+        'opacity-0 group-hover:opacity-40',
       )}
     />
   );
@@ -1506,7 +1563,7 @@ function ChildBar({
       >
         <span className="truncate px-1.5">{child.title}</span>
         {drag?.moved && (
-          <span className="pointer-events-none absolute -top-6 left-0 z-40 whitespace-nowrap rounded bg-ink-900 px-1.5 py-0.5 text-[10px] font-semibold text-white shadow-card">
+          <span className="pointer-events-none absolute -top-6 left-0 z-40 whitespace-nowrap rounded bg-ink-900 px-1.5 py-0.5 text-[10px] font-semibold text-surface shadow-card">
             {signedDays(drag.dayDelta)} · {fmtRange(preview.start, preview.end)}
           </span>
         )}
@@ -1599,7 +1656,7 @@ function UnscheduledChildRow({
     >
       {paint ? (
         <>
-        <span className="pointer-events-none absolute -top-1 z-40 whitespace-nowrap rounded bg-ink-900 px-1.5 py-0.5 text-[10px] font-semibold text-white shadow-card" style={{ left }}>
+        <span className="pointer-events-none absolute -top-1 z-40 whitespace-nowrap rounded bg-ink-900 px-1.5 py-0.5 text-[10px] font-semibold text-surface shadow-card" style={{ left }}>
           {Math.max(1, daysBetween(scale.dayAtX(Math.min(paint.fromX, paint.toX)), scale.dayAtX(Math.max(paint.fromX, paint.toX))))}d
         </span>
         <div

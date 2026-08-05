@@ -545,4 +545,76 @@ test.describe('Roadmap Gantt', () => {
     // ...and is STILL in its sprint. Dragging schedules, it does not unassign.
     expect(after.sprintId).toBe(sprintId);
   });
+
+  test('an epic bar is tinted by its own status — a done epic reads done', async ({
+    page,
+    request,
+  }) => {
+    const { token, project } = await setupIsolatedProject(page, request, {
+      label: 'rm-tone',
+      projectName: 'Roadmap Tone QA',
+      openBoard: false,
+    });
+
+    /*
+     * Founder report: "If an epic is marked done it does not show green on the
+     * chart." `RoadmapEpicDto.statusCategory` had shipped from the start — its
+     * own comment says "for tinting the row" — and the bar ignored it, so an
+     * epic you had closed stayed the same blue as one nobody had started while
+     * its child stories underneath it went green. That reads as the data being
+     * wrong rather than the chart being incomplete.
+     *
+     * Asserted on the computed background rather than a class name: the point
+     * is that the two bars are visibly different, which survives a repaint of
+     * the palette. Both are read from the same property so a null/transparent
+     * result can't accidentally satisfy it.
+     */
+    const statusRes = await request.get(
+      `${API_URL}/api/projects/${project.id}/statuses`,
+      { headers: auth(token) },
+    );
+    expect(statusRes.ok()).toBeTruthy();
+    const statuses = (await statusRes.json()) as {
+      id: string;
+      category: string;
+    }[];
+    const doneStatus = statuses.find((s) => s.category === 'DONE')!;
+    expect(doneStatus, 'project has a DONE status').toBeTruthy();
+
+    const openEpic = await createIssue(request, token, {
+      projectId: project.id,
+      type: 'EPIC',
+      title: 'Still Open Epic',
+      startDate: iso('2026-04-01'),
+      dueDate: iso('2026-04-30'),
+    });
+    const doneEpic = await createIssue(request, token, {
+      projectId: project.id,
+      type: 'EPIC',
+      title: 'Finished Epic',
+      startDate: iso('2026-05-01'),
+      dueDate: iso('2026-05-30'),
+    });
+    const patch = await request.patch(`${API_URL}/api/issues/${doneEpic.id}`, {
+      headers: auth(token),
+      data: { statusId: doneStatus.id },
+    });
+    expect(patch.ok(), `mark done failed: ${patch.status()}`).toBeTruthy();
+
+    await page.goto(`/projects/${project.id}/roadmap`);
+    const openBar = page.locator(`[data-epic-id="${openEpic.id}"]`);
+    const doneBar = page.locator(`[data-epic-id="${doneEpic.id}"]`);
+    await expect(openBar).toBeVisible({ timeout: 15_000 });
+    await expect(doneBar).toBeVisible({ timeout: 15_000 });
+
+    const bg = (l: typeof openBar) =>
+      l.evaluate((el) => getComputedStyle(el).backgroundColor);
+    const openBg = await bg(openBar);
+    const doneBg = await bg(doneBar);
+    expect(openBg).not.toBe('rgba(0, 0, 0, 0)');
+    expect(doneBg).not.toBe('rgba(0, 0, 0, 0)');
+    expect(doneBg, 'a done epic must not paint the same as an open one').not.toBe(
+      openBg,
+    );
+  });
 });
