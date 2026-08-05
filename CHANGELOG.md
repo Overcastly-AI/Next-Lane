@@ -16,6 +16,14 @@ staged here by hand (see [`RELEASING.md`](./RELEASING.md))._
 
 ---
 
+## [0.11.0] — 2026-08-05
+
+[Compare with v0.10.3](https://github.com/Overcastly-AI/Next-Lane/compare/v0.10.3...v0.11.0)
+
+### Features
+
+* **roadmap:** draw and remove epic dependencies on the Gantt ([#74](https://github.com/Overcastly-AI/Next-Lane/issues/74)) ([f1f5a2d](https://github.com/Overcastly-AI/Next-Lane/commit/f1f5a2db15bedee2534efafd3dbb680bc797601c))
+
 ## [0.10.3] — 2026-08-05
 
 [Compare with v0.10.2](https://github.com/Overcastly-AI/Next-Lane/compare/v0.10.2...v0.10.3)
