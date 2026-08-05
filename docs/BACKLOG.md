@@ -817,6 +817,13 @@ _Hardening Night close-out ingest (2026-07-06) — P2s:_
 
 ## Already Done (recent shipments — ticked for reference)
 
+- [x] (P1, S) **Resizable epic column + dependency lines behind the bars** ✅ 2026-08-05 [founder: *"story titles are getting cut off"* / *"linking line should have a lower z index then the cards it's self"*]
+  - Rail was a fixed 248px (~20 chars), so the column whose job is naming things truncated the names. Now dragged from the divider, clamped 160–560, persisted, double-click to reset, arrow-key resizable. Narrow phone layout stays fixed — it's a different design, not a smaller one.
+  - **The z-order comment was lying:** the overlay was `z-10` while claiming to sit under the bars, and the bars had no z-index — a positive z-index beats `z-auto` regardless of DOM order.
+  - **The obvious fix is wrong, and e2e caught it:** `z-0` and `z-auto` share one painting layer ordered by tree position, so dropping the overlay to `z-0` put it behind every row div and made the remove-dependency control unhittable. Raise the **bars** to `z-20` instead: rows (auto) < arrows (10) < bars (20). Today marker to `z-[25]` so it stays the top reading aid.
+  - Both asserted by **hit-testing** (`elementFromPoint` over a linked bar must return the bar), not by class name — the class name was never the thing that was wrong.
+  - roadmap-gantt + roadmap + roadmap-present 29 passed / 7 skipped; tsc + build clean.
+
 - [x] (P1, M) **Drag a story from one epic to another on the Gantt** ✅ 2026-08-05 [founder: *"give me the ability to drag sub items from epic to epic"*]
   - A child bar meant two things and only one was draggable: horizontal position = schedule, containing block = parent. Reparenting meant leaving for the drawer.
   - **Destination from row geometry, not `elementFromPoint`** — the dragged bar is the topmost element under the pointer for most of the gesture, so DOM hit-testing answers "the thing you're dragging". The `rows` array already knows each row's `y` and owning epic.

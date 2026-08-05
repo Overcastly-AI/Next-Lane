@@ -840,4 +840,126 @@ test.describe('Roadmap Gantt', () => {
     const grown = (await epicAfter.json()) as { dueDate: string | null };
     expect(dayOf(grown.dueDate)).toBe('2026-04-14');
   });
+
+  test('the epic column can be resized, and the width sticks', async ({
+    page,
+    request,
+  }) => {
+    test.skip(
+      test.info().project.name !== 'chromium-desktop',
+      'the rail is a fixed narrow layout on mobile and deliberately not resizable',
+    );
+    const { token, project } = await setupIsolatedProject(page, request, {
+      label: 'rm-rail',
+      projectName: 'Roadmap Rail QA',
+      openBoard: false,
+    });
+    /*
+     * Founder: "the left hand epic and story list should be resizable. Story
+     * titles are getting cut off." 248px fits about twenty characters, and the
+     * column whose entire job is naming things was truncating the names.
+     */
+    await createIssue(request, token, {
+      projectId: project.id,
+      type: 'EPIC',
+      title: 'An epic with a deliberately long descriptive title',
+      startDate: iso('2026-04-01'),
+      dueDate: iso('2026-04-30'),
+    });
+
+    await page.goto(`/projects/${project.id}/roadmap`);
+    const handle = page.getByTestId('roadmap-rail-resize');
+    await expect(handle).toBeVisible({ timeout: 15_000 });
+
+    const railWidth = () =>
+      page
+        .getByTestId('roadmap-rail')
+        .evaluate((el) => (el as HTMLElement).offsetWidth);
+
+    const hb = (await handle.boundingBox())!;
+    await page.mouse.move(hb.x + hb.width / 2, hb.y + 60);
+    await page.mouse.down();
+    await page.mouse.move(hb.x + hb.width / 2 + 140, hb.y + 60, { steps: 12 });
+    await page.mouse.up();
+
+    // Widened, and remembered across a reload — a width you have to re-drag
+    // every visit is not a preference.
+    await expect
+      .poll(() => page.evaluate(() => localStorage.getItem('nl_roadmap_rail_w')))
+      .toBe('388');
+    await page.reload();
+    await expect(page.getByTestId('roadmap-epic-bar').first()).toBeVisible({
+      timeout: 15_000,
+    });
+    expect(await railWidth()).toBe(388);
+
+    // Double-click resets — the convention for a resizable divider, and the
+    // only way back if it has been dragged somewhere unusable.
+    await page.getByTestId('roadmap-rail-resize').dblclick();
+    await expect
+      .poll(() => page.evaluate(() => localStorage.getItem('nl_roadmap_rail_w')))
+      .toBe('248');
+  });
+
+  test('dependency lines are drawn UNDER the bars they connect', async ({
+    page,
+    request,
+  }) => {
+    const { token, project } = await setupIsolatedProject(page, request, {
+      label: 'rm-zorder',
+      projectName: 'Roadmap Z QA',
+      openBoard: false,
+    });
+    /*
+     * Founder: "linking line should have a lower z index then the cards it's
+     * self. I noticed lines overlapping certain gantt items."
+     *
+     * The overlay was `z-10` while the bars carried no z-index at all, and a
+     * positive z-index paints above `z-auto` regardless of DOM order — so
+     * every arrow was drawn straight over the cards it connects, despite a
+     * comment in the source claiming the opposite.
+     *
+     * Asserted by hit-testing rather than by reading class names: what matters
+     * is which element is actually on top at a point where they overlap.
+     */
+    const a = await createIssue(request, token, {
+      projectId: project.id,
+      type: 'EPIC',
+      title: 'Blocker Z',
+      startDate: iso('2026-04-01'),
+      dueDate: iso('2026-04-20'),
+    });
+    const bEpic = await createIssue(request, token, {
+      projectId: project.id,
+      type: 'EPIC',
+      title: 'Blocked Z',
+      startDate: iso('2026-05-01'),
+      dueDate: iso('2026-05-20'),
+    });
+    const link = await request.post(`${API_URL}/api/issues/${a.id}/links`, {
+      headers: auth(token),
+      data: { target: bEpic.id, type: 'BLOCKS' },
+    });
+    expect(link.ok(), `link failed: ${link.status()}`).toBeTruthy();
+
+    await page.goto(`/projects/${project.id}/roadmap`);
+    await expect(page.getByTestId('roadmap-dependency-layer')).toBeVisible({
+      timeout: 15_000,
+    });
+
+    for (const id of [a.id, bEpic.id]) {
+      const onTop = await page.evaluate((epicId) => {
+        const bar = document.querySelector(`[data-epic-id="${epicId}"]`)!;
+        const r = bar.getBoundingClientRect();
+        const el = document.elementFromPoint(
+          r.left + r.width / 2,
+          r.top + r.height / 2,
+        );
+        return el?.closest('[data-testid="roadmap-dependency-layer"]')
+          ? 'dependency-layer'
+          : 'bar';
+      }, id);
+      expect(onTop, `an arrow is painted over ${id}`).toBe('bar');
+    }
+  });
 });
