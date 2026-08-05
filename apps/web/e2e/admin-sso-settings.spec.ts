@@ -134,10 +134,26 @@ test.describe('Admin SSO settings — instance admin (serial: desktop then mobil
   test.describe('desktop', () => {
     test.use({ viewport: { width: 1280, height: 800 } });
 
-    test('sidebar shows the SSO nav entry for the instance admin', async ({ page }) => {
+    test('the user menu, not the sidebar, is how an instance admin reaches SSO', async ({
+      page,
+    }) => {
       await login(page, DEMO);
-      await expect(page.getByTestId('nav-sidebar-admin-sso')).toBeVisible();
-      await page.getByTestId('nav-sidebar-admin-sso').click();
+
+      /*
+       * SSO used to own a labelled sidebar group, permanently, for something
+       * you configure once when you stand the instance up. Founder: "why is
+       * the SSO / OIDC in the main navigation?? This should be on a settings
+       * page." It moved to "Instance settings" in the user menu — the
+       * conventional home for instance-wide administration — behind `/admin`,
+       * which lands on the SSO page while it is the only section.
+       */
+      await expect(page.getByTestId('nav-sidebar-admin-sso')).toHaveCount(0);
+
+      await page.getByTestId('user-menu-button').click();
+      const entry = page.getByTestId('user-menu-instance-settings');
+      await expect(entry).toBeVisible({ timeout: 5_000 });
+      await entry.click();
+
       await expect(page).toHaveURL(/\/admin\/sso/);
       await expect(page.getByTestId('admin-sso-form')).toBeVisible();
     });
@@ -246,13 +262,12 @@ test.describe('Admin SSO settings — instance admin (serial: desktop then mobil
   test.describe('mobile', () => {
     test.use({ viewport: { width: 393, height: 852 } });
 
-    test('configuring + enabling SSO via the drawer nav, no horizontal overflow', async ({ page }) => {
+    test('configuring + enabling SSO via the user menu, no horizontal overflow', async ({ page }) => {
       await login(page, DEMO);
 
-      await page.getByTestId('nav-sidebar-drawer-toggle').click();
-      const drawer = page.getByTestId('nav-sidebar-drawer');
-      await expect(drawer).toBeVisible({ timeout: 5_000 });
-      await drawer.getByTestId('nav-sidebar-admin-sso').click();
+      // The user menu is the only route in now, on mobile as on desktop.
+      await page.getByTestId('user-menu-button').click();
+      await page.getByTestId('user-menu-instance-settings').click();
       await expect(page).toHaveURL(/\/admin\/sso/);
 
       const form = page.getByTestId('admin-sso-form');

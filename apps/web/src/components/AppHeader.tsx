@@ -325,6 +325,29 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
               >
                 Profile settings
               </button>
+              {/*
+               * Instance settings — SSO/OIDC and anything else that applies to
+               * the whole install rather than to one workspace.
+               *
+               * Here rather than in the sidebar, which it used to occupy as a
+               * permanently-visible labelled group. You configure SSO once,
+               * when you stand the instance up; the sidebar is for the places
+               * you go every day. Gated on `isInstanceAdmin`, a strictly
+               * narrower check than workspace ADMIN, exactly as the page
+               * itself gates.
+               */}
+              {user?.isInstanceAdmin && (
+                <button
+                  data-testid="user-menu-instance-settings"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    navigate('/admin');
+                  }}
+                  className="w-full px-3 py-2 text-left text-sm text-ink-700 transition-colors duration-[120ms] hover:bg-ink-50 hover:text-ink-900 focus-visible:outline-none focus-visible:bg-ink-50"
+                >
+                  Instance settings
+                </button>
+              )}
               <button
                 onClick={logout}
                 className="w-full px-3 py-2 text-left text-sm text-ink-700 transition-colors duration-[120ms] hover:bg-ink-50 hover:text-ink-900 focus-visible:outline-none focus-visible:bg-ink-50"

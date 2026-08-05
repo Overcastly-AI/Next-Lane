@@ -817,6 +817,13 @@ _Hardening Night close-out ingest (2026-07-06) — P2s:_
 
 ## Already Done (recent shipments — ticked for reference)
 
+- [x] (P1, S) **Config out of the sidebar: Branding → settings hub, SSO → Instance settings** ✅ 2026-08-05 [founder: *"why is the SSO / OIDC in the main navigation?? This should be on a settings page. Along with branding."*]
+  - A deliberate reversal of the Phase-2 IA call. Both were promoted to the sidebar to fix "branding is lost", and that fix worked by giving once-a-year config permanent space beside the board and roadmap.
+  - **Branding**: removed from the nav. Already one click away via the workspace settings hub's existing General/Members/Audit log/Branding tab strip.
+  - **SSO/OIDC**: removed its whole "Instance admin" sidebar group. Now behind **Instance settings** in the user menu, `isInstanceAdmin`-gated, `/admin` front door, `/admin/sso` still resolves. Deliberately NOT under workspace settings — it applies to every workspace on the install.
+  - **My own bug, caught by a test I'd have called unrelated:** a `/* … */` comment at JSX position renders as literal text (JSX needs `{/* … */}`), which made the rail taller and pushed the collapse toggle out of the 1024px viewport. Verified against a stashed baseline before fixing.
+  - The two specs asserting the OLD placement were rewritten to assert the new one, not deleted. 89 passed across nav-sidebar, admin-sso, workspace-switcher, workspace-branding, board, pages-qa-extra, roadmap.
+
 - [x] (P1, S) **Issue edits refresh the Gantt live** ✅ 2026-08-05 [founder: *"I have to reload the page for it to work"*]
   - `invalidateBoardFamily` — the chokepoint all 15 issue-mutation call sites funnel through — refreshed the board and board views but had never been told about the roadmap. Any edit from any surface left the chart stale until a reload.
   - Fixed at the chokepoint, not in the drawer: one call site would have left fourteen with the same bug. Costs nothing when the roadmap is closed (React Query only refetches active queries).
