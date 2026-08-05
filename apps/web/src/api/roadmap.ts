@@ -94,6 +94,12 @@ export interface ScheduleInput {
   dueDate: string | null;
   /** The epic whose expanded child list should refresh, when dragging a child. */
   parentEpicId?: string;
+  /**
+   * Set only when the drag also moved the item into a DIFFERENT epic. Sent as
+   * `parentId`, which the issues endpoint already validates for
+   * same-project-ness and hierarchy cycles.
+   */
+  newParentEpicId?: string;
 }
 
 /**
@@ -112,17 +118,24 @@ export interface ScheduleInput {
 export function useScheduleIssue(projectId: string) {
   const qc = useQueryClient();
   return useMutation<IssueDto, Error, ScheduleInput>({
-    mutationFn: ({ issueId, startDate, dueDate }) =>
+    mutationFn: ({ issueId, startDate, dueDate, newParentEpicId }) =>
       request<IssueDto>(`/issues/${issueId}`, {
         method: 'PATCH',
-        body: { startDate, dueDate },
+        body: {
+          startDate,
+          dueDate,
+          ...(newParentEpicId ? { parentId: newParentEpicId } : {}),
+        },
       }),
     onSuccess: async (_updated, vars) => {
       await qc.cancelQueries({ queryKey: ['roadmap', projectId] });
       await qc.invalidateQueries({ queryKey: ['roadmap', projectId] });
-      if (vars.parentEpicId) {
+      // BOTH epics, when a story changed hands: the one it left has a row too
+      // many until it refetches, and the one it joined has a row too few.
+      for (const epicId of [vars.parentEpicId, vars.newParentEpicId]) {
+        if (!epicId) continue;
         void qc.invalidateQueries({
-          queryKey: ['roadmap-epic-children', projectId, vars.parentEpicId],
+          queryKey: ['roadmap-epic-children', projectId, epicId],
         });
       }
       void qc.invalidateQueries({ queryKey: qk.issue(vars.issueId) });

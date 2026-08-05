@@ -1133,7 +1133,19 @@ export class IssuesService {
       include: listInclude,
     });
 
-    if (dto.startDate !== undefined || dto.dueDate !== undefined) {
+    /*
+     * `parentId` joins the trigger list because moving a dated story to a
+     * different epic changes the same thing a date edit does — which epic has
+     * to cover which window — just from the other side. Without it, dragging a
+     * story from one epic to another on the Gantt left the receiving epic's
+     * committed bar too short and the story hanging outside it, with nothing
+     * to say the new parent had never agreed to that date.
+     */
+    if (
+      dto.startDate !== undefined ||
+      dto.dueDate !== undefined ||
+      dto.parentId !== undefined
+    ) {
       await this.growParentEpicToFit(tx, updated, activities, actorId);
     }
 
