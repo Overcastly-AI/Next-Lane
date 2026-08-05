@@ -141,6 +141,14 @@ const CHILD_COLORS: Record<StatusCategory, { bar: string; dot: string; label: st
   },
 };
 
+/** One rendered line of the chart, with its y offset inside the lanes box. */
+type RoadmapRow =
+  | { kind: 'epic'; epic: RoadmapEpicDto; y: number }
+  | { kind: 'child'; epicId: string; child: RoadmapChildDto; y: number }
+  | { kind: 'child-note'; epicId: string; text: string; y: number }
+  | { kind: 'add-child'; epicId: string; y: number }
+  | { kind: 'add-epic'; y: number };
+
 type DragMode = 'move' | 'resize-start' | 'resize-end';
 
 interface DragState {
@@ -150,6 +158,22 @@ interface DragState {
   originX: number;
   dayDelta: number;
   moved: boolean;
+  /**
+   * Reparenting, for a CHILD drag only.
+   *
+   * A child bar carries two independent meanings on this chart: where it sits
+   * horizontally is its schedule, and which epic's block it sits in is its
+   * parent. Dragging already expressed the first; this expresses the second
+   * with the same gesture, because moving a story to a different epic and
+   * moving it to a different week are the same kind of act — replanning — and
+   * needing a modal for one of them is the split this screen exists to close.
+   *
+   * `null` when the pointer is over the child's current parent or over nothing
+   * droppable; only ever set to a DIFFERENT epic.
+   */
+  overEpicId?: string | null;
+  /** Vertical travel, so a pure reparent registers as a drag at all. */
+  originY?: number;
 }
 
 export interface RoadmapTimelineProps {
@@ -160,7 +184,10 @@ export interface RoadmapTimelineProps {
     issueId: string;
     startDate: string;
     dueDate: string;
+    /** The epic this item belongs to NOW — used to refresh the right rows. */
     parentEpicId?: string;
+    /** Set only when the drag also moved the item to a different epic. */
+    newParentEpicId?: string;
   }) => void;
   projectId?: string;
   /** True while a schedule write is in flight, to damp the UI. */
@@ -238,6 +265,33 @@ export function RoadmapTimeline({
     () => localStorage.getItem('nl_roadmap_skip_weekends') === '1',
   );
   const scrollRef = useRef<HTMLDivElement>(null);
+  const lanesRef = useRef<HTMLDivElement>(null);
+  /*
+   * Live mirrors of render-time values that the window-level pointermove
+   * handler needs.
+   *
+   * Refs, not deps: the handler is attached once per drag, and re-subscribing
+   * it every time a row list or a lane offset changes would tear down and
+   * rebuild the listener mid-gesture. They are also declared up here rather
+   * than beside the values they mirror, because the drag effect is defined
+   * well above where `rows` is computed.
+   */
+  const rowsRef = useRef<RoadmapRow[]>([]);
+  const laneOffsetRef = useRef(0);
+  /** 'epic' | 'child' — only a child drag can reparent. */
+  const dragKindRef = useRef<'epic' | 'child' | null>(null);
+  /** The epic the dragged child belongs to right now. */
+  const dragParentRef = useRef<string | null>(null);
+
+  const onDragKind = useCallback((kind: 'child', fromEpicId: string) => {
+    dragKindRef.current = kind;
+    dragParentRef.current = fromEpicId;
+  }, []);
+
+  const epicKeyById = useMemo(
+    () => new Map(data.epics.map((e) => [e.id, e.key])),
+    [data.epics],
+  );
   /*
    * A pointer drag is ALSO followed by a native `click` on the same element.
    * Guarding on drag state does not work: the window pointerup handler clears
@@ -350,15 +404,50 @@ export function RoadmapTimeline({
     const onMove = (e: PointerEvent) => {
       if (e.pointerId !== drag.pointerId) return;
       const dx = e.clientX - drag.originX;
+      const dy = drag.originY === undefined ? 0 : e.clientY - drag.originY;
       // The EFFECTIVE day width, not the nominal zoom one — a stretched
       // scale would otherwise move the bar further than the cursor.
       const dayDelta = Math.round(dx / (scale?.pxPerDay ?? zoom.pxPerDay));
+      /*
+       * Which epic's block is under the cursor.
+       *
+       * Resolved from the row geometry we already computed rather than by
+       * hit-testing the DOM: the dragged bar follows the pointer and would be
+       * the topmost element at that point for most of the gesture, so
+       * `elementFromPoint` would keep answering "the thing you are dragging".
+       * The rows array knows every row's y and which epic owns it, which is
+       * the same question asked of data that cannot lie.
+       */
+      let overEpicId: string | null = null;
+      if (dragKindRef.current === 'child' && lanesRef.current) {
+        const box = lanesRef.current.getBoundingClientRect();
+        const y = e.clientY - box.top - laneOffsetRef.current;
+        const row = rowsRef.current.find(
+          (r) => y >= r.y && y < r.y + ROW_H,
+        );
+        const owner =
+          row === undefined
+            ? null
+            : row.kind === 'epic'
+              ? row.epic.id
+              : 'epicId' in row
+                ? row.epicId
+                : null;
+        overEpicId = owner && owner !== dragParentRef.current ? owner : null;
+      }
       setDrag((d) =>
-        d && (d.dayDelta !== dayDelta || !d.moved)
+        d &&
+        (d.dayDelta !== dayDelta ||
+          !d.moved ||
+          (d.overEpicId ?? null) !== overEpicId)
           ? {
               ...d,
               dayDelta,
-              moved: d.moved || Math.abs(dx) > DRAG_THRESHOLD_PX,
+              overEpicId,
+              moved:
+                d.moved ||
+                Math.abs(dx) > DRAG_THRESHOLD_PX ||
+                Math.abs(dy) > DRAG_THRESHOLD_PX,
             }
           : d,
       );
@@ -384,6 +473,7 @@ export function RoadmapTimeline({
       endMs: number,
       parentEpicId?: string,
       label?: string,
+      newParentEpicId?: string,
     ) => {
       if (!onSchedule) return;
       // Snap at COMMIT time rather than during the drag: nudging the bar under
@@ -397,6 +487,7 @@ export function RoadmapTimeline({
         startDate: new Date(startOfDayUTC(win.start)).toISOString(),
         dueDate: new Date(startOfDayUTC(win.end)).toISOString(),
         parentEpicId,
+        newParentEpicId,
       });
       if (label) setLiveMessage(label);
     },
@@ -411,7 +502,11 @@ export function RoadmapTimeline({
       d: DragState,
     ) => {
       // A press that never moved is a click; let the native click handle it.
-      if (!d.moved || d.dayDelta === 0) return;
+      // `dayDelta === 0` is no longer enough to call it a no-op: a story can be
+      // dragged straight up into another epic without shifting a single day,
+      // and that is a real change.
+      const reparent = d.overEpicId ?? undefined;
+      if (!d.moved || (d.dayDelta === 0 && !reparent)) return;
       suppressClickRef.current = true;
       const next = applyDrag(
         Date.parse(item.start),
@@ -419,15 +514,19 @@ export function RoadmapTimeline({
         d.mode,
         d.dayDelta,
       );
+      const where = fmtRange(next.start, next.end);
       commit(
         item.id,
         next.start,
         next.end,
         parentEpicId,
-        `Moved to ${fmtRange(next.start, next.end)}`,
+        reparent
+          ? `Moved to ${epicKeyById.get(reparent) ?? 'another epic'}, ${where}`
+          : `Moved to ${where}`,
+        reparent,
       );
     },
-    [commit],
+    [commit, epicKeyById],
   );
 
   /** Alt+arrow nudging — the keyboard equivalent of a drag. */
@@ -545,13 +644,7 @@ export function RoadmapTimeline({
   // advancing y, and every epic below an expanded one had an offset short by
   // the height of that block — arrows pointed into empty space.
   const rows = useMemo(() => {
-    const out: Array<
-      | { kind: 'epic'; epic: RoadmapEpicDto; y: number }
-      | { kind: 'child'; epicId: string; child: RoadmapChildDto; y: number }
-      | { kind: 'child-note'; epicId: string; text: string; y: number }
-      | { kind: 'add-child'; epicId: string; y: number }
-      | { kind: 'add-epic'; y: number }
-    > = [];
+    const out: RoadmapRow[] = [];
     let y = 0;
     for (const epic of datedEpics) {
       out.push({ kind: 'epic', epic, y });
@@ -587,8 +680,6 @@ export function RoadmapTimeline({
   }, [datedEpics, expanded, childrenByEpic, canCreate]);
 
   const totalRowsHeight = rows.length > 0 ? rows[rows.length - 1].y + ROW_H : 0;
-
-  const lanesRef = useRef<HTMLDivElement>(null);
 
   /*
    * Drawing a dependency: window-level pointer tracking, same reasoning as the
@@ -660,6 +751,10 @@ export function RoadmapTimeline({
     },
     [],
   );
+
+  const laneOffset = data.sprints.length > 0 ? ROW_H + LANE_GAP : 0;
+  rowsRef.current = rows;
+  laneOffsetRef.current = laneOffset;
 
   const epicYById = useMemo(() => {
     const m = new Map<string, number>();
@@ -786,9 +881,9 @@ export function RoadmapTimeline({
           {onLink && (
             <>
               {' '}
-              Hover an epic and drag the dot past its right edge onto another
-              epic to say it blocks that one; hover a dependency line to remove
-              it.
+              Drag a story onto another epic's row to move it there. Hover an
+              epic and drag the dot past its right edge onto another epic to
+              say it blocks that one; hover a dependency line to remove it.
             </>
           )}
         </p>
@@ -1018,14 +1113,18 @@ export function RoadmapTimeline({
                     linkable={!!onLink}
                     linking={linking?.fromEpicId === r.epic.id}
                     linkTarget={linking?.overEpicId === r.epic.id}
+                    reparentTarget={drag?.overEpicId === r.epic.id}
                     onLinkStart={(e) => startLink(r.epic.id, e)}
                     drag={drag?.id === r.epic.id ? drag : null}
                     onDragStart={(mode, e) => {
+                      dragKindRef.current = 'epic';
+                      dragParentRef.current = null;
                       setDrag({
                         id: r.epic.id,
                         mode,
                         pointerId: e.pointerId,
                         originX: e.clientX,
+                        originY: e.clientY,
                         dayDelta: 0,
                         moved: false,
                       });
@@ -1065,6 +1164,8 @@ export function RoadmapTimeline({
                     endDrag={endDrag}
                     nudge={nudge}
                     onSchedulePainted={onSchedulePainted}
+                    onDragKind={onDragKind}
+                    epicKeyOf={(id) => epicKeyById.get(id) ?? 'epic'}
                   />
                 ) : r.kind === 'child-note' ? (
                   <div
@@ -1378,6 +1479,7 @@ function EpicBarRow({
   linkable,
   linking,
   linkTarget,
+  reparentTarget,
   onLinkStart,
   drag,
   onDragStart,
@@ -1396,6 +1498,8 @@ function EpicBarRow({
   linking: boolean;
   /** The pointer is over this bar while a dependency is being drawn. */
   linkTarget: boolean;
+  /** A story is being dragged and would land in this epic on release. */
+  reparentTarget: boolean;
   onLinkStart: (e: React.PointerEvent) => void;
   skipWeekends: boolean;
   drag: DragState | null;
@@ -1434,7 +1538,17 @@ function EpicBarRow({
   }, [drag, onDragEnd]);
 
   return (
-    <div className="relative border-b border-ink-100" style={{ height: ROW_H }}>
+    <div
+      className={cn(
+        'relative border-b border-ink-100',
+        // The whole ROW highlights, not the bar: you are dropping into an
+        // epic, and an epic occupies its entire lane whatever its bar's
+        // length. Lighting only the bar would suggest you had to hit it.
+        reparentTarget && 'bg-violet-500/10 ring-1 ring-inset ring-violet-400',
+      )}
+      data-reparent-target={reparentTarget ? 'true' : undefined}
+      style={{ height: ROW_H }}
+    >
       {overrunX !== null && (
         <div
           className="nl-gantt-overrun pointer-events-none absolute rounded-r"
@@ -1657,9 +1771,15 @@ function ChildBar({
   endDrag,
   nudge,
   onSchedulePainted,
+  onDragKind,
+  epicKeyOf,
 }: {
   child: RoadmapChildDto;
   epicId: string;
+  /** Tells the timeline what kind of thing is being dragged, and from where. */
+  onDragKind: (kind: 'child', fromEpicId: string) => void;
+  /** Resolves an epic id to its key, for the reparent tooltip. */
+  epicKeyOf: (epicId: string) => string;
   scale: Scale;
   editable: boolean;
   drag: DragState | null;
@@ -1760,11 +1880,13 @@ function ChildBar({
         data-child-id={child.id}
         onPointerDown={(e) => {
           if (!draggable || !canDragWith(e)) return;
+          onDragKind('child', epicId);
           setDrag({
             id: child.id,
             mode: 'move',
             pointerId: e.pointerId,
             originX: e.clientX,
+            originY: e.clientY,
             dayDelta: 0,
             moved: false,
           });
@@ -1800,6 +1922,15 @@ function ChildBar({
         <span className="truncate px-1.5">{child.title}</span>
         {drag?.moved && (
           <span className="pointer-events-none absolute -top-6 left-0 z-40 whitespace-nowrap rounded bg-ink-900 px-1.5 py-0.5 text-[10px] font-semibold text-surface shadow-card">
+            {/* Naming the destination epic matters more than the day count
+                when you are reparenting: the rows all look alike, and "which
+                epic am I about to drop this into" is the thing you cannot
+                verify from the bar's position alone. */}
+            {drag.overEpicId && (
+              <span className="mr-1 text-violet-300">
+                → {epicKeyOf(drag.overEpicId)}
+              </span>
+            )}
             {signedDays(drag.dayDelta)} · {fmtRange(preview.start, preview.end)}
           </span>
         )}

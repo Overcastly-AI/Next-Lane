@@ -817,6 +817,15 @@ _Hardening Night close-out ingest (2026-07-06) — P2s:_
 
 ## Already Done (recent shipments — ticked for reference)
 
+- [x] (P1, M) **Drag a story from one epic to another on the Gantt** ✅ 2026-08-05 [founder: *"give me the ability to drag sub items from epic to epic"*]
+  - A child bar meant two things and only one was draggable: horizontal position = schedule, containing block = parent. Reparenting meant leaving for the drawer.
+  - **Destination from row geometry, not `elementFromPoint`** — the dragged bar is the topmost element under the pointer for most of the gesture, so DOM hit-testing answers "the thing you're dragging". The `rows` array already knows each row's `y` and owning epic.
+  - The whole destination **lane** highlights (an epic owns its lane whatever its bar's length), and the tooltip names the destination key — the one fact the bar's position can't give you.
+  - **Two guards had to change:** the drag threshold now counts vertical travel, and `dayDelta === 0` is no longer a no-op, or a straight-up drag would be silently swallowed. Conversely a pure vertical drag does **not** reschedule — the two meanings are independent.
+  - **Backend:** `parentId` was already accepted and validated on PATCH; `growParentEpicToFit` now fires on a parent change too, since moving a dated story to another epic changes which epic must cover which window. Both epics' child lists are invalidated.
+  - e2e drops onto an epic that ends *before* the story starts so the cascade has work: asserts new `parentId`, unchanged dates, the pre-drop highlight, and the grown destination `dueDate`. 26 e2e / 6 skipped, 364 api issues tests, tsc + build clean.
+  - **Known gap:** an undated story renders as a paint row with no bar to grab, so it can't be reparented this way yet.
+
 - [x] (P1, M) **Presenting mode: full-bleed read-only roadmap** ✅ 2026-08-05 [founder: *"we need a kiosk mode full bleed view for presenting the road map"*]
   - `/projects/:id/roadmap/present`, entered from a **Present** button beside the chart. No sidebar, header, project nav, page title, or card — full-bleed reads as one surface.
   - **Read-only by construction:** no mutation handlers are passed, and the chart already hides every affordance when they're absent. e2e asserts the *same admin* sees Create-epic and link handles on the normal chart and neither here.

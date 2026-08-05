@@ -738,4 +738,106 @@ test.describe('Roadmap Gantt', () => {
     });
     expect((await after.json()) as unknown[]).toHaveLength(0);
   });
+
+  test('a story can be dragged from one epic to another, and the new epic grows to fit', async ({
+    page,
+    request,
+  }) => {
+    test.skip(
+      test.info().project.name !== 'chromium-desktop',
+      'pointer drag is desktop-only by design — see the note above',
+    );
+    const { token, project } = await setupIsolatedProject(page, request, {
+      label: 'rm-reparent',
+      projectName: 'Roadmap Reparent QA',
+      openBoard: false,
+    });
+
+    /*
+     * Founder: "give me the ability to drag sub items from epic to epic."
+     *
+     * A child bar carries two meanings — where it sits horizontally is its
+     * schedule, which epic block it sits in is its parent — and only the first
+     * was draggable. Moving a story to a different epic meant leaving for the
+     * issue drawer, which is the split this screen exists to close.
+     *
+     * The destination epic is deliberately EARLIER than the story, so the
+     * cascade has something to do: `growParentEpicToFit` must now fire on a
+     * parent change, not only on a date change, or the receiving epic's
+     * committed bar is left too short with the story hanging outside it.
+     */
+    const fromEpic = await createIssue(request, token, {
+      projectId: project.id,
+      type: 'EPIC',
+      title: 'Origin Epic',
+      startDate: iso('2026-04-01'),
+      dueDate: iso('2026-04-30'),
+    });
+    const toEpic = await createIssue(request, token, {
+      projectId: project.id,
+      type: 'EPIC',
+      title: 'Destination Epic',
+      startDate: iso('2026-03-01'),
+      dueDate: iso('2026-03-20'),
+    });
+    const story = await createIssue(request, token, {
+      projectId: project.id,
+      title: 'Travelling Story',
+      parentId: fromEpic.id,
+      startDate: iso('2026-04-06'),
+      dueDate: iso('2026-04-14'),
+    });
+
+    await page.goto(`/projects/${project.id}/roadmap`);
+    await expect(page.getByTestId('roadmap-epic-bar').first()).toBeVisible({
+      timeout: 15_000,
+    });
+    await page.getByTestId(`roadmap-epic-expand-${fromEpic.id}`).click();
+    const bar = page.locator(`[data-child-id="${story.id}"]`);
+    await expect(bar).toBeVisible({ timeout: 15_000 });
+
+    const cb = (await bar.boundingBox())!;
+    const target = page.locator(`[data-epic-id="${toEpic.id}"]`);
+    const tb = (await target.boundingBox())!;
+
+    const writes = trackApiWrites(page);
+    await page.mouse.move(cb.x + cb.width / 2, cb.y + cb.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(cb.x + cb.width / 2, tb.y + tb.height / 2, {
+      steps: 16,
+    });
+    // The destination lane highlights before you let go — dropping into the
+    // wrong epic because every row looks alike is the obvious failure here.
+    await expect(page.locator('[data-reparent-target="true"]')).toHaveCount(1);
+    await page.mouse.up();
+
+    await writes.settle({
+      match: (w) =>
+        w.method === 'PATCH' && w.path.endsWith(`/api/issues/${story.id}`),
+      atLeast: 1,
+    });
+
+    const after = await request.get(`${API_URL}/api/issues/${story.id}`, {
+      headers: auth(token),
+    });
+    const moved = (await after.json()) as {
+      parentId: string | null;
+      startDate: string | null;
+      dueDate: string | null;
+    };
+    expect(moved.parentId).toBe(toEpic.id);
+    // A purely vertical drag reparents WITHOUT rescheduling: the two meanings
+    // are independent, and silently moving the dates would be a second edit
+    // nobody asked for.
+    expect(dayOf(moved.startDate)).toBe('2026-04-06');
+    expect(dayOf(moved.dueDate)).toBe('2026-04-14');
+
+    // The destination epic ended before the story starts, so it must have
+    // grown to cover it.
+    const epicAfter = await request.get(`${API_URL}/api/issues/${toEpic.id}`, {
+      headers: auth(token),
+    });
+    const grown = (await epicAfter.json()) as { dueDate: string | null };
+    expect(dayOf(grown.dueDate)).toBe('2026-04-14');
+  });
 });

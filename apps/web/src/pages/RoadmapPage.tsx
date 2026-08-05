@@ -99,6 +99,7 @@ export function RoadmapPage() {
     startDate: string;
     dueDate: string;
     parentEpicId?: string;
+    newParentEpicId?: string;
   }) {
     schedule.mutate(input, {
       onError: (err) =>
