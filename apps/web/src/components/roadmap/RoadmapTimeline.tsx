@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   SprintState,
+  StatusCategory,
   VersionState,
   type RoadmapChildDto,
   type RoadmapDto,
@@ -57,7 +58,17 @@ import {
 
 const ROW_H = 34;
 const BAR_H = 20;
+/**
+ * Left-rail width. On a 393px phone the fixed 248px rail left ~145px of
+ * timeline, so the chart rendered five epic rows and not one bar — the
+ * roadmap's entire payload was off-screen with no hint it existed. The rail
+ * gives up most of its width on narrow viewports; the bars carry the titles
+ * anyway, and the rail keeps the key and the expand control.
+ */
 const RAIL_W = 248;
+const RAIL_W_NARROW = 132;
+/** Below this viewport width the rail is not affordable. */
+const NARROW_PX = 640;
 const AXIS_H = 44;
 const LANE_GAP = 8;
 /** Pointer movement below this is a click, above it is a drag. */
@@ -67,6 +78,30 @@ const SPRINT_COLORS: Record<SprintState, { bar: string; dot: string; label: stri
   [SprintState.PLANNED]: { bar: 'bg-ink-200 text-ink-700', dot: 'bg-ink-400', label: 'Planned' },
   [SprintState.ACTIVE]: { bar: 'bg-signal-500 text-white', dot: 'bg-signal-500', label: 'Active' },
   [SprintState.COMPLETED]: { bar: 'bg-emerald-500 text-white', dot: 'bg-emerald-500', label: 'Completed' },
+};
+
+/**
+ * Story bars used to be one flat grey outline whatever their state, so a
+ * finished story and a not-started one were pixel-identical. On a roadmap the
+ * first question is "are we on track", and the chart could not answer it
+ * without opening every row. Colour carries the status category instead.
+ */
+const CHILD_COLORS: Record<StatusCategory, { bar: string; dot: string; label: string }> = {
+  [StatusCategory.TODO]: {
+    bar: 'border-ink-300 bg-ink-100 text-ink-700',
+    dot: 'bg-ink-300',
+    label: 'To do',
+  },
+  [StatusCategory.IN_PROGRESS]: {
+    bar: 'border-signal-400 bg-signal-200 text-signal-900',
+    dot: 'bg-signal-400',
+    label: 'In progress',
+  },
+  [StatusCategory.DONE]: {
+    bar: 'border-emerald-400 bg-emerald-200 text-emerald-900',
+    dot: 'bg-emerald-400',
+    label: 'Done',
+  },
 };
 
 type DragMode = 'move' | 'resize-start' | 'resize-end';
@@ -123,6 +158,12 @@ export function RoadmapTimeline({
   const [creatingUnder, setCreatingUnder] = useState<string | null>(null);
   /** Measured width of the scrolling grid, so a zoom can stretch to fill it. */
   const [gridWidth, setGridWidth] = useState(0);
+  /** Which side of the time grid still has timeline off-screen. */
+  const [edges, setEdges] = useState({ left: false, right: false });
+  const [narrow, setNarrow] = useState(
+    () => typeof window !== 'undefined' && window.innerWidth < NARROW_PX,
+  );
+  const railW = narrow ? RAIL_W_NARROW : RAIL_W;
   /*
    * Skip weekends. Off by default because plenty of teams genuinely do run
    * across a weekend and forcing working-days on them would silently move
@@ -169,6 +210,25 @@ export function RoadmapTimeline({
     [data],
   );
 
+  /**
+   * The span the plan's DATA actually covers. Distinct from `rawBounds`, which
+   * `planBounds` deliberately stretches to include today so the today marker
+   * always has somewhere to land — that makes it useless for asking "is today
+   * anywhere near this plan", which the initial scroll below needs.
+   */
+  const dataExtent = useMemo(() => {
+    const stamps = [
+      ...data.sprints.flatMap((s) => [s.startDate, s.endDate]),
+      ...data.epics.flatMap((e) => [e.start, e.end, e.rollupStart, e.rollupEnd]),
+      ...data.milestones.map((m) => m.releaseDate),
+    ]
+      .map((s) => (s ? Date.parse(s) : NaN))
+      .filter((n) => Number.isFinite(n));
+    return stamps.length
+      ? { from: Math.min(...stamps), to: Math.max(...stamps) }
+      : null;
+  }, [data]);
+
   const bounds = useMemo(
     () =>
       rawBounds
@@ -185,12 +245,35 @@ export function RoadmapTimeline({
   useEffect(() => {
     const el = scrollRef.current;
     if (!el || typeof ResizeObserver === 'undefined') return;
-    const measure = () => setGridWidth(el.clientWidth);
+    const measure = () => {
+      setGridWidth(el.clientWidth);
+      const remaining = el.scrollWidth - el.scrollLeft - el.clientWidth;
+      setEdges({ left: el.scrollLeft > 8, right: remaining > 8 });
+    };
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const mq = window.matchMedia(`(max-width: ${NARROW_PX - 1}px)`);
+    const apply = () => setNarrow(mq.matches);
+    apply();
+    mq.addEventListener('change', apply);
+    return () => mq.removeEventListener('change', apply);
+  }, []);
+
+  // Zooming out can make the whole plan fit, which must clear the fades — a
+  // ResizeObserver on the viewport never fires for that, only the content grew
+  // or shrank.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const remaining = el.scrollWidth - el.scrollLeft - el.clientWidth;
+    setEdges({ left: el.scrollLeft > 8, right: remaining > 8 });
+  }, [scale?.widthPx]);
 
   // ── Drag plumbing ─────────────────────────────────────────────────────────
   //
@@ -326,22 +409,60 @@ export function RoadmapTimeline({
     [commit],
   );
 
-  /** Extend the future horizon when the user reaches the right-hand edge. */
+  /**
+   * Extend the future horizon when the user reaches the right-hand edge, and
+   * track which sides still have content off-screen.
+   *
+   * The second half exists because bars simply vanished at the panel's right
+   * edge with nothing to say more timeline was there — the scrollbar sits
+   * below the fold on a tall chart, so the only cue was a bar that looked
+   * truncated. The fades restore the "there is more this way" signal.
+   */
   const onGridScroll = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
     const remaining = el.scrollWidth - el.scrollLeft - el.clientWidth;
     if (remaining < 240) setHorizonMonths((m) => Math.min(m + 3, 48));
+    setEdges({ left: el.scrollLeft > 8, right: remaining > 8 });
   }, []);
 
-  const scrollToToday = useCallback(() => {
-    if (!scale || !scrollRef.current) return;
-    const x = scale.xOf(Date.now());
-    scrollRef.current.scrollTo({
-      left: Math.max(0, x - scrollRef.current.clientWidth / 2),
-      behavior: 'smooth',
-    });
-  }, [scale]);
+  const scrollToDate = useCallback(
+    (ms: number) => {
+      if (!scale || !scrollRef.current) return;
+      const x = scale.xOf(ms);
+      scrollRef.current.scrollTo({
+        left: Math.max(0, x - scrollRef.current.clientWidth / 2),
+        behavior: 'smooth',
+      });
+    },
+    [scale],
+  );
+
+  const scrollToToday = useCallback(() => scrollToDate(Date.now()), [scrollToDate]);
+
+  /*
+   * Land on today the first time the grid is measurable.
+   *
+   * The grid used to open scrolled hard left, at the start of the plan's whole
+   * horizon. On a wide desktop that happened to include today; on a phone —
+   * where the visible window is a few weeks — it opened on an empty stretch of
+   * past calendar and you had to scroll blind to find any work at all.
+   *
+   * Gated on today actually falling inside the plan. A plan that is entirely
+   * in the past or entirely in the future would otherwise open on a view with
+   * nothing in it, which is the same failure with the sign flipped; for those,
+   * the start of the plan IS the interesting end.
+   */
+  const landedRef = useRef(false);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (landedRef.current || !scale || !dataExtent || !el || el.clientWidth === 0)
+      return;
+    landedRef.current = true;
+    const now = Date.now();
+    if (now < dataExtent.from || now > dataExtent.to) return;
+    el.scrollLeft = Math.max(0, scale.xOf(now) - el.clientWidth / 3);
+  }, [scale, dataExtent, gridWidth]);
 
   function toggleExpand(epicId: string) {
     setExpanded((prev) => {
@@ -481,13 +602,31 @@ export function RoadmapTimeline({
           Today
         </button>
 
-        <div className="ml-auto flex flex-wrap items-center gap-3 text-xs text-ink-500">
-          {(Object.keys(SPRINT_COLORS) as SprintState[]).map((st) => (
-            <span key={st} className="flex items-center gap-1.5">
-              <span className={cn('inline-block h-2.5 w-2.5 rounded-sm', SPRINT_COLORS[st].dot)} />
-              {SPRINT_COLORS[st].label}
-            </span>
-          ))}
+        {/*
+         * The legend used to be three unlabelled swatches — Planned / Active /
+         * Completed — which read as story statuses but were actually SPRINT
+         * states, describing exactly one row of the chart. Each group now says
+         * what it applies to.
+         */}
+        <div className="ml-auto flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-ink-500">
+          <span className="flex items-center gap-1.5">
+            <span className="font-medium text-ink-400">Sprints</span>
+            {(Object.keys(SPRINT_COLORS) as SprintState[]).map((st) => (
+              <span key={st} className="flex items-center gap-1">
+                <span className={cn('inline-block h-2.5 w-2.5 rounded-sm', SPRINT_COLORS[st].dot)} />
+                {SPRINT_COLORS[st].label}
+              </span>
+            ))}
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="font-medium text-ink-400">Stories</span>
+            {(Object.keys(CHILD_COLORS) as StatusCategory[]).map((sc) => (
+              <span key={sc} className="flex items-center gap-1">
+                <span className={cn('inline-block h-2.5 w-2.5 rounded-sm', CHILD_COLORS[sc].dot)} />
+                {CHILD_COLORS[sc].label}
+              </span>
+            ))}
+          </span>
           <span className="flex items-center gap-1.5">
             <span className="inline-block h-3 w-0.5 bg-red-500" />
             Today
@@ -511,7 +650,7 @@ export function RoadmapTimeline({
         {/* Left rail */}
         <div
           className="shrink-0 border-r border-ink-200 bg-ink-50/60"
-          style={{ width: RAIL_W }}
+          style={{ width: railW }}
         >
           <div
             className="flex items-end border-b border-ink-200 px-3 pb-1.5 text-[11px] font-semibold uppercase tracking-wide text-ink-400"
@@ -536,15 +675,21 @@ export function RoadmapTimeline({
                 onToggle={() => toggleExpand(r.epic.id)}
                 onOpen={() => onOpenEpic(r.epic.id)}
                 canCreate={canCreate}
+                narrow={narrow}
               />
             ) : r.kind === 'child' ? (
               <div
                 key={`rail-${r.child.id}`}
-                className="flex items-center gap-1.5 border-b border-ink-100 bg-ink-50/40 pl-8 pr-2"
+                className={cn(
+                  'flex items-center gap-1.5 border-b border-ink-100 bg-ink-50/40 pr-2',
+                  narrow ? 'pl-4' : 'pl-8',
+                )}
                 style={{ height: ROW_H }}
                 title={`${r.child.key} · ${r.child.title}`}
               >
-                <span className="nl-issue-key shrink-0 text-[10px]">{r.child.key}</span>
+                {!narrow && (
+                  <span className="nl-issue-key shrink-0 text-[10px]">{r.child.key}</span>
+                )}
                 <span className="truncate text-[11px] text-ink-600">{r.child.title}</span>
               </div>
             ) : r.kind === 'child-note' ? (
@@ -585,6 +730,20 @@ export function RoadmapTimeline({
         </div>
 
         {/* Scrollable time grid */}
+        <div className="relative min-w-0 flex-1">
+          {edges.left && (
+            <div
+              className="pointer-events-none absolute inset-y-0 left-0 z-30 w-6 bg-gradient-to-r from-surface to-transparent"
+              aria-hidden="true"
+            />
+          )}
+          {edges.right && (
+            <div
+              data-testid="roadmap-grid-fade-right"
+              className="pointer-events-none absolute inset-y-0 right-0 z-30 w-8 bg-gradient-to-l from-surface to-transparent"
+              aria-hidden="true"
+            />
+          )}
         <div
           ref={scrollRef}
           onScroll={onGridScroll}
@@ -777,6 +936,7 @@ export function RoadmapTimeline({
             </div>
           </div>
         </div>
+        </div>
       </div>
 
       {isSaving && (
@@ -788,14 +948,24 @@ export function RoadmapTimeline({
         {liveMessage}
       </p>
 
-      {/* Milestone list — the diamonds are a glance, this is the detail. */}
+      {/*
+       * Milestone list — the diamonds are a glance, this is the detail.
+       *
+       * Each chip scrolls the grid to its release date. A release two quarters
+       * out is off-screen by definition, so the chip was previously the only
+       * place you could see it existed and there was no way to get from the
+       * chip to the marker.
+       */}
       {data.milestones.length > 0 && (
         <div className="flex flex-wrap gap-2">
           {data.milestones.map((m) => (
-            <span
+            <button
               key={m.id}
+              type="button"
+              onClick={() => scrollToDate(Date.parse(m.releaseDate))}
+              title={`Jump to ${m.name}`}
               data-testid="roadmap-milestone-chip"
-              className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs text-amber-800"
+              className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs text-amber-800 transition-colors hover:border-amber-300 hover:bg-amber-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
             >
               <span className="inline-block h-2 w-2 rotate-45 bg-amber-500" aria-hidden="true" />
               <span className="font-medium">{m.name}</span>
@@ -811,7 +981,7 @@ export function RoadmapTimeline({
                   {m.openIssueCount} open
                 </span>
               )}
-            </span>
+            </button>
           ))}
         </div>
       )}
@@ -831,6 +1001,7 @@ function EpicRailRow({
   onToggle,
   onOpen,
   canCreate,
+  narrow,
 }: {
   epic: RoadmapEpicDto;
   expanded: boolean;
@@ -838,6 +1009,14 @@ function EpicRailRow({
   onOpen: () => void;
   /** Expanding a CHILDLESS epic is still useful when you can create one. */
   canCreate: boolean;
+  /**
+   * Phone-width rail. The key badge and the percentage together consume the
+   * whole 116px, leaving the title at zero width — the badge literally
+   * overlapped the percentage. Both are dropped here: the title is what
+   * identifies the work, the key is still on the bar's tooltip and in the
+   * detail drawer, and the percentage is now drawn as a track along the bar.
+   */
+  narrow: boolean;
 }) {
   return (
     <div
@@ -880,12 +1059,16 @@ function EpicRailRow({
         className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
         title={`${epic.key} · ${epic.title}`}
       >
-        <span className="nl-issue-key shrink-0 text-[10px]">{epic.key}</span>
+        {!narrow && (
+          <span className="nl-issue-key shrink-0 text-[10px]">{epic.key}</span>
+        )}
         <span className="truncate text-xs font-medium text-ink-800">{epic.title}</span>
       </button>
-      <span className="shrink-0 text-[10px] font-semibold tabular-nums text-ink-400">
-        {Math.round(epic.progress * 100)}%
-      </span>
+      {!narrow && (
+        <span className="shrink-0 text-[10px] font-semibold tabular-nums text-ink-400">
+          {Math.round(epic.progress * 100)}%
+        </span>
+      )}
     </div>
   );
 }
@@ -1075,11 +1258,25 @@ function EpicBarRow({
         )}
         style={{ left, width, top: (ROW_H - BAR_H) / 2, height: BAR_H }}
       >
+        {/*
+         * Progress. Two problems with the old full-height `signal-300/70`
+         * wash: against a `signal-100` bar it was a ~1.1:1 step, invisible at
+         * a glance, so the bar never showed the completion the rail was
+         * reporting in text — and raising the contrast made the fill's edge
+         * slice through the title mid-word.
+         *
+         * A track pinned to the bottom edge solves both: strong enough to read
+         * across the row, and it never competes with the label above it.
+         */}
         <span
-          className="absolute inset-y-0 left-0 rounded-l-md bg-signal-300/70"
-          style={{ width: `${fill}%` }}
+          className="absolute inset-x-0 bottom-0 h-1 overflow-hidden rounded-b-md bg-signal-200"
           aria-hidden="true"
-        />
+        >
+          <span
+            className="block h-full rounded-r-sm bg-signal-500"
+            style={{ width: `${fill}%` }}
+          />
+        </span>
         {/* Live feedback while dragging: how many days you have moved, and
             what the window becomes. Without it a drag is guesswork — you drop
             the bar and only then find out where it landed. */}
@@ -1097,6 +1294,23 @@ function EpicBarRow({
           <span className="truncate text-[11px] font-medium text-signal-900">
             {epic.title}
           </span>
+          {/* The window in words. Until now the only way to read an epic's
+              dates was to hover it, so a glanced-at or printed roadmap carried
+              no dates at all.
+
+              Left-aligned right after the title, NOT right-aligned in the bar:
+              at week zoom a quarter-long epic is several viewports wide, so
+              anything pinned to its right edge is permanently off-screen.
+              Suppressed on narrow bars, where it would crowd out the title,
+              and while dragging, where the tooltip says it more precisely. */}
+          {width >= 170 && !drag?.moved && (
+            <span
+              data-testid="roadmap-epic-dates"
+              className="shrink-0 whitespace-nowrap text-[10px] tabular-nums text-signal-700"
+            >
+              {fmtRange(preview.start, preview.end)}
+            </span>
+          )}
           {epic.childrenOutside > 0 && (
             <span className="ml-auto shrink-0 rounded bg-amber-400/90 px-1 text-[9px] font-bold text-amber-950">
               +{epic.overrunDays}d
@@ -1111,6 +1325,7 @@ function EpicBarRow({
           </>
         )}
       </button>
+
     </div>
   );
 }
@@ -1278,13 +1493,16 @@ function ChildBar({
         className={cn(
           'group absolute flex items-center overflow-hidden rounded text-left text-[10px] font-medium shadow-xs',
           'focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-400',
-          child.fromSprint
-            ? 'border border-dashed border-ink-300 bg-ink-100 text-ink-500'
-            : 'border border-ink-300 bg-surface text-ink-700',
-          draggable && 'cursor-grab active:cursor-grabbing hover:border-signal-400',
+          'border',
+          CHILD_COLORS[child.statusCategory].bar,
+          // Dashed = "these dates are the sprint's, not the story's own". It is
+          // a property of where the window came from, so it rides on the border
+          // style and leaves the fill free to carry status.
+          child.fromSprint && 'border-dashed opacity-80',
+          draggable && 'cursor-grab active:cursor-grabbing hover:ring-1 hover:ring-signal-400',
           drag?.moved && 'z-30 ring-2 ring-signal-400',
         )}
-        style={{ left, width, top: (ROW_H - 14) / 2, height: 14 }}
+        style={{ left, width, top: (ROW_H - 16) / 2, height: 16 }}
       >
         <span className="truncate px-1.5">{child.title}</span>
         {drag?.moved && (

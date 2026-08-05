@@ -817,6 +817,17 @@ _Hardening Night close-out ingest (2026-07-06) — P2s:_
 
 ## Already Done (recent shipments — ticked for reference)
 
+- [x] (P0, M) **Roadmap Gantt visual audit — seven findings, all fixed** ✅ 2026-08-05 [founder: *"Launch and audit on this chart and find ways to improve. Then work on it"*]
+  - **P0: mobile had no chart.** A fixed 248px rail on a 393px viewport left ~145px of grid — five epic rows, zero bars. Rail drops to 132px below 640px and sheds the key badge and `%`. (116px was worse: badge overlapped `%`, title collapsed to zero width — the re-shot screenshot showed it, an e2e failure confirmed it.)
+  - **Status was unreadable.** Story bars were one grey outline whatever their state. Children now colour by `statusCategory`; `fromSprint` becomes a dashed border instead of owning the fill.
+  - **The legend described one row.** Planned/Active/Completed read as story statuses but were sprint states — now grouped and labelled `Sprints` / `Stories`.
+  - **Epic progress was invisible** (~1.1:1 against the bar) and raising its contrast sliced the fill edge through the title. Now a track on the bar's bottom edge.
+  - **Dates only existed on hover.** Now in the bar, left-aligned after the title — right-aligned is useless when a quarter-long epic is several viewports wide at week zoom.
+  - **No scroll cue at the panel edge** (the scrollbar is below the fold) → gradient masks, updated on scroll, resize and zoom. **Inert milestone chips** → each scrolls the grid to its release date.
+  - **Initial scroll lands near today, gated on today being inside the plan's data extent** — `planBounds` deliberately includes today so it can't express that gate, hence a separate `dataExtent`. The ungated version broke the undated-story paint test, correctly.
+  - Gates: roadmap-gantt 14/4-skipped, roadmap + nav-sidebar + pages-qa-extra 36/36 desktop+mobile, 20 ganttScale units, tsc + build clean. All test hooks preserved; `roadmap-epic-dates` added.
+  - Named as NOT taken: filtering (hide-done/assignee/label) for large roadmaps, a resizable rail, disambiguating today vs violated-dependency vs overrun in the red/amber family, editable sprint bars. Full table in `docs/UI-REVIEW.md`.
+
 - [x] (P0, L) **Roadmap: child dates roll up, and the Gantt is editable** ✅ 2026-08-02 [founder: *"the dates do not trickle up to the epic level"* + *"edit, add, adjust timelines all from the gnatt chart"*]
   - **The bug was one `select`.** The rollup read each child's SPRINT and never the child's own `startDate`/`dueDate`. A story with real dates and no sprint contributed nothing, and its epic rendered as a zero-width dot on its creation date. Every roadmap fixture in the suite put its children in sprints, so nothing caught it.
   - **Plan vs reality kept separate.** `rollupStart`/`rollupEnd` now ship alongside the displayed window, with `overrunDays`/`underrunDays`/`childrenOutside`. The bar keeps its committed length and grows a hatched tail; widening it to match reality would erase the one fact a manager needs.
