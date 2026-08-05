@@ -1024,4 +1024,54 @@ test.describe('Roadmap Gantt', () => {
     });
     expect(onTop).toBe('axis');
   });
+
+  test('editing an issue in the drawer updates the chart without a reload', async ({
+    page,
+    request,
+  }) => {
+    const { token, project } = await setupIsolatedProject(page, request, {
+      label: 'rm-live',
+      projectName: 'Roadmap Live QA',
+      openBoard: false,
+    });
+
+    /*
+     * Founder: "when I change information on the epic or story it should
+     * automatically update in the Gantt chart. I have to reload the page for
+     * it to work."
+     *
+     * `invalidateBoardFamily` is the chokepoint every issue mutation in the
+     * app funnels through — drawer edits, board moves, triage, bulk edit,
+     * custom fields — and the roadmap queries simply were not in its list. So
+     * the chart went stale after ANY edit, from any surface, and the only fix
+     * was a full reload.
+     *
+     * Asserted through the real drawer rather than by poking the cache: the
+     * bug was that a real edit did not reach a real chart.
+     */
+    const epic = await createIssue(request, token, {
+      projectId: project.id,
+      type: 'EPIC',
+      title: 'Before The Edit',
+      startDate: iso('2026-04-01'),
+      dueDate: iso('2026-04-30'),
+    });
+
+    await page.goto(`/projects/${project.id}/roadmap`);
+    const bar = page.locator(`[data-epic-id="${epic.id}"]`);
+    await expect(bar).toBeVisible({ timeout: 15_000 });
+    await expect(bar).toHaveAttribute('aria-label', /Before The Edit/);
+
+    await bar.click();
+    const titleInput = page.getByTestId('issue-title-input');
+    await expect(titleInput).toBeVisible({ timeout: 15_000 });
+    await titleInput.fill('After The Edit');
+    // The drawer saves the title on blur.
+    await titleInput.blur();
+
+    // No reload anywhere in this test — that is the whole point.
+    await expect(bar).toHaveAttribute('aria-label', /After The Edit/, {
+      timeout: 15_000,
+    });
+  });
 });
