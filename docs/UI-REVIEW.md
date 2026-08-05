@@ -6,6 +6,40 @@
 
 ---
 
+## 2026-08-05 — Roadmap Gantt visual audit (founder: "Launch and audit on this chart and find ways to improve. Then work on it")
+
+Method: ran the real built app against the screenshot seed and read the rendered
+chart at 1500×900 light, 1500×900 dark, and 393×852 mobile — rather than reading
+the component. Every finding below was visible in a screenshot; all seven were
+fixed in the same pass.
+
+| # | Finding | Severity | Status |
+|---|---------|----------|--------|
+| 1 | **Mobile showed no chart at all.** The 248px left rail against a 393px viewport left ~145px of grid — five epic rows and not one bar. The roadmap's entire payload was off-screen with nothing to say it existed. | **P0** | ✅ fixed — rail drops to 132px below 640px, shedding the key badge and the `%` (the title is what identifies the work; the key is on the bar tooltip and in the drawer, and the `%` is now a track on the bar itself). At 116px the key badge literally overlapped the `%` and the title collapsed to zero width — caught by re-shooting mobile, then confirmed by an e2e failure. |
+| 2 | **Story bars carried no status.** Every child bar rendered as the same grey outline whether it was to-do, in-flight or finished. "Are we on track" — the first question a roadmap answers — could not be read off the chart. | **P1** | ✅ fixed — `CHILD_COLORS` maps `statusCategory` to fill + border. `fromSprint` moved from being the fill to being a dashed border, so it stops competing with status. |
+| 3 | **The legend described almost nothing on screen.** Three unlabelled swatches (Planned / Active / Completed) read as story statuses but were *sprint* states, describing exactly one row of the chart. | **P1** | ✅ fixed — grouped and labelled: `Sprints …` / `Stories …` / Today / Overruns plan. |
+| 4 | **Epic progress was invisible.** `signal-300/70` on a `signal-100` bar is a ~1.1:1 step; the rail said "33%" and the bar showed nothing. Raising the contrast then made the fill edge slice through the title mid-word. | **P1** | ✅ fixed — progress is a track pinned to the bar's bottom edge. Readable across the row, never competes with the label. |
+| 5 | **No dates anywhere except on hover.** A glanced-at or printed roadmap carried no dates at all. | **P1** | ✅ fixed — the window renders in the bar, left-aligned after the title (right-aligned is useless: at week zoom a quarter-long epic is several viewports wide, so anything pinned to its right edge is permanently off-screen). Suppressed under 170px and while dragging. |
+| 6 | **Bars vanished at the panel's right edge with no cue** that more timeline existed — the scrollbar sits below the fold on a tall chart. | **P2** | ✅ fixed — gradient masks on whichever side still has content off-screen, tracked on scroll, on resize, and on zoom (a zoom-out that makes the plan fit must clear them, and no ResizeObserver fires for that). |
+| 7 | **Milestone chips were inert.** A release two quarters out is off-screen by definition, so the chip was the only evidence it existed and there was no way to get from it to the marker. | **P2** | ✅ fixed — each chip scrolls the grid to its release date. |
+
+One further change fell out of #1: the grid opened scrolled hard left, at the
+start of the whole horizon. On a wide desktop that happened to include today; on
+a phone it opened on empty past calendar. It now lands near today **when today
+is inside the plan's data extent** — gated, because a plan entirely in the past
+or future would otherwise open on an equally empty view with the sign flipped.
+That gate cannot be expressed with `planBounds`, which deliberately stretches to
+include today so the today marker always has somewhere to land; a separate
+`dataExtent` memo exists for it.
+
+Still open, deliberately not taken this pass: no filtering (hide-done, assignee,
+label) — a 500-epic roadmap is unreadable and this is the scale gap; the rail is
+not resizable, so long epic titles truncate at ~20 chars on desktop; the today
+marker, violated-dependency arrows, and the overrun hatch are three meanings
+sharing one red/amber family; sprint bars are still not editable.
+
+---
+
 ## 🎨 Design Elevation — component redesign loop (LIVE tracker)
 
 Standing directive (see CLAUDE.md "Design elevation"): audit & **redesign every
