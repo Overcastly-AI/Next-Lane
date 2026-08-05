@@ -16,6 +16,14 @@ staged here by hand (see [`RELEASING.md`](./RELEASING.md))._
 
 ---
 
+## [0.10.3] — 2026-08-05
+
+[Compare with v0.10.2](https://github.com/Overcastly-AI/Next-Lane/compare/v0.10.2...v0.10.3)
+
+### Bug Fixes
+
+* **roadmap:** tint epic bars by status, and fix the white-on-white drag tooltip ([#73](https://github.com/Overcastly-AI/Next-Lane/issues/73)) ([3dc6495](https://github.com/Overcastly-AI/Next-Lane/commit/3dc64950e6aa1691fc4213263356f699aa0a3d04)), closes [#f3f5f8](https://github.com/Overcastly-AI/Next-Lane/issues/f3f5f8)
+
 ## [0.10.2] — 2026-08-05
 
 [Compare with v0.10.1](https://github.com/Overcastly-AI/Next-Lane/compare/v0.10.1...v0.10.2)
