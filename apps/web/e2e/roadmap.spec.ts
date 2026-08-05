@@ -126,12 +126,15 @@ test.describe('Roadmap', () => {
     await expect(epicBar).toBeVisible();
     await expect(epicBar).toContainText('Stakeholder Epic');
 
-    // Clicking the epic opens it on the board (?issue=).
+    // Clicking the epic opens it IN PLACE, on the roadmap. It used to navigate
+    // to the board, which threw away your zoom level and every expanded epic
+    // just to read a date — founder report, 2026-08-02.
     await epicBar.click();
     await expect(page).toHaveURL(
-      new RegExp(`/board\\?issue=${epic.id}`),
+      new RegExp(`/roadmap\\?issue=${epic.id}`),
       { timeout: 15_000 },
     );
+    await expect(page.getByTestId('roadmap-epic-bar').first()).toBeVisible();
   });
 
   test('epic bar uses the epic\'s own startDate/dueDate range in preference to child sprint dates', async ({

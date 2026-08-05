@@ -16,7 +16,10 @@ import {
   buildScale,
   daysBetween,
   planBounds,
+  snapWindowToWorkdays,
   startOfDayUTC,
+  weekendBands,
+  workdaysBetween,
   zoomById,
   type Scale,
   type ZoomId,
@@ -90,6 +93,8 @@ export interface RoadmapTimelineProps {
   projectId?: string;
   /** True while a schedule write is in flight, to damp the UI. */
   isSaving?: boolean;
+  /** Create an epic, or a story under one. Absent = read-only. */
+  onCreate?: (input: { title: string; parentEpicId?: string }) => Promise<void>;
 }
 
 export function RoadmapTimeline({
@@ -98,11 +103,35 @@ export function RoadmapTimeline({
   onSchedule,
   projectId,
   isSaving,
+  onCreate,
 }: RoadmapTimelineProps) {
   const [zoomId, setZoomId] = useState<ZoomId>('month');
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [drag, setDrag] = useState<DragState | null>(null);
   const [liveMessage, setLiveMessage] = useState('');
+  /*
+   * Extra months of empty future kept on the axis beyond what the plan spans.
+   *
+   * Without this the timeline stopped dead at the last dated thing, so there
+   * was nowhere to drag work TO — planning the next quarter meant first
+   * inventing a date somewhere else. Grows when you scroll to the right edge,
+   * so the horizon extends as you explore rather than rendering years nobody
+   * asked for up front.
+   */
+  const [horizonMonths, setHorizonMonths] = useState(3);
+  /** Which row's inline "add" form is open: an epic id, or 'epic' for a new epic. */
+  const [creatingUnder, setCreatingUnder] = useState<string | null>(null);
+  /** Measured width of the scrolling grid, so a zoom can stretch to fill it. */
+  const [gridWidth, setGridWidth] = useState(0);
+  /*
+   * Skip weekends. Off by default because plenty of teams genuinely do run
+   * across a weekend and forcing working-days on them would silently move
+   * their dates; persisted per browser because it is a preference about how
+   * YOU plan, not a property of the project.
+   */
+  const [skipWeekends, setSkipWeekends] = useState(
+    () => localStorage.getItem('nl_roadmap_skip_weekends') === '1',
+  );
   const scrollRef = useRef<HTMLDivElement>(null);
   /*
    * A pointer drag is ALSO followed by a native `click` on the same element.
@@ -115,6 +144,7 @@ export function RoadmapTimeline({
   const suppressClickRef = useRef(false);
 
   const editable = !!onSchedule;
+  const canCreate = !!onCreate;
   const zoom = zoomById(zoomId);
 
   const expandedIds = useMemo(() => [...expanded], [expanded]);
@@ -129,7 +159,7 @@ export function RoadmapTimeline({
     [data.epics],
   );
 
-  const bounds = useMemo(
+  const rawBounds = useMemo(
     () =>
       planBounds([
         ...data.sprints.flatMap((s) => [s.startDate, s.endDate]),
@@ -139,10 +169,28 @@ export function RoadmapTimeline({
     [data],
   );
 
-  const scale = useMemo(
-    () => (bounds ? buildScale(bounds.from, bounds.to, zoom) : null),
-    [bounds, zoom],
+  const bounds = useMemo(
+    () =>
+      rawBounds
+        ? { from: rawBounds.from, to: addDays(rawBounds.to, horizonMonths * 30) }
+        : null,
+    [rawBounds, horizonMonths],
   );
+
+  const scale = useMemo(
+    () => (bounds ? buildScale(bounds.from, bounds.to, zoom, 800, gridWidth) : null),
+    [bounds, zoom, gridWidth],
+  );
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const measure = () => setGridWidth(el.clientWidth);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   // ── Drag plumbing ─────────────────────────────────────────────────────────
   //
@@ -155,7 +203,9 @@ export function RoadmapTimeline({
     const onMove = (e: PointerEvent) => {
       if (e.pointerId !== drag.pointerId) return;
       const dx = e.clientX - drag.originX;
-      const dayDelta = Math.round(dx / zoom.pxPerDay);
+      // The EFFECTIVE day width, not the nominal zoom one — a stretched
+      // scale would otherwise move the bar further than the cursor.
+      const dayDelta = Math.round(dx / (scale?.pxPerDay ?? zoom.pxPerDay));
       setDrag((d) =>
         d && (d.dayDelta !== dayDelta || !d.moved)
           ? {
@@ -178,7 +228,7 @@ export function RoadmapTimeline({
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onUp);
     };
-  }, [drag, zoom.pxPerDay]);
+  }, [drag, zoom.pxPerDay, scale]);
 
   const commit = useCallback(
     (
@@ -189,15 +239,21 @@ export function RoadmapTimeline({
       label?: string,
     ) => {
       if (!onSchedule) return;
+      // Snap at COMMIT time rather than during the drag: nudging the bar under
+      // the cursor mid-gesture feels like the chart fighting you. It lands on
+      // working days when you let go.
+      const win = skipWeekends
+        ? snapWindowToWorkdays(startMs, endMs)
+        : { start: startMs, end: endMs };
       onSchedule({
         issueId,
-        startDate: new Date(startOfDayUTC(startMs)).toISOString(),
-        dueDate: new Date(startOfDayUTC(endMs)).toISOString(),
+        startDate: new Date(startOfDayUTC(win.start)).toISOString(),
+        dueDate: new Date(startOfDayUTC(win.end)).toISOString(),
         parentEpicId,
       });
       if (label) setLiveMessage(label);
     },
-    [onSchedule],
+    [onSchedule, skipWeekends],
   );
 
   /** Finish a pointer drag: commit if it actually moved, otherwise it was a click. */
@@ -256,6 +312,28 @@ export function RoadmapTimeline({
     [commit, editable],
   );
 
+  /** Commit a window painted onto an empty child row. */
+  const onSchedulePainted = useCallback(
+    (issueId: string, parentEpicId: string, startMs: number, endMs: number) => {
+      commit(
+        issueId,
+        startMs,
+        endMs,
+        parentEpicId,
+        `Scheduled ${fmtRange(startMs, endMs)}`,
+      );
+    },
+    [commit],
+  );
+
+  /** Extend the future horizon when the user reaches the right-hand edge. */
+  const onGridScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const remaining = el.scrollWidth - el.scrollLeft - el.clientWidth;
+    if (remaining < 240) setHorizonMonths((m) => Math.min(m + 3, 48));
+  }, []);
+
   const scrollToToday = useCallback(() => {
     if (!scale || !scrollRef.current) return;
     const x = scale.xOf(Date.now());
@@ -286,6 +364,8 @@ export function RoadmapTimeline({
       | { kind: 'epic'; epic: RoadmapEpicDto; y: number }
       | { kind: 'child'; epicId: string; child: RoadmapChildDto; y: number }
       | { kind: 'child-note'; epicId: string; text: string; y: number }
+      | { kind: 'add-child'; epicId: string; y: number }
+      | { kind: 'add-epic'; y: number }
     > = [];
     let y = 0;
     for (const epic of datedEpics) {
@@ -305,9 +385,21 @@ export function RoadmapTimeline({
           y += ROW_H;
         }
       }
+      // The create affordance sits directly under the last story of the epic
+      // it belongs to, the way Jira Cloud does it — a row in the chart rather
+      // than a control in a toolbar, so "add" is where the thing being added
+      // will appear.
+      if (canCreate && kids !== undefined) {
+        out.push({ kind: 'add-child', epicId: epic.id, y });
+        y += ROW_H;
+      }
+    }
+    if (canCreate) {
+      out.push({ kind: 'add-epic', y });
+      y += ROW_H;
     }
     return out;
-  }, [datedEpics, expanded, childrenByEpic]);
+  }, [datedEpics, expanded, childrenByEpic, canCreate]);
 
   const totalRowsHeight = rows.length > 0 ? rows[rows.length - 1].y + ROW_H : 0;
 
@@ -345,8 +437,11 @@ export function RoadmapTimeline({
               aria-pressed={zoomId === z.id}
               className={cn(
                 'rounded-md px-2.5 py-1 text-xs font-medium transition-colors',
+                // Theme tokens, not a hardcoded near-black: `bg-ink-900` is
+                // almost the dark theme's own surface, so the selected segment
+                // vanished into the control in dark mode.
                 zoomId === z.id
-                  ? 'bg-ink-900 text-white'
+                  ? 'bg-signal-600 text-white shadow-xs'
                   : 'text-ink-500 hover:bg-ink-100 hover:text-ink-800',
               )}
             >
@@ -354,6 +449,28 @@ export function RoadmapTimeline({
             </button>
           ))}
         </div>
+
+        <button
+          type="button"
+          role="switch"
+          aria-checked={skipWeekends}
+          data-testid="roadmap-skip-weekends"
+          onClick={() => {
+            const next = !skipWeekends;
+            setSkipWeekends(next);
+            localStorage.setItem('nl_roadmap_skip_weekends', next ? '1' : '0');
+          }}
+          title="Shade weekends and keep scheduled dates on working days"
+          className={cn(
+            'rounded-md border px-2.5 py-1 text-xs font-medium transition-colors',
+            skipWeekends
+              ? 'border-signal-300 bg-signal-50 text-signal-700'
+              : 'border-ink-200 bg-surface text-ink-500 hover:bg-ink-100 hover:text-ink-900',
+          )}
+        >
+          Skip weekends
+        </button>
+
 
         <button
           type="button"
@@ -418,6 +535,7 @@ export function RoadmapTimeline({
                 expanded={expanded.has(r.epic.id)}
                 onToggle={() => toggleExpand(r.epic.id)}
                 onOpen={() => onOpenEpic(r.epic.id)}
+                canCreate={canCreate}
               />
             ) : r.kind === 'child' ? (
               <div
@@ -429,7 +547,7 @@ export function RoadmapTimeline({
                 <span className="nl-issue-key shrink-0 text-[10px]">{r.child.key}</span>
                 <span className="truncate text-[11px] text-ink-600">{r.child.title}</span>
               </div>
-            ) : (
+            ) : r.kind === 'child-note' ? (
               <div
                 key={`note-${r.epicId}`}
                 className="border-b border-ink-100 bg-ink-50/40 pl-8 pr-2 text-[11px] text-ink-400"
@@ -437,12 +555,44 @@ export function RoadmapTimeline({
               >
                 {r.text}
               </div>
+            ) : r.kind === 'add-child' ? (
+              <AddRow
+                key={`add-${r.epicId}`}
+                testId={`roadmap-add-story-${r.epicId}`}
+                label="Create story"
+                indented
+                active={creatingUnder === r.epicId}
+                onActivate={() => setCreatingUnder(r.epicId)}
+                onCancel={() => setCreatingUnder(null)}
+                onSubmit={async (title) => {
+                  await onCreate?.({ title, parentEpicId: r.epicId });
+                }}
+              />
+            ) : (
+              <AddRow
+                key="add-epic"
+                testId="roadmap-add-epic"
+                label="Create epic"
+                active={creatingUnder === 'epic'}
+                onActivate={() => setCreatingUnder('epic')}
+                onCancel={() => setCreatingUnder(null)}
+                onSubmit={async (title) => {
+                  await onCreate?.({ title });
+                }}
+              />
             ),
           )}
         </div>
 
         {/* Scrollable time grid */}
-        <div ref={scrollRef} className="min-w-0 flex-1 overflow-x-auto">
+        <div
+          ref={scrollRef}
+          onScroll={onGridScroll}
+          className="min-w-0 flex-1 overflow-x-auto"
+        >
+          {/* `minWidth: 100%` so a short plan at Month or Quarter still fills
+              the panel instead of leaving a wide empty gutter to its right.
+              Bars stay pixel-positioned off the scale either way. */}
           <div style={{ width: scale.widthPx }}>
             {/* Axis */}
             <div
@@ -465,6 +615,18 @@ export function RoadmapTimeline({
 
             {/* Lanes */}
             <div className="relative bg-surface">
+              {/* Weekend bands, behind everything. Only drawn when a day is
+                  wide enough to read as a band — see `weekendBands`. */}
+              {skipWeekends &&
+                weekendBands(scale).map((b) => (
+                  <div
+                    key={`wk-${b.x}`}
+                    className="pointer-events-none absolute top-0 bottom-0 bg-ink-200/35"
+                    style={{ left: b.x, width: b.width }}
+                    aria-hidden="true"
+                  />
+                ))}
+
               {/* Minor gridlines */}
               {scale.minorTicks.map((t) => (
                 <div
@@ -569,6 +731,7 @@ export function RoadmapTimeline({
                         end: r.epic.end as string,
                       })
                     }
+                    skipWeekends={skipWeekends}
                     onOpen={() => {
                       if (suppressClickRef.current) {
                         suppressClickRef.current = false;
@@ -588,11 +751,19 @@ export function RoadmapTimeline({
                     setDrag={setDrag}
                     endDrag={endDrag}
                     nudge={nudge}
+                    onSchedulePainted={onSchedulePainted}
                   />
-                ) : (
+                ) : r.kind === 'child-note' ? (
                   <div
                     key={`barnote-${r.epicId}`}
                     className="border-b border-ink-100 bg-ink-50/40"
+                    style={{ height: ROW_H }}
+                  />
+                ) : (
+                  // Spacer keeping the grid aligned with the rail's add-rows.
+                  <div
+                    key={r.kind === 'add-child' ? `addbar-${r.epicId}` : 'addbar-epic'}
+                    className="border-b border-ink-100"
                     style={{ height: ROW_H }}
                   />
                 ),
@@ -659,15 +830,18 @@ function EpicRailRow({
   expanded,
   onToggle,
   onOpen,
+  canCreate,
 }: {
   epic: RoadmapEpicDto;
   expanded: boolean;
   onToggle: () => void;
   onOpen: () => void;
+  /** Expanding a CHILDLESS epic is still useful when you can create one. */
+  canCreate: boolean;
 }) {
   return (
     <div
-      className="flex items-center gap-1 border-b border-ink-100 pl-1 pr-2"
+      className="group/rail flex items-center gap-1 border-b border-ink-100 pl-1 pr-2"
       style={{ height: ROW_H }}
     >
       <button
@@ -676,10 +850,13 @@ function EpicRailRow({
         data-testid={`roadmap-epic-expand-${epic.id}`}
         aria-expanded={expanded}
         aria-label={`${expanded ? 'Collapse' : 'Expand'} ${epic.key} ${epic.title}`}
-        disabled={epic.childCount === 0}
+        // An epic with no children was previously un-expandable, which made
+        // its "Create story" row unreachable — you could never add the FIRST
+        // story to an epic from the chart. Caught by e2e.
+        disabled={epic.childCount === 0 && !canCreate}
         className={cn(
           'flex h-5 w-5 shrink-0 items-center justify-center rounded text-ink-400',
-          epic.childCount === 0
+          epic.childCount === 0 && !canCreate
             ? 'invisible'
             : 'hover:bg-ink-200 hover:text-ink-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-400',
         )}
@@ -713,6 +890,104 @@ function EpicRailRow({
   );
 }
 
+/**
+ * A create affordance shaped like a row, sitting directly beneath the things
+ * it creates — "+ Create epic" under the last epic, "+ Create story" under the
+ * last story of its epic. Jira Cloud puts it here and it is the right place:
+ * the control lives where the result will appear, so there is no hunting in a
+ * toolbar for something whose target is a specific row.
+ *
+ * Title only, on purpose. You place the thing by dragging it, and a modal with
+ * six fields would restore exactly the context switch this screen removes.
+ */
+function AddRow({
+  testId,
+  label,
+  indented,
+  active,
+  onActivate,
+  onCancel,
+  onSubmit,
+}: {
+  testId: string;
+  label: string;
+  indented?: boolean;
+  active: boolean;
+  onActivate: () => void;
+  onCancel: () => void;
+  onSubmit: (title: string) => Promise<void>;
+}) {
+  const [title, setTitle] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  async function submit() {
+    const t = title.trim();
+    if (!t || busy) return;
+    setBusy(true);
+    try {
+      await onSubmit(t);
+      // Stay open so several can be added in a row — the common case when you
+      // are filling in a plan.
+      setTitle('');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!active) {
+    return (
+      <div
+        className={cn('border-b border-ink-100', indented && 'bg-ink-50/40')}
+        style={{ height: ROW_H }}
+      >
+        <button
+          type="button"
+          onClick={onActivate}
+          data-testid={testId}
+          className={cn(
+            'flex h-full w-full items-center gap-1.5 pr-2 text-left text-[11px] font-medium text-ink-400',
+            'hover:bg-ink-100 hover:text-ink-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-400',
+            indented ? 'pl-8' : 'pl-2',
+          )}
+        >
+          <span aria-hidden="true" className="text-sm leading-none">+</span>
+          {label}
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={cn(
+        'flex items-center gap-1 border-b border-ink-100 pr-1',
+        indented ? 'bg-ink-50/40 pl-7' : 'pl-1',
+      )}
+      style={{ height: ROW_H }}
+    >
+      <input
+        autoFocus
+        value={title}
+        disabled={busy}
+        onChange={(e) => setTitle(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            void submit();
+          } else if (e.key === 'Escape') {
+            onCancel();
+          }
+        }}
+        onBlur={() => !title.trim() && onCancel()}
+        placeholder={`${label}…`}
+        aria-label={label}
+        data-testid={`${testId}-input`}
+        className="min-w-0 flex-1 rounded border border-signal-300 bg-surface px-1.5 py-0.5 text-[11px] text-ink-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-400"
+      />
+    </div>
+  );
+}
+
 // ── Bars ────────────────────────────────────────────────────────────────────
 
 function EpicBarRow({
@@ -724,10 +999,12 @@ function EpicBarRow({
   onDragEnd,
   onKeyDown,
   onOpen,
+  skipWeekends,
 }: {
   epic: RoadmapEpicDto;
   scale: Scale;
   editable: boolean;
+  skipWeekends: boolean;
   drag: DragState | null;
   onDragStart: (mode: DragMode, e: React.PointerEvent) => void;
   onDragEnd: (d: DragState) => void;
@@ -803,6 +1080,19 @@ function EpicBarRow({
           style={{ width: `${fill}%` }}
           aria-hidden="true"
         />
+        {/* Live feedback while dragging: how many days you have moved, and
+            what the window becomes. Without it a drag is guesswork — you drop
+            the bar and only then find out where it landed. */}
+        {drag?.moved && (
+          <span className="pointer-events-none absolute -top-6 left-0 z-40 whitespace-nowrap rounded bg-ink-900 px-1.5 py-0.5 text-[10px] font-semibold text-white shadow-card">
+            {signedDays(drag.dayDelta)} · {fmtRange(preview.start, preview.end)}
+            {skipWeekends && (
+              <span className="ml-1 opacity-70">
+                ({workdaysBetween(preview.start, preview.end)}wd)
+              </span>
+            )}
+          </span>
+        )}
         <span className="relative z-10 flex w-full items-center gap-1.5 overflow-hidden px-1.5">
           <span className="truncate text-[11px] font-medium text-signal-900">
             {epic.title}
@@ -858,6 +1148,7 @@ function ChildBar({
   setDrag,
   endDrag,
   nudge,
+  onSchedulePainted,
 }: {
   child: RoadmapChildDto;
   epicId: string;
@@ -874,6 +1165,12 @@ function ChildBar({
     e: React.KeyboardEvent,
     item: { id: string; start: string; end: string },
     parentEpicId?: string,
+  ) => void;
+  onSchedulePainted: (
+    issueId: string,
+    epicId: string,
+    startMs: number,
+    endMs: number,
   ) => void;
 }) {
   // A child whose window comes from its SPRINT has no dates of its own to
@@ -905,16 +1202,27 @@ function ChildBar({
     };
   }, [drag, hasWindow, child.id, child.start, child.end, epicId, endDrag]);
 
+  /*
+   * An undated story had no affordance at all: the row rendered the words "no
+   * dates" and nothing else, so the one thing you actually wanted to do on the
+   * timeline — put it somewhere — was the one thing you couldn't. Founder
+   * report: "if dates are not set I cannot assign or drag them into place."
+   *
+   * The row is now a scheduling surface. Drag across it to paint a window, or
+   * click once for a default week starting at the day you clicked. Both snap
+   * to whole days on the same scale as every other bar, and both go through
+   * the same commit path, so the epic cascade applies exactly as it would to a
+   * bar you moved.
+   */
   if (!hasWindow) {
     return (
-      <div
-        className="relative border-b border-ink-100 bg-ink-50/40"
-        style={{ height: ROW_H }}
-      >
-        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] italic text-ink-400">
-          no dates
-        </span>
-      </div>
+      <UnscheduledChildRow
+        child={child}
+        epicId={epicId}
+        scale={scale}
+        editable={editable}
+        onSchedule={onSchedulePainted}
+      />
     );
   }
 
@@ -967,7 +1275,119 @@ function ChildBar({
         style={{ left, width, top: (ROW_H - 14) / 2, height: 14 }}
       >
         <span className="truncate px-1.5">{child.title}</span>
+        {drag?.moved && (
+          <span className="pointer-events-none absolute -top-6 left-0 z-40 whitespace-nowrap rounded bg-ink-900 px-1.5 py-0.5 text-[10px] font-semibold text-white shadow-card">
+            {signedDays(drag.dayDelta)} · {fmtRange(preview.start, preview.end)}
+          </span>
+        )}
       </button>
+    </div>
+  );
+}
+
+/**
+ * The row for a story that has no dates yet — a scheduling surface rather than
+ * a dead label.
+ *
+ * Drag across it to paint a window; click once for a default week. The painted
+ * range snaps to whole days off the same `Scale` as every bar, so what you
+ * release on is what gets written.
+ */
+function UnscheduledChildRow({
+  child,
+  epicId,
+  scale,
+  editable,
+  onSchedule,
+}: {
+  child: RoadmapChildDto;
+  epicId: string;
+  scale: Scale;
+  editable: boolean;
+  onSchedule: (
+    issueId: string,
+    epicId: string,
+    startMs: number,
+    endMs: number,
+  ) => void;
+}) {
+  const rowRef = useRef<HTMLDivElement>(null);
+  const [paint, setPaint] = useState<{ fromX: number; toX: number } | null>(null);
+
+  /** Default length for a click rather than a drag. A week reads as a real
+   *  piece of work and is trivially resized afterwards; a single day would be
+   *  a sliver most people would immediately have to fix. */
+  const CLICK_DAYS = 7;
+
+  const xInRow = (clientX: number): number => {
+    const box = rowRef.current?.getBoundingClientRect();
+    return box ? clientX - box.left : 0;
+  };
+
+  useEffect(() => {
+    if (!paint) return;
+    const onMove = (e: PointerEvent) =>
+      setPaint((p) => (p ? { ...p, toX: xInRow(e.clientX) } : p));
+    const onUp = () => {
+      setPaint((p) => {
+        if (!p) return null;
+        const a = scale.dayAtX(Math.min(p.fromX, p.toX));
+        const b = scale.dayAtX(Math.max(p.fromX, p.toX));
+        const end = b <= a ? addDays(a, CLICK_DAYS) : b;
+        onSchedule(child.id, epicId, a, end);
+        return null;
+      });
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp, { once: true });
+    window.addEventListener('pointercancel', onUp, { once: true });
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+    };
+  }, [paint, scale, child.id, epicId, onSchedule]);
+
+  const left = paint ? Math.min(paint.fromX, paint.toX) : 0;
+  const width = paint ? Math.abs(paint.toX - paint.fromX) : 0;
+
+  return (
+    <div
+      ref={rowRef}
+      data-testid="roadmap-child-unscheduled"
+      data-child-id={child.id}
+      className={cn(
+        'group relative border-b border-ink-100 bg-ink-50/40',
+        editable && 'cursor-crosshair hover:bg-signal-50/60',
+      )}
+      style={{ height: ROW_H }}
+      onPointerDown={(e) => {
+        if (!editable || !canDragWith(e)) return;
+        const x = xInRow(e.clientX);
+        setPaint({ fromX: x, toX: x });
+      }}
+    >
+      {paint ? (
+        <>
+        <span className="pointer-events-none absolute -top-1 z-40 whitespace-nowrap rounded bg-ink-900 px-1.5 py-0.5 text-[10px] font-semibold text-white shadow-card" style={{ left }}>
+          {Math.max(1, daysBetween(scale.dayAtX(Math.min(paint.fromX, paint.toX)), scale.dayAtX(Math.max(paint.fromX, paint.toX))))}d
+        </span>
+        <div
+          className="pointer-events-none absolute rounded border border-signal-400 bg-signal-200/70"
+          style={{
+            left,
+            width: Math.max(2, width),
+            top: (ROW_H - 14) / 2,
+            height: 14,
+          }}
+          aria-hidden="true"
+        />
+        </>
+      ) : (
+        <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-[10px] italic text-ink-400">
+          {editable ? 'drag here to schedule' : 'no dates'}
+        </span>
+      )}
     </div>
   );
 }
@@ -1165,6 +1585,12 @@ function NoDatesOnly({
  */
 function canDragWith(e: React.PointerEvent): boolean {
   return e.pointerType !== 'touch' && e.button === 0;
+}
+
+/** "+7d" / "−3d" — a signed day delta for the drag readout. */
+function signedDays(n: number): string {
+  if (n === 0) return '0d';
+  return n > 0 ? `+${n}d` : `\u2212${Math.abs(n)}d`;
 }
 
 function fmtRange(startMs: number, endMs: number): string {

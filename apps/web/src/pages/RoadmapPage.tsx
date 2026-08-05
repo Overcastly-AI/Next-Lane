@@ -1,5 +1,11 @@
-import { useParams, useNavigate } from 'react-router-dom';
-import { useBoard } from '@/api/issues';
+import { useMemo } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { useParams, useSearchParams } from 'react-router-dom';
+import type { StatusDto } from '@next-lane/shared';
+import { useUsers } from '@/api/meta';
+import { IssueDetailDrawer } from '@/components/issue/IssueDetailDrawer';
+import { useBoard, useCreateIssue } from '@/api/issues';
+import { IssueType, Priority } from '@next-lane/shared';
 import { useRoadmap, useScheduleIssue } from '@/api/roadmap';
 import { useToast } from '@/components/ui/Toast';
 import { errorMessage } from '@/lib/errorMessage';
@@ -30,22 +36,56 @@ import { RoadmapTimeline } from '@/components/roadmap/RoadmapTimeline';
  */
 export function RoadmapPage() {
   const { projectId = '' } = useParams();
-  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const boardQuery = useBoard(projectId);
+  const usersQuery = useUsers();
   const roadmapQuery = useRoadmap(projectId);
   const toast = useToast();
   const myRole = useMyRole(boardQuery.data?.project.workspaceId);
   const editable = canEdit(myRole);
   const schedule = useScheduleIssue(projectId);
+  const createIssue = useCreateIssue(projectId);
+  const queryClient = useQueryClient();
 
   const projectName = boardQuery.data?.project.name;
   const data = roadmapQuery.data;
   const isEmpty =
     !!data && data.epics.length === 0 && data.sprints.length === 0;
 
+  /*
+   * Open the issue IN PLACE rather than navigating to the board.
+   *
+   * This used to jump to `/board?issue=…`, which threw you off the roadmap
+   * entirely: you clicked a bar to check a date and landed on a kanban board,
+   * having lost your zoom level and every epic you had expanded. Reported by
+   * the founder as "why does the page change if I click into an epic?" — the
+   * honest answer was that the roadmap shipped before the drawer was
+   * reusable, and nobody revisited it.
+   *
+   * `?issue=` on this route, same as the board uses, so the URL is still
+   * shareable and the back button still closes the drawer.
+   */
+  const openIssueId = searchParams.get('issue');
+
   function openEpic(epicId: string) {
-    navigate(`/projects/${projectId}/board?issue=${epicId}`);
+    const next = new URLSearchParams(searchParams);
+    next.set('issue', epicId);
+    setSearchParams(next, { replace: false });
   }
+
+  function closeIssue() {
+    const next = new URLSearchParams(searchParams);
+    next.delete('issue');
+    setSearchParams(next, { replace: false });
+  }
+
+  const statuses = useMemo<StatusDto[]>(
+    () =>
+      boardQuery.data
+        ? [...boardQuery.data.statuses].sort((a, b) => a.order - b.order)
+        : [],
+    [boardQuery.data],
+  );
 
   function onSchedule(input: {
     issueId: string;
@@ -59,6 +99,28 @@ export function RoadmapPage() {
         // snaps the bar back to the truth rather than leaving a lie on screen.
         toast.error(errorMessage(err, 'Could not reschedule that item.')),
     });
+  }
+
+  /*
+   * Create an epic, or a story under one, without leaving the chart. Title
+   * only — you place it by dragging, which is the whole reason to be here.
+   * A new story lands undated on purpose: its epic's row then shows an empty
+   * scheduling lane you can paint a window onto.
+   */
+  async function onCreate(input: { title: string; parentEpicId?: string }) {
+    await createIssue.mutateAsync({
+      projectId,
+      title: input.title,
+      type: input.parentEpicId ? IssueType.STORY : IssueType.EPIC,
+      priority: Priority.MEDIUM,
+      ...(input.parentEpicId ? { parentId: input.parentEpicId } : {}),
+    });
+    await queryClient.invalidateQueries({ queryKey: ['roadmap', projectId] });
+    if (input.parentEpicId) {
+      await queryClient.invalidateQueries({
+        queryKey: ['roadmap-epic-children', projectId, input.parentEpicId],
+      });
+    }
   }
 
   return (
@@ -110,11 +172,25 @@ export function RoadmapPage() {
               projectId={projectId}
               onOpenEpic={openEpic}
               onSchedule={editable ? onSchedule : undefined}
+              onCreate={editable ? onCreate : undefined}
               isSaving={schedule.isPending}
             />
           ) : null}
         </section>
       </div>
+
+      {openIssueId && (
+        <IssueDetailDrawer
+          issueId={openIssueId}
+          projectId={projectId}
+          statuses={statuses}
+          users={usersQuery.data ?? []}
+          editable={editable}
+          viewerRole={myRole ?? undefined}
+          onClose={closeIssue}
+          onOpenIssue={openEpic}
+        />
+      )}
     </Shell>
   );
 }
