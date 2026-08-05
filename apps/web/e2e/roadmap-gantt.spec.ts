@@ -962,4 +962,66 @@ test.describe('Roadmap Gantt', () => {
       expect(onTop, `an arrow is painted over ${id}`).toBe('bar');
     }
   });
+
+  test('the date axis stays put while the plan scrolls under it', async ({
+    page,
+    request,
+  }) => {
+    const { token, project } = await setupIsolatedProject(page, request, {
+      label: 'rm-sticky',
+      projectName: 'Roadmap Sticky QA',
+      openBoard: false,
+    });
+    /*
+     * Founder: "the Gantt chart header should become sticky as I scroll down."
+     *
+     * Enough epics that the chart is taller than the viewport, so there is
+     * something to scroll: the axis used to be one flow item above the lanes
+     * inside the horizontal scroller, so a long plan carried the months off
+     * the top of the screen and left you reading bars with no idea what
+     * quarter you were in.
+     */
+    for (let i = 0; i < 14; i++) {
+      await createIssue(request, token, {
+        projectId: project.id,
+        type: 'EPIC',
+        title: `Scroll Epic ${i}`,
+        startDate: iso('2026-04-01'),
+        dueDate: iso('2026-04-30'),
+      });
+    }
+
+    await page.goto(`/projects/${project.id}/roadmap`);
+    const axis = page.getByTestId('roadmap-axis-header');
+    await expect(axis).toBeVisible({ timeout: 15_000 });
+    const before = (await axis.boundingBox())!;
+
+    // The page's scroller is <main>, not the document — the app header and
+    // project nav sit outside it.
+    const scrolled = await page.evaluate(() => {
+      const main = document.querySelector('main')!;
+      main.scrollTop = 400;
+      return main.scrollTop;
+    });
+    expect(scrolled, 'the chart must be tall enough to scroll').toBeGreaterThan(
+      0,
+    );
+    await page.waitForTimeout(200);
+
+    // Still on screen, and no lower than where it started.
+    await expect(axis).toBeVisible();
+    const after = (await axis.boundingBox())!;
+    expect(after.y).toBeLessThanOrEqual(before.y + 1);
+
+    // And nothing is painted over it: a bar sliding up across the month
+    // labels is the exact failure a sticky axis exists to prevent.
+    const onTop = await page.evaluate(() => {
+      const r = document
+        .querySelector('[data-testid="roadmap-axis-header"]')!
+        .getBoundingClientRect();
+      const el = document.elementFromPoint(r.left + r.width - 40, r.top + r.height / 2);
+      return el?.closest('[data-testid="roadmap-axis-header"]') ? 'axis' : 'other';
+    });
+    expect(onTop).toBe('axis');
+  });
 });
