@@ -233,6 +233,15 @@ export default function App() {
                 </RequireAuth>
               }
             />
+            {/*
+              `/admin` is the front door for instance-wide configuration,
+              reached from "Instance settings" in the user menu. SSO/OIDC is
+              currently its only section, so it lands there directly rather
+              than on a hub page listing one thing. The existing `/admin/sso`
+              URL keeps working — it is in docs, and it is what anyone who
+              bookmarked the page has.
+            */}
+            <Route path="/admin" element={<Navigate to="/admin/sso" replace />} />
 
             {/*
               Project-scoped routes: ProjectScopedLayout resolves the

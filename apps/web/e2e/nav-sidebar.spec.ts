@@ -119,16 +119,30 @@ test.describe('Sidebar — desktop', () => {
     });
   });
 
-  test('Workspace Branding is reachable from the sidebar for an admin (Phase 2)', async ({
+  test('Branding is NOT a sidebar row — it lives in the workspace settings hub', async ({
     page,
     request,
   }) => {
     const ctx = await setup(page, request);
 
-    const brandingLink = page.getByTestId('nav-sidebar-branding');
-    await expect(brandingLink).toBeVisible({ timeout: 15_000 });
-    await expect(brandingLink).toHaveAttribute('href', `/workspaces/${ctx.workspaceId}/branding`);
-    await brandingLink.click();
+    /*
+     * Branding was promoted to the sidebar to fix a "workspace branding is
+     * lost" report, and that fix worked by making a once-a-year configuration
+     * screen hold permanent space next to the board and the roadmap. Founder,
+     * later: "why is the SSO / OIDC in the main navigation?? This should be on
+     * a settings page. Along with branding."
+     *
+     * The discoverability requirement is still met — it just isn't met by the
+     * sidebar. This asserts both halves: gone from the nav, and one click from
+     * Workspace settings via the tab strip that already carries General,
+     * Members and Audit log.
+     */
+    await expect(page.getByTestId('nav-sidebar-branding')).toHaveCount(0);
+
+    await page.goto(`/workspaces/${ctx.workspaceId}/settings`);
+    const tabs = page.getByTestId('workspace-settings-nav');
+    await expect(tabs).toBeVisible({ timeout: 15_000 });
+    await tabs.getByRole('link', { name: 'Branding' }).click();
 
     await expect(page).toHaveURL(new RegExp(`/workspaces/${ctx.workspaceId}/branding`), {
       timeout: 15_000,

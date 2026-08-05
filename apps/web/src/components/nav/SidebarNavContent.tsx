@@ -20,16 +20,13 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, matchPath } from 'react-router-dom';
-import { Role, type ProjectDto } from '@next-lane/shared';
+import type { ProjectDto } from '@next-lane/shared';
 import { cn } from '@/lib/cn';
 import { useProjects } from '@/api/projects';
-import { useMyRole } from '@/api/workspaces';
 import { useWorkspaceContext } from '@/contexts/WorkspaceContext';
 import { useSwitchWorkspace } from '@/lib/useSwitchWorkspace';
-import { useAuth } from '@/auth/AuthContext';
 import { WorkspaceSwitcherMenuContent } from './WorkspaceSwitcherMenuContent';
 import {
-  BrandingIcon,
   ChevronDownSmallIcon,
   HomeIcon,
   InsightsIcon,
@@ -37,7 +34,6 @@ import {
   MyWorkIcon,
   NotificationsIcon,
   SettingsIcon,
-  ShieldIcon,
   ViewPagesIcon,
 } from './sidebarIcons';
 import { PRIMARY_PROJECT_VIEWS } from '@/components/project/projectViews';
@@ -313,10 +309,6 @@ export interface SidebarNavContentProps {
 export function SidebarNavContent({ collapsed, onNavigate }: SidebarNavContentProps) {
   const { activeWorkspace } = useWorkspaceContext();
   const projectsQuery = useProjects(activeWorkspace?.id);
-  const myRole = useMyRole(activeWorkspace?.id);
-  const isWorkspaceAdmin = myRole === Role.ADMIN;
-  const { user } = useAuth();
-  const isInstanceAdmin = !!user?.isInstanceAdmin;
   const location = useLocation();
 
   const projectMatch = matchPath('/projects/:projectId/*', location.pathname);
@@ -408,29 +400,16 @@ export function SidebarNavContent({ collapsed, onNavigate }: SidebarNavContentPr
         ))}
       </div>
 
-      {/* Instance-admin section — deliberately NOT gated on activeWorkspace
-          (this is instance-wide, not workspace-scoped), unlike the block
-          below it. Only ever visible to the instance's designated admin
-          (User.isInstanceAdmin), a strictly narrower gate than workspace
-          Membership.role: ADMIN. */}
-      {isInstanceAdmin && (
-        <div className="space-y-0.5 border-t border-ink-100 px-2 py-2">
-          {!collapsed && (
-            <p className="px-2.5 pb-1 pt-0.5 text-[11px] font-semibold uppercase tracking-wide text-ink-400">
-              Instance admin
-            </p>
-          )}
-          <SidebarRow
-            to="/admin/sso"
-            active={location.pathname === '/admin/sso'}
-            icon={<ShieldIcon className="h-4 w-4" />}
-            label="SSO / OIDC"
-            collapsed={collapsed}
-            onNavigate={onNavigate}
-            testId="nav-sidebar-admin-sso"
-          />
-        </div>
-      )}
+      {/*
+       * No instance-admin section here any more.
+       *
+       * SSO / OIDC had a whole labelled sidebar group to itself, permanently,
+       * for a thing you configure once when you stand the instance up. The
+       * sidebar is for daily destinations; instance configuration now lives
+       * behind "Instance settings" in the user menu (`AppHeader`), which is
+       * where instance-wide administration conventionally sits and where it
+       * stops competing with the work.
+       */}
 
       {activeWorkspace && (
         <div className="space-y-0.5 border-t border-ink-100 px-2 py-2">
@@ -473,20 +452,17 @@ export function SidebarNavContent({ collapsed, onNavigate }: SidebarNavContentPr
             collapsed={collapsed}
             onNavigate={onNavigate}
           />
-          {/* Branding — previously 2+ clicks deep (chip → dropdown →
-              settings tab) with no visual cue it existed. Admin-gated the
-              same way `WorkspaceBrandingPage` itself gates: ADMIN only. */}
-          {isWorkspaceAdmin && (
-            <SidebarRow
-              to={`/workspaces/${activeWorkspace.id}/branding`}
-              active={location.pathname === `/workspaces/${activeWorkspace.id}/branding`}
-              icon={<BrandingIcon className="h-4 w-4" />}
-              label="Branding"
-              collapsed={collapsed}
-              onNavigate={onNavigate}
-              testId="nav-sidebar-branding"
-            />
-          )}
+          {/*
+           * Branding is NOT a row here.
+           *
+           * It was promoted to the sidebar to fix a discoverability report
+           * ("workspace branding is lost"), and that fix worked by making a
+           * once-a-year configuration screen compete with the board and the
+           * roadmap for permanent space. It now sits where it belongs — the
+           * Branding tab of the workspace settings hub, alongside General,
+           * Members and Audit log, which is one click from the row directly
+           * above this comment and no longer a hunt through a chip menu.
+           */}
         </div>
       )}
     </>
