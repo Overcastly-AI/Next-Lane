@@ -1,6 +1,6 @@
 {
   "name": "@next-lane/mcp",
-  "version": "0.12.0",
+  "version": "0.13.0",
   "private": false,
   "description": "Model Context Protocol (MCP) server for Next Lane — read & write a project's workflows/SDLC and core entities from external agents (Claude Desktop, Claude Code, etc.).",
   "license": "MIT",

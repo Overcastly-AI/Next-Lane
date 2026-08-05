@@ -16,6 +16,14 @@ staged here by hand (see [`RELEASING.md`](./RELEASING.md))._
 
 ---
 
+## [0.13.0] — 2026-08-05
+
+[Compare with v0.12.0](https://github.com/Overcastly-AI/Next-Lane/compare/v0.12.0...v0.13.0)
+
+### Features
+
+* **roadmap:** drag a story from one epic to another on the Gantt ([#76](https://github.com/Overcastly-AI/Next-Lane/issues/76)) ([cfa6f48](https://github.com/Overcastly-AI/Next-Lane/commit/cfa6f48c3cb1cbaebf60fed62614d4a47c313f29))
+
 ## [0.12.0] — 2026-08-05
 
 [Compare with v0.11.0](https://github.com/Overcastly-AI/Next-Lane/compare/v0.11.0...v0.12.0)
