@@ -16,6 +16,20 @@ staged here by hand (see [`RELEASING.md`](./RELEASING.md))._
 
 ---
 
+## [0.10.0] — 2026-08-05
+
+[Compare with v0.9.0](https://github.com/Overcastly-AI/Next-Lane/compare/v0.9.0...v0.10.0)
+
+### Features
+
+* **roadmap:** fill the width at every zoom, show drag deltas, create in place ([6ae0465](https://github.com/Overcastly-AI/Next-Lane/commit/6ae0465bff2c51dd09f965f79c6dec5d9ff8ab86))
+* **roadmap:** move create into the chart as rows, Jira Cloud style ([23a208c](https://github.com/Overcastly-AI/Next-Lane/commit/23a208c8ef542e6bcfbed39325d3b83145d3ea12))
+* **roadmap:** skip weekends — shade them, and keep scheduled dates on working days ([b6bc139](https://github.com/Overcastly-AI/Next-Lane/commit/b6bc1398406530720faf119bd332efdca84c5b75))
+
+### Bug Fixes
+
+* **roadmap:** schedule undated stories on the chart, and stop leaving the page ([483e011](https://github.com/Overcastly-AI/Next-Lane/commit/483e01185a25c7f26cf05a5034dd4b94ac69ad8e))
+
 ## [0.9.0] — 2026-08-04
 
 [Compare with v0.8.0](https://github.com/Overcastly-AI/Next-Lane/compare/v0.8.0...v0.9.0)
