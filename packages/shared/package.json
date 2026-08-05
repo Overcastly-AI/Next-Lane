@@ -1,6 +1,6 @@
 {
   "name": "@next-lane/shared",
-  "version": "0.13.1",
+  "version": "0.14.0",
   "private": true,
   "type": "commonjs",
   "main": "./dist/index.js",

@@ -16,6 +16,14 @@ staged here by hand (see [`RELEASING.md`](./RELEASING.md))._
 
 ---
 
+## [0.14.0] — 2026-08-05
+
+[Compare with v0.13.1](https://github.com/Overcastly-AI/Next-Lane/compare/v0.13.1...v0.14.0)
+
+### Features
+
+* **roadmap:** make the Gantt date axis sticky ([#78](https://github.com/Overcastly-AI/Next-Lane/issues/78)) ([1debfaa](https://github.com/Overcastly-AI/Next-Lane/commit/1debfaa999262a7d285d5442dc260d1020eb68d1))
+
 ## [0.13.1] — 2026-08-05
 
 [Compare with v0.13.0](https://github.com/Overcastly-AI/Next-Lane/compare/v0.13.0...v0.13.1)
