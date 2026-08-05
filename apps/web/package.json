@@ -32,7 +32,7 @@
     "socket.io-client": "^4.8.0"
   },
   "devDependencies": {
-    "@playwright/test": "^1.62.0",
+    "@playwright/test": "^1.62.1",
     "@types/dompurify": "^3.2.0",
     "@types/react": "^18.3.11",
     "@types/react-dom": "^18.3.0",
