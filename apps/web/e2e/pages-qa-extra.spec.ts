@@ -283,9 +283,15 @@ test.describe('Pages QA extra: hierarchy, reorder correctness, title validation,
      * the button RESTORES the fitted view, whatever it is. Capture it.
      */
     const zoomLabel = page.getByTestId('page-graph-zoom-reset');
-    // Click Fit before reading the baseline: the layout settles
-    // asynchronously and the automatic fit runs on settle, so reading the
-    // label straight after load can catch the pre-settle 100%.
+    // Wait for the layout to SETTLE before reading the baseline. The view
+    // fits itself automatically when the force simulation finishes, so a
+    // value read (or a zoom applied) while it is still running is overwritten
+    // by that settle-fit a moment later. Clicking Fit first is not enough on
+    // its own — the automatic fit can still land after it.
+    await expect(page.locator('[data-testid^="page-graph-node-"]')).toHaveCount(3, {
+      timeout: 15_000,
+    });
+    await page.waitForTimeout(1500);
     await page.getByTestId('page-graph-zoom-reset').click();
     const fitted = (await zoomLabel.textContent())?.trim() ?? '';
     expect(fitted).toMatch(/^\d+%$/);
