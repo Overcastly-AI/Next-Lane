@@ -16,6 +16,14 @@ staged here by hand (see [`RELEASING.md`](./RELEASING.md))._
 
 ---
 
+## [0.10.2] — 2026-08-05
+
+[Compare with v0.10.1](https://github.com/Overcastly-AI/Next-Lane/compare/v0.10.1...v0.10.2)
+
+### Bug Fixes
+
+* **roadmap:** make the Gantt readable — mobile, status colour, progress, dates ([#72](https://github.com/Overcastly-AI/Next-Lane/issues/72)) ([7f86dda](https://github.com/Overcastly-AI/Next-Lane/commit/7f86dda52e104f8e5381ac9a46d7ba07738d8f65))
+
 ## [0.10.1] — 2026-08-05
 
 [Compare with v0.10.0](https://github.com/Overcastly-AI/Next-Lane/compare/v0.10.0...v0.10.1)
