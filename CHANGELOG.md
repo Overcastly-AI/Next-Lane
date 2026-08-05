@@ -16,6 +16,14 @@ staged here by hand (see [`RELEASING.md`](./RELEASING.md))._
 
 ---
 
+## [0.15.0] — 2026-08-05
+
+[Compare with v0.14.1](https://github.com/Overcastly-AI/Next-Lane/compare/v0.14.1...v0.15.0)
+
+### Features
+
+* **roadmap:** filters, an honest dependency legend, and movable undated stories ([#81](https://github.com/Overcastly-AI/Next-Lane/issues/81)) ([d2313ca](https://github.com/Overcastly-AI/Next-Lane/commit/d2313cad1b5b20daddd8bcafef8c1c45e7e374ec))
+
 ## [0.14.1] — 2026-08-05
 
 [Compare with v0.14.0](https://github.com/Overcastly-AI/Next-Lane/compare/v0.14.0...v0.14.1)
