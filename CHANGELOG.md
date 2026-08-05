@@ -16,6 +16,15 @@ staged here by hand (see [`RELEASING.md`](./RELEASING.md))._
 
 ---
 
+## [0.10.1] — 2026-08-05
+
+[Compare with v0.10.0](https://github.com/Overcastly-AI/Next-Lane/compare/v0.10.0...v0.10.1)
+
+### Bug Fixes
+
+* **roadmap:** let a story show its sprint's dates AND still be draggable ([9f42d2e](https://github.com/Overcastly-AI/Next-Lane/commit/9f42d2e7bca0e9ba0962d9954e62ab0d55792c74))
+* **test:** stop asserting a fixed 100% zoom on a graph that fits itself ([8f54c8d](https://github.com/Overcastly-AI/Next-Lane/commit/8f54c8d8c12046c70ec8b6f80f2259a74f01e800)), closes [#70](https://github.com/Overcastly-AI/Next-Lane/issues/70)
+
 ## [0.10.0] — 2026-08-05
 
 [Compare with v0.9.0](https://github.com/Overcastly-AI/Next-Lane/compare/v0.9.0...v0.10.0)
