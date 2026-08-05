@@ -69,6 +69,18 @@ const RAIL_W = 248;
 const RAIL_W_NARROW = 132;
 /** Below this viewport width the rail is not affordable. */
 const NARROW_PX = 640;
+/*
+ * Resize bounds for the rail.
+ *
+ * 248px fits about twenty characters, so real story titles ("Metering
+ * pipeline hardening", "Saved views and sharing") truncated on a chart whose
+ * left column exists precisely to name things — founder report: "story titles
+ * are getting cut off". The floor keeps the expand chevron and a usable stub
+ * of title; the ceiling stops the rail from eating the timeline it labels.
+ */
+const RAIL_MIN = 160;
+const RAIL_MAX = 560;
+const RAIL_W_KEY = 'nl_roadmap_rail_w';
 const AXIS_H = 44;
 const LANE_GAP = 8;
 /** Pointer movement below this is a click, above it is a drag. */
@@ -254,7 +266,19 @@ export function RoadmapTimeline({
   const [narrow, setNarrow] = useState(
     () => typeof window !== 'undefined' && window.innerWidth < NARROW_PX,
   );
-  const railW = narrow ? RAIL_W_NARROW : RAIL_W;
+  const [railPref, setRailPref] = useState(() => {
+    if (typeof window === 'undefined') return RAIL_W;
+    const stored = Number(window.localStorage.getItem(RAIL_W_KEY));
+    return Number.isFinite(stored) && stored >= RAIL_MIN && stored <= RAIL_MAX
+      ? stored
+      : RAIL_W;
+  });
+  /** Live width during a drag; null when not resizing. */
+  const [railDrag, setRailDrag] = useState<number | null>(null);
+  // The narrow layout is a different design (no key, no percentage), not a
+  // smaller version of this one — so it is not resizable and ignores the
+  // stored preference rather than fighting it.
+  const railW = narrow ? RAIL_W_NARROW : (railDrag ?? railPref);
   /*
    * Skip weekends. Off by default because plenty of teams genuinely do run
    * across a weekend and forcing working-days on them would silently move
@@ -282,6 +306,60 @@ export function RoadmapTimeline({
   const dragKindRef = useRef<'epic' | 'child' | null>(null);
   /** The epic the dragged child belongs to right now. */
   const dragParentRef = useRef<string | null>(null);
+
+  /*
+   * Rail resize. Window listeners plus pointer capture, for the same reason
+   * every other drag on this chart uses them: a 6px-wide handle loses the
+   * pointer the instant the gesture outruns a re-render.
+   *
+   * Committed to localStorage on release rather than on every move — a write
+   * per pointermove is a hundred writes per drag, and the preference is only
+   * meaningful once you have stopped.
+   */
+  const railStartRef = useRef({ x: 0, w: RAIL_W });
+  const startRailResize = useCallback(
+    (e: React.PointerEvent) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+      railStartRef.current = { x: e.clientX, w: railPref };
+      const clamp = (v: number) => Math.min(RAIL_MAX, Math.max(RAIL_MIN, v));
+      const onMove = (ev: PointerEvent) => {
+        setRailDrag(clamp(railStartRef.current.w + (ev.clientX - railStartRef.current.x)));
+      };
+      const onUp = (ev: PointerEvent) => {
+        const next = clamp(
+          railStartRef.current.w + (ev.clientX - railStartRef.current.x),
+        );
+        setRailDrag(null);
+        setRailPref(next);
+        window.localStorage.setItem(RAIL_W_KEY, String(next));
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+        window.removeEventListener('pointercancel', onUp);
+      };
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+      window.addEventListener('pointercancel', onUp);
+    },
+    [railPref],
+  );
+
+  /** Keyboard equivalent, so the rail is not mouse-only. */
+  const nudgeRail = useCallback(
+    (e: React.KeyboardEvent) => {
+      const dir = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+      if (dir === 0) return;
+      e.preventDefault();
+      const next = Math.min(
+        RAIL_MAX,
+        Math.max(RAIL_MIN, railPref + dir * (e.shiftKey ? 40 : 8)),
+      );
+      setRailPref(next);
+      window.localStorage.setItem(RAIL_W_KEY, String(next));
+    },
+    [railPref],
+  );
 
   const onDragKind = useCallback((kind: 'child', fromEpicId: string) => {
     dragKindRef.current = kind;
@@ -893,7 +971,13 @@ export function RoadmapTimeline({
       <div className="flex overflow-hidden rounded-lg border border-ink-200">
         {/* Left rail */}
         <div
-          className="shrink-0 border-r border-ink-200 bg-ink-50/60"
+          data-testid="roadmap-rail"
+          className={cn(
+            'shrink-0 bg-ink-50/60',
+            // The resize handle draws the divider when it is present, so the
+            // rail must not draw a second one beside it.
+            narrow && 'border-r border-ink-200',
+          )}
           style={{ width: railW }}
         >
           <div
@@ -973,6 +1057,49 @@ export function RoadmapTimeline({
           )}
         </div>
 
+        {/*
+         * The rail/grid divider is the resize handle.
+         *
+         * A separate 6px column rather than a border on the rail: a 1px border
+         * is not a pointer target, and widening the border to be grabbable
+         * would put a visible slab between the two halves of one table. This
+         * reads as the same divider until you approach it.
+         */}
+        {!narrow && (
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize the epic column"
+            aria-valuenow={railW}
+            aria-valuemin={RAIL_MIN}
+            aria-valuemax={RAIL_MAX}
+            tabIndex={0}
+            data-testid="roadmap-rail-resize"
+            onPointerDown={startRailResize}
+            onKeyDown={nudgeRail}
+            onDoubleClick={() => {
+              // Double-click resets, the convention for a resizable divider —
+              // and the only way back if you have dragged it somewhere silly.
+              setRailPref(RAIL_W);
+              window.localStorage.setItem(RAIL_W_KEY, String(RAIL_W));
+            }}
+            title="Drag to resize · double-click to reset"
+            className={cn(
+              'group/rz relative z-30 -ml-px w-1.5 shrink-0 cursor-col-resize',
+              'focus:outline-none',
+            )}
+          >
+            <span
+              className={cn(
+                'absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-ink-200 transition-colors',
+                'group-hover/rz:bg-signal-400 group-focus-visible/rz:bg-signal-500',
+                railDrag !== null && 'bg-signal-500',
+              )}
+              aria-hidden="true"
+            />
+          </div>
+        )}
+
         {/* Scrollable time grid */}
         <div className="relative min-w-0 flex-1">
           {edges.left && (
@@ -1050,7 +1177,7 @@ export function RoadmapTimeline({
               ))}
               {todayVisible && (
                 <div
-                  className="pointer-events-none absolute top-0 bottom-0 z-20 w-px bg-red-500"
+                  className="pointer-events-none absolute top-0 bottom-0 z-[25] w-px bg-red-500"
                   style={{ left: todayX }}
                   aria-hidden="true"
                 />
@@ -1076,7 +1203,7 @@ export function RoadmapTimeline({
                         data-testid="roadmap-sprint-bar"
                         title={`${s.name} (${c.label})`}
                         className={cn(
-                          'absolute flex items-center overflow-hidden rounded px-2 text-[11px] font-medium shadow-xs',
+                          'absolute z-20 flex items-center overflow-hidden rounded px-2 text-[11px] font-medium shadow-xs',
                           c.bar,
                         )}
                         style={{ left, width, top: LANE_GAP, height: BAR_H }}
@@ -1551,7 +1678,7 @@ function EpicBarRow({
     >
       {overrunX !== null && (
         <div
-          className="nl-gantt-overrun pointer-events-none absolute rounded-r"
+          className="nl-gantt-overrun pointer-events-none absolute z-20 rounded-r"
           style={{
             left: left + width,
             width: Math.max(4, overrunX - (left + width)),
@@ -1576,7 +1703,7 @@ function EpicBarRow({
         title={epicTitle(epic)}
         aria-label={epicTitle(epic)}
         className={cn(
-          'group absolute flex items-center overflow-visible rounded-md border text-left shadow-xs transition-shadow',
+          'group absolute z-20 flex items-center overflow-visible rounded-md border text-left shadow-xs transition-shadow',
           'focus:outline-none focus-visible:ring-2',
           tone.bar,
           editable && 'cursor-grab active:cursor-grabbing',
@@ -1906,7 +2033,7 @@ function ChildBar({
         }
         aria-label={`${child.key} ${child.title}`}
         className={cn(
-          'group absolute flex items-center overflow-hidden rounded text-left text-[10px] font-medium shadow-xs',
+          'group absolute z-20 flex items-center overflow-hidden rounded text-left text-[10px] font-medium shadow-xs',
           'focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-400',
           'border',
           CHILD_COLORS[child.statusCategory].bar,
@@ -2166,6 +2293,22 @@ function DependencyLayer({
 
   return (
     <svg
+      /*
+       * Above the row backgrounds, BELOW the bars.
+       *
+       * This used to carry a comment claiming it sat under the bars while
+       * being `z-10` against bars with no z-index at all — and a positive
+       * z-index paints above `z-auto` whatever the DOM order, so every arrow
+       * was drawn straight over the cards it connects. Founder report: "lines
+       * overlapping certain gantt items."
+       *
+       * The fix is to raise the BARS to `z-20`, not to lower this layer.
+       * Dropping it to `z-0` looks like the obvious move and is wrong: `z-0`
+       * and `z-auto` share one painting layer ordered by tree position, and
+       * this overlay is emitted before the rows — so `z-0` put the arrows, and
+       * their pointer targets, behind every row div. The remove control became
+       * unhittable, which the e2e caught.
+       */
       className="pointer-events-none absolute left-0 z-10"
       style={{ top: offsetY }}
       width={scale.widthPx}
