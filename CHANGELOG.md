@@ -16,6 +16,14 @@ staged here by hand (see [`RELEASING.md`](./RELEASING.md))._
 
 ---
 
+## [0.13.1] — 2026-08-05
+
+[Compare with v0.13.0](https://github.com/Overcastly-AI/Next-Lane/compare/v0.13.0...v0.13.1)
+
+### Bug Fixes
+
+* **roadmap:** resizable epic column, and dependency lines behind the bars ([#77](https://github.com/Overcastly-AI/Next-Lane/issues/77)) ([5d50178](https://github.com/Overcastly-AI/Next-Lane/commit/5d50178a30c10a8cf7f0fbcaa027d1db3236e169))
+
 ## [0.13.0] — 2026-08-05
 
 [Compare with v0.12.0](https://github.com/Overcastly-AI/Next-Lane/compare/v0.12.0...v0.13.0)
