@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { useParams, useSearchParams } from 'react-router-dom';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import type { StatusDto } from '@next-lane/shared';
 import { useUsers } from '@/api/meta';
 import { IssueDetailDrawer } from '@/components/issue/IssueDetailDrawer';
@@ -180,6 +180,29 @@ export function RoadmapPage() {
               </span>
             )}
             {roadmapQuery.isFetching && <Spinner className="h-4 w-4" />}
+            {/* Presenting is a mode, not a page, so the way in belongs beside
+                the chart rather than in the project nav. */}
+            <Link
+              to={`/projects/${projectId}/roadmap/present`}
+              data-testid="roadmap-present-link"
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-ink-200 bg-surface px-2.5 py-1.5 text-xs font-medium text-ink-600 shadow-xs hover:bg-ink-100 hover:text-ink-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-400"
+            >
+              <svg
+                width="13"
+                height="13"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M3 5h18v11H3z" />
+                <path d="M12 16v4M8 20h8" />
+              </svg>
+              Present
+            </Link>
           </div>
         </div>
 
