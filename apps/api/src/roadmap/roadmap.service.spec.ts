@@ -51,6 +51,8 @@ describe('RoadmapService', () => {
         title: 'Q1 Platform',
         createdAt: new Date('2026-01-01T00:00:00.000Z'),
         status: { category: StatusCategory.IN_PROGRESS },
+        assigneeId: null,
+        labels: [],
         children: [
           {
             statusId: 'done-1', // counts as done
@@ -123,6 +125,8 @@ describe('RoadmapService', () => {
         startDate: new Date('2026-04-01T00:00:00.000Z'),
         dueDate: new Date('2026-04-30T00:00:00.000Z'),
         status: { category: StatusCategory.IN_PROGRESS },
+        assigneeId: null,
+        labels: [],
         children: [
           {
             statusId: 'done-1',
@@ -156,6 +160,8 @@ describe('RoadmapService', () => {
         startDate: new Date('2026-05-01T00:00:00.000Z'),
         dueDate: null,
         status: { category: StatusCategory.TODO },
+        assigneeId: null,
+        labels: [],
         children: [],
       },
     ]);
@@ -177,6 +183,8 @@ describe('RoadmapService', () => {
         title: 'Unscheduled epic',
         createdAt: new Date('2026-05-10T00:00:00.000Z'),
         status: { category: StatusCategory.TODO },
+        assigneeId: null,
+        labels: [],
         children: [{ statusId: 'todo-1', sprint: null }],
       },
     ]);
@@ -202,6 +210,8 @@ describe('RoadmapService', () => {
         title: 'Empty epic',
         createdAt: new Date('2026-06-01T00:00:00.000Z'),
         status: { category: StatusCategory.TODO },
+        assigneeId: null,
+        labels: [],
         children: [],
       },
     ]);
@@ -223,6 +233,8 @@ describe('RoadmapService', () => {
       title: `Epic ${i}`,
       createdAt: new Date('2026-01-01T00:00:00.000Z'),
       status: { category: StatusCategory.TODO },
+      assigneeId: null,
+      labels: [],
       children: [],
     };
   }
@@ -301,6 +313,8 @@ describe('RoadmapService', () => {
         startDate: null,
         dueDate: null,
         status: { category: StatusCategory.IN_PROGRESS },
+        assigneeId: null,
+        labels: [],
         children: [
           {
             statusId: 'todo-1',
@@ -340,6 +354,8 @@ describe('RoadmapService', () => {
         startDate: null,
         dueDate: null,
         status: { category: StatusCategory.IN_PROGRESS },
+        assigneeId: null,
+        labels: [],
         children: [
           {
             statusId: 'todo-1',
@@ -372,6 +388,8 @@ describe('RoadmapService', () => {
         startDate: new Date('2026-04-01T00:00:00.000Z'),
         dueDate: new Date('2026-04-30T00:00:00.000Z'),
         status: { category: StatusCategory.IN_PROGRESS },
+        assigneeId: null,
+        labels: [],
         children: [
           {
             statusId: 'todo-1',
@@ -414,6 +432,8 @@ describe('RoadmapService', () => {
         startDate: null,
         dueDate: new Date('2026-07-31T00:00:00.000Z'),
         status: { category: StatusCategory.TODO },
+        assigneeId: null,
+        labels: [],
         children: [],
       },
     ]);
@@ -467,6 +487,8 @@ describe('RoadmapService', () => {
         startDate: new Date('2026-03-01T00:00:00.000Z'),
         dueDate: new Date('2026-04-30T00:00:00.000Z'),
         status: { category: StatusCategory.IN_PROGRESS },
+        assigneeId: null,
+        labels: [],
         children: [],
       },
       {
@@ -477,6 +499,8 @@ describe('RoadmapService', () => {
         startDate: new Date('2026-04-01T00:00:00.000Z'),
         dueDate: new Date('2026-05-31T00:00:00.000Z'),
         status: { category: StatusCategory.TODO },
+        assigneeId: null,
+        labels: [],
         children: [],
       },
     ]);
@@ -502,6 +526,8 @@ describe('RoadmapService', () => {
         startDate: new Date('2026-03-01T00:00:00.000Z'),
         dueDate: new Date('2026-03-31T00:00:00.000Z'),
         status: { category: StatusCategory.IN_PROGRESS },
+        assigneeId: null,
+        labels: [],
         children: [],
       },
       {
@@ -512,6 +538,8 @@ describe('RoadmapService', () => {
         startDate: new Date('2026-04-01T00:00:00.000Z'),
         dueDate: new Date('2026-05-31T00:00:00.000Z'),
         status: { category: StatusCategory.TODO },
+        assigneeId: null,
+        labels: [],
         children: [],
       },
     ]);
@@ -536,6 +564,8 @@ describe('RoadmapService', () => {
           startDate: new Date('2026-05-01T00:00:00.000Z'),
           dueDate: new Date('2026-05-10T00:00:00.000Z'),
           status: { category: StatusCategory.IN_PROGRESS },
+          assigneeId: null,
+          labels: [],
           sprint: null,
         },
         {
@@ -546,6 +576,8 @@ describe('RoadmapService', () => {
           startDate: null,
           dueDate: null,
           status: { category: StatusCategory.TODO },
+          assigneeId: null,
+          labels: [],
           sprint: {
             name: 'Sprint 9',
             startDate: new Date('2026-06-01T00:00:00.000Z'),

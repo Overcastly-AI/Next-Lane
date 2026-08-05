@@ -683,6 +683,14 @@ export interface RoadmapEpicDto {
    * `createdAt` fallback.
    */
   fromOwnDates: boolean;
+  /**
+   * Who owns the epic, and which labels it carries — present so the chart can
+   * be FILTERED without a second round trip per epic. Ids only: the client
+   * already has the project's user and label lists for its pickers, so
+   * shipping names and colours here would be duplicating them 500 times.
+   */
+  assigneeId: string | null;
+  labelIds: string[];
 }
 
 /**
@@ -704,6 +712,9 @@ export interface RoadmapChildDto {
   fromSprint: boolean;
   /** Name of the sprint the child belongs to, when it has one. */
   sprintName: string | null;
+  /** Same filtering fields as the epic — a filter has to apply to both. */
+  assigneeId: string | null;
+  labelIds: string[];
 }
 
 /** Children of one epic, for the expand-a-row interaction. */

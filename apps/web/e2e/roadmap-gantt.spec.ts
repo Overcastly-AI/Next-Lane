@@ -1074,4 +1074,235 @@ test.describe('Roadmap Gantt', () => {
       timeout: 15_000,
     });
   });
+
+  test('filters hide epics without changing what the remaining ones say', async ({
+    page,
+    request,
+  }) => {
+    const { token, project } = await setupIsolatedProject(page, request, {
+      label: 'rm-filter',
+      projectName: 'Roadmap Filter QA',
+      openBoard: false,
+    });
+
+    /*
+     * A 500-epic chart drew all 500. This is the scale gap the interaction
+     * work left open.
+     *
+     * The filters are client-side and deliberately do NOT re-query: the
+     * rollups, overrun marks and dependency arrows are computed from the whole
+     * plan, so hiding a row must not quietly change what the remaining rows
+     * say about it. That is asserted here by checking the surviving epic's
+     * overrun badge is untouched while its neighbour is filtered away.
+     */
+    const statusRes = await request.get(
+      `${API_URL}/api/projects/${project.id}/statuses`,
+      { headers: auth(token) },
+    );
+    const statuses = (await statusRes.json()) as { id: string; category: string }[];
+    const doneStatus = statuses.find((s) => s.category === 'DONE')!;
+
+    const keeper = await createIssue(request, token, {
+      projectId: project.id,
+      type: 'EPIC',
+      title: 'Keeper Epic',
+      startDate: iso('2026-04-01'),
+      dueDate: iso('2026-04-10'),
+    });
+    // A child running past the epic, so the keeper carries an overrun badge.
+    await createIssue(request, token, {
+      projectId: project.id,
+      title: 'Overrunning story',
+      parentId: keeper.id,
+      startDate: iso('2026-04-05'),
+      dueDate: iso('2026-04-25'),
+    });
+    const finished = await createIssue(request, token, {
+      projectId: project.id,
+      type: 'EPIC',
+      title: 'Finished Epic',
+      startDate: iso('2026-04-01'),
+      dueDate: iso('2026-04-30'),
+    });
+    await request.patch(`${API_URL}/api/issues/${finished.id}`, {
+      headers: auth(token),
+      data: { statusId: doneStatus.id },
+    });
+
+    await page.goto(`/projects/${project.id}/roadmap`);
+    const keeperBar = page.locator(`[data-epic-id="${keeper.id}"]`);
+    const doneBar = page.locator(`[data-epic-id="${finished.id}"]`);
+    await expect(keeperBar).toBeVisible({ timeout: 15_000 });
+    await expect(doneBar).toBeVisible();
+
+    const spillBefore = await page
+      .getByTestId('roadmap-epic-spill')
+      .first()
+      .textContent();
+    expect(spillBefore?.trim()).toBeTruthy();
+
+    // Hide done.
+    await page.getByTestId('roadmap-filter-hide-done').click();
+    await expect(doneBar).toHaveCount(0);
+    await expect(keeperBar).toBeVisible();
+    await expect(page.getByTestId('roadmap-filter-hidden-count')).toHaveText(
+      /1 epic hidden/,
+    );
+    // The keeper's overrun is computed from the whole plan, not the visible
+    // subset — filtering must not alter it.
+    await expect(page.getByTestId('roadmap-epic-spill').first()).toHaveText(
+      spillBefore!.trim(),
+    );
+
+    // Text filter narrows further, and Clear restores everything.
+    await page.getByTestId('roadmap-filter-query').fill('nothing matches this');
+    await expect(keeperBar).toHaveCount(0);
+    await page.getByTestId('roadmap-filter-clear').click();
+    await expect(keeperBar).toBeVisible();
+    await expect(doneBar).toBeVisible();
+    await expect(page.getByTestId('roadmap-filter-hidden-count')).toHaveCount(0);
+  });
+
+  test('an undated story can be dragged to another epic by its grip', async ({
+    page,
+    request,
+  }) => {
+    test.skip(
+      test.info().project.name !== 'chromium-desktop',
+      'pointer drag is desktop-only by design — see the note above',
+    );
+    const { token, project } = await setupIsolatedProject(page, request, {
+      label: 'rm-undated-move',
+      projectName: 'Roadmap Undated Move QA',
+      openBoard: false,
+    });
+
+    /*
+     * An undated story renders as a scheduling surface, not a bar, so it was
+     * the one thing on this chart that could not be moved between epics —
+     * named as a known gap when drag-to-reparent shipped.
+     *
+     * It gets a grip rather than making the whole row draggable: the row
+     * already means "drag here to schedule", and one gesture cannot mean two
+     * things. Both are asserted — the grip moves it, and the row still paints.
+     */
+    const fromEpic = await createIssue(request, token, {
+      projectId: project.id,
+      type: 'EPIC',
+      title: 'Undated Origin',
+      startDate: iso('2026-04-01'),
+      dueDate: iso('2026-04-30'),
+    });
+    const toEpic = await createIssue(request, token, {
+      projectId: project.id,
+      type: 'EPIC',
+      title: 'Undated Destination',
+      startDate: iso('2026-05-01'),
+      dueDate: iso('2026-05-30'),
+    });
+    const story = await createIssue(request, token, {
+      projectId: project.id,
+      title: 'No dates at all',
+      parentId: fromEpic.id,
+    });
+
+    await page.goto(`/projects/${project.id}/roadmap`);
+    await expect(page.getByTestId('roadmap-epic-bar').first()).toBeVisible({
+      timeout: 15_000,
+    });
+    await page.getByTestId(`roadmap-epic-expand-${fromEpic.id}`).click();
+
+    const row = page.locator(`[data-testid="roadmap-child-unscheduled"]`).first();
+    await expect(row).toBeVisible({ timeout: 15_000 });
+    // The grip is hover-revealed, like every other affordance on this chart.
+    await row.hover();
+    const grip = page.locator(`[data-reparent-child="${story.id}"]`);
+    const gb = (await grip.boundingBox())!;
+    const target = page.locator(`[data-epic-id="${toEpic.id}"]`);
+    const tb = (await target.boundingBox())!;
+
+    const writes = trackApiWrites(page);
+    await page.mouse.move(gb.x + gb.width / 2, gb.y + gb.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(tb.x + tb.width / 2, tb.y + tb.height / 2, {
+      steps: 14,
+    });
+    await expect(page.locator('[data-reparent-target="true"]')).toHaveCount(1);
+    await page.mouse.up();
+
+    await writes.settle({
+      match: (w) =>
+        w.method === 'PATCH' && w.path.endsWith(`/api/issues/${story.id}`),
+      atLeast: 1,
+    });
+
+    const after = await request.get(`${API_URL}/api/issues/${story.id}`, {
+      headers: auth(token),
+    });
+    const moved = (await after.json()) as {
+      parentId: string | null;
+      startDate: string | null;
+      dueDate: string | null;
+    };
+    expect(moved.parentId).toBe(toEpic.id);
+    // Reparenting writes ONE field. It must not invent a window on the way.
+    expect(moved.startDate).toBeNull();
+    expect(moved.dueDate).toBeNull();
+  });
+
+  test('the legend explains both dependency states, and the arrow says why', async ({
+    page,
+    request,
+  }) => {
+    const { token, project } = await setupIsolatedProject(page, request, {
+      label: 'rm-legend',
+      projectName: 'Roadmap Legend QA',
+      openBoard: false,
+    });
+
+    /*
+     * Founder, reading the chart: "why do some links show up as a red line and
+     * others are dotted". The legend had one entry — a grey line labelled
+     * "Blocks" — so the red state, the one that means the schedule is
+     * impossible, was undocumented. Having to ask IS the bug.
+     */
+    const blocker = await createIssue(request, token, {
+      projectId: project.id,
+      type: 'EPIC',
+      title: 'Late Blocker',
+      startDate: iso('2026-05-01'),
+      dueDate: iso('2026-05-30'),
+    });
+    const blocked = await createIssue(request, token, {
+      projectId: project.id,
+      type: 'EPIC',
+      title: 'Starts Too Soon',
+      startDate: iso('2026-04-01'),
+      dueDate: iso('2026-04-20'),
+    });
+    await request.post(`${API_URL}/api/issues/${blocker.id}/links`, {
+      headers: auth(token),
+      data: { target: blocked.id, type: 'BLOCKS' },
+    });
+
+    await page.goto(`/projects/${project.id}/roadmap`);
+    await expect(page.getByTestId('roadmap-dependency-layer')).toBeVisible({
+      timeout: 15_000,
+    });
+
+    // Both states named.
+    await expect(page.getByText('Blocks', { exact: true })).toBeVisible();
+    await expect(page.getByText('Blocker ends too late')).toBeVisible();
+
+    // And the arrow itself explains this particular one, with the dates that
+    // make it impossible.
+    const title = await page
+      .getByTestId('roadmap-dependency-layer')
+      .locator('title')
+      .first()
+      .textContent();
+    expect(title).toContain(blocker.key);
+    expect(title).toContain(blocked.key);
+    expect(title).toMatch(/after/);
+  });
 });

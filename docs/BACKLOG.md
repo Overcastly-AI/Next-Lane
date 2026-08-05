@@ -817,6 +817,12 @@ _Hardening Night close-out ingest (2026-07-06) — P2s:_
 
 ## Already Done (recent shipments — ticked for reference)
 
+- [x] (P1, M) **Roadmap filtering + honest dependency legend + movable undated stories** ✅ 2026-08-05 [founder: *"yes do all of them"*]
+  - **Filtering** — the remaining scale gap. Text (title/key), Hide done, assignee, label; live hidden-count and Clear. Client-side on purpose: the payload is already capped, and rollups/overruns/arrows stay computed from the WHOLE plan so hiding a row can't change what the others say (asserted). `assigneeId`/`labelIds` added to both roadmap DTOs, ids only. "Unassigned" is an option.
+  - **Legend** — had one entry ("Blocks", grey line), so the red impossible-schedule state was undocumented; that omission is why the founder had to ask. Two entries now, drawn with the real dash patterns, plus a `<title>` per arrow naming both epics and the dates that make a red one impossible.
+  - **Undated stories move between epics** — they're a scheduling surface, not a bar, so they get a hover grip rather than making the row draggable ("drag here to schedule" can't also mean "drag to move"). `useReparentIssue` writes one field; routing through the schedule mutation would have logged two "cleared" activity entries for already-empty dates. e2e asserts the dates stay null.
+  - 3 new e2e; 38 roadmap e2e, 382 api, 210 shared, 162 MCP; tsc + build clean across all packages. The 16 mocked Prisma rows in `roadmap.service.spec.ts` updated to match the new `select` rather than making the service defensive.
+
 - [x] (P1, S) **Config out of the sidebar: Branding → settings hub, SSO → Instance settings** ✅ 2026-08-05 [founder: *"why is the SSO / OIDC in the main navigation?? This should be on a settings page. Along with branding."*]
   - A deliberate reversal of the Phase-2 IA call. Both were promoted to the sidebar to fix "branding is lost", and that fix worked by giving once-a-year config permanent space beside the board and roadmap.
   - **Branding**: removed from the nav. Already one click away via the workspace settings hub's existing General/Members/Audit log/Branding tab strip.
