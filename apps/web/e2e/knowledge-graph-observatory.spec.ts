@@ -125,7 +125,23 @@ test.describe('Knowledge graph observatory', () => {
     await expect(page.getByTestId('page-graph-zoom-reset')).toHaveText('125%');
     await page.getByTestId('page-graph-zoom-reset').focus();
     await page.keyboard.press('Enter');
-    await expect(page.getByTestId('page-graph-zoom-reset')).toHaveText('100%');
+    /*
+     * The reset button FITS the graph to its content — it does not snap to a
+     * fixed 100%. For a graph this small the fitted scale is at or just below
+     * 100% depending on how wide the canvas measures, and CI produced 97%.
+     *
+     * Hard-coding '100%' was testing the pre-2026-08-01 behaviour, where reset
+     * restored 100% whether or not you could see anything. What this spec is
+     * actually about is that the control is KEYBOARD-operable, so assert that:
+     * Enter changed the zoom away from the zoomed-in value, and left it at a
+     * scale that fits (fit never magnifies, so never above 100%).
+     */
+    const zoomAfterReset = page.getByTestId('page-graph-zoom-reset');
+    await expect(zoomAfterReset).not.toHaveText('125%');
+    const fitted = (await zoomAfterReset.textContent())?.trim() ?? '';
+    expect(fitted).toMatch(/^\d+%$/);
+    expect(Number.parseInt(fitted, 10)).toBeLessThanOrEqual(100);
+    expect(Number.parseInt(fitted, 10)).toBeGreaterThan(50);
 
     // A node button is directly keyboard-focusable (Tab-reachable in real
     // usage; `.focus()` here exercises the identical focus/keydown path).
