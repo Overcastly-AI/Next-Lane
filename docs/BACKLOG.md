@@ -817,6 +817,13 @@ _Hardening Night close-out ingest (2026-07-06) — P2s:_
 
 ## Already Done (recent shipments — ticked for reference)
 
+- [x] (P1, S) **Sticky Gantt date axis** ✅ 2026-08-05 [founder: *"the Gantt chart header should become sticky as I scroll down"*]
+  - The axis sat inside the horizontal scroller, which is a scroll container on BOTH axes — so `sticky` there means sticking to something that never moves vertically. Lifted into its own band, horizontal scroll mirrored from the grid via `scrollLeft` (not state: it runs every scroll frame).
+  - Chart wrapper `overflow-hidden` → `overflow-clip`: same rounded corners, no scrollport for the sticky element to resolve against.
+  - **Two wrong turns, both caught by measuring:** (1) offsetting by the app header's height was wrong — `<main>` is the scroller and the chrome sits outside it, so the offset opened a 37px band of rows sliding through; `top: 0` is correct. (2) `z-20` tied with the bars and lost on tree order, so bars slid over the month labels — `z-30`.
+  - Milestone diamonds moved fully inside the band (they used to straddle the boundary and got sliced into triangles by the new clipped viewport).
+  - Presenting mode inherits it free. e2e builds a plan taller than the viewport, scrolls `<main>`, asserts the axis holds position and nothing paints over it. 31 passed / 7 skipped.
+
 - [x] (P1, S) **Resizable epic column + dependency lines behind the bars** ✅ 2026-08-05 [founder: *"story titles are getting cut off"* / *"linking line should have a lower z index then the cards it's self"*]
   - Rail was a fixed 248px (~20 chars), so the column whose job is naming things truncated the names. Now dragged from the divider, clamped 160–560, persisted, double-click to reset, arrow-key resizable. Narrow phone layout stays fixed — it's a different design, not a smaller one.
   - **The z-order comment was lying:** the overlay was `z-10` while claiming to sit under the bars, and the bars had no z-index — a positive z-index beats `z-auto` regardless of DOM order.

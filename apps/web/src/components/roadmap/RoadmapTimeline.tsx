@@ -290,6 +290,8 @@ export function RoadmapTimeline({
   );
   const scrollRef = useRef<HTMLDivElement>(null);
   const lanesRef = useRef<HTMLDivElement>(null);
+  /** The sticky axis viewport, whose scrollLeft mirrors the grid's. */
+  const axisRef = useRef<HTMLDivElement>(null);
   /*
    * Live mirrors of render-time values that the window-level pointermove
    * handler needs.
@@ -665,6 +667,10 @@ export function RoadmapTimeline({
     const remaining = el.scrollWidth - el.scrollLeft - el.clientWidth;
     if (remaining < 240) setHorizonMonths((m) => Math.min(m + 3, 48));
     setEdges({ left: el.scrollLeft > 8, right: remaining > 8 });
+    // Keep the sticky axis over the columns it names. Written directly rather
+    // than through state: this runs on every scroll frame, and a re-render per
+    // frame would make the axis lag the grid it is labelling.
+    if (axisRef.current) axisRef.current.scrollLeft = el.scrollLeft;
   }, []);
 
   const scrollToDate = useCallback(
@@ -675,6 +681,9 @@ export function RoadmapTimeline({
         left: Math.max(0, x - scrollRef.current.clientWidth / 2),
         behavior: 'smooth',
       });
+      // `scrollTo` fires scroll events, so `onGridScroll` mirrors the axis for
+      // the whole smooth animation; nothing to do here.
+
     },
     [scale],
   );
@@ -703,6 +712,7 @@ export function RoadmapTimeline({
     const now = Date.now();
     if (now < dataExtent.from || now > dataExtent.to) return;
     el.scrollLeft = Math.max(0, scale.xOf(now) - el.clientWidth / 3);
+    if (axisRef.current) axisRef.current.scrollLeft = el.scrollLeft;
   }, [scale, dataExtent, gridWidth]);
 
   function toggleExpand(epicId: string) {
@@ -967,8 +977,100 @@ export function RoadmapTimeline({
         </p>
       )}
 
-      {/* Chart */}
-      <div className="flex overflow-hidden rounded-lg border border-ink-200">
+      {/*
+       * Chart.
+       *
+       * `overflow-clip` rather than `overflow-hidden`, purely so the sticky
+       * header below actually sticks: `hidden` makes this a scroll container,
+       * and a sticky element resolves against its nearest scrollport — which
+       * would be this box, which never scrolls. `clip` gives the same rounded
+       * corners without creating a scrollport, so the header sticks to the
+       * page (or, in presenting mode, to that view's scroll pane) instead.
+       */}
+      <div className="overflow-clip rounded-lg border border-ink-200">
+        {/*
+         * The date axis, lifted out of the scrolling grid into a sticky band.
+         *
+         * It used to live inside the horizontal scroller, one flow item above
+         * the lanes, so scrolling a long plan carried the months off the top
+         * of the screen and left you reading bars with no idea what quarter
+         * you were in. It cannot simply be `sticky` where it was: that
+         * scroller is a scroll container on BOTH axes, so sticking to it
+         * means sticking to something that never moves vertically.
+         *
+         * So it sits here as its own row, and its horizontal scroll is
+         * mirrored from the grid's in `onGridScroll` — one scroller stays
+         * authoritative for every x coordinate on the chart.
+         */}
+        <div
+          data-testid="roadmap-axis-header"
+          /*
+           * `top: 0`, with no offset for the app header — and that is not an
+           * oversight.
+           *
+           * The scrolling ancestor here is `<main>`, and the app header and
+           * project nav are siblings ABOVE it, outside the scrollport
+           * entirely. So the top of the scrollport already sits directly under
+           * the chrome. An offset for the header's height (which I measured
+           * and published as a CSS variable before checking what actually
+           * scrolls) pushed the axis 37px down and opened a band of chart rows
+           * sliding through above it.
+           *
+           * Presenting mode scrolls its own pane with no chrome above it at
+           * all, so `0` is right there too.
+           *
+           * `z-30` so the bars scroll UNDER it. `z-20` is not enough: the
+           * bars are `z-20` too and come later in tree order, so they tie and
+           * win, and a bar sliding up over the month labels is the one thing
+           * a sticky axis exists to prevent. The grid's edge fades are also
+           * `z-30` but live in the body, which no longer contains the axis, so
+           * they never meet.
+           */
+          className="sticky top-0 z-30 flex bg-surface"
+        >
+          <div
+            className={cn(
+              'flex shrink-0 items-end border-b border-ink-200 bg-ink-50/60 px-3 pb-1.5 text-[11px] font-semibold uppercase tracking-wide text-ink-400',
+              narrow && 'border-r',
+            )}
+            style={{ width: railW, height: AXIS_H }}
+          >
+            Epic
+          </div>
+          {/* Matches the resize handle's width so the axis stays aligned with
+              the grid it labels. */}
+          {!narrow && (
+            <div
+              className="w-1.5 shrink-0 border-b border-ink-200 bg-surface"
+              aria-hidden="true"
+            />
+          )}
+          <div
+            ref={axisRef}
+            className="min-w-0 flex-1 overflow-hidden border-b border-ink-200"
+          >
+            <div className="relative" style={{ width: scale.widthPx, height: AXIS_H }}>
+              {scale.majorTicks.map((t) => (
+                <div
+                  key={t.ms}
+                  className="absolute bottom-1 whitespace-nowrap border-l border-ink-200 pl-1 text-[11px] font-medium text-ink-500"
+                  style={{ left: t.x, top: 6 }}
+                >
+                  {t.label}
+                </div>
+              ))}
+              {data.milestones.map((m) => (
+                <MilestoneMarker
+                  key={m.id}
+                  milestone={m}
+                  x={scale.xOf(Date.parse(m.releaseDate))}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex">
         {/* Left rail */}
         <div
           data-testid="roadmap-rail"
@@ -980,12 +1082,6 @@ export function RoadmapTimeline({
           )}
           style={{ width: railW }}
         >
-          <div
-            className="flex items-end border-b border-ink-200 px-3 pb-1.5 text-[11px] font-semibold uppercase tracking-wide text-ink-400"
-            style={{ height: AXIS_H }}
-          >
-            Epic
-          </div>
           {data.sprints.length > 0 && (
             <div
               className="flex items-center border-b border-ink-100 px-3 text-[11px] font-semibold uppercase tracking-wide text-ink-400"
@@ -1124,25 +1220,6 @@ export function RoadmapTimeline({
               the panel instead of leaving a wide empty gutter to its right.
               Bars stay pixel-positioned off the scale either way. */}
           <div style={{ width: scale.widthPx }}>
-            {/* Axis */}
-            <div
-              className="relative border-b border-ink-200 bg-surface"
-              style={{ height: AXIS_H }}
-            >
-              {scale.majorTicks.map((t) => (
-                <div
-                  key={t.ms}
-                  className="absolute bottom-1 whitespace-nowrap border-l border-ink-200 pl-1 text-[11px] font-medium text-ink-500"
-                  style={{ left: t.x, top: 6 }}
-                >
-                  {t.label}
-                </div>
-              ))}
-              {data.milestones.map((m) => (
-                <MilestoneMarker key={m.id} milestone={m} x={scale.xOf(Date.parse(m.releaseDate))} />
-              ))}
-            </div>
-
             {/* Lanes */}
             <div ref={lanesRef} className="relative bg-surface">
               {/* Weekend bands, behind everything. Only drawn when a day is
@@ -1361,6 +1438,7 @@ export function RoadmapTimeline({
               )}
             </div>
           </div>
+        </div>
         </div>
         </div>
       </div>
@@ -2186,7 +2264,11 @@ function MilestoneMarker({
     <span
       data-testid="roadmap-milestone-marker"
       title={`${milestone.name} — ${new Date(milestone.releaseDate).toLocaleDateString(undefined, { timeZone: 'UTC' })}`}
-      className="absolute bottom-0 z-10 h-2.5 w-2.5 -translate-x-1/2 translate-y-1/2 rotate-45 border border-amber-600 bg-amber-400"
+      // Fully inside the axis band. It used to straddle the axis/lane boundary
+      // with `translate-y-1/2`, which was fine when the axis was just another
+      // row in the grid — now that the band is its own clipped viewport, the
+      // overhanging half was sliced off and the diamond read as a triangle.
+      className="absolute bottom-1 z-10 h-2.5 w-2.5 -translate-x-1/2 rotate-45 border border-amber-600 bg-amber-400"
       style={{ left: x }}
     />
   );
