@@ -16,6 +16,14 @@ staged here by hand (see [`RELEASING.md`](./RELEASING.md))._
 
 ---
 
+## [0.12.0] — 2026-08-05
+
+[Compare with v0.11.0](https://github.com/Overcastly-AI/Next-Lane/compare/v0.11.0...v0.12.0)
+
+### Features
+
+* **roadmap:** presenting mode — full-bleed, read-only roadmap ([#75](https://github.com/Overcastly-AI/Next-Lane/issues/75)) ([351b5b9](https://github.com/Overcastly-AI/Next-Lane/commit/351b5b9c776441f86022a1ec0c79e862b70ddad0))
+
 ## [0.11.0] — 2026-08-05
 
 [Compare with v0.10.3](https://github.com/Overcastly-AI/Next-Lane/compare/v0.10.3...v0.11.0)
