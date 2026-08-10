@@ -16,6 +16,14 @@ staged here by hand (see [`RELEASING.md`](./RELEASING.md))._
 
 ---
 
+## [0.15.1] — 2026-08-10
+
+[Compare with v0.15.0](https://github.com/Overcastly-AI/Next-Lane/compare/v0.15.0...v0.15.1)
+
+### Bug Fixes
+
+* **web:** typeable date fields on issues, and one write per Gantt gesture ([#85](https://github.com/Overcastly-AI/Next-Lane/issues/85)) ([b90c55b](https://github.com/Overcastly-AI/Next-Lane/commit/b90c55b1a3a054cabcb01660b85f4f2d0a722d5e))
+
 ## [0.15.0] — 2026-08-05
 
 [Compare with v0.14.1](https://github.com/Overcastly-AI/Next-Lane/compare/v0.14.1...v0.15.0)
