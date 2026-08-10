@@ -781,7 +781,6 @@ _Hardening Night close-out ingest (2026-07-06) — P2s:_
 
 ## Next (P1 — high value, queue as Ready empties)
 
-- [ ] (P1, S) **Drawing a Gantt dependency writes the link twice** — `roadmap-gantt.spec.ts:621` fails on a `409` from the second `POST /api/issues/:id/links`; the write itself succeeds, so the user-visible symptom is an error where there should be none. Found incidentally during the date-input fix (2026-08-06) and confirmed to reproduce with those changes stashed, so it belongs to the dependency-draw gesture, not to that work. Fix the double-submit at the source rather than making the API tolerate the duplicate.
 
 - [x] (P1, S–M) **Config-parity CI smoke test: `docker-compose.yml` vs `.env.example`** ✅ shipped 2026-07-06 — see "Already Done" below. [engineering-auditor Pass 13 Ideation #2]
 
@@ -819,6 +818,15 @@ _Hardening Night close-out ingest (2026-07-06) — P2s:_
 
 ## Already Done (recent shipments — ticked for reference)
 
+- [x] (P1, S) **Gantt gestures write once, not twice** ✅ 2026-08-06 [founder: *"Please fix"* — the defect filed the same day while fixing the date inputs]
+  - Root cause was one line of shape, in three places: the pointer-up handler called its side effect **inside** a `setState` updater. An updater must be pure — StrictMode invokes it twice to prove it — so the drop fired the write twice. The dependency draw sent two `POST …/links` and the second came back **409**.
+  - **The scope was narrower than first reported, and the correction matters:** StrictMode's double-invoke is development-only, so the production build never double-wrote — verified by running the same test against `vite preview` (passes) and the dev server (fails). It is still a real defect: a state updater React is free to replay must not carry a network write, and the dev experience was showing a spurious error on a gesture that had succeeded.
+  - The obvious alternative — read `linking` from the effect's closure — is wrong: `pointermove` is a continuous event, so its state update isn't flushed synchronously and a quick release reads a stale target. Each gesture now mirrors its drag into a ref written on every move; pointer-up takes the ref, clears it, then writes. Clearing first also makes `pointerup`/`pointercancel` idempotent, so whichever lands second finds nothing to send.
+  - **Two more instances of the same bug, found by looking rather than by a report:** painting a window on an undated story (`onSchedule`) and dragging an undated story between epics (`onReparent`). Both fixed the same way. The paint one double-wrote in the repro; the reparent one didn't in that run — it depends on whether React has a pending update, which is the argument for fixing the pattern rather than the symptom.
+  - **Why only the link one was ever caught:** a duplicate of an idempotent write changes nothing on the server and is invisible to every assertion; the link duplicate only surfaced because it happened to 409. `trackApiWrites.settle` gained `atMost`, and all 8 gesture assertions in `roadmap-gantt.spec.ts` now require **one write per gesture**. Verified against the unfixed component: 2 tests fail, one on the 409 and one on "sent 2 writes, expected at most 1".
+  - A codebase-wide sweep for side effects inside state updaters found no other instances.
+  - **Gates:** roadmap-gantt / roadmap / roadmap-present 38 passed + 8 skipped-by-design desktop+mobile; gantt suite 60 passed over two repeats; tsc clean.
+
 - [x] (P0, S) **Date fields on issues can be typed into** ✅ 2026-08-06 [founder: *"The date inputs on tickets seem to be buggy. I cannot type the date easily. Also year is impossible to type. But the selection does work"*]
   - The half of the report that named the cause: **the picker worked, typing did not.** A native date input fires `change` on every keystroke that leaves all three segments filled, so typing the year of 12/25/2031 emits `0002-12-25`, `0020-12-25`, `0203-12-25`, `2031-12-25` — four writes for one date — while the calendar sets every segment at once and fires one.
   - Two compounding failures from writing straight out of `onChange`: every junk year was persisted, logged to activity and validated (typing a due date on an issue with a start date threw "startDate must be on or before dueDate" three times mid-word); and a write echoing back a different value made React assign to `input.value`, which **resets every segment of a focused date input** — so the year could never be finished.
@@ -826,7 +834,7 @@ _Hardening Night close-out ingest (2026-07-06) — P2s:_
   - `components/ui/DateInput.tsx` — the typed value lives in local state, the prop may only overwrite it while unfocused, and `onCommit` fires once per settled edit (4-digit year / blur / Enter / unmount, so Escape doesn't lose the edit). Picker selection still saves immediately.
   - DATE custom fields had the same defect **plus** `disabled` while saving — a disabled input drops focus, yanking the control away mid-edit. Disable removed; each save sends only its own key.
   - `date-input-typing.spec.ts` types with real key events (`pressSequentially` doesn't work on date inputs; `.fill()` can't catch a per-keystroke bug). **Verified to fail 5-of-7 against the unfixed code** — the 2 that passed are the no-regression cases. 28/28 over two runs desktop+mobile; 38 passed across due-date/start-date/custom-fields/input-focus; 59 web unit tests; tsc clean.
-  - **Found, not fixed, filed below:** drawing a Gantt dependency POSTs the link twice and the second returns 409 (`roadmap-gantt.spec.ts:621`) — reproduces identically with these changes stashed, so it is not from this work.
+  - **Found on the way, fixed separately:** drawing a Gantt dependency POSTed the link twice and the second returned 409 — reproduced identically with these changes stashed, so not from this work. See the entry above.
 
 - [x] (P1, M) **Roadmap filtering + honest dependency legend + movable undated stories** ✅ 2026-08-05 [founder: *"yes do all of them"*]
   - **Filtering** — the remaining scale gap. Text (title/key), Hide done, assignee, label; live hidden-count and Clear. Client-side on purpose: the payload is already capped, and rollups/overruns/arrows stay computed from the WHOLE plan so hiding a row can't change what the others say (asserted). `assigneeId`/`labelIds` added to both roadmap DTOs, ids only. "Unassigned" is an option.

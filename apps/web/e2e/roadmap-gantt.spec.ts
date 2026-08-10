@@ -203,6 +203,8 @@ test.describe('Roadmap Gantt', () => {
     await writes.settle({
       match: (w) => w.method === 'PATCH' && w.path.endsWith(`/api/issues/${epic.id}`),
       atLeast: 1,
+      // One gesture, one write — a duplicate would be invisible otherwise.
+      atMost: 1,
     });
 
     const after = await getIssue(request, token, epic.id);
@@ -272,6 +274,8 @@ test.describe('Roadmap Gantt', () => {
     await writes.settle({
       match: (w) => w.method === 'PATCH' && w.path.endsWith(`/api/issues/${story.id}`),
       atLeast: 1,
+      // One gesture, one write — a duplicate would be invisible otherwise.
+      atMost: 1,
     });
 
     const movedStory = await getIssue(request, token, story.id);
@@ -394,6 +398,8 @@ test.describe('Roadmap Gantt', () => {
     await writes.settle({
       match: (w) => w.method === 'PATCH' && w.path.endsWith(`/api/issues/${story.id}`),
       atLeast: 1,
+      // One gesture, one write — a duplicate would be invisible otherwise.
+      atMost: 1,
     });
 
     const after = await getIssue(request, token, story.id);
@@ -529,6 +535,8 @@ test.describe('Roadmap Gantt', () => {
     await writes.settle({
       match: (w) => w.method === 'PATCH' && w.path.endsWith(`/api/issues/${story.id}`),
       atLeast: 1,
+      // One gesture, one write — a duplicate would be invisible otherwise.
+      atMost: 1,
     });
 
     // It gained its own dates, five days on from the sprint window...
@@ -685,6 +693,8 @@ test.describe('Roadmap Gantt', () => {
       match: (w) =>
         w.method === 'POST' && w.path.endsWith(`/api/issues/${blocker.id}/links`),
       atLeast: 1,
+      // One gesture, one write — a duplicate would be invisible otherwise.
+      atMost: 1,
     });
 
     // Drawn on the chart...
@@ -731,6 +741,8 @@ test.describe('Roadmap Gantt', () => {
     await deletes.settle({
       match: (w) => w.method === 'DELETE' && w.path.includes('/api/issue-links/'),
       atLeast: 1,
+      // One gesture, one write — a duplicate would be invisible otherwise.
+      atMost: 1,
     });
 
     const after = await request.get(`${API_URL}/api/issues/${blocker.id}/links`, {
@@ -815,6 +827,8 @@ test.describe('Roadmap Gantt', () => {
       match: (w) =>
         w.method === 'PATCH' && w.path.endsWith(`/api/issues/${story.id}`),
       atLeast: 1,
+      // One gesture, one write — a duplicate would be invisible otherwise.
+      atMost: 1,
     });
 
     const after = await request.get(`${API_URL}/api/issues/${story.id}`, {
@@ -1234,6 +1248,8 @@ test.describe('Roadmap Gantt', () => {
       match: (w) =>
         w.method === 'PATCH' && w.path.endsWith(`/api/issues/${story.id}`),
       atLeast: 1,
+      // One gesture, one write — a duplicate would be invisible otherwise.
+      atMost: 1,
     });
 
     const after = await request.get(`${API_URL}/api/issues/${story.id}`, {

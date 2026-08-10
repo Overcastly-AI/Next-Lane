@@ -309,10 +309,20 @@ export interface ApiWriteTracker {
    * Then assert none of them failed.
    */
   settle(opts?: {
-    /** Restrict `atLeast` / the status check to writes matching this. */
+    /** Restrict `atLeast` / `atMost` / the status check to matching writes. */
     match?: (w: ApiWrite) => boolean;
     /** Minimum number of matching writes that must have been answered. */
     atLeast?: number;
+    /**
+     * Maximum number of matching writes allowed, checked once nothing is in
+     * flight. Set it on any gesture that should produce ONE write: a duplicate
+     * of an idempotent write (a reparent, a reschedule) changes nothing on the
+     * server and so is invisible to every other assertion, while still doubling
+     * the activity-log rows and any cascade the write triggers. The
+     * dependency-draw gesture only got caught because its duplicate happened to
+     * come back 409.
+     */
+    atMost?: number;
     timeout?: number;
   }): Promise<void>;
 }
@@ -384,7 +394,7 @@ export function trackApiWrites(page: Page): ApiWriteTracker {
       return inFlight.size;
     },
     async settle(opts = {}) {
-      const { match, atLeast = 0, timeout = 15_000 } = opts;
+      const { match, atLeast = 0, atMost, timeout = 15_000 } = opts;
       const matching = () => (match ? completed.filter(match) : completed);
       await expect
         .poll(
@@ -405,6 +415,15 @@ export function trackApiWrites(page: Page): ApiWriteTracker {
       expect(failed, `API write(s) rejected: ${JSON.stringify(failed)}`).toEqual(
         [],
       );
+
+      if (atMost !== undefined) {
+        const sent = matching();
+        expect(
+          sent.length,
+          `one gesture sent ${sent.length} writes, expected at most ` +
+            `${atMost}: ${JSON.stringify(sent)}`,
+        ).toBeLessThanOrEqual(atMost);
+      }
     },
   };
 }
