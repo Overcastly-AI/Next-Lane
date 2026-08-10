@@ -324,7 +324,8 @@ Then open:
 |---------|-----|
 | 🌐 **Web app** | http://localhost:3000 |
 | ⚙️ **API** | http://localhost:4000 |
-| 📚 **API docs (Swagger)** | http://localhost:4000/api |
+| 📚 **API reference (Swagger UI)** | http://localhost:4000/api |
+| 🔌 **OpenAPI spec (JSON)** | http://localhost:4000/api-json |
 
 A demo workspace, project, sprint, and issues are **seeded automatically**. Log in with:
 

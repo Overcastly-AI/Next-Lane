@@ -79,7 +79,7 @@ Managed with **pnpm workspaces** (pnpm 9.x, Node 22).
 - **BullMQ:** webhook deliveries are queued in Redis for durable, retried
   fan-out. Falls back to in-process delivery when Redis is not configured.
 - **Validation:** `class-validator` DTOs at every controller boundary.
-- **API docs:** Swagger/OpenAPI at `/api`.
+- **API docs:** Swagger UI at `/api`, OpenAPI 3 spec at `/api-json`; both off with `API_DOCS_ENABLED=false`.
 
 ---
 

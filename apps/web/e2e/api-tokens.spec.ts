@@ -51,6 +51,51 @@ async function revokeTokenViaApi(
 // UI tests — run on both desktop and mobile via project matrix
 // ---------------------------------------------------------------------------
 
+
+/**
+ * The API reference, reachable from inside the app.
+ *
+ * It was only ever named in the README and the docs site — which you have to
+ * leave the product to read — and the person who has just minted a token is
+ * exactly the one asking "what do I call with it". Both surfaces are linked
+ * because they answer different questions: the Swagger UI for a person, the
+ * OpenAPI document for a generator, Postman, or an agent.
+ */
+test.describe('API docs links on the tokens screen', () => {
+  test('links to both the reference and the OpenAPI spec, on the API origin', async ({
+    page,
+    request,
+  }) => {
+    const user = await registerNewUser(request, 'apidocs');
+    await page.goto('/login');
+    await page.getByLabel(/email/i).fill(user.email);
+    await page.getByLabel(/password/i).fill(user.password);
+    await page.getByRole('button', { name: /(log ?in|sign ?in)/i }).click();
+    await expect(page).not.toHaveURL(/\/login/, { timeout: 15_000 });
+    await page.goto('/me/settings');
+
+    const links = page.getByTestId('api-docs-links');
+    await expect(links).toBeVisible({ timeout: 15_000 });
+
+    // Built from the configured API origin, not a hardcoded localhost:4000, so
+    // it stays right on a self-hosted install behind any origin.
+    await expect(page.getByTestId('api-reference-link')).toHaveAttribute(
+      'href',
+      `${API_URL}/api`,
+    );
+    await expect(page.getByTestId('api-openapi-link')).toHaveAttribute(
+      'href',
+      `${API_URL}/api-json`,
+    );
+
+    // Both really serve something — a link to a 404 would pass any DOM-only check.
+    for (const path of ['/api', '/api-json']) {
+      const res = await request.get(`${API_URL}${path}`);
+      expect(res.status(), `${path} should be served`).toBe(200);
+    }
+  });
+});
+
 test.describe('API tokens UI', () => {
   test('create token shows raw value once with warning, then lists metadata only', async ({
     page,

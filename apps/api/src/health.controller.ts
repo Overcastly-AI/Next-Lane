@@ -10,24 +10,10 @@ import { ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { Public } from './auth/public.decorator';
 import { PrismaService } from './prisma/prisma.service';
+import { APP_VERSION } from './common/app-version';
 
-// Resolve the application version: prefer the RELEASE_VERSION env var
-// (injected by CI/Helm), then fall back to the version in package.json.
-// We read package.json lazily so no import machinery is needed.
-function resolveVersion(): string {
-  if (process.env.RELEASE_VERSION) {
-    return process.env.RELEASE_VERSION;
-  }
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const pkg = require('../package.json') as { version?: string };
-    return pkg.version ?? '0.0.0';
-  } catch {
-    return '0.0.0';
-  }
-}
-
-const APP_VERSION = resolveVersion();
+// Version now lives in `common/app-version.ts` — the OpenAPI document needs
+// the same answer, and two resolvers would eventually disagree.
 
 /**
  * Health controller — unauthenticated; excluded from the global `/api` prefix
