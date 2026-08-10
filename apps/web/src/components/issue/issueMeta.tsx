@@ -1,6 +1,21 @@
 import { IssueType, Priority } from '@next-lane/shared';
 import type { ReactElement } from 'react';
 
+/**
+ * The colour that means "this kind of work", everywhere in the product.
+ *
+ * Exported because the roadmap needs the same five colours for its type dots
+ * and its legend: a Bug that is red on a board card and some other colour on
+ * the Gantt is two vocabularies for one fact, and the reader has to learn both.
+ */
+export const ISSUE_TYPE_COLOR: Record<IssueType, string> = {
+  [IssueType.STORY]: '#22c55e',
+  [IssueType.TASK]: '#3b82f6',
+  [IssueType.BUG]: '#ef4444',
+  [IssueType.EPIC]: '#a855f7',
+  [IssueType.SUBTASK]: '#6b7280',
+};
+
 /** Small colored square icon per issue type . */
 export function IssueTypeIcon({
   type,
@@ -9,29 +24,19 @@ export function IssueTypeIcon({
   type: IssueType;
   className?: string;
 }): ReactElement {
-  const map: Record<IssueType, { bg: string; glyph: ReactElement }> = {
-    [IssueType.STORY]: {
-      bg: '#22c55e',
-      glyph: <path d="M7 12l3 3 7-7" stroke="white" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />,
-    },
-    [IssueType.TASK]: {
-      bg: '#3b82f6',
-      glyph: <path d="M7 12l3 3 7-7" stroke="white" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />,
-    },
-    [IssueType.BUG]: {
-      bg: '#ef4444',
-      glyph: <circle cx="12" cy="12" r="3.5" fill="white" />,
-    },
-    [IssueType.EPIC]: {
-      bg: '#a855f7',
-      glyph: <path d="M13 4l-7 9h4l-1 7 7-9h-4z" fill="white" />,
-    },
-    [IssueType.SUBTASK]: {
-      bg: '#6b7280',
-      glyph: <path d="M8 8h8v8H8z" fill="white" />,
-    },
+  const glyphs: Record<IssueType, ReactElement> = {
+    [IssueType.STORY]: (
+      <path d="M7 12l3 3 7-7" stroke="white" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+    ),
+    [IssueType.TASK]: (
+      <path d="M7 12l3 3 7-7" stroke="white" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+    ),
+    [IssueType.BUG]: <circle cx="12" cy="12" r="3.5" fill="white" />,
+    [IssueType.EPIC]: <path d="M13 4l-7 9h4l-1 7 7-9h-4z" fill="white" />,
+    [IssueType.SUBTASK]: <path d="M8 8h8v8H8z" fill="white" />,
   };
-  const { bg, glyph } = map[type];
+  const bg = ISSUE_TYPE_COLOR[type];
+  const glyph = glyphs[type];
   return (
     <span
       title={titleCase(type)}

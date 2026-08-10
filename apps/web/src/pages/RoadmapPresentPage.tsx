@@ -102,9 +102,9 @@ export function RoadmapPresentPage() {
     };
   }, []);
 
-  function openEpic(epicId: string) {
+  function openIssue(issueId: string) {
     const next = new URLSearchParams(searchParams);
-    next.set('issue', epicId);
+    next.set('issue', issueId);
     setSearchParams(next, { replace: true });
   }
 
@@ -193,7 +193,7 @@ export function RoadmapPresentPage() {
           <RoadmapTimeline
             data={data}
             projectId={projectId}
-            onOpenEpic={openEpic}
+            onOpenIssue={openIssue}
           />
         ) : null}
         </div>
@@ -209,7 +209,7 @@ export function RoadmapPresentPage() {
           // way to change it is to stop presenting — which is one key away.
           editable={false}
           onClose={closeIssue}
-          onOpenIssue={openEpic}
+          onOpenIssue={openIssue}
         />
       )}
     </div>

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  IssueType,
   SprintState,
   StatusCategory,
   VersionState,
@@ -8,6 +9,7 @@ import {
   type RoadmapEpicDto,
 } from '@next-lane/shared';
 import { cn } from '@/lib/cn';
+import { ISSUE_TYPE_COLOR, titleCase } from '@/components/issue/issueMeta';
 import { useExpandedEpicChildren } from '@/api/roadmap';
 import {
   MS_PER_DAY,
@@ -153,6 +155,103 @@ const CHILD_COLORS: Record<StatusCategory, { bar: string; dot: string; label: st
   },
 };
 
+/** A label as the rail needs it: a name to say and a colour to draw. */
+interface RailLabel {
+  id: string;
+  name: string;
+  color?: string | null;
+}
+
+/**
+ * Identity markers on a rail row — a dot for the issue type, dots for labels.
+ *
+ * SHAPE CARRIES THE DIMENSION, and here that is load-bearing rather than
+ * decorative. Every swatch already on this chart — sprint state, status
+ * category — is a rounded SQUARE, and all of them answer "how is this going".
+ * Type and labels answer "what is this", so they are CIRCLES. The two palettes
+ * genuinely collide: Story green sits a few pixels from Done green, Task blue
+ * from In-progress blue, Bug red from the today marker and the violated-
+ * dependency arrow. Same colour, different shape, different question.
+ *
+ * They live in the RAIL rather than on the bar for the same reason. A bar's
+ * fill IS its status, so a saturated type dot dropped onto a pale status fill
+ * of the same hue is exactly that ambiguity with no shape cue left to rescue
+ * it. The rail is where identity already lives — key, title — and it is the
+ * same row, so the eye travels left from any bar and finds them.
+ */
+function TypeDot({ type }: { type: IssueType }) {
+  return (
+    <span
+      data-testid="roadmap-type-dot"
+      data-type={type}
+      className="inline-block h-2 w-2 shrink-0 rounded-full"
+      style={{ backgroundColor: ISSUE_TYPE_COLOR[type] }}
+      // Decorative: the row's accessible name already says the type, so a
+      // screen reader that also announced this would say it twice.
+      aria-hidden="true"
+    />
+  );
+}
+
+/** How many label dots a row shows before collapsing the rest into a count. */
+const MAX_LABEL_DOTS = 3;
+
+/**
+ * A row's labels, as dots.
+ *
+ * Dots and not chips: a chip carries the name, and at 20px of row height on a
+ * rail that is 248px wide by default, three names would leave nothing for the
+ * title — which is the column's actual job, and something the rail has already
+ * been widened once to protect. The names are on the row's tooltip and in the
+ * drawer a click away. Past three, the rest becomes "+N" rather than shrinking
+ * the title further; a row with nine labels is not a row you read the labels
+ * off anyway.
+ *
+ * The ring matters: label colours are chosen by users, so a pale one on the
+ * rail's pale fill would otherwise be an invisible dot that still takes space.
+ */
+function LabelDots({
+  labelIds,
+  labelById,
+}: {
+  labelIds: string[];
+  labelById: Map<string, RailLabel>;
+}) {
+  const known = labelIds
+    .map((id) => labelById.get(id))
+    .filter((l): l is RailLabel => Boolean(l));
+  if (known.length === 0) return null;
+  const shown = known.slice(0, MAX_LABEL_DOTS);
+  const extra = known.length - shown.length;
+
+  return (
+    <span
+      className="flex shrink-0 items-center gap-0.5"
+      data-testid="roadmap-label-dots"
+      // Prefixed on purpose. An unexplained coloured dot after a title is a
+      // question; the legend strip is the wrong place to answer it, because
+      // label colours are chosen per workspace and there is no fixed key to
+      // print. The hover says both what they are and which ones this row has.
+      title={`Labels: ${known.map((l) => l.name).join(', ')}`}
+    >
+      {shown.map((l) => (
+        <span
+          key={l.id}
+          data-label-id={l.id}
+          className="inline-block h-1.5 w-1.5 rounded-full ring-1 ring-ink-900/15"
+          style={{ backgroundColor: l.color ?? 'var(--nl-ink-400)' }}
+          aria-hidden="true"
+        />
+      ))}
+      {extra > 0 && (
+        <span className="text-[9px] font-medium tabular-nums text-ink-400">
+          +{extra}
+        </span>
+      )}
+    </span>
+  );
+}
+
 /** One rendered line of the chart, with its y offset inside the lanes box. */
 type RoadmapRow =
   | { kind: 'epic'; epic: RoadmapEpicDto; y: number }
@@ -224,7 +323,12 @@ interface ReparentDrag {
 
 export interface RoadmapTimelineProps {
   data: RoadmapDto;
-  onOpenEpic: (epicId: string) => void;
+  /**
+   * Open an issue's detail drawer. Takes an EPIC or a STORY id — both are
+   * issues, and the roadmap is a place you read a plan from and then go fix
+   * something in it, so every named row on the chart is a way in.
+   */
+  onOpenIssue: (issueId: string) => void;
   /** Commit a new window for an issue. Absent = read-only (no drag affordances). */
   onSchedule?: (input: {
     issueId: string;
@@ -261,7 +365,7 @@ export interface RoadmapTimelineProps {
 
 export function RoadmapTimeline({
   data,
-  onOpenEpic,
+  onOpenIssue,
   onSchedule,
   projectId,
   isSaving,
@@ -523,6 +627,16 @@ export function RoadmapTimeline({
   const epicKeyById = useMemo(
     () => new Map(data.epics.map((e) => [e.id, e.key])),
     [data.epics],
+  );
+  /*
+   * Labels arrive on the rows as ids only — deliberately, so a 500-epic plan
+   * does not ship the same label name and colour five hundred times. The names
+   * and colours come from the list the filter picker already uses, resolved
+   * once here rather than with a `find` per label per row.
+   */
+  const labelById = useMemo(
+    () => new Map<string, RailLabel>(labels.map((l) => [l.id, l])),
+    [labels],
   );
   /*
    * A pointer drag is ALSO followed by a native `click` on the same element.
@@ -950,6 +1064,28 @@ export function RoadmapTimeline({
   const totalRowsHeight = rows.length > 0 ? rows[rows.length - 1].y + ROW_H : 0;
 
   /*
+   * Which types the legend has to explain — read off the rows actually drawn,
+   * not off the enum.
+   *
+   * A key listing Bug and Subtask on a plan containing neither is noise in the
+   * densest strip on the screen, and this legend has already been corrected
+   * once for describing something other than what was on the chart. It follows
+   * expansion for the same reason: a collapsed plan is all epics, so that is
+   * all there is to explain, and the entries appear as the rows that need them
+   * do. Ordered by the enum, so the key does not reshuffle as you expand.
+   */
+  const typesOnChart = useMemo(() => {
+    const present = new Set<IssueType>();
+    for (const row of rows) {
+      if (row.kind === 'epic') present.add(IssueType.EPIC);
+      else if (row.kind === 'child') present.add(row.child.type);
+    }
+    return (Object.values(IssueType) as IssueType[]).filter((t) =>
+      present.has(t),
+    );
+  }, [rows]);
+
+  /*
    * Drawing a dependency: window-level pointer tracking, same reasoning as the
    * schedule drag. The gesture starts on the source bar's connector dot and
    * ends anywhere — pointer capture on the source plus window listeners is the
@@ -1040,7 +1176,7 @@ export function RoadmapTimeline({
 
   if (!scale || !bounds) {
     return (
-      <NoDatesOnly epics={noDateEpics} onOpenEpic={onOpenEpic} />
+      <NoDatesOnly epics={noDateEpics} onOpenIssue={onOpenIssue} />
     );
   }
 
@@ -1135,6 +1271,33 @@ export function RoadmapTimeline({
               </span>
             ))}
           </span>
+          {/*
+           * Types, as circles.
+           *
+           * The group beside it — "Epics & stories" — is squares, and that is
+           * the distinction being drawn rather than a stylistic accident:
+           * squares are state (how is this going), circles are identity (what
+           * is this). The two palettes overlap hard (Story green / Done green,
+           * Task blue / In-progress blue, Bug red / today), so without the
+           * shape rule the same colour would answer two questions in one strip.
+           */}
+          {typesOnChart.length > 0 && (
+            <span
+              className="flex items-center gap-1.5"
+              data-testid="roadmap-legend-types"
+            >
+              <span className="font-medium text-ink-400">Types</span>
+              {typesOnChart.map((t) => (
+                <span key={t} className="flex items-center gap-1">
+                  <span
+                    className="inline-block h-2 w-2 rounded-full"
+                    style={{ backgroundColor: ISSUE_TYPE_COLOR[t] }}
+                  />
+                  {titleCase(t)}
+                </span>
+              ))}
+            </span>
+          )}
           <span className="flex items-center gap-1.5">
             <span className="inline-block h-3 w-0.5 bg-red-500" />
             Today
@@ -1412,24 +1575,46 @@ export function RoadmapTimeline({
                 epic={r.epic}
                 expanded={expanded.has(r.epic.id)}
                 onToggle={() => toggleExpand(r.epic.id)}
-                onOpen={() => onOpenEpic(r.epic.id)}
+                onOpen={() => onOpenIssue(r.epic.id)}
                 canCreate={canCreate}
                 narrow={narrow}
+                labelById={labelById}
               />
             ) : r.kind === 'child' ? (
               <div
                 key={`rail-${r.child.id}`}
                 className={cn(
-                  'flex items-center gap-1.5 border-b border-ink-100 bg-ink-50/40 pr-2',
+                  'group/rail flex items-center gap-1.5 border-b border-ink-100 bg-ink-50/40 pr-2 transition-colors duration-[120ms] hover:bg-signal-50/60',
                   narrow ? 'pl-4' : 'pl-8',
                 )}
                 style={{ height: ROW_H }}
-                title={`${r.child.key} · ${r.child.title}`}
               >
-                {!narrow && (
-                  <span className="nl-issue-key shrink-0 text-[10px]">{r.child.key}</span>
-                )}
-                <span className="truncate text-[11px] text-ink-600">{r.child.title}</span>
+                <button
+                  type="button"
+                  data-testid={`roadmap-open-child-${r.child.id}`}
+                  data-issue-type={r.child.type}
+                  onClick={() => onOpenIssue(r.child.id)}
+                  className="flex min-w-0 flex-1 items-center gap-1.5 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-400"
+                  title={`${titleCase(r.child.type)} · ${r.child.key} · ${r.child.title} — open`}
+                  aria-label={`Open ${titleCase(r.child.type)} ${r.child.key} ${r.child.title}`}
+                >
+                  <TypeDot type={r.child.type} />
+                  {!narrow && (
+                    <span className="nl-issue-key nl-issue-key--interactive shrink-0 text-[10px]">
+                      {r.child.key}
+                    </span>
+                  )}
+                  <span className="truncate text-[11px] text-ink-600">
+                    {r.child.title}
+                  </span>
+                  {/* Labels stay off the 132px phone rail — see EpicRailRow. */}
+                  {!narrow && (
+                    <LabelDots
+                      labelIds={r.child.labelIds}
+                      labelById={labelById}
+                    />
+                  )}
+                </button>
               </div>
             ) : r.kind === 'child-note' ? (
               <div
@@ -1671,7 +1856,7 @@ export function RoadmapTimeline({
                         suppressClickRef.current = false;
                         return;
                       }
-                      onOpenEpic(r.epic.id);
+                      onOpenIssue(r.epic.id);
                     }}
                   />
                 ) : r.kind === 'child' ? (
@@ -1694,6 +1879,13 @@ export function RoadmapTimeline({
                         ? (e) => startReparent(r.child.id, r.epicId, e)
                         : undefined
                     }
+                    onOpen={() => {
+                      if (suppressClickRef.current) {
+                        suppressClickRef.current = false;
+                        return;
+                      }
+                      onOpenIssue(r.child.id);
+                    }}
                   />
                 ) : r.kind === 'child-note' ? (
                   <div
@@ -1815,7 +2007,7 @@ export function RoadmapTimeline({
       )}
 
       {noDateEpics.length > 0 && (
-        <NoDatesLane epics={noDateEpics} onOpenEpic={onOpenEpic} />
+        <NoDatesLane epics={noDateEpics} onOpenIssue={onOpenIssue} />
       )}
     </div>
   );
@@ -1830,11 +2022,14 @@ function EpicRailRow({
   onOpen,
   canCreate,
   narrow,
+  labelById,
 }: {
   epic: RoadmapEpicDto;
   expanded: boolean;
   onToggle: () => void;
   onOpen: () => void;
+  /** Resolves the row's label ids to names and colours. */
+  labelById: Map<string, RailLabel>;
   /** Expanding a CHILDLESS epic is still useful when you can create one. */
   canCreate: boolean;
   /**
@@ -1848,7 +2043,7 @@ function EpicRailRow({
 }) {
   return (
     <div
-      className="group/rail flex items-center gap-1 border-b border-ink-100 pl-1 pr-2"
+      className="group/rail flex items-center gap-1 border-b border-ink-100 pl-1 pr-2 transition-colors duration-[120ms] hover:bg-signal-50/60"
       style={{ height: ROW_H }}
     >
       <button
@@ -1883,14 +2078,27 @@ function EpicRailRow({
       </button>
       <button
         type="button"
+        data-testid={`roadmap-open-epic-${epic.id}`}
+        data-issue-type={IssueType.EPIC}
         onClick={onOpen}
-        className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
-        title={`${epic.key} · ${epic.title}`}
+        className="flex min-w-0 flex-1 items-center gap-1.5 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-400"
+        title={`Epic · ${epic.key} · ${epic.title} — open`}
+        aria-label={`Open Epic ${epic.key} ${epic.title}`}
       >
+        {/*
+         * An epic row's dot is the one that is arguably redundant — every epic
+         * row carries the same purple. It stays because the rule then needs no
+         * exception ("every row shows its type"), which is what lets the legend
+         * describe the whole chart instead of most of it.
+         */}
+        <TypeDot type={IssueType.EPIC} />
         {!narrow && (
-          <span className="nl-issue-key shrink-0 text-[10px]">{epic.key}</span>
+          <span className="nl-issue-key nl-issue-key--interactive shrink-0 text-[10px]">
+            {epic.key}
+          </span>
         )}
         <span className="truncate text-xs font-medium text-ink-800">{epic.title}</span>
+        {!narrow && <LabelDots labelIds={epic.labelIds} labelById={labelById} />}
       </button>
       {!narrow && (
         <span className="shrink-0 text-[10px] font-semibold tabular-nums text-ink-400">
@@ -2304,9 +2512,12 @@ function ChildBar({
   epicKeyOf,
   onReparentStart,
   reparentingId,
+  onOpen,
 }: {
   child: RoadmapChildDto;
   epicId: string;
+  /** Open this story's detail drawer. */
+  onOpen: () => void;
   /** Tells the timeline what kind of thing is being dragged, and from where. */
   onDragKind: (kind: 'child', fromEpicId: string) => void;
   /** Resolves an epic id to its key, for the reparent tooltip. */
@@ -2436,6 +2647,11 @@ function ChildBar({
             epicId,
           )
         }
+        // A story bar opens its ticket for the same reason an epic bar does —
+        // the bar is the thing you were already looking at. `onOpen` consumes
+        // the click that ends a real drag (see suppressClickRef), so dropping a
+        // rescheduled story does not also throw the drawer open on top of it.
+        onClick={onOpen}
         title={
           child.fromSprint
             ? `${child.key} · ${child.title} — showing ${child.sprintName ?? 'its sprint'}'s dates. Drag to give it its own; it stays in the sprint.`
@@ -2881,10 +3097,10 @@ function DependencyLayer({
 
 function NoDatesLane({
   epics,
-  onOpenEpic,
+  onOpenIssue,
 }: {
   epics: RoadmapEpicDto[];
-  onOpenEpic: (id: string) => void;
+  onOpenIssue: (id: string) => void;
 }) {
   return (
     <div className="rounded-lg border border-dashed border-ink-300 bg-ink-50 p-3">
@@ -2896,7 +3112,7 @@ function NoDatesLane({
           <button
             key={e.id}
             type="button"
-            onClick={() => onOpenEpic(e.id)}
+            onClick={() => onOpenIssue(e.id)}
             data-testid="roadmap-epic-nodate"
             className="flex items-center justify-between rounded-md border border-ink-200 bg-surface px-3 py-2 text-left text-sm hover:border-signal-300 hover:bg-signal-50"
           >
@@ -2916,10 +3132,10 @@ function NoDatesLane({
 
 function NoDatesOnly({
   epics,
-  onOpenEpic,
+  onOpenIssue,
 }: {
   epics: RoadmapEpicDto[];
-  onOpenEpic: (id: string) => void;
+  onOpenIssue: (id: string) => void;
 }) {
   return (
     <div className="flex flex-col gap-3">
@@ -2928,7 +3144,7 @@ function NoDatesOnly({
         date, or put its stories in a sprint, and it will appear on the
         timeline.
       </p>
-      {epics.length > 0 && <NoDatesLane epics={epics} onOpenEpic={onOpenEpic} />}
+      {epics.length > 0 && <NoDatesLane epics={epics} onOpenIssue={onOpenIssue} />}
     </div>
   );
 }
