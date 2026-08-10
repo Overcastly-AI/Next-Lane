@@ -7,8 +7,10 @@
 # `v*` tag (images + npm + Helm chart + GitHub release) so a version is
 # published by exactly one workflow — two workflows racing for the same
 # `latest`/`<version>` tag is a real double-publish hazard. This workflow stays
-# as the continuous edge build plus the web-image CSP smoke test that gates
-# every branch and PR.
+# as the continuous edge build plus the web-image smoke test. That smoke test
+# runs on pull requests too — it used to claim it gated "every branch and PR"
+# while the workflow only triggered on pushes to main, so the one job that
+# exercises the built image could not fail until after merge.
 #
 # Auth uses the built-in GITHUB_TOKEN (no PAT needed) with packages:write.
 # Image names are derived from the repo OWNER at runtime and lowercased, so
@@ -21,6 +23,12 @@ name: Publish images
 on:
   push:
     branches: [main]
+  # The smoke job below is the ONLY thing that exercises the built web image —
+  # its nginx config, the entrypoint's CSP and API-proxy substitution. Running
+  # it only on main meant the image could not break until after merge, which is
+  # the wrong side of the gate for a change you are about to deploy. Publishing
+  # stays main-only (see `if:` on build-push); PRs run the smoke test alone.
+  pull_request:
   workflow_dispatch:
 
 concurrency:
@@ -37,6 +45,8 @@ env:
 jobs:
   build-push:
     name: Build & push ${{ matrix.app }}
+    # Never publish from a pull request.
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
