@@ -573,6 +573,35 @@ h1, h2, h3, h4, h5, h6,
   padding: 0.0625rem 0.3125rem;
 }
 
+/*
+ * The key as a door.
+ *
+ * On the roadmap rail, the row label opens the ticket — and nothing said so.
+ * The key is the right thing to light up: on a dispatch board the key IS how
+ * you address a job, so "click the number to get the ticket" is the screen's
+ * own vernacular rather than an invented convention. Put it on the KEY and not
+ * on the title, because the title sits beside bars that are already carrying
+ * status colour, and a second colour change there would read as a status.
+ *
+ * Deliberately nothing at rest. This rail can be thirty rows deep next to a
+ * chart already carrying bars, dependency arrows, an overrun hatch and a today
+ * marker; a per-row "open" icon would be visual debris. The pill deepens on
+ * hover or keyboard focus of the row that owns it, which teaches the
+ * interaction the first time a pointer crosses it and then gets out of the way.
+ * Colour only, on the standard 120ms — nothing here moves, so reduced-motion
+ * needs no special case.
+ */
+.nl-issue-key--interactive {
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
+}
+.group\/rail:hover .nl-issue-key--interactive,
+.group\/rail:focus-within .nl-issue-key--interactive {
+  background-color: var(--nl-accent-light);
+  color: var(--nl-accent-dim);
+}
+
 /* ── Story-point / data chip ─────────────────────────────────────────────── */
 .nl-data-chip {
   font-family: 'IBM Plex Mono', ui-monospace, monospace;

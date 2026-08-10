@@ -85,9 +85,9 @@ export function RoadmapPage() {
    */
   const openIssueId = searchParams.get('issue');
 
-  function openEpic(epicId: string) {
+  function openIssue(issueId: string) {
     const next = new URLSearchParams(searchParams);
-    next.set('issue', epicId);
+    next.set('issue', issueId);
     setSearchParams(next, { replace: false });
   }
 
@@ -253,7 +253,7 @@ export function RoadmapPage() {
             <RoadmapTimeline
               data={data}
               projectId={projectId}
-              onOpenEpic={openEpic}
+              onOpenIssue={openIssue}
               onSchedule={editable ? onSchedule : undefined}
               onCreate={editable ? onCreate : undefined}
               users={usersQuery.data ?? []}
@@ -276,7 +276,7 @@ export function RoadmapPage() {
           editable={editable}
           viewerRole={myRole ?? undefined}
           onClose={closeIssue}
-          onOpenIssue={openEpic}
+          onOpenIssue={openIssue}
         />
       )}
     </Shell>

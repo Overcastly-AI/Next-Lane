@@ -224,7 +224,12 @@ interface ReparentDrag {
 
 export interface RoadmapTimelineProps {
   data: RoadmapDto;
-  onOpenEpic: (epicId: string) => void;
+  /**
+   * Open an issue's detail drawer. Takes an EPIC or a STORY id — both are
+   * issues, and the roadmap is a place you read a plan from and then go fix
+   * something in it, so every named row on the chart is a way in.
+   */
+  onOpenIssue: (issueId: string) => void;
   /** Commit a new window for an issue. Absent = read-only (no drag affordances). */
   onSchedule?: (input: {
     issueId: string;
@@ -261,7 +266,7 @@ export interface RoadmapTimelineProps {
 
 export function RoadmapTimeline({
   data,
-  onOpenEpic,
+  onOpenIssue,
   onSchedule,
   projectId,
   isSaving,
@@ -1040,7 +1045,7 @@ export function RoadmapTimeline({
 
   if (!scale || !bounds) {
     return (
-      <NoDatesOnly epics={noDateEpics} onOpenEpic={onOpenEpic} />
+      <NoDatesOnly epics={noDateEpics} onOpenIssue={onOpenIssue} />
     );
   }
 
@@ -1412,7 +1417,7 @@ export function RoadmapTimeline({
                 epic={r.epic}
                 expanded={expanded.has(r.epic.id)}
                 onToggle={() => toggleExpand(r.epic.id)}
-                onOpen={() => onOpenEpic(r.epic.id)}
+                onOpen={() => onOpenIssue(r.epic.id)}
                 canCreate={canCreate}
                 narrow={narrow}
               />
@@ -1420,16 +1425,28 @@ export function RoadmapTimeline({
               <div
                 key={`rail-${r.child.id}`}
                 className={cn(
-                  'flex items-center gap-1.5 border-b border-ink-100 bg-ink-50/40 pr-2',
+                  'group/rail flex items-center gap-1.5 border-b border-ink-100 bg-ink-50/40 pr-2 transition-colors duration-[120ms] hover:bg-signal-50/60',
                   narrow ? 'pl-4' : 'pl-8',
                 )}
                 style={{ height: ROW_H }}
-                title={`${r.child.key} · ${r.child.title}`}
               >
-                {!narrow && (
-                  <span className="nl-issue-key shrink-0 text-[10px]">{r.child.key}</span>
-                )}
-                <span className="truncate text-[11px] text-ink-600">{r.child.title}</span>
+                <button
+                  type="button"
+                  data-testid={`roadmap-open-child-${r.child.id}`}
+                  onClick={() => onOpenIssue(r.child.id)}
+                  className="flex min-w-0 flex-1 items-center gap-1.5 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-400"
+                  title={`${r.child.key} · ${r.child.title} — open`}
+                  aria-label={`Open ${r.child.key} ${r.child.title}`}
+                >
+                  {!narrow && (
+                    <span className="nl-issue-key nl-issue-key--interactive shrink-0 text-[10px]">
+                      {r.child.key}
+                    </span>
+                  )}
+                  <span className="truncate text-[11px] text-ink-600">
+                    {r.child.title}
+                  </span>
+                </button>
               </div>
             ) : r.kind === 'child-note' ? (
               <div
@@ -1671,7 +1688,7 @@ export function RoadmapTimeline({
                         suppressClickRef.current = false;
                         return;
                       }
-                      onOpenEpic(r.epic.id);
+                      onOpenIssue(r.epic.id);
                     }}
                   />
                 ) : r.kind === 'child' ? (
@@ -1694,6 +1711,13 @@ export function RoadmapTimeline({
                         ? (e) => startReparent(r.child.id, r.epicId, e)
                         : undefined
                     }
+                    onOpen={() => {
+                      if (suppressClickRef.current) {
+                        suppressClickRef.current = false;
+                        return;
+                      }
+                      onOpenIssue(r.child.id);
+                    }}
                   />
                 ) : r.kind === 'child-note' ? (
                   <div
@@ -1815,7 +1839,7 @@ export function RoadmapTimeline({
       )}
 
       {noDateEpics.length > 0 && (
-        <NoDatesLane epics={noDateEpics} onOpenEpic={onOpenEpic} />
+        <NoDatesLane epics={noDateEpics} onOpenIssue={onOpenIssue} />
       )}
     </div>
   );
@@ -1848,7 +1872,7 @@ function EpicRailRow({
 }) {
   return (
     <div
-      className="group/rail flex items-center gap-1 border-b border-ink-100 pl-1 pr-2"
+      className="group/rail flex items-center gap-1 border-b border-ink-100 pl-1 pr-2 transition-colors duration-[120ms] hover:bg-signal-50/60"
       style={{ height: ROW_H }}
     >
       <button
@@ -1883,12 +1907,16 @@ function EpicRailRow({
       </button>
       <button
         type="button"
+        data-testid={`roadmap-open-epic-${epic.id}`}
         onClick={onOpen}
-        className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
-        title={`${epic.key} · ${epic.title}`}
+        className="flex min-w-0 flex-1 items-center gap-1.5 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-400"
+        title={`${epic.key} · ${epic.title} — open`}
+        aria-label={`Open ${epic.key} ${epic.title}`}
       >
         {!narrow && (
-          <span className="nl-issue-key shrink-0 text-[10px]">{epic.key}</span>
+          <span className="nl-issue-key nl-issue-key--interactive shrink-0 text-[10px]">
+            {epic.key}
+          </span>
         )}
         <span className="truncate text-xs font-medium text-ink-800">{epic.title}</span>
       </button>
@@ -2304,9 +2332,12 @@ function ChildBar({
   epicKeyOf,
   onReparentStart,
   reparentingId,
+  onOpen,
 }: {
   child: RoadmapChildDto;
   epicId: string;
+  /** Open this story's detail drawer. */
+  onOpen: () => void;
   /** Tells the timeline what kind of thing is being dragged, and from where. */
   onDragKind: (kind: 'child', fromEpicId: string) => void;
   /** Resolves an epic id to its key, for the reparent tooltip. */
@@ -2436,6 +2467,11 @@ function ChildBar({
             epicId,
           )
         }
+        // A story bar opens its ticket for the same reason an epic bar does —
+        // the bar is the thing you were already looking at. `onOpen` consumes
+        // the click that ends a real drag (see suppressClickRef), so dropping a
+        // rescheduled story does not also throw the drawer open on top of it.
+        onClick={onOpen}
         title={
           child.fromSprint
             ? `${child.key} · ${child.title} — showing ${child.sprintName ?? 'its sprint'}'s dates. Drag to give it its own; it stays in the sprint.`
@@ -2881,10 +2917,10 @@ function DependencyLayer({
 
 function NoDatesLane({
   epics,
-  onOpenEpic,
+  onOpenIssue,
 }: {
   epics: RoadmapEpicDto[];
-  onOpenEpic: (id: string) => void;
+  onOpenIssue: (id: string) => void;
 }) {
   return (
     <div className="rounded-lg border border-dashed border-ink-300 bg-ink-50 p-3">
@@ -2896,7 +2932,7 @@ function NoDatesLane({
           <button
             key={e.id}
             type="button"
-            onClick={() => onOpenEpic(e.id)}
+            onClick={() => onOpenIssue(e.id)}
             data-testid="roadmap-epic-nodate"
             className="flex items-center justify-between rounded-md border border-ink-200 bg-surface px-3 py-2 text-left text-sm hover:border-signal-300 hover:bg-signal-50"
           >
@@ -2916,10 +2952,10 @@ function NoDatesLane({
 
 function NoDatesOnly({
   epics,
-  onOpenEpic,
+  onOpenIssue,
 }: {
   epics: RoadmapEpicDto[];
-  onOpenEpic: (id: string) => void;
+  onOpenIssue: (id: string) => void;
 }) {
   return (
     <div className="flex flex-col gap-3">
@@ -2928,7 +2964,7 @@ function NoDatesOnly({
         date, or put its stories in a sprint, and it will appear on the
         timeline.
       </p>
-      {epics.length > 0 && <NoDatesLane epics={epics} onOpenEpic={onOpenEpic} />}
+      {epics.length > 0 && <NoDatesLane epics={epics} onOpenIssue={onOpenIssue} />}
     </div>
   );
 }
