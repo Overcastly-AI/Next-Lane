@@ -35,6 +35,7 @@ import { RoadmapPresentPage } from '@/pages/RoadmapPresentPage';
 import { SettingsPage } from '@/pages/SettingsPage';
 import { TriagePage } from '@/pages/TriagePage';
 import { ProfileSettingsPage } from '@/pages/ProfileSettingsPage';
+import { ApiDocsPage } from '@/pages/ApiDocsPage';
 import { WorkspaceAuditLogPage } from '@/pages/WorkspaceAuditLogPage';
 import { SharedBoardPage } from '@/pages/SharedBoardPage';
 import { SharedDashboardPage } from '@/pages/SharedDashboardPage';
@@ -203,6 +204,16 @@ export default function App() {
               element={
                 <RequireAuth>
                   <ProfileSettingsPage />
+                </RequireAuth>
+              }
+            />
+            {/* The API reference, in the product rather than as a URL you had
+                to already know. */}
+            <Route
+              path="/developers"
+              element={
+                <RequireAuth>
+                  <ApiDocsPage />
                 </RequireAuth>
               }
             />

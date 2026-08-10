@@ -1,0 +1,135 @@
+import { test, expect } from '@playwright/test';
+import { registerNewUser, API_URL } from './helpers';
+
+/**
+ * What the page RESOLVED, read off the page itself.
+ *
+ * Not re-derived from the test's environment: the app walks a priority chain
+ * (runtime config.js → build-time env → default) that only it has walked, and
+ * a test guessing at the answer asserts the wrong branch and passes anyway —
+ * which is exactly what happened before this helper existed.
+ */
+async function resolved(page: any): Promise<{ origin: string; embedded: boolean }> {
+  const el = page.getByTestId('api-docs-page');
+  await expect(el).toBeVisible({ timeout: 15_000 });
+  return {
+    origin: (await el.getAttribute('data-api-origin')) ?? '',
+    embedded: (await el.getAttribute('data-embedded')) === 'true',
+  };
+}
+
+/**
+ * The API reference as a page in the product.
+ *
+ * Founder: "I feel like there should be a place to view the swagger docs for
+ * the users." It previously existed only as a URL you had to already know, on
+ * a port you may have had to forward.
+ *
+ * The embed is conditional and these tests say so explicitly rather than
+ * asserting whichever branch this environment happens to take: the API serves
+ * `frame-ancestors 'self'`, so it can only be framed when it is on this exact
+ * origin. In the reverse-proxied deployment (the default) that is true and the
+ * reference renders inline; when the app is pointed at a separate API origin
+ * the iframe would be a blank white box, so the page shows a link and explains
+ * why. Both branches are covered, keyed off the same fact the component uses.
+ */
+async function signIn(page: Parameters<typeof registerNewUser>[0] extends never ? never : any, request: any, label: string) {
+  const user = await registerNewUser(request, label);
+  await page.goto('/login');
+  await page.getByLabel(/email/i).fill(user.email);
+  await page.getByLabel(/password/i).fill(user.password);
+  await page.getByRole('button', { name: /(log ?in|sign ?in)/i }).click();
+  await expect(page).not.toHaveURL(/\/login/, { timeout: 15_000 });
+  return user;
+}
+
+test.describe('API reference page', () => {
+  test('is reachable from the user menu and explains how to start', async ({
+    page,
+    request,
+  }) => {
+    await signIn(page, request, 'apidocpage');
+
+    await page.goto('/developers');
+    await expect(page.getByTestId('api-docs-page')).toBeVisible({
+      timeout: 15_000,
+    });
+
+    // The base URL is computed for THIS install, not hardcoded.
+    const { origin } = await resolved(page);
+    expect(origin).toBeTruthy();
+    await expect(page.getByTestId('api-docs-base-url')).toContainText(origin);
+
+    // The route to a token is on the page, because that is step one.
+    await expect(page.getByTestId('api-docs-token-link')).toHaveAttribute(
+      'href',
+      '/me/settings',
+    );
+
+    // The OpenAPI document is offered, and really serves.
+    await expect(page.getByTestId('api-docs-spec-link')).toHaveAttribute(
+      'href',
+      /\/api-json$/,
+    );
+    // …and it really serves. Driven through the test's own API handle, which
+    // reaches the API regardless of how the app is wired.
+    const spec = await request.get(`${API_URL}/api-json`);
+    expect(spec.status()).toBe(200);
+  });
+
+  test('offers runnable snippets and switches language', async ({
+    page,
+    request,
+  }) => {
+    await signIn(page, request, 'apidocsnip');
+    await page.goto('/developers');
+
+    const snippet = page.getByTestId('api-docs-snippet');
+    await expect(snippet).toContainText('curl');
+    await expect(snippet).toContainText('Authorization: Bearer');
+
+    await page.getByTestId('api-docs-lang-python').click();
+    await expect(snippet).toContainText('import os, requests');
+    // The snippet names this install's base URL — a copied example that points
+    // at the wrong host is worse than none.
+    const { origin } = await resolved(page);
+    await expect(snippet).toContainText(origin);
+
+    await page.getByTestId('api-docs-lang-node').click();
+    await expect(snippet).toContainText('fetch(');
+  });
+
+  test('embeds the reference when the API is same-origin, links out when not', async ({
+    page,
+    request,
+  }) => {
+    await signIn(page, request, 'apidocframe');
+    await page.goto('/developers');
+    await expect(page.getByTestId('api-docs-page')).toBeVisible({
+      timeout: 15_000,
+    });
+
+    const { embedded } = await resolved(page);
+
+    if (embedded) {
+      // Framed — and the frame must actually render Swagger, not a blank box.
+      const frame = page.getByTestId('api-docs-frame');
+      await expect(frame).toBeVisible();
+      const swagger = page.frameLocator('[data-testid="api-docs-frame"]');
+      await expect(swagger.locator('.swagger-ui').first()).toBeVisible({
+        timeout: 20_000,
+      });
+      // Not just a shell: the operations really rendered inside the frame.
+      await expect(swagger.locator('.opblock').first()).toBeVisible({
+        timeout: 20_000,
+      });
+    } else {
+      // Not framed, and the page says why rather than showing an empty pane.
+      await expect(page.getByTestId('api-docs-cross-origin-note')).toBeVisible();
+      await expect(page.getByTestId('api-docs-frame')).toHaveCount(0);
+    }
+
+    // Either way there is an escape hatch to the real thing.
+    await expect(page.getByTestId('api-docs-open-new-tab')).toBeVisible();
+  });
+});

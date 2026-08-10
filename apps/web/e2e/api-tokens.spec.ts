@@ -77,11 +77,10 @@ test.describe('API docs links on the tokens screen', () => {
     const links = page.getByTestId('api-docs-links');
     await expect(links).toBeVisible({ timeout: 15_000 });
 
-    // Built from the configured API origin, not a hardcoded localhost:4000, so
-    // it stays right on a self-hosted install behind any origin.
+    // The reference is a page in the app now, not a URL you have to know.
     await expect(page.getByTestId('api-reference-link')).toHaveAttribute(
       'href',
-      `${API_URL}/api`,
+      '/developers',
     );
     await expect(page.getByTestId('api-openapi-link')).toHaveAttribute(
       'href',

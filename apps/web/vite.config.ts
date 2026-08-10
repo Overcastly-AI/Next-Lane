@@ -6,6 +6,8 @@ export default defineConfig(() => {
   // Default to 5173 (the port the Docker images expose/map). An explicit
   // VITE_PORT can override it for bespoke local setups.
   const port = Number(process.env.VITE_PORT ?? 5173);
+  /** Where the dev proxy forwards API traffic. Same default as the app's own. */
+  const apiTarget = process.env.VITE_API_PROXY_TARGET ?? 'http://localhost:4000';
   return {
     plugins: [react()],
     resolve: {
@@ -19,6 +21,24 @@ export default defineConfig(() => {
     server: {
       port,
       host: true,
+      /*
+       * Mirror production's shape in dev.
+       *
+       * The built web image reverse-proxies the API onto its own origin (see
+       * apps/web/docker-entrypoint.sh), so `/api`, `/api-json` and the socket
+       * all answer on the app's port. Without this, `pnpm dev` is the ONE
+       * deployment where they do not — which is how the same-origin path ends
+       * up only ever being exercised in CI, and why the in-app API reference
+       * could look broken locally and fine in production.
+       *
+       * Only used when the app is asked for a same-origin path; setting
+       * VITE_API_URL to an absolute origin bypasses this entirely.
+       */
+      proxy: {
+        '/api': { target: apiTarget, changeOrigin: true },
+        '/api-json': { target: apiTarget, changeOrigin: true },
+        '/socket.io': { target: apiTarget, changeOrigin: true, ws: true },
+      },
     },
     build: {
       modulePreload: {

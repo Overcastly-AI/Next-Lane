@@ -326,6 +326,22 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
                 Profile settings
               </button>
               {/*
+               * The API reference. Next to Profile settings because that is
+               * where tokens are made, and the two are one errand: get a
+               * token, find out what to call with it. Not in the sidebar —
+               * that is for the places you go every day.
+               */}
+              <button
+                onClick={() => {
+                  setMenuOpen(false);
+                  navigate('/developers');
+                }}
+                data-testid="user-menu-api"
+                className="w-full px-3 py-2 text-left text-sm text-ink-700 transition-colors duration-[120ms] hover:bg-ink-50 hover:text-ink-900 focus-visible:outline-none focus-visible:bg-ink-50"
+              >
+                API
+              </button>
+              {/*
                * Instance settings — SSO/OIDC and anything else that applies to
                * the whole install rather than to one workspace.
                *

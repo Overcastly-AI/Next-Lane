@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import type { ApiTokenDto, CreateApiTokenResponse } from '@next-lane/shared';
 import { PAT_SCOPES } from '@next-lane/shared';
+import { Link } from 'react-router-dom';
 import { API_URL } from '@/api/client';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -348,15 +349,13 @@ export function ApiTokensSection() {
         data-testid="api-docs-links"
       >
         <span className="font-medium text-ink-600">Calling the API</span>
-        <a
-          href={`${API_URL}/api`}
-          target="_blank"
-          rel="noreferrer"
+        <Link
+          to="/developers"
           data-testid="api-reference-link"
           className="font-medium text-signal-600 underline-offset-2 hover:text-signal-700 hover:underline"
         >
           API reference
-        </a>
+        </Link>
         <a
           href={`${API_URL}/api-json`}
           target="_blank"
