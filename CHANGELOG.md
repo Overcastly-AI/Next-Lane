@@ -16,6 +16,14 @@ staged here by hand (see [`RELEASING.md`](./RELEASING.md))._
 
 ---
 
+## [0.16.0] — 2026-08-10
+
+[Compare with v0.15.1](https://github.com/Overcastly-AI/Next-Lane/compare/v0.15.1...v0.16.0)
+
+### Features
+
+* **roadmap:** open a ticket from the Gantt, and colour every row by type and label ([#86](https://github.com/Overcastly-AI/Next-Lane/issues/86)) ([40b78b6](https://github.com/Overcastly-AI/Next-Lane/commit/40b78b62bd5d5977cfe1c08f9ddfc8f93cf15abd))
+
 ## [0.15.1] — 2026-08-10
 
 [Compare with v0.15.0](https://github.com/Overcastly-AI/Next-Lane/compare/v0.15.0...v0.15.1)
