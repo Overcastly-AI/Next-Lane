@@ -26,6 +26,7 @@ type ProjectRow = {
   workspaceId: string;
   archived: boolean;
   workflowEnforced?: boolean;
+  agentReadOnly?: boolean;
   createdAt: Date;
 };
 
@@ -39,6 +40,7 @@ export function toProjectDto(p: ProjectRow): ProjectDto {
     workspaceId: p.workspaceId,
     archived: p.archived,
     workflowEnforced: p.workflowEnforced ?? false,
+    agentReadOnly: p.agentReadOnly ?? false,
     createdAt: p.createdAt.toISOString(),
   };
 }
@@ -132,14 +134,28 @@ export class ProjectsService {
     dto: UpdateProjectDto,
   ): Promise<ProjectDto> {
     await assertProjectRole(this.prisma, userId, id, Role.MEMBER);
+    /*
+     * The agent lock is an ADMIN decision, not a MEMBER one: it is the control
+     * that says which automation may write here, and everything else on this
+     * endpoint is ordinary project housekeeping.
+     *
+     * An agent cannot unlock itself. Turning the lock OFF is a write, so on an
+     * already-locked project this very call is refused by `assertProjectRole`
+     * above before it reaches here — the lock defends its own switch.
+     */
+    if (dto.agentReadOnly !== undefined) {
+      await assertProjectRole(this.prisma, userId, id, Role.ADMIN);
+    }
     const data: {
       key?: string;
       name?: string;
       description?: string;
+      agentReadOnly?: boolean;
     } = {};
     if (dto.key !== undefined) data.key = dto.key.toUpperCase();
     if (dto.name !== undefined) data.name = dto.name;
     if (dto.description !== undefined) data.description = dto.description;
+    if (dto.agentReadOnly !== undefined) data.agentReadOnly = dto.agentReadOnly;
 
     const project = await this.prisma.project.update({
       where: { id },

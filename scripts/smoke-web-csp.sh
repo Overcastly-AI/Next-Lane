@@ -170,6 +170,56 @@ CONNECT_SAME="$(printf '%s' "$CSP_SAME" \
 
 echo "==> [mode 2] PASS"
 
+# Mode 2 also has to prove the placeholder for the API PROXY is gone. It is
+# substituted by the same entrypoint and would be served as literal text in the
+# config if it ever stopped being replaced.
+if printf '%s' "$HTML_SAME" | grep -q '__NL_API_PROXY__'; then
+  fail "[mode 2] unreplaced __NL_API_PROXY__ placeholder present in served HTML"
+fi
+
+# ──────────────── Mode 2b: the API reverse proxy is wired ───────────────────
+# The reason this mode exists at all: Compose used to publish the API on its own
+# port and have the SPA call it directly, so anything OUTSIDE the browser — a
+# script, curl, or the Swagger page itself — needed a second port opened or
+# forwarded. The web container now proxies the API onto its own origin. nginx
+# resolves a `proxy_pass` hostname at STARTUP, so the failure mode of getting
+# this wrong is a container that will not boot; that is exactly what this
+# asserts, without needing a real API behind it.
+echo "==> [mode 2b] API proxy locations are configured"
+NAME_PROXY="nl-web-smoke-proxy-$$"
+PORT_PROXY=$(( PORT_SAME + 1 ))
+cleanup_proxy() { docker rm -f "$NAME_PROXY" >/dev/null 2>&1 || true; }
+trap 'cleanup_proxy' EXIT
+
+# `api` does not resolve here, so point the upstream at something that does.
+# What is under test is that nginx STARTS with the generated proxy config and
+# routes /api to the upstream rather than to the SPA fallback.
+docker run -d --name "$NAME_PROXY" \
+  -e "API_URL=" -e "API_PROXY_UPSTREAM=http://127.0.0.1:9" \
+  -p "${PORT_PROXY}:80" "$IMAGE" >/dev/null
+wait_ready "$PORT_PROXY" "$NAME_PROXY"
+
+# The SPA still serves — nginx booted with the proxy block in place.
+curl -sf "http://127.0.0.1:${PORT_PROXY}/" >/dev/null \
+  || fail "[mode 2b] nginx did not serve the SPA with the API proxy configured"
+
+# /api must NOT fall through to the SPA. With a dead upstream nginx answers
+# 502/504; the bug this catches is a 200 with index.html, which is what happens
+# when the location block is missing and `try_files` swallows the request.
+API_CODE="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${PORT_PROXY}/api")"
+case "$API_CODE" in
+  502|504) : ;;
+  *) fail "[mode 2b] GET /api returned ${API_CODE}; expected a proxy error (502/504). A 200 means the request fell through to the SPA and the API is not proxied." ;;
+esac
+API_JSON_CODE="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${PORT_PROXY}/api-json")"
+case "$API_JSON_CODE" in
+  502|504) : ;;
+  *) fail "[mode 2b] GET /api-json returned ${API_JSON_CODE}; expected a proxy error (502/504)." ;;
+esac
+
+cleanup_proxy
+echo "==> [mode 2b] PASS"
+
 # ───────────────── Mode 3: script-src vs. inline-<script> guard ─────────────
 # Regression guard for a SEPARATE bug class than connect-src: `index.html`
 # shipping a synchronous inline <script> (e.g. a dark-mode/no-FOUC bootstrap)

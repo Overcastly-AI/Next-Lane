@@ -7,6 +7,7 @@ import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { assertAuthConfig } from './auth/auth.config';
 import { AllExceptionsFilter } from './common/all-exceptions.filter';
+import { APP_VERSION } from './common/app-version';
 
 async function bootstrap() {
   // Fail fast on misconfigured secrets before doing any work or binding a port.
@@ -60,20 +61,68 @@ async function bootstrap() {
     }),
   );
 
+  /*
+   * The API reference.
+   *
+   * Two surfaces from one document: `/api` is the Swagger UI a person reads,
+   * `/api-json` is the OpenAPI spec a generator, Postman or an agent consumes.
+   * The JSON one is arguably the more important of the two for this product
+   * and was previously undocumented anywhere — it is now named in the
+   * description, in the README and in the docs site.
+   *
+   * `.setVersion(APP_VERSION)` rather than a literal: this said `0.1.0` for
+   * fifteen minor releases, so every client generated from it carried a
+   * version that had not been true since the first week.
+   */
   const config = new DocumentBuilder()
     .setTitle('Next Lane API')
-    .setDescription('Open-source, self-hosted issue & project tracker')
-    .setVersion('0.1.0')
+    .setDescription(
+      [
+        'Open-source, self-hosted issue & project tracker.',
+        '',
+        '**Authenticating.** Every route below takes a bearer token. Create a',
+        'Personal Access Token in the app under Settings → API tokens, then send',
+        'it as `Authorization: Bearer nlp_...`. Tokens can be scoped (for example',
+        '`issues:read` only), and a project can be locked to read-only for tokens',
+        'in Project settings → Agent access.',
+        '',
+        '**Machine-readable spec.** `GET /api-json` returns this document as',
+        'OpenAPI 3, for client generators, Postman/Insomnia, or an agent reading',
+        'the surface directly.',
+        '',
+        '**Events.** For push rather than poll, subscribe a webhook in Project',
+        'settings → Webhooks.',
+      ].join('\n'),
+    )
+    .setVersion(APP_VERSION)
     .addBearerAuth()
     .build();
   const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api', app, document);
+
+  /*
+   * Exposure is a deployment decision, so it is a switch rather than a
+   * constant — but it defaults to ON. This is a self-hosted, open-source
+   * tracker whose own README sends people to `/api`, and an install where the
+   * reference silently vanished would be a worse surprise than one that
+   * publishes its API surface to whoever can already reach the API origin.
+   * Set `API_DOCS_ENABLED=false` to turn both surfaces off on an
+   * internet-facing deployment that would rather not advertise them.
+   */
+  const docsEnabled = process.env.API_DOCS_ENABLED !== 'false';
+  if (docsEnabled) {
+    SwaggerModule.setup('api', app, document);
+  }
 
   const port = Number(process.env.API_PORT ?? 4000);
   await app.listen(port, '0.0.0.0');
 
   const logger = app.get(Logger);
-  logger.log(`Next Lane API listening on :${port} (docs at /api)`, 'Bootstrap');
+  logger.log(
+    docsEnabled
+      ? `Next Lane API listening on :${port} — reference at /api, OpenAPI at /api-json`
+      : `Next Lane API listening on :${port} — API reference disabled (API_DOCS_ENABLED=false)`,
+    'Bootstrap',
+  );
 }
 
 bootstrap().catch((err) => {

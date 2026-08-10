@@ -136,9 +136,16 @@ billing or quota.
 
 **Does Next Lane have an API?**
 
-Yes. The NestJS REST API is documented at `http://localhost:4000/api` (Swagger
-UI). You can also generate long-lived **Personal API Tokens** (PATs) in Profile
-Settings for programmatic access, optionally restricted to scopes.
+Yes. Two surfaces from the same document: the Swagger UI a person reads at
+`http://localhost:3000/api`, and the OpenAPI 3 spec a tool consumes at
+`http://localhost:3000/api-json` — feed that one to a client generator,
+Postman/Insomnia, or an agent. Both are linked from **Settings → API tokens**
+inside the app, and both can be switched off with `API_DOCS_ENABLED=false`.
+
+Authenticate with a long-lived **Personal Access Token**, created in Settings →
+API tokens and sent as `Authorization: Bearer nlp_...`. Tokens can be restricted
+to scopes (`issues:read` and friends), and an individual project can be locked
+to read-only for tokens in **Project settings → Agent access**.
 
 **Can AI agents use Next Lane?**
 

@@ -1,6 +1,8 @@
 import { useState, type FormEvent } from 'react';
 import type { ApiTokenDto, CreateApiTokenResponse } from '@next-lane/shared';
 import { PAT_SCOPES } from '@next-lane/shared';
+import { Link } from 'react-router-dom';
+import { API_URL } from '@/api/client';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Field } from '@/components/ui/Field';
@@ -328,6 +330,45 @@ export function ApiTokensSection() {
         </Button>
       }
     >
+      {/*
+       * The reference, at the moment it is wanted.
+       *
+       * Someone who has just minted a token is precisely the person asking
+       * "what do I call with it", and the app had no link to the API docs
+       * anywhere — they were named only in the README and the docs site, which
+       * you have to leave the product to read. Both surfaces are offered
+       * because they answer different questions: the reference is for a person
+       * reading, the OpenAPI document is for a generator, Postman, or an agent.
+       *
+       * Built from `API_URL` rather than hardcoding localhost:4000, so it is
+       * right on a self-hosted install behind any origin. `rel="noreferrer"`
+       * on an external target as everywhere else in the app.
+       */}
+      <div
+        className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-ink-200 bg-ink-50/60 px-3 py-2 text-xs"
+        data-testid="api-docs-links"
+      >
+        <span className="font-medium text-ink-600">Calling the API</span>
+        <Link
+          to="/developers"
+          data-testid="api-reference-link"
+          className="font-medium text-signal-600 underline-offset-2 hover:text-signal-700 hover:underline"
+        >
+          API reference
+        </Link>
+        <a
+          href={`${API_URL}/api-json`}
+          target="_blank"
+          rel="noreferrer"
+          data-testid="api-openapi-link"
+          className="font-medium text-signal-600 underline-offset-2 hover:text-signal-700 hover:underline"
+        >
+          OpenAPI spec
+        </a>
+        <span className="text-ink-400">
+          Send your token as <code className="font-mono">Authorization: Bearer …</code>
+        </span>
+      </div>
       {tokensQuery.isLoading ? (
         <p className="py-4 text-sm text-ink-400">Loading tokens…</p>
       ) : tokens.length === 0 ? (

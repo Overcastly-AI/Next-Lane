@@ -7,6 +7,7 @@ import { Reflector } from '@nestjs/core';
 import { AuthGuard } from '@nestjs/passport';
 import { IS_PUBLIC_KEY } from './public.decorator';
 import { ApiTokensService } from '../api-tokens/api-tokens.service';
+import { markApiTokenRequest } from '../common/request-context';
 
 /** Extract the raw bearer token from the Authorization header, or null. */
 function extractBearer(request: { headers?: { authorization?: string } }): string | null {
@@ -50,6 +51,11 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
       // non-empty scopes list; unscoped tokens pass patScopes=[] which ScopeGuard
       // treats as unrestricted (backward-compatible with all existing PATs).
       request.user = principal;
+      // The single place a PAT is recognised, so the single place to record
+      // that this request is an agent rather than a person. `agentReadOnly`
+      // projects refuse writes on the strength of this flag — see
+      // `common/request-context.ts`.
+      markApiTokenRequest();
       return true;
     }
 

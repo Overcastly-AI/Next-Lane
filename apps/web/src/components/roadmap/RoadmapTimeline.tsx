@@ -326,7 +326,14 @@ export interface RoadmapTimelineProps {
   /**
    * Open an issue's detail drawer. Takes an EPIC or a STORY id — both are
    * issues, and the roadmap is a place you read a plan from and then go fix
-   * something in it, so every named row on the chart is a way in.
+   * something in it.
+   *
+   * ONLY THE LEFT RAIL CALLS THIS. The two panes mean different things and one
+   * gesture cannot mean both: the grid is the schedule, so a click there
+   * belongs to moving and resizing bars; the rail is the list of what the work
+   * IS, so a click there opens the ticket. Bars deliberately have no click
+   * handler — an earlier version gave them one and it made a plain click
+   * ambiguous with the start of a drag.
    */
   onOpenIssue: (issueId: string) => void;
   /** Commit a new window for an issue. Absent = read-only (no drag affordances). */
@@ -638,16 +645,6 @@ export function RoadmapTimeline({
     () => new Map<string, RailLabel>(labels.map((l) => [l.id, l])),
     [labels],
   );
-  /*
-   * A pointer drag is ALSO followed by a native `click` on the same element.
-   * Guarding on drag state does not work: the window pointerup handler clears
-   * that state first, so by the time onClick runs the component has already
-   * re-rendered with `drag === null` and the guard passes. Every drag opened
-   * the issue drawer. A ref survives the re-render; the click that follows the
-   * drag consumes it.
-   */
-  const suppressClickRef = useRef(false);
-
   const editable = !!onSchedule;
   const canCreate = !!onCreate;
   const zoom = zoomById(zoomId);
@@ -881,7 +878,6 @@ export function RoadmapTimeline({
       // and that is a real change.
       const reparent = d.overEpicId ?? undefined;
       if (!d.moved || (d.dayDelta === 0 && !reparent)) return;
-      suppressClickRef.current = true;
       const next = applyDrag(
         Date.parse(item.start),
         Date.parse(item.end),
@@ -1016,6 +1012,46 @@ export function RoadmapTimeline({
       else next.add(epicId);
       return next;
     });
+  }
+
+  /*
+   * Expand all / collapse all.
+   *
+   * TWO buttons rather than one toggle, which is the less obvious call. A
+   * single toggle has to pick a meaning for the common middle state — a few
+   * epics open, most shut — and whichever it picks, the other action costs two
+   * clicks and a full round of requests to undo. Two buttons are always one
+   * click for the thing you actually want, and each disables itself when it
+   * would do nothing, so the pair still reads as one control.
+   *
+   * "All" means every epic the chart is currently DRAWING: `datedEpics` is
+   * already past the filters, so a filtered view expands what you can see and
+   * not the plan behind it. Epics with no children are skipped — their chevron
+   * is disabled for the same reason, and expanding them would add a row of
+   * "Create story" under every epic in the plan.
+   */
+  const expandableIds = useMemo(
+    () => datedEpics.filter((e) => e.childCount > 0).map((e) => e.id),
+    [datedEpics],
+  );
+  const allExpanded =
+    expandableIds.length > 0 && expandableIds.every((id) => expanded.has(id));
+  const anyExpanded = expanded.size > 0;
+
+  /*
+   * Children are fetched per epic (`useExpandedEpicChildren` runs one query
+   * each), so this is N requests for N epics. Fine at the scale a roadmap is
+   * readable at, and React Query caches them so collapsing and expanding again
+   * is free — but it is the reason this expands the FILTERED set rather than
+   * everything the server would return, and the reason a plan at the 500-epic
+   * cap should be narrowed with the filters first.
+   */
+  function expandAll() {
+    setExpanded(new Set(expandableIds));
+  }
+
+  function collapseAll() {
+    setExpanded(new Set());
   }
 
   // ── Row layout ────────────────────────────────────────────────────────────
@@ -1245,6 +1281,43 @@ export function RoadmapTimeline({
         >
           Today
         </button>
+
+        {/*
+         * Grouped like the zoom control, because they are one decision — how
+         * much of the plan is showing — split across two actions. Sits with
+         * the view controls rather than the filters: this changes how you LOOK
+         * at the plan, it does not change what the plan is.
+         */}
+        <div
+          className="inline-flex items-center rounded-lg border border-ink-200 bg-surface p-0.5"
+          role="group"
+          aria-label="Expand epics"
+        >
+          <button
+            type="button"
+            onClick={expandAll}
+            data-testid="roadmap-expand-all"
+            disabled={allExpanded || expandableIds.length === 0}
+            title={
+              expandableIds.length === 0
+                ? 'No epics with stories to expand'
+                : 'Show the stories under every epic on the chart'
+            }
+            className="rounded-md px-2.5 py-1 text-xs font-medium text-ink-500 transition-colors hover:bg-ink-100 hover:text-ink-800 disabled:cursor-not-allowed disabled:text-ink-300 disabled:hover:bg-transparent"
+          >
+            Expand all
+          </button>
+          <button
+            type="button"
+            onClick={collapseAll}
+            data-testid="roadmap-collapse-all"
+            disabled={!anyExpanded}
+            title="Hide every epic's stories"
+            className="rounded-md px-2.5 py-1 text-xs font-medium text-ink-500 transition-colors hover:bg-ink-100 hover:text-ink-800 disabled:cursor-not-allowed disabled:text-ink-300 disabled:hover:bg-transparent"
+          >
+            Collapse all
+          </button>
+        </div>
 
         {/*
          * The legend used to be three unlabelled swatches — Planned / Active /
@@ -1851,13 +1924,6 @@ export function RoadmapTimeline({
                       })
                     }
                     skipWeekends={skipWeekends}
-                    onOpen={() => {
-                      if (suppressClickRef.current) {
-                        suppressClickRef.current = false;
-                        return;
-                      }
-                      onOpenIssue(r.epic.id);
-                    }}
                   />
                 ) : r.kind === 'child' ? (
                   <ChildBar
@@ -1879,13 +1945,6 @@ export function RoadmapTimeline({
                         ? (e) => startReparent(r.child.id, r.epicId, e)
                         : undefined
                     }
-                    onOpen={() => {
-                      if (suppressClickRef.current) {
-                        suppressClickRef.current = false;
-                        return;
-                      }
-                      onOpenIssue(r.child.id);
-                    }}
                   />
                 ) : r.kind === 'child-note' ? (
                   <div
@@ -2222,7 +2281,6 @@ function EpicBarRow({
   onDragStart,
   onDragEnd,
   onKeyDown,
-  onOpen,
   skipWeekends,
 }: {
   epic: RoadmapEpicDto;
@@ -2243,7 +2301,6 @@ function EpicBarRow({
   onDragStart: (mode: DragMode, e: React.PointerEvent) => void;
   onDragEnd: (d: DragState) => void;
   onKeyDown: (e: React.KeyboardEvent) => void;
-  onOpen: () => void;
 }) {
   const baseStart = Date.parse(epic.start as string);
   const baseEnd = Date.parse(epic.end as string);
@@ -2308,8 +2365,6 @@ function EpicBarRow({
         }}
         data-draggable={editable ? 'true' : 'false'}
         onKeyDown={onKeyDown}
-        // `onOpen` itself consumes the post-drag click (see suppressClickRef).
-        onClick={onOpen}
         title={epicTitle(epic)}
         aria-label={epicTitle(epic)}
         className={cn(
@@ -2512,12 +2567,9 @@ function ChildBar({
   epicKeyOf,
   onReparentStart,
   reparentingId,
-  onOpen,
 }: {
   child: RoadmapChildDto;
   epicId: string;
-  /** Open this story's detail drawer. */
-  onOpen: () => void;
   /** Tells the timeline what kind of thing is being dragged, and from where. */
   onDragKind: (kind: 'child', fromEpicId: string) => void;
   /** Resolves an epic id to its key, for the reparent tooltip. */
@@ -2647,11 +2699,6 @@ function ChildBar({
             epicId,
           )
         }
-        // A story bar opens its ticket for the same reason an epic bar does —
-        // the bar is the thing you were already looking at. `onOpen` consumes
-        // the click that ends a real drag (see suppressClickRef), so dropping a
-        // rescheduled story does not also throw the drawer open on top of it.
-        onClick={onOpen}
         title={
           child.fromSprint
             ? `${child.key} · ${child.title} — showing ${child.sprintName ?? 'its sprint'}'s dates. Drag to give it its own; it stays in the sprint.`

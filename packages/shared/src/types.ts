@@ -112,6 +112,12 @@ export interface ProjectDto {
   createdAt: string;
   /** When true, only defined WorkflowTransitions are legal (opt-in SDLC). */
   workflowEnforced: boolean;
+  /**
+   * When true this project is read-only to API-token callers — the MCP server
+   * and any other agent holding a PAT. Reads are untouched; writes are refused
+   * with 403. People signed in through the browser are unaffected.
+   */
+  agentReadOnly: boolean;
 }
 
 export interface StatusDto {

@@ -52,7 +52,8 @@ Subsequent starts (without `--build`) are much faster.
 |---------|-----|
 | Web app | http://localhost:3000 |
 | REST API | http://localhost:4000 |
-| API docs (Swagger) | http://localhost:4000/api |
+| API reference (Swagger UI) | http://localhost:3000/api |
+| OpenAPI spec (JSON) | http://localhost:3000/api-json |
 
 A demo workspace, project, sprint, and sample issues are seeded automatically.
 

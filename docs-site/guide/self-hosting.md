@@ -15,6 +15,14 @@ The `docker-compose.yml` at the repo root defines four services:
 | `db` | postgres:16-alpine | PostgreSQL database |
 | `redis` | redis:7-alpine | Socket.io adapter + BullMQ queue |
 | `api` | Built from `apps/api/Dockerfile` | NestJS REST + WebSocket API |
+
+> **One origin.** The `web` container reverse-proxies the API, so the app, the
+> REST API (`/api/...`), the reference (`/api`), the OpenAPI document
+> (`/api-json`) and the WebSocket all answer on `WEB_PORT`. That matters
+> outside the browser: a script, `curl` or the Swagger page itself would
+> otherwise need the API's own port opened or forwarded. Set
+> `API_PROXY_UPSTREAM=""` to turn the proxy off and have the SPA call a
+> separate API origin instead (then set `API_URL` to that origin).
 | `web` | Built from `apps/web/Dockerfile` | React SPA served by nginx |
 
 The API runs `prisma migrate deploy` on every boot before starting, so schema

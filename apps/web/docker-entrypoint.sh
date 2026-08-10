@@ -77,5 +77,75 @@ else
   echo "[next-lane/web] nginx config is read-only or has no connect-src placeholder — leaving it as provided (expected for the same-origin Kubernetes deployment)."
 fi
 
+# ── API reverse proxy ────────────────────────────────────────────────────────
+# Serve the API on the SAME ORIGIN as the app when an upstream is configured.
+#
+# WHY: Compose published the API on its own port and the SPA talked to it
+# directly, so everything outside the browser — a Python script, curl, the
+# Swagger page itself — needed that second port reachable. On any host that is
+# not your laptop that means opening or forwarding another port before you can
+# make a single API call. Founder: "I cannot find the swagger docs without port
+# forwarding… people need to be able to tap into the APIs outside of the web
+# interface." With this, one origin serves the app, the REST API, the reference
+# and the WebSocket.
+#
+# Only emitted when API_PROXY_UPSTREAM is set. Unset = the old behaviour
+# exactly, because `proxy_pass` to a literal host is resolved at nginx START and
+# an image that cannot resolve `api` would refuse to boot rather than degrade.
+if [ -f "$NGINX_CONF" ] && [ -w "$NGINX_CONF" ] && grep -q "__NL_API_PROXY__" "$NGINX_CONF" 2>/dev/null; then
+  if [ -n "${API_PROXY_UPSTREAM:-}" ]; then
+    PROXY_BLOCK=$(cat <<PROXY
+  # Swagger UI lives at exactly /api; the REST routes live under /api/.
+  # Two locations because \`= /api\` must not swallow /api/issues.
+  location = /api {
+    proxy_pass ${API_PROXY_UPSTREAM}/api;
+    proxy_set_header Host \$host;
+    proxy_set_header X-Real-IP \$remote_addr;
+    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto \$scheme;
+  }
+  location /api/ {
+    proxy_pass ${API_PROXY_UPSTREAM}/api/;
+    proxy_set_header Host \$host;
+    proxy_set_header X-Real-IP \$remote_addr;
+    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto \$scheme;
+    # Attachments can be large; do not buffer a whole upload into nginx.
+    client_max_body_size 25m;
+    proxy_request_buffering off;
+  }
+  # The machine-readable spec, and the health probe, are outside /api.
+  location = /api-json {
+    proxy_pass ${API_PROXY_UPSTREAM}/api-json;
+    proxy_set_header Host \$host;
+    proxy_set_header X-Forwarded-Proto \$scheme;
+  }
+  location = /health {
+    proxy_pass ${API_PROXY_UPSTREAM}/health;
+    proxy_set_header Host \$host;
+  }
+  # Realtime. Without the upgrade headers socket.io silently falls back to
+  # long-polling and the board stops updating live.
+  location /socket.io/ {
+    proxy_pass ${API_PROXY_UPSTREAM}/socket.io/;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade \$http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host \$host;
+    proxy_set_header X-Forwarded-Proto \$scheme;
+    proxy_read_timeout 3600s;
+  }
+PROXY
+)
+    # Write via a temp file: the block is multi-line, which `sed s###` cannot do.
+    awk -v block="$PROXY_BLOCK" '{ if ($0 ~ /__NL_API_PROXY__/) print block; else print }' \
+      "$NGINX_CONF" > "${NGINX_CONF}.tmp" && mv "${NGINX_CONF}.tmp" "$NGINX_CONF"
+    echo "[next-lane/web] API reverse-proxied on this origin -> ${API_PROXY_UPSTREAM}"
+  else
+    sed -i "s#__NL_API_PROXY__##g" "$NGINX_CONF"
+    echo "[next-lane/web] no API_PROXY_UPSTREAM set — the SPA will call the API origin directly."
+  fi
+fi
+
 # Start nginx in the foreground (replaces this shell process).
 exec nginx -g "daemon off;"

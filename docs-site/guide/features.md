@@ -408,8 +408,12 @@ anyone with the URL a read-only view of the project board at
   agents (Profile Settings → API Tokens), optionally restricted to scopes
   (`issues:read`, `projects:write`, `gitlab:read`, …). Used by the
   [MCP server](./agents-mcp) and the REST API alike.
-- **REST API** — the full NestJS API is documented via Swagger at
-  `http://localhost:4000/api`.
+- **REST API** — the full NestJS API. Human-readable reference (Swagger UI) at
+  `http://localhost:3000/api`; the machine-readable OpenAPI 3 document at
+  `http://localhost:3000/api-json`, for client generators, Postman/Insomnia or
+  an agent reading the surface directly. Authenticate with a Personal Access
+  Token from Settings → API tokens (`Authorization: Bearer nlp_...`). Both
+  endpoints can be turned off with `API_DOCS_ENABLED=false`.
 
 ---
 

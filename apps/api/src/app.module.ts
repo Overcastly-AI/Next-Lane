@@ -6,6 +6,7 @@ import { LoggerModule } from 'nestjs-pino';
 import { randomUUID } from 'crypto';
 import type { IncomingMessage } from 'http';
 import { CorrelationIdMiddleware } from './common/correlation-id.middleware';
+import { RequestContextMiddleware } from './common/request-context.middleware';
 import { CorrelationIdInterceptor } from './common/correlation-id.interceptor';
 import { ConfigurableThrottlerGuard } from './common/configurable-throttler.guard';
 import { PrismaModule } from './prisma/prisma.module';
@@ -223,7 +224,10 @@ export class AppModule implements NestModule {
    */
   configure(consumer: MiddlewareConsumer) {
     consumer
-      .apply(CorrelationIdMiddleware)
+      // RequestContextMiddleware first, and on every route: it opens the async
+      // context that carries "is this an agent, and is this a write" down to
+      // the permission helpers. Anything registered after it runs inside it.
+      .apply(RequestContextMiddleware, CorrelationIdMiddleware)
       .forRoutes({ path: '*', method: RequestMethod.ALL });
   }
 }

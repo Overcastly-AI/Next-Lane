@@ -80,7 +80,10 @@ test.describe('Roadmap presenting mode', () => {
     // Diving into an epic still works — that is the point of presenting with a
     // mouse — and Escape must close the drawer WITHOUT also ending the
     // presentation, which would be a bad surprise in front of a room.
-    await page.getByTestId('roadmap-epic-bar').first().click();
+    // Opened from the RAIL, not the bar: the grid is the schedule and a click
+    // there is for moving. Presenting mode gets the same rule as the normal
+    // chart, which is the point of it being one component.
+    await page.getByTestId(`roadmap-open-epic-${epic.id}`).click();
     await expect(page).toHaveURL(new RegExp(`issue=${epic.id}`));
     await page.keyboard.press('Escape');
     await expect(page).not.toHaveURL(new RegExp(`issue=${epic.id}`));

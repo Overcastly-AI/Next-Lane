@@ -7,16 +7,18 @@ import { API_URL, setupIsolatedProject } from './helpers';
  * Founder: "if I click on a story number on a story in the Gantt chart I would
  * like the sidebar to open for that ticket so I can quickly update."
  *
- * A story was the one named thing on this chart with no way in. Clicking an
- * epic opened its drawer from either the rail or the bar; a story's rail row
- * was a plain `div` and its bar had no click handler at all, so reading a plan
- * and then changing something in it meant leaving for the board — the context
- * switch this screen exists to remove.
+ * A story was the one named thing on this chart with no way in: its rail row
+ * was a plain `div`, so reading a plan and then changing something in it meant
+ * leaving for the board — the context switch this screen exists to remove.
  *
- * These tests assert BOTH routes for a story (the key/title in the rail, and
- * the bar), that the drawer is for the right ticket, and — the case that keeps
- * the chart usable — that finishing a drag does NOT also throw the drawer open
- * on top of the thing you just rescheduled.
+ * WHICH PANE DOES WHAT, because the first attempt got this wrong. Opening
+ * lives in the LEFT RAIL only. The grid is the schedule, so a click there
+ * belongs to moving and resizing bars, and giving bars a click-to-open as well
+ * made a plain click ambiguous with the start of a drag. Founder: "If I click
+ * on the Gantt chart item then I should be able to move it. If I click in the
+ * left hand plane then I should open the ticket." The epic bar had opened on
+ * click since long before that rule existed; it now follows it too, because a
+ * rule that applies to stories and not epics is not a rule.
  */
 function auth(token: string) {
   return { Authorization: `Bearer ${token}` };
@@ -107,26 +109,38 @@ test.describe('Open a ticket from the Gantt', () => {
     await expect(page).toHaveURL(new RegExp(`issue=${story.id}`));
   });
 
-  test('clicking a story bar opens that story, not its epic', async ({
+  test('a bar is for moving, so clicking one does NOT open the drawer', async ({
     page,
     request,
   }) => {
+    /*
+     * The two panes mean different things and one gesture cannot mean both.
+     * The grid is the schedule — a click there belongs to moving and resizing
+     * — and the rail is the list of what the work IS, so that is where opening
+     * lives. An earlier version of this feature put click-to-open on the bars
+     * as well, which made a plain click ambiguous with the start of a drag;
+     * founder: "If I click on the Gantt chart item then I should be able to
+     * move it. If I click in the left hand plane then I should open the
+     * ticket."
+     */
     const { epic, story } = await seedPlan(page, request, 'rm-open-bar');
 
-    const bar = page.locator(`[data-child-id="${story.id}"]`);
-    await expect(bar).toBeVisible({ timeout: 15_000 });
-    await bar.click();
+    const storyBar = page.locator(`[data-child-id="${story.id}"]`);
+    await expect(storyBar).toBeVisible({ timeout: 15_000 });
+    await storyBar.click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
 
+    // Same rule for an epic bar, which used to open on click before the rule
+    // existed.
+    await page.getByTestId('roadmap-epic-bar').first().click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(page).not.toHaveURL(new RegExp(`issue=${epic.id}`));
+
+    // …and the rail still opens the very same story.
+    await page.getByTestId(`roadmap-open-child-${story.id}`).click();
     const drawer = page.getByRole('dialog');
     await expect(drawer).toBeVisible({ timeout: 10_000 });
-    // The story, not the epic that owns it. Asserted on the header badge:
-    // the epic's key DOES appear lower down, as this story's Parent, which is
-    // correct and would make a whole-drawer "not to contain" assertion lie.
     await expect(drawer.locator('.nl-issue-key').first()).toHaveText(story.key);
-    await expect(drawer.getByLabel('Issue title')).toHaveValue(
-      'Proration edge cases',
-    );
-    await expect(drawer).toContainText(epic.key); // as the Parent
   });
 
   test('the story drawer edits the story — a due date typed there sticks', async ({
@@ -187,9 +201,10 @@ test.describe('Open a ticket from the Gantt', () => {
       test.info().project.name !== 'chromium-desktop',
       'pointer drag is desktop-only by design',
     );
-    // A drag ends in a click event on the same element. Without the post-drag
-    // suppression, every reschedule would bury the chart under the drawer for
-    // the story you just moved.
+    // A drag ends in a click event on the same element, so this is the case
+    // that used to need a post-drag suppression ref. With opening moved off
+    // the bars entirely there is nothing left to suppress — this test is what
+    // says so, and what would catch click-to-open being reintroduced there.
     const { token, story } = await seedPlan(page, request, 'rm-open-drag');
 
     const bar = page.locator(`[data-child-id="${story.id}"]`);

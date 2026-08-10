@@ -369,7 +369,19 @@ function pageResult(envelope: PageEnvelope<unknown>): ToolResult {
 // returns the untouched API object instead.
 // ---------------------------------------------------------------------------
 
-const compactProject = (p: ApiItem) => ({ id: p.id, key: p.key, name: p.name });
+/**
+ * `agentReadOnly` is carried even though it costs a field on every row: it is
+ * the one project property that changes what THIS caller is allowed to do. An
+ * agent that can see the lock can say "that project is read-only to me" up
+ * front, instead of finding out by having a write refused halfway through a
+ * plan it has already told someone it would carry out.
+ */
+const compactProject = (p: ApiItem) => ({
+  id: p.id,
+  key: p.key,
+  name: p.name,
+  ...(p.agentReadOnly ? { agentReadOnly: true } : {}),
+});
 
 /**
  * A `search_pages` hit, minus `workspaceId`. Every hit a given token can see
