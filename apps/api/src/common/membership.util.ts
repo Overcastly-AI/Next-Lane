@@ -1,6 +1,34 @@
 import { ForbiddenException } from '@nestjs/common';
 import { Role } from '@next-lane/shared';
 import type { PrismaService } from '../prisma/prisma.service';
+import { isAgentWrite } from './request-context';
+
+/**
+ * Refuse an agent's write to a project its owners have locked.
+ *
+ * Enforced HERE, in the helper every project-scoped permission check already
+ * calls, rather than in a guard per route: a guard would have to work out
+ * which project an arbitrary route touches (an issue id, a comment id, a
+ * worklog id...), and every route it failed to map would be a silent hole.
+ * These helpers are handed the project id as a precondition of doing their own
+ * job, so anything that checks permissions at all gets this for free — and a
+ * write that checks no permissions is a bug this feature does not have to fix.
+ *
+ * People are never affected: `isAgentWrite()` is false for browser sessions,
+ * for reads of any kind, and outside a request entirely (queue workers).
+ */
+function assertNotAgentLocked(project: {
+  agentReadOnly?: boolean;
+  name?: string;
+}): void {
+  if (!project.agentReadOnly) return;
+  if (!isAgentWrite()) return;
+  throw new ForbiddenException(
+    `This project is locked to read-only for API tokens. ` +
+      `A person can still change it in the app; an agent cannot. ` +
+      `Turn it off in Project settings → Agent access.`,
+  );
+}
 
 /**
  * Role ordering for authorization checks: ADMIN > MEMBER > VIEWER.
@@ -85,6 +113,7 @@ export async function assertProjectMember(
   if (!membership) {
     throw new ForbiddenException('Not a member of this project');
   }
+  assertNotAgentLocked(project);
   return project;
 }
 
@@ -206,5 +235,6 @@ export async function assertProjectRole(
   if (!hasRole(effective.role, minRole)) {
     throw new ForbiddenException(`Requires ${minRole} role in this project`);
   }
+  assertNotAgentLocked(project);
   return project;
 }

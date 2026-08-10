@@ -17,6 +17,7 @@ import { GithubSection } from '@/components/settings/GithubSection';
 import { GitlabSection } from '@/components/settings/GitlabSection';
 import { GiteaSection } from '@/components/settings/GiteaSection';
 import { AgentContextSection } from '@/components/settings/AgentContextSection';
+import { AgentAccessSection } from '@/components/settings/AgentAccessSection';
 import { ShareSection } from '@/components/settings/ShareSection';
 import { CustomFieldsSection } from '@/components/settings/CustomFieldsSection';
 import { ComponentsSection } from '@/components/settings/ComponentsSection';
@@ -203,6 +204,8 @@ export function SettingsPage() {
         <GiteaSection projectId={projectId} isAdmin={isAdmin} />
 
         <AgentContextSection projectId={projectId} myRole={myRole} />
+
+        <AgentAccessSection projectId={projectId} myRole={myRole} />
 
         {isAdmin && <ShareSection projectId={projectId} />}
 

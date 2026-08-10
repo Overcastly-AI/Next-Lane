@@ -1,4 +1,10 @@
-import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import {
+  IsBoolean,
+  IsOptional,
+  IsString,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
 
 export class CreateProjectDto {
   @IsString()
@@ -18,4 +24,12 @@ export class CreateProjectDto {
   @IsString()
   @MaxLength(2000)
   description?: string;
+
+  /**
+   * Lock the project to read-only for API tokens (the MCP server and any other
+   * agent). Changing it requires ADMIN — see `ProjectsService.update`.
+   */
+  @IsOptional()
+  @IsBoolean()
+  agentReadOnly?: boolean;
 }

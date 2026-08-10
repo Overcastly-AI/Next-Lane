@@ -1,0 +1,11 @@
+-- Lock a project so API-token callers (the MCP server, and any other agent
+-- holding a PAT) can read it but never write to it.
+--
+-- On the PROJECT rather than on a Board on purpose: a board is a VIEW over a
+-- project's issues, so a board-level lock could always be side-stepped by
+-- naming the issue instead of the board.
+--
+-- Hand-written rather than generated: `prisma migrate dev` re-emits the
+-- Comment.searchVector generated column and the GIN indexes that earlier
+-- hand-written migrations added, because schema.prisma cannot describe them.
+ALTER TABLE "Project" ADD COLUMN "agentReadOnly" BOOLEAN NOT NULL DEFAULT false;

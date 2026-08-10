@@ -390,6 +390,17 @@ model Project {
   /// When true, only transitions defined in WorkflowTransition are legal; the
   /// service layer enforces this before updating an issue's statusId.
   workflowEnforced Boolean  @default(false)
+  /// When true this project is READ-ONLY to API-token callers — the MCP server
+  /// and any other agent holding a Personal Access Token. Reads are untouched;
+  /// every write is refused with 403. People signed in through the browser are
+  /// unaffected, which is the whole point: it locks the robot, not the team.
+  ///
+  /// Deliberately on the PROJECT and not on a Board. A board is a VIEW over a
+  /// project's issues — the same issue appears on other boards, the backlog and
+  /// search — so a board-level lock could always be walked around by naming the
+  /// issue instead of the board, and would have been a lock that looked
+  /// protective without being it.
+  agentReadOnly    Boolean  @default(false)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 

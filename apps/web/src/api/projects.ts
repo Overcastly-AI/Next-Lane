@@ -48,6 +48,12 @@ export interface UpdateProjectInput {
   /** The project key is immutable, so only name/description are editable. */
   name?: string;
   description?: string;
+  /**
+   * Lock the project to read-only for API tokens (the MCP server and other
+   * agents). ADMIN only on the server, and an agent cannot clear it: turning
+   * it off is itself a write, so a locked project refuses the request.
+   */
+  agentReadOnly?: boolean;
 }
 
 /**
