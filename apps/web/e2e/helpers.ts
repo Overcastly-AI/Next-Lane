@@ -396,17 +396,47 @@ export function trackApiWrites(page: Page): ApiWriteTracker {
     async settle(opts = {}) {
       const { match, atLeast = 0, atMost, timeout = 15_000 } = opts;
       const matching = () => (match ? completed.filter(match) : completed);
+      /*
+       * Which in-flight requests have to drain.
+       *
+       * With no `match`, all of them: the caller is saying "the page must be
+       * quiet before I reload", and that is the strong default.
+       *
+       * With a `match`, only requests that would satisfy it. Requiring a GLOBAL
+       * drain there couples every assertion to every unrelated request the page
+       * happens to have open — one stray write that never fires a response
+       * event fails a test that was only ever waiting for its own PATCH. That
+       * is not hypothetical: it is how `personal-board.spec.ts:213` failed on
+       * one CI shard while the PATCH it named had been acked the whole time
+       * (`in-flight=1 acked=1/1`). This narrows the wait to the thing the test
+       * actually named; it does not weaken it, because the matched writes must
+       * still be both acked AND drained.
+       */
+      const blockingInFlight = () => {
+        if (!match) return inFlight.size;
+        let n = 0;
+        for (const req of inFlight) {
+          const r = req as { method(): string; url(): string };
+          try {
+            if (match({ method: r.method(), path: new URL(r.url()).pathname, status: 0 }))
+              n += 1;
+          } catch {
+            // A request whose URL will not parse cannot be the one we mean.
+          }
+        }
+        return n;
+      };
       await expect
         .poll(
           () =>
-            inFlight.size === 0 && matching().length >= atLeast
+            blockingInFlight() === 0 && matching().length >= atLeast
               ? 'settled'
-              : `in-flight=${inFlight.size} acked=${matching().length}/${atLeast}`,
+              : `in-flight=${blockingInFlight()} acked=${matching().length}/${atLeast} observed=${JSON.stringify(completed)}`,
           {
             timeout,
             message:
-              'the page never finished the API writes it had started; ' +
-              `observed: ${JSON.stringify(completed)}`,
+              'the page never finished the API writes it had started ' +
+              '(the observed list in the value below is live, not a snapshot)',
           },
         )
         .toBe('settled');

@@ -818,6 +818,12 @@ _Hardening Night close-out ingest (2026-07-06) — P2s:_
 
 ## Already Done (recent shipments — ticked for reference)
 
+- [x] (P1, S) **`trackApiWrites.settle` waits for the write the test named, not every write on the page** ✅ 2026-08-06
+  - CI failure on one shard: `personal-board.spec.ts:213` timed out with `in-flight=1 acked=1/1` — its own PATCH had been acknowledged the whole time, and it failed anyway because ONE unrelated request never fired a response event. With a `match` supplied, requiring a GLOBAL drain couples every assertion to every request the page happens to have open.
+  - With `match`, the wait now drains only requests that would satisfy it. **Not a weakening:** matched writes must still be both acked and drained, and with no `match` the strong global default is unchanged.
+  - The failure message was also lying. `observed:` was built once, when `settle()` was called, so it printed the state BEFORE the writes it was waiting on — which is why the CI log showed only a POST while the counter said the PATCH was acked. It is now part of the polled value, so it is live.
+  - Root-caused rather than re-run: reproduced from the CI log, then confirmed the test itself is sound (6/6 locally on the failing mobile project, 11/11 for the file). 75 passed across personal-board, roadmap-gantt, roadmap-expand-all and date-input-typing after the change.
+
 - [x] (P1, S) **An API page in the product** ✅ 2026-08-06 [founder: *"I feel like there should be a place to view the swagger docs for the users."*]
   - `/developers`, in the user menu next to Profile settings — the two are one errand: get a token, find out what to call with it. The reference previously existed only as a URL you had to already know, on a port you might have had to forward.
   - **Start here** before the route list: create a token (linked), the header format, and this install's base URL — then a runnable snippet in curl / Python / Node with a copy button, all naming the real base URL rather than `localhost`. A copied example pointing at the wrong host is worse than none.
