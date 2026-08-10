@@ -75,7 +75,12 @@ export function CustomFieldsDrawerSection({
           key={field.id}
           definition={field}
           value={currentValues?.[field.id] ?? null}
-          disabled={!editable || updateValues.isPending}
+          // Deliberately NOT disabled while a save is in flight: doing that
+          // yanks the control out from under whoever is still editing it
+          // (a disabled input loses focus), which is exactly how the date
+          // fields became untypeable. Each save sends only its own key, so
+          // overlapping edits merge safely.
+          disabled={!editable}
           onChange={(val) => handleChange(field.id, val)}
         />
       ))}

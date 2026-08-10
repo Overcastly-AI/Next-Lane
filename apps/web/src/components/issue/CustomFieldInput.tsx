@@ -9,6 +9,7 @@ import { type ChangeEvent } from 'react';
 import { CustomFieldType, type CustomFieldDefinitionDto, type CustomFieldValue } from '@/api/custom-fields';
 import { Input } from '@/components/ui/Input';
 import { Field } from '@/components/ui/Field';
+import { DateInput } from '@/components/ui/DateInput';
 
 export interface CustomFieldInputProps {
   definition: CustomFieldDefinitionDto;
@@ -91,21 +92,15 @@ export function CustomFieldInput({
     }
 
     case CustomFieldType.DATE: {
-      const dateValue =
-        typeof value === 'string' ? value.slice(0, 10) : '';
       return (
         <Field label={label} htmlFor={testId}>
-          <input
+          <DateInput
             id={testId}
             data-testid={testId}
-            type="date"
-            value={dateValue}
+            value={typeof value === 'string' ? value : null}
             disabled={disabled}
             required={definition.required}
-            onChange={(e: ChangeEvent<HTMLInputElement>) =>
-              onChange(e.target.value || null)
-            }
-            className="rounded-md border border-slate-200 bg-surface px-2 py-1 text-sm text-slate-700 transition-colors focus:outline-none focus:ring-2 focus:ring-brand-400 disabled:cursor-not-allowed disabled:opacity-60"
+            onCommit={(next) => onChange(next)}
           />
         </Field>
       );

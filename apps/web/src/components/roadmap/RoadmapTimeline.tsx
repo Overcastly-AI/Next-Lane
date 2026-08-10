@@ -195,6 +195,33 @@ interface DragState {
   originY?: number;
 }
 
+/**
+ * An in-flight dependency drag: which epic it started from, and where the
+ * rubber band currently ends.
+ *
+ * `x`/`y` are in GRID coordinates (the scrolling content, not the viewport),
+ * so the band stays glued to the calendar if the grid scrolls mid-drag — which
+ * it does, because dragging toward the edge is how you reach an off-screen
+ * epic.
+ */
+interface LinkDrag {
+  fromEpicId: string;
+  pointerId: number;
+  x: number;
+  y: number;
+  /** The epic under the cursor, or null over nothing droppable / the source. */
+  overEpicId: string | null;
+}
+
+/** An in-flight drag of an UNDATED story from one epic's block to another. */
+interface ReparentDrag {
+  childId: string;
+  fromEpicId: string;
+  pointerId: number;
+  /** The epic under the cursor; only ever a DIFFERENT epic, else null. */
+  overEpicId: string | null;
+}
+
 export interface RoadmapTimelineProps {
   data: RoadmapDto;
   onOpenEpic: (epicId: string) => void;
@@ -252,19 +279,24 @@ export function RoadmapTimeline({
    * Drawing a dependency. Held here rather than in the bar because the gesture
    * spans two bars and a rubber-band line that belongs to neither: the source
    * releases the pointer the moment you leave it.
-   *
-   * `x`/`y` are in GRID coordinates (the scrolling content, not the viewport),
-   * so the rubber band stays glued to the calendar if the grid scrolls
-   * mid-drag — which it does, because dragging toward the edge is how you
-   * reach an epic that is off-screen.
    */
-  const [linking, setLinking] = useState<{
-    fromEpicId: string;
-    pointerId: number;
-    x: number;
-    y: number;
-    overEpicId: string | null;
-  } | null>(null);
+  const [linking, setLinking] = useState<LinkDrag | null>(null);
+  /*
+   * The same drag, mirrored synchronously.
+   *
+   * `pointerup` has to answer "what was under the cursor when you let go?", and
+   * neither of the obvious sources can answer it reliably. Reading `linking`
+   * from the effect's closure loses the last `pointermove` if React hasn't
+   * committed it yet — pointermove is a continuous event, so its state update
+   * is not flushed synchronously, and a quick release is exactly when that
+   * happens. Reading it inside a `setLinking` updater does see the latest
+   * value, but a state updater must be PURE: under StrictMode React invokes it
+   * twice, so firing the write from in there sent the link twice and the
+   * second POST came back 409. This ref is written on every move, so the drop
+   * reads committed-or-not state without putting a side effect anywhere React
+   * is allowed to replay.
+   */
+  const linkingRef = useRef<LinkDrag | null>(null);
   const [liveMessage, setLiveMessage] = useState('');
   /*
    * Extra months of empty future kept on the axis beyond what the plan spans.
@@ -410,12 +442,9 @@ export function RoadmapTimeline({
    * dates), so the reparent handle is a separate grip at the left of the row
    * and this is its own small gesture: vertical only, one field written.
    */
-  const [reparenting, setReparenting] = useState<{
-    childId: string;
-    fromEpicId: string;
-    pointerId: number;
-    overEpicId: string | null;
-  } | null>(null);
+  const [reparenting, setReparenting] = useState<ReparentDrag | null>(null);
+  /** Synchronous mirror of the drag — see `linkingRef` for why it exists. */
+  const reparentingRef = useRef<ReparentDrag | null>(null);
 
   useEffect(() => {
     if (!reparenting) return;
@@ -435,22 +464,29 @@ export function RoadmapTimeline({
               ? row.epicId
               : null;
       const over = owner && owner !== reparenting.fromEpicId ? owner : null;
-      setReparenting((p) => (p && p.overEpicId !== over ? { ...p, overEpicId: over } : p));
+      const prev = reparentingRef.current;
+      if (!prev || prev.overEpicId === over) return;
+      const next: ReparentDrag = { ...prev, overEpicId: over };
+      reparentingRef.current = next;
+      setReparenting(next);
     };
     const onUp = () => {
-      setReparenting((p) => {
-        if (p?.overEpicId && onReparent) {
-          onReparent({
-            issueId: p.childId,
-            fromEpicId: p.fromEpicId,
-            toEpicId: p.overEpicId,
-          });
-        }
-        return null;
-      });
+      const drag = reparentingRef.current;
+      reparentingRef.current = null;
+      setReparenting(null);
+      if (drag?.overEpicId && onReparent) {
+        onReparent({
+          issueId: drag.childId,
+          fromEpicId: drag.fromEpicId,
+          toEpicId: drag.overEpicId,
+        });
+      }
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setReparenting(null);
+      if (e.key === 'Escape') {
+        reparentingRef.current = null;
+        setReparenting(null);
+      }
     };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
@@ -467,12 +503,14 @@ export function RoadmapTimeline({
   const startReparent = useCallback(
     (childId: string, fromEpicId: string, e: React.PointerEvent) => {
       (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
-      setReparenting({
+      const drag: ReparentDrag = {
         childId,
         fromEpicId,
         pointerId: e.pointerId,
         overEpicId: null,
-      });
+      };
+      reparentingRef.current = drag;
+      setReparenting(drag);
     },
     [],
   );
@@ -931,27 +969,33 @@ export function RoadmapTimeline({
       const hit = document.elementFromPoint(e.clientX, e.clientY);
       const bar = hit?.closest?.('[data-epic-id]') as HTMLElement | null;
       const over = bar?.dataset.epicId ?? null;
-      setLinking((prev) =>
-        prev
-          ? {
-              ...prev,
-              x: e.clientX - box.left,
-              y: e.clientY - box.top,
-              overEpicId: over && over !== prev.fromEpicId ? over : null,
-            }
-          : prev,
-      );
+      const prev = linkingRef.current;
+      if (!prev) return;
+      const next: LinkDrag = {
+        ...prev,
+        x: e.clientX - box.left,
+        y: e.clientY - box.top,
+        overEpicId: over && over !== prev.fromEpicId ? over : null,
+      };
+      linkingRef.current = next;
+      setLinking(next);
     };
     const onUp = () => {
-      setLinking((prev) => {
-        if (prev?.overEpicId && onLink) {
-          onLink({ fromEpicId: prev.fromEpicId, toEpicId: prev.overEpicId });
-        }
-        return null;
-      });
+      // Take the drag before anything else: `pointerup` and `pointercancel`
+      // both land here, and whichever arrives second must find nothing left to
+      // send.
+      const drag = linkingRef.current;
+      linkingRef.current = null;
+      setLinking(null);
+      if (drag?.overEpicId && onLink) {
+        onLink({ fromEpicId: drag.fromEpicId, toEpicId: drag.overEpicId });
+      }
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setLinking(null);
+      if (e.key === 'Escape') {
+        linkingRef.current = null;
+        setLinking(null);
+      }
     };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
@@ -971,13 +1015,15 @@ export function RoadmapTimeline({
       if (!lanes) return;
       const box = lanes.getBoundingClientRect();
       (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
-      setLinking({
+      const drag: LinkDrag = {
         fromEpicId: epicId,
         pointerId: e.pointerId,
         x: e.clientX - box.left,
         y: e.clientY - box.top,
         overEpicId: null,
-      });
+      };
+      linkingRef.current = drag;
+      setLinking(drag);
     },
     [],
   );
@@ -2464,6 +2510,8 @@ function UnscheduledChildRow({
 }) {
   const rowRef = useRef<HTMLDivElement>(null);
   const [paint, setPaint] = useState<{ fromX: number; toX: number } | null>(null);
+  /** Synchronous mirror of the paint — see `linkingRef` for why it exists. */
+  const paintRef = useRef<{ fromX: number; toX: number } | null>(null);
 
   /** Default length for a click rather than a drag. A week reads as a real
    *  piece of work and is trivially resized afterwards; a single day would be
@@ -2477,17 +2525,22 @@ function UnscheduledChildRow({
 
   useEffect(() => {
     if (!paint) return;
-    const onMove = (e: PointerEvent) =>
-      setPaint((p) => (p ? { ...p, toX: xInRow(e.clientX) } : p));
+    const onMove = (e: PointerEvent) => {
+      const prev = paintRef.current;
+      if (!prev) return;
+      const next = { ...prev, toX: xInRow(e.clientX) };
+      paintRef.current = next;
+      setPaint(next);
+    };
     const onUp = () => {
-      setPaint((p) => {
-        if (!p) return null;
-        const a = scale.dayAtX(Math.min(p.fromX, p.toX));
-        const b = scale.dayAtX(Math.max(p.fromX, p.toX));
-        const end = b <= a ? addDays(a, CLICK_DAYS) : b;
-        onSchedule(child.id, epicId, a, end);
-        return null;
-      });
+      const p = paintRef.current;
+      paintRef.current = null;
+      setPaint(null);
+      if (!p) return;
+      const a = scale.dayAtX(Math.min(p.fromX, p.toX));
+      const b = scale.dayAtX(Math.max(p.fromX, p.toX));
+      const end = b <= a ? addDays(a, CLICK_DAYS) : b;
+      onSchedule(child.id, epicId, a, end);
     };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp, { once: true });
@@ -2515,7 +2568,8 @@ function UnscheduledChildRow({
       onPointerDown={(e) => {
         if (!editable || !canDragWith(e)) return;
         const x = xInRow(e.clientX);
-        setPaint({ fromX: x, toX: x });
+        paintRef.current = { fromX: x, toX: x };
+        setPaint(paintRef.current);
       }}
     >
       {paint ? (

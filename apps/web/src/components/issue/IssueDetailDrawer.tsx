@@ -20,6 +20,7 @@ import { Button } from '@/components/ui/Button';
 import { Select } from '@/components/ui/Select';
 import { Textarea } from '@/components/ui/Textarea';
 import { Field } from '@/components/ui/Field';
+import { DateInput } from '@/components/ui/DateInput';
 import { useOverlay } from '@/lib/useOverlay';
 import { errorMessage } from '@/lib/errorMessage';
 import { useToast } from '@/components/ui/Toast';
@@ -861,25 +862,15 @@ function StartDateField({
   editable: boolean;
   onPatch: (field: keyof IssueDto, value: unknown) => void;
 }) {
-  const toInputValue = (iso: string | null) => {
-    if (!iso) return '';
-    return iso.slice(0, 10);
-  };
-
   return (
     <Field label="Start date" htmlFor="d-start-date">
       {editable ? (
         <div className="flex items-center gap-1.5">
-          <input
+          <DateInput
             id="d-start-date"
-            type="date"
             aria-label="Start date"
-            value={toInputValue(startDate)}
-            onChange={(e) => {
-              const val = e.target.value;
-              onPatch('startDate', val ? val : null);
-            }}
-            className="rounded border border-ink-200 bg-surface px-2 py-1 text-sm text-ink-700 transition-colors duration-[120ms] focus:outline-none focus:ring-2 focus:ring-signal-400"
+            value={startDate}
+            onCommit={(val) => onPatch('startDate', val)}
           />
           {startDate && (
             <button
@@ -927,29 +918,19 @@ function DueDateField({
   const isOverdue =
     !isDone && dueDate !== null && new Date(dueDate) < new Date();
 
-  const toInputValue = (iso: string | null) => {
-    if (!iso) return '';
-    return iso.slice(0, 10);
-  };
-
   return (
     <Field label="Due date" htmlFor="d-due-date">
       {editable ? (
         <div className="flex items-center gap-1.5">
-          <input
+          <DateInput
             id="d-due-date"
-            type="date"
             aria-label="Due date"
-            value={toInputValue(dueDate)}
-            onChange={(e) => {
-              const val = e.target.value;
-              onPatch('dueDate', val ? val : null);
-            }}
+            value={dueDate}
+            onCommit={(val) => onPatch('dueDate', val)}
             className={
-              'rounded border px-2 py-1 text-sm transition-colors duration-[120ms] focus:outline-none focus:ring-2 focus:ring-signal-400 ' +
-              (isOverdue
-                ? 'border-amber-300 bg-amber-50 text-amber-800'
-                : 'border-ink-200 bg-surface text-ink-700')
+              isOverdue
+                ? 'border-amber-300 bg-amber-50 text-amber-800 hover:border-amber-400'
+                : undefined
             }
           />
           {dueDate && (
