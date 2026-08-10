@@ -137,8 +137,8 @@ billing or quota.
 **Does Next Lane have an API?**
 
 Yes. Two surfaces from the same document: the Swagger UI a person reads at
-`http://localhost:4000/api`, and the OpenAPI 3 spec a tool consumes at
-`http://localhost:4000/api-json` — feed that one to a client generator,
+`http://localhost:3000/api`, and the OpenAPI 3 spec a tool consumes at
+`http://localhost:3000/api-json` — feed that one to a client generator,
 Postman/Insomnia, or an agent. Both are linked from **Settings → API tokens**
 inside the app, and both can be switched off with `API_DOCS_ENABLED=false`.
 

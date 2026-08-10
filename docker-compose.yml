@@ -91,6 +91,8 @@ services:
       THROTTLE_LIMIT: ${THROTTLE_LIMIT:-}
       THROTTLE_AUTH_LIMIT: ${THROTTLE_AUTH_LIMIT:-}
       RATE_LIMIT_DISABLED: ${RATE_LIMIT_DISABLED:-}
+      # Set to "false" to stop serving /api (Swagger UI) and /api-json.
+      API_DOCS_ENABLED: ${API_DOCS_ENABLED:-}
       # Attachment upload cap in bytes (empty = code default).
       MAX_FILE_BYTES: ${MAX_FILE_BYTES:-}
       LOG_LEVEL: ${LOG_LEVEL:-info}
@@ -173,6 +175,21 @@ services:
     restart: unless-stopped
     depends_on:
       - api
+    environment:
+      # ── One origin for everything ──────────────────────────────────────────
+      # The web container reverse-proxies the API, so the app, the REST API,
+      # the API reference and the WebSocket all answer on ${WEB_PORT:-3000}.
+      #
+      # Before this, the SPA called the API on its own port directly, which
+      # meant anything OUTSIDE the browser — a Python script, curl, the Swagger
+      # page itself — needed that second port reachable, and on any host that
+      # is not your laptop that is a port to open or forward first.
+      #
+      # API_URL="" makes the SPA issue same-origin relative requests; the empty
+      # value is deliberate and honoured (see docker-entrypoint.sh).
+      # Set both to a full origin to go back to talking to the API directly.
+      API_URL: ${API_URL-}
+      API_PROXY_UPSTREAM: ${API_PROXY_UPSTREAM:-http://api:4000}
     ports:
       - "${WEB_PORT:-3000}:80"
 

@@ -324,8 +324,47 @@ Then open:
 |---------|-----|
 | 🌐 **Web app** | http://localhost:3000 |
 | ⚙️ **API** | http://localhost:4000 |
-| 📚 **API reference (Swagger UI)** | http://localhost:4000/api |
-| 🔌 **OpenAPI spec (JSON)** | http://localhost:4000/api-json |
+| 📚 **API reference (Swagger UI)** | http://localhost:3000/api |
+| 🔌 **OpenAPI spec (JSON)** | http://localhost:3000/api-json |
+
+Everything is on **one origin**: the web container reverse-proxies the API, so
+the app, the REST API, the reference and the WebSocket all answer on
+`WEB_PORT`. Nothing outside the browser needs a second port opened or
+forwarded. (The API also still publishes `:4000` directly, so existing setups
+keep working.)
+
+### Calling the API from a script
+
+Create a token in **Settings → API tokens**, then use the same origin you use
+the app on:
+
+```python
+import os, requests
+
+BASE  = os.environ.get("NEXT_LANE_URL", "http://localhost:3000")
+TOKEN = os.environ["NEXT_LANE_TOKEN"]          # nlp_...
+S     = requests.Session()
+S.headers["Authorization"] = f"Bearer {TOKEN}"
+
+# Every project you can see
+projects = S.get(f"{BASE}/api/projects", params={"workspaceId": WORKSPACE_ID}).json()
+
+# Issues on one of them — filter server-side rather than pulling everything
+issues = S.get(f"{BASE}/api/issues", params={"projectId": projects[0]["id"]}).json()
+
+for i in issues:
+    print(i["key"], i["title"], i["status"]["name"])
+```
+
+```bash
+curl -s -H "Authorization: Bearer $NEXT_LANE_TOKEN" \
+  "http://localhost:3000/api/projects?workspaceId=$WORKSPACE_ID" | jq .
+```
+
+The full route list is at `/api`, and `/api-json` is the OpenAPI document if
+you would rather generate a client than hand-roll one. Tokens can be scoped
+(`issues:read` and friends), and a project can be made read-only to tokens in
+**Project settings → Agent access**.
 
 A demo workspace, project, sprint, and issues are **seeded automatically**. Log in with:
 
