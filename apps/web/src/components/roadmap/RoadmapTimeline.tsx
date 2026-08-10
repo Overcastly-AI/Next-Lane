@@ -1018,6 +1018,46 @@ export function RoadmapTimeline({
     });
   }
 
+  /*
+   * Expand all / collapse all.
+   *
+   * TWO buttons rather than one toggle, which is the less obvious call. A
+   * single toggle has to pick a meaning for the common middle state — a few
+   * epics open, most shut — and whichever it picks, the other action costs two
+   * clicks and a full round of requests to undo. Two buttons are always one
+   * click for the thing you actually want, and each disables itself when it
+   * would do nothing, so the pair still reads as one control.
+   *
+   * "All" means every epic the chart is currently DRAWING: `datedEpics` is
+   * already past the filters, so a filtered view expands what you can see and
+   * not the plan behind it. Epics with no children are skipped — their chevron
+   * is disabled for the same reason, and expanding them would add a row of
+   * "Create story" under every epic in the plan.
+   */
+  const expandableIds = useMemo(
+    () => datedEpics.filter((e) => e.childCount > 0).map((e) => e.id),
+    [datedEpics],
+  );
+  const allExpanded =
+    expandableIds.length > 0 && expandableIds.every((id) => expanded.has(id));
+  const anyExpanded = expanded.size > 0;
+
+  /*
+   * Children are fetched per epic (`useExpandedEpicChildren` runs one query
+   * each), so this is N requests for N epics. Fine at the scale a roadmap is
+   * readable at, and React Query caches them so collapsing and expanding again
+   * is free — but it is the reason this expands the FILTERED set rather than
+   * everything the server would return, and the reason a plan at the 500-epic
+   * cap should be narrowed with the filters first.
+   */
+  function expandAll() {
+    setExpanded(new Set(expandableIds));
+  }
+
+  function collapseAll() {
+    setExpanded(new Set());
+  }
+
   // ── Row layout ────────────────────────────────────────────────────────────
   //
   // One flat list of rows with explicit y offsets, built from the ACTUAL child
@@ -1245,6 +1285,43 @@ export function RoadmapTimeline({
         >
           Today
         </button>
+
+        {/*
+         * Grouped like the zoom control, because they are one decision — how
+         * much of the plan is showing — split across two actions. Sits with
+         * the view controls rather than the filters: this changes how you LOOK
+         * at the plan, it does not change what the plan is.
+         */}
+        <div
+          className="inline-flex items-center rounded-lg border border-ink-200 bg-surface p-0.5"
+          role="group"
+          aria-label="Expand epics"
+        >
+          <button
+            type="button"
+            onClick={expandAll}
+            data-testid="roadmap-expand-all"
+            disabled={allExpanded || expandableIds.length === 0}
+            title={
+              expandableIds.length === 0
+                ? 'No epics with stories to expand'
+                : 'Show the stories under every epic on the chart'
+            }
+            className="rounded-md px-2.5 py-1 text-xs font-medium text-ink-500 transition-colors hover:bg-ink-100 hover:text-ink-800 disabled:cursor-not-allowed disabled:text-ink-300 disabled:hover:bg-transparent"
+          >
+            Expand all
+          </button>
+          <button
+            type="button"
+            onClick={collapseAll}
+            data-testid="roadmap-collapse-all"
+            disabled={!anyExpanded}
+            title="Hide every epic's stories"
+            className="rounded-md px-2.5 py-1 text-xs font-medium text-ink-500 transition-colors hover:bg-ink-100 hover:text-ink-800 disabled:cursor-not-allowed disabled:text-ink-300 disabled:hover:bg-transparent"
+          >
+            Collapse all
+          </button>
+        </div>
 
         {/*
          * The legend used to be three unlabelled swatches — Planned / Active /
