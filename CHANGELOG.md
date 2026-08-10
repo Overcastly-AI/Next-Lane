@@ -16,6 +16,14 @@ staged here by hand (see [`RELEASING.md`](./RELEASING.md))._
 
 ---
 
+## [0.17.0] — 2026-08-10
+
+[Compare with v0.16.0](https://github.com/Overcastly-AI/Next-Lane/compare/v0.16.0...v0.17.0)
+
+### Features
+
+* **roadmap:** expand/collapse all, agent-locked projects, and a reachable API ([#87](https://github.com/Overcastly-AI/Next-Lane/issues/87)) ([e21ed1d](https://github.com/Overcastly-AI/Next-Lane/commit/e21ed1d3aa477f8ae47f246e07febf59c58a4c6a))
+
 ## [0.16.0] — 2026-08-10
 
 [Compare with v0.15.1](https://github.com/Overcastly-AI/Next-Lane/compare/v0.15.1...v0.16.0)
