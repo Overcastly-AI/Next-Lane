@@ -326,7 +326,14 @@ export interface RoadmapTimelineProps {
   /**
    * Open an issue's detail drawer. Takes an EPIC or a STORY id — both are
    * issues, and the roadmap is a place you read a plan from and then go fix
-   * something in it, so every named row on the chart is a way in.
+   * something in it.
+   *
+   * ONLY THE LEFT RAIL CALLS THIS. The two panes mean different things and one
+   * gesture cannot mean both: the grid is the schedule, so a click there
+   * belongs to moving and resizing bars; the rail is the list of what the work
+   * IS, so a click there opens the ticket. Bars deliberately have no click
+   * handler — an earlier version gave them one and it made a plain click
+   * ambiguous with the start of a drag.
    */
   onOpenIssue: (issueId: string) => void;
   /** Commit a new window for an issue. Absent = read-only (no drag affordances). */
@@ -638,16 +645,6 @@ export function RoadmapTimeline({
     () => new Map<string, RailLabel>(labels.map((l) => [l.id, l])),
     [labels],
   );
-  /*
-   * A pointer drag is ALSO followed by a native `click` on the same element.
-   * Guarding on drag state does not work: the window pointerup handler clears
-   * that state first, so by the time onClick runs the component has already
-   * re-rendered with `drag === null` and the guard passes. Every drag opened
-   * the issue drawer. A ref survives the re-render; the click that follows the
-   * drag consumes it.
-   */
-  const suppressClickRef = useRef(false);
-
   const editable = !!onSchedule;
   const canCreate = !!onCreate;
   const zoom = zoomById(zoomId);
@@ -881,7 +878,6 @@ export function RoadmapTimeline({
       // and that is a real change.
       const reparent = d.overEpicId ?? undefined;
       if (!d.moved || (d.dayDelta === 0 && !reparent)) return;
-      suppressClickRef.current = true;
       const next = applyDrag(
         Date.parse(item.start),
         Date.parse(item.end),
@@ -1928,13 +1924,6 @@ export function RoadmapTimeline({
                       })
                     }
                     skipWeekends={skipWeekends}
-                    onOpen={() => {
-                      if (suppressClickRef.current) {
-                        suppressClickRef.current = false;
-                        return;
-                      }
-                      onOpenIssue(r.epic.id);
-                    }}
                   />
                 ) : r.kind === 'child' ? (
                   <ChildBar
@@ -1956,13 +1945,6 @@ export function RoadmapTimeline({
                         ? (e) => startReparent(r.child.id, r.epicId, e)
                         : undefined
                     }
-                    onOpen={() => {
-                      if (suppressClickRef.current) {
-                        suppressClickRef.current = false;
-                        return;
-                      }
-                      onOpenIssue(r.child.id);
-                    }}
                   />
                 ) : r.kind === 'child-note' ? (
                   <div
@@ -2299,7 +2281,6 @@ function EpicBarRow({
   onDragStart,
   onDragEnd,
   onKeyDown,
-  onOpen,
   skipWeekends,
 }: {
   epic: RoadmapEpicDto;
@@ -2320,7 +2301,6 @@ function EpicBarRow({
   onDragStart: (mode: DragMode, e: React.PointerEvent) => void;
   onDragEnd: (d: DragState) => void;
   onKeyDown: (e: React.KeyboardEvent) => void;
-  onOpen: () => void;
 }) {
   const baseStart = Date.parse(epic.start as string);
   const baseEnd = Date.parse(epic.end as string);
@@ -2385,8 +2365,6 @@ function EpicBarRow({
         }}
         data-draggable={editable ? 'true' : 'false'}
         onKeyDown={onKeyDown}
-        // `onOpen` itself consumes the post-drag click (see suppressClickRef).
-        onClick={onOpen}
         title={epicTitle(epic)}
         aria-label={epicTitle(epic)}
         className={cn(
@@ -2589,12 +2567,9 @@ function ChildBar({
   epicKeyOf,
   onReparentStart,
   reparentingId,
-  onOpen,
 }: {
   child: RoadmapChildDto;
   epicId: string;
-  /** Open this story's detail drawer. */
-  onOpen: () => void;
   /** Tells the timeline what kind of thing is being dragged, and from where. */
   onDragKind: (kind: 'child', fromEpicId: string) => void;
   /** Resolves an epic id to its key, for the reparent tooltip. */
@@ -2724,11 +2699,6 @@ function ChildBar({
             epicId,
           )
         }
-        // A story bar opens its ticket for the same reason an epic bar does —
-        // the bar is the thing you were already looking at. `onOpen` consumes
-        // the click that ends a real drag (see suppressClickRef), so dropping a
-        // rescheduled story does not also throw the drawer open on top of it.
-        onClick={onOpen}
         title={
           child.fromSprint
             ? `${child.key} · ${child.title} — showing ${child.sprintName ?? 'its sprint'}'s dates. Drag to give it its own; it stays in the sprint.`

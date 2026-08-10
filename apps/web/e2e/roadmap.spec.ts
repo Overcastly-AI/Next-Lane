@@ -126,10 +126,12 @@ test.describe('Roadmap', () => {
     await expect(epicBar).toBeVisible();
     await expect(epicBar).toContainText('Stakeholder Epic');
 
-    // Clicking the epic opens it IN PLACE, on the roadmap. It used to navigate
-    // to the board, which threw away your zoom level and every expanded epic
-    // just to read a date — founder report, 2026-08-02.
-    await epicBar.click();
+    // Opening happens IN PLACE, on the roadmap — it used to navigate to the
+    // board, which threw away your zoom level and every expanded epic just to
+    // read a date (founder report, 2026-08-02). It is driven from the RAIL:
+    // the grid is the schedule, so a click on a bar is for moving it (founder,
+    // 2026-08-06). Rewritten with that rule rather than deleted.
+    await page.getByTestId(`roadmap-open-epic-${epic.id}`).click();
     await expect(page).toHaveURL(
       new RegExp(`/roadmap\\?issue=${epic.id}`),
       { timeout: 15_000 },

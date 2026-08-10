@@ -211,10 +211,22 @@ test.describe('Roadmap Gantt', () => {
     expect(dayOf(after.startDate)).toBe('2026-04-08');
     expect(dayOf(after.dueDate)).toBe('2026-05-07');
 
-    // A click (no movement) must still OPEN the issue rather than reschedule —
-    // in place on the roadmap, not by navigating to the board.
+    /*
+     * A click that never moved must be a NO-OP on the bar: it must not
+     * reschedule (nothing moved) and it must not open the drawer either. The
+     * grid is the schedule and the rail is where you open things — founder:
+     * "If I click on the Gantt chart item then I should be able to move it. If
+     * I click in the left hand plane then I should open the ticket." This
+     * assertion used to require the opposite; it was rewritten with the rule
+     * rather than deleted, so the click path stays covered.
+     */
     await page.getByTestId('roadmap-epic-bar').first().click();
-    await expect(page).toHaveURL(new RegExp(`/roadmap\\?issue=${epic.id}`), {
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(page).not.toHaveURL(new RegExp(`issue=${epic.id}`));
+
+    // The rail is the way in, and it still is.
+    await page.getByTestId(`roadmap-open-epic-${epic.id}`).click();
+    await expect(page).toHaveURL(new RegExp(`issue=${epic.id}`), {
       timeout: 15_000,
     });
   });
@@ -1076,7 +1088,8 @@ test.describe('Roadmap Gantt', () => {
     await expect(bar).toBeVisible({ timeout: 15_000 });
     await expect(bar).toHaveAttribute('aria-label', /Before The Edit/);
 
-    await bar.click();
+    // From the rail — a click on the bar itself is for moving it.
+    await page.getByTestId(`roadmap-open-epic-${epic.id}`).click();
     const titleInput = page.getByTestId('issue-title-input');
     await expect(titleInput).toBeVisible({ timeout: 15_000 });
     await titleInput.fill('After The Edit');
