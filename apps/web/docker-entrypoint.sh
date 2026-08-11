@@ -114,13 +114,19 @@ if [ -f "$NGINX_CONF" ] && [ -w "$NGINX_CONF" ] && grep -q "__NL_API_PROXY__" "$
     client_max_body_size 25m;
     proxy_request_buffering off;
   }
-  # The machine-readable spec, and the health probe, are outside /api.
+  # The machine-readable spec, and the health probes, are outside /api.
   location = /api-json {
     proxy_pass ${API_PROXY_UPSTREAM}/api-json;
     proxy_set_header Host \$host;
     proxy_set_header X-Forwarded-Proto \$scheme;
   }
-  location = /health {
+  # PREFIX, not \`= /health\`. An exact match cannot match /health/live, which
+  # main.ts also excludes from the global prefix and the OpenAPI document also
+  # publishes — so Swagger's "Try it out" called it here and got index.html
+  # back with a 200. Nothing else in the app lives under /health, and a request
+  # this forwards that the API does not serve gets an honest 404 from the API
+  # rather than a misleading 200 of SPA HTML.
+  location /health {
     proxy_pass ${API_PROXY_UPSTREAM}/health;
     proxy_set_header Host \$host;
   }

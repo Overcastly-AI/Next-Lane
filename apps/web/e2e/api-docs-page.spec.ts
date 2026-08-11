@@ -145,6 +145,67 @@ test.describe('API reference page', () => {
     expect(`${bearer.bearerFormat} ${bearer.description}`).toContain('nlp_');
   });
 
+  /**
+   * Every path the document publishes must be REACHABLE where the reference
+   * calls it.
+   *
+   * Founder: "when running the API from swagger I get html as the response
+   * body. Example /health calls url/health." Swagger's "Try it out" issues its
+   * requests against the app's own origin, and `main.ts` excludes `health` and
+   * `health/live` from the `/api` global prefix so probes can reach them at
+   * the root — which made them the only documented paths NOT covered by the
+   * `/api/` proxy rule every deployment has. All three proxies got it wrong in
+   * the same way: the dev server did not forward `/health` at all, and both
+   * nginx configs used `location = /health`, an exact match that cannot match
+   * `/health/live`. None of them 404'd — the SPA fallback answered with
+   * index.html and a 200, so the reference reported `text/html` for a route
+   * that returns JSON.
+   *
+   * Derived from the live document rather than a hardcoded list: a new route
+   * added outside the prefix is covered here the day it appears.
+   */
+  test('every documented path outside /api is routed on the app origin', async ({
+    request,
+    baseURL,
+  }) => {
+    const spec = await (await request.get(`${API_URL}/api-json`)).json();
+    const outside = Object.keys(spec.paths).filter((p) => !p.startsWith('/api'));
+
+    // The document is supposed to publish some of these; if it stops, this
+    // test has quietly become a no-op and should be revisited, not deleted.
+    expect(
+      outside,
+      'no paths outside the /api prefix — has setGlobalPrefix stopped excluding /health?',
+    ).not.toEqual([]);
+
+    /*
+     * Gate on whether this origin proxies the API AT ALL, probed directly —
+     * not on whether the app is *configured* to call the API here.
+     *
+     * The first version of this test gated on the /developers page's
+     * `data-embedded` flag and skipped in every local run, because the dev
+     * setup points the app at an absolute API origin while Vite still proxies
+     * the same-origin paths. Those are two different facts, and keying off the
+     * wrong one is how a routing test quietly stops testing routing.
+     */
+    const probe = await request.get(new URL('/api-json', baseURL!).toString());
+    const proxied = (probe.headers()['content-type'] ?? '').includes('json');
+    test.skip(
+      !proxied,
+      'this origin does not reverse-proxy the API (no API_PROXY_UPSTREAM / dev proxy), so these paths are not expected to resolve here',
+    );
+
+    for (const path of outside) {
+      const res = await request.get(new URL(path, baseURL!).toString());
+      const type = res.headers()['content-type'] ?? '';
+      expect(
+        type,
+        `GET ${path} on the app origin returned "${type}". HTML means it fell through to the SPA fallback instead of reaching the API — check the proxies in vite.config.ts, docker-entrypoint.sh and the Helm ConfigMap, and note that an exact 'location = /health' cannot match a subpath.`,
+      ).toContain('application/json');
+      expect(res.status()).toBeLessThan(400);
+    }
+  });
+
   test('offers runnable snippets and switches language', async ({
     page,
     request,

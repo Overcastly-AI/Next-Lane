@@ -163,7 +163,14 @@ data:
       # /health is excluded from the API's global prefix, so it is not under
       # /api/ either. The comment here used to claim it was "also proxied for
       # convenience" while no such location existed.
-      location = /health {
+      #
+      # PREFIX, not `= /health`. `main.ts` excludes BOTH `health` and
+      # `health/live`, and the OpenAPI document publishes both, so Swagger's
+      # "Try it out" calls /health/live on this origin — an exact match cannot
+      # match it and the SPA fallback answered 200 text/html. Nothing else in
+      # the app lives under /health; forwarding a path the API does not serve
+      # yields an honest 404 instead of a misleading page of HTML.
+      location /health {
         proxy_pass http://{{ include "next-lane.componentName" (dict "ctx" . "component" "api") }}:{{ .Values.api.service.port }}/health;
         proxy_http_version 1.1;
         proxy_set_header Host $host;

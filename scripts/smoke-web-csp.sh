@@ -217,6 +217,22 @@ case "$API_JSON_CODE" in
   *) fail "[mode 2b] GET /api-json returned ${API_JSON_CODE}; expected a proxy error (502/504)." ;;
 esac
 
+# The health routes are the other half of the API's surface: main.ts excludes
+# `health` and `health/live` from the global prefix, so they are NOT under
+# /api/ — and the OpenAPI document publishes both, which means Swagger's "Try
+# it out" calls them on this origin. `/health/live` is the one that bit us: the
+# config had `= /health`, an exact match that cannot match a subpath, so it
+# fell through to `try_files` and returned index.html with a 200 — the API
+# reference showing `text/html` for a route that returns JSON. Asserting the
+# subpath specifically, because the parent passed throughout that bug.
+for hp in /health /health/live; do
+  HCODE="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${PORT_PROXY}${hp}")"
+  case "$HCODE" in
+    502|504) : ;;
+    *) fail "[mode 2b] GET ${hp} returned ${HCODE}; expected a proxy error (502/504). A 200 means it fell through to the SPA and returned index.html where JSON belongs — check that the location is a PREFIX (location /health), not an exact match (location = /health), which cannot match /health/live." ;;
+  esac
+done
+
 cleanup_proxy
 echo "==> [mode 2b] PASS"
 

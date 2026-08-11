@@ -84,4 +84,58 @@ for required in "=/api" "/api/" "=/api-json" "/socket.io/"; do
     || fail "the Helm config no longer routes '$required'"
 done
 
+# ── Paths outside the API's global prefix ────────────────────────────────────
+#
+# Matching each other and naming four routes was not enough, and this is the
+# hole it left. `main.ts` does:
+#
+#     app.setGlobalPrefix('api', { exclude: ['health', 'health/live'] })
+#
+# so those two are real, documented API routes that do NOT live under /api/ —
+# they are published in the OpenAPI document, which means Swagger's "Try it
+# out" calls them on the app's own origin. Every proxy had `= /health`, an
+# EXACT match that cannot match /health/live, and the dev server did not
+# forward /health at all. All three answered index.html with a 200: the API
+# reference reporting `text/html` for a route that returns JSON.
+#
+# So the list is read from main.ts rather than written here. Add a route to
+# `exclude` and forget to proxy it, and this fails instead of shipping a path
+# that silently serves the SPA.
+MAIN_TS="$ROOT/apps/api/src/main.ts"
+VITE_CFG="$ROOT/apps/web/vite.config.ts"
+[ -f "$MAIN_TS" ]  || fail "missing $MAIN_TS"
+[ -f "$VITE_CFG" ] || fail "missing $VITE_CFG"
+
+EXCLUDED="$(grep -oE "setGlobalPrefix\('api', \{ exclude: \[[^]]*\]" "$MAIN_TS" \
+  | grep -oE "'[^']+'" | tr -d "'" | grep -v '^api$' | sort -u)"
+
+[ -n "$EXCLUDED" ] \
+  || fail "could not read the setGlobalPrefix exclude list from $MAIN_TS — if its shape changed, update this parser rather than deleting the check"
+
+echo "==> API routes outside the /api prefix (from main.ts): $(printf '%s' "$EXCLUDED" | tr '\n' ' ')"
+
+# nginx: a `location /health` PREFIX covers /health and every /health/*.
+# An exact `= /health` covers only itself, which is the bug — so require the
+# prefix form for the top segment of each excluded path.
+for ex in $EXCLUDED; do
+  top="/${ex%%/*}"
+  for pair in "Compose:$COMPOSE_LOCS" "Helm:$HELM_LOCS"; do
+    name="${pair%%:*}"; locs="${pair#*:}"
+    if printf '%s\n' "$locs" | grep -qxF "$top"; then
+      continue                                   # prefix match — covers subpaths
+    fi
+    if printf '%s\n' "$locs" | grep -qxF "=$top"; then
+      fail "the $name config routes '$top' as an EXACT match (= $top), which cannot match subpaths like '/$ex'. Use the prefix form 'location $top' instead — an unmatched path does not 404, the SPA fallback answers it with index.html."
+    fi
+    fail "the $name config does not route '$top', which the API serves outside its /api prefix"
+  done
+
+  # The dev server is the third implementation of this same routing, and it is
+  # the one a contributor hits first.
+  printf '%s' "$top" | grep -q . && {
+    grep -qE "'\\$top'[[:space:]]*:[[:space:]]*\{" "$VITE_CFG" \
+      || fail "the Vite dev proxy ($VITE_CFG) does not forward '$top', so 'pnpm dev' answers it with the SPA while production proxies it to the API"
+  }
+done
+
 echo "==> ALL NGINX-PARITY ASSERTIONS PASSED"
