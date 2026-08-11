@@ -16,6 +16,14 @@ staged here by hand (see [`RELEASING.md`](./RELEASING.md))._
 
 ---
 
+## [0.17.1] — 2026-08-11
+
+[Compare with v0.17.0](https://github.com/Overcastly-AI/Next-Lane/compare/v0.17.0...v0.17.1)
+
+### Bug Fixes
+
+* **api:** make the API reference usable — bodies, reachable routes, Kubernetes parity ([#88](https://github.com/Overcastly-AI/Next-Lane/issues/88)) ([d0a25b1](https://github.com/Overcastly-AI/Next-Lane/commit/d0a25b14d346dcf217d0f0068ef130994d7f7712))
+
 ## [0.17.0] — 2026-08-10
 
 [Compare with v0.16.0](https://github.com/Overcastly-AI/Next-Lane/compare/v0.16.0...v0.17.0)
