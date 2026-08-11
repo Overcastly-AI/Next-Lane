@@ -161,12 +161,17 @@ and the two pre-existing decision-gated items renumber from #6/#7 to
 **Queued 2026-08-11 (out of band — kept off the numbered list so the
 dependency-sequenced Pages items keep their numbers):**
 
-- [ ] (P2, M) **The API reference describes requests but not responses** [found while fixing the empty-DTO defect, 2026-08-11]
-  - Enabling the `@nestjs/swagger` plugin fixed request bodies. Responses did not follow: **199 of 253 operations emit `{"type": "object"}` with no fields**, and the other 54 (deletes, `/health`) emit no content block at all.
-  - **Why the plugin cannot fix this one:** it infers response shapes from a handler's declared return type, and ours are declared in `packages/shared/src/types.ts` as TypeScript **interfaces** (`IssueDto`, `ProjectDto`, `BoardDto`, …). Interfaces have no runtime presence, so there is nothing to reflect. Most controller methods do not declare a return type at all.
-  - **Why it matters:** the founder's stated use case is a Python script that reads issues to build a deck — that script consumes *responses*. Today the reference tells you what to send and not what comes back, so the shapes have to be learned by calling the endpoint and printing the JSON.
-  - Options, cheapest first: (a) `@ApiOkResponse({ type: … })` with response classes for the ~8 core shapes covering the most-called reads; (b) generate schemas from the shared interfaces at build time (`ts-json-schema-generator`) and register them with `@ApiExtraModels` — no drift, but a new build step; (c) convert the shared DTOs to classes, which ripples into the web bundle.
-  - **Do not hand-write schemas that can drift from the real payload** — a response doc that is confidently wrong is worse than an absent one.
+- [x] (P2, M) **The API reference describes requests but not responses** ✅ 2026-08-11 (partial — core read surface; long tail tracked below)
+  - Response classes in `apps/api/src/common/dto/api-responses.dto.ts` give the plugin something with runtime presence to reflect. 19 operations wired with `@ApiOkResponse`; `GET /api/issues` resolves to `PaginatedIssuesResponse` → `IssueResponse` (36 fields, 21 required) with nested `$ref`s. 94 → **111 schemas, 0 empty**.
+  - **Three compile-time guards against drift**, because a confidently-wrong response schema is worse than none: `implements` (required members), `AssertDocumented` (a never-declared OPTIONAL member — the error names the field), and nesting, which propagates both. All three verified by breaking them on purpose.
+  - **The compiler cannot prove the interfaces match what the server serialises** — a spread bypasses excess-property checks. New `api-response-schemas.spec.ts` drives the real endpoints and asserts every key in the live JSON is documented. Proven by spreading `internalRiskScore` into `toIssueDto`: compiles clean, test fails with `items[0].internalRiskScore`.
+  - **Found while doing it:** the `/developers` Python and Node examples were broken — `GET /api/issues` is paginated (`{items, nextCursor}`) and both iterated the response directly. Fixed, and the corrected Python was executed against a live API rather than reasoned about.
+  - **Gates:** 14 e2e passed desktop+mobile; 2188 API unit tests / 102 suites; `pnpm build` + `tsc --noEmit` clean.
+
+- [ ] (P3, M) **Extend response schemas past the core read surface** [2026-08-11]
+  - 19 of 253 operations now have named response schemas. The rest still emit `{"type": "object"}`.
+  - The machinery and the drift guard exist, so this is additive and mechanical: add a class to `api-responses.dto.ts` (`implements` the shared interface + an `AssertDocumented` line), annotate the endpoint, add a probe to `api-response-schemas.spec.ts`.
+  - Next most valuable, roughly in order: boards, search, dashboards/reports, pages, labels/statuses/components/versions, webhooks.
 
 1. ✅ **Pages — issue ↔ page cross-linking** (SHIPPED 2026-07-09 — remove on
    next groom) — `PageIssueLink` parse-on-save sync via `extractIssueNumbers`

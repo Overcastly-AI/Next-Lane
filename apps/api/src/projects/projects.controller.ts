@@ -9,7 +9,8 @@ import {
   Query,
   Req,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import { ProjectResponse } from '../common/dto/api-responses.dto';
 import type { Request } from 'express';
 import { ProjectsService } from './projects.service';
 import { CreateProjectDto } from './dto/create-project.dto';
@@ -31,6 +32,7 @@ export class ProjectsController {
   constructor(private readonly projects: ProjectsService) {}
 
   @Get()
+  @ApiOkResponse({ type: ProjectResponse, isArray: true })
   @RequireScope('projects:read')
   findAll(
     @CurrentUser() user: AuthUser,
@@ -40,6 +42,7 @@ export class ProjectsController {
   }
 
   @Post()
+  @ApiCreatedResponse({ type: ProjectResponse })
   @RequireScope('projects:write')
   create(
     @CurrentUser() user: AuthUser,
@@ -50,6 +53,7 @@ export class ProjectsController {
   }
 
   @Get(':id')
+  @ApiOkResponse({ type: ProjectResponse })
   @RequireScope('projects:read')
   findOne(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.projects.findOne(user.id, id);
@@ -73,6 +77,7 @@ export class ProjectsController {
   }
 
   @Patch(':id')
+  @ApiOkResponse({ type: ProjectResponse })
   @RequireScope('projects:write')
   update(
     @CurrentUser() user: AuthUser,

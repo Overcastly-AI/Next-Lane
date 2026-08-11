@@ -8,7 +8,17 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiCreatedResponse,
+  ApiOkResponse,
+  ApiTags,
+} from '@nestjs/swagger';
+import {
+  IssueDetailResponse,
+  IssueResponse,
+  PaginatedIssuesResponse,
+} from '../common/dto/api-responses.dto';
 import { IssuesService } from './issues.service';
 import { WatchersService } from './watchers.service';
 import { CreateIssueDto } from './dto/create-issue.dto';
@@ -29,6 +39,7 @@ export class IssuesController {
 
   @Post()
   @RequireScope('issues:write')
+  @ApiCreatedResponse({ type: IssueResponse })
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateIssueDto) {
     return this.issues.create(user.id, dto);
   }
@@ -52,12 +63,19 @@ export class IssuesController {
 
   @Get()
   @RequireScope('issues:read')
+  // Paginated, NOT a bare array — the rows are under `items` and `nextCursor`
+  // carries the next page. Worth documenting precisely: the published Python
+  // and Node examples both iterated this response directly and crashed.
+  @ApiOkResponse({ type: PaginatedIssuesResponse })
   findAll(@CurrentUser() user: AuthUser, @Query() query: ListIssuesQueryDto) {
     return this.issues.findAll(user.id, query);
   }
 
   @Get(':id')
   @RequireScope('issues:read')
+  // Richer than the list shape: this one carries the discussion and the
+  // history too, which is why it has its own response type.
+  @ApiOkResponse({ type: IssueDetailResponse })
   findOne(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.issues.findOne(user.id, id);
   }
@@ -70,6 +88,7 @@ export class IssuesController {
 
   @Patch(':id')
   @RequireScope('issues:write')
+  @ApiOkResponse({ type: IssueResponse })
   update(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
@@ -80,6 +99,7 @@ export class IssuesController {
 
   @Post(':id/move')
   @RequireScope('issues:write')
+  @ApiOkResponse({ type: IssueResponse })
   move(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
