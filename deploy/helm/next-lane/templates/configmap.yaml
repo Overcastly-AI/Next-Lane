@@ -132,8 +132,43 @@ data:
         add_header Referrer-Policy "strict-origin-when-cross-origin" always;
       }
 
-      # Reverse-proxy the REST API (NestJS global prefix is /api; /health is
-      # also proxied for convenience).
+      # Reverse-proxy the API.
+      #
+      # `= /api` is a SEPARATE location from `/api/` and both are required.
+      # NestJS mounts the Swagger UI at exactly /api while the REST routes live
+      # under /api/, so without the exact match the reference falls through to
+      # the SPA fallback below and returns index.html — which is what happened
+      # here until the in-app API page (/developers) tried to frame it and got
+      # the app back instead of the reference.
+      location = /api {
+        proxy_pass http://{{ include "next-lane.componentName" (dict "ctx" . "component" "api") }}:{{ .Values.api.service.port }}/api;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 120s;
+      }
+
+      # The machine-readable OpenAPI document. Outside /api/, so it needs its
+      # own location or it too resolves to index.html.
+      location = /api-json {
+        proxy_pass http://{{ include "next-lane.componentName" (dict "ctx" . "component" "api") }}:{{ .Values.api.service.port }}/api-json;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 120s;
+      }
+
+      # /health is excluded from the API's global prefix, so it is not under
+      # /api/ either. The comment here used to claim it was "also proxied for
+      # convenience" while no such location existed.
+      location = /health {
+        proxy_pass http://{{ include "next-lane.componentName" (dict "ctx" . "component" "api") }}:{{ .Values.api.service.port }}/health;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+      }
+
       location /api/ {
         proxy_pass http://{{ include "next-lane.componentName" (dict "ctx" . "component" "api") }}:{{ .Values.api.service.port }}/api/;
         proxy_http_version 1.1;

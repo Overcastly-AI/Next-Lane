@@ -818,6 +818,13 @@ _Hardening Night close-out ingest (2026-07-06) — P2s:_
 
 ## Already Done (recent shipments — ticked for reference)
 
+- [x] (P1, S) **Helm served the app's own HTML where the API reference should be** ✅ 2026-08-06 [founder: *"How does helm handle this?"*]
+  - Asked as a question, and answering it honestly found a bug. Helm's `web.apiMode: same-origin` renders its OWN nginx ConfigMap that overrides the image's config (the pod runs read-only), and the Ingress sends `path: /` to the **web** Service — so the web pod does the proxying. The Compose changes do not touch it, which is correct.
+  - But that ConfigMap proxied only `/api/` and `/socket.io/`. It was missing **`= /api`** (the Swagger UI is at exactly /api, a different location from /api/), **`= /api-json`**, and **`= /health`** — the last one while a comment in the file claimed /health was "also proxied for convenience".
+  - **The failure mode is why nobody noticed:** a missing location does not 404. The SPA fallback `try_files $uri $uri/ /index.html` answers, so those paths quietly returned the app's HTML. On Kubernetes the API reference served the SPA, and the new `/developers` page would have framed Next Lane inside itself instead of Swagger.
+  - Fixed all three, and the false comment.
+  - **`scripts/smoke-nginx-parity.sh`** compares the two configs by the only thing that matters — which paths each routes to the API — and fails when one gains a route the other lacks. Wired into `ci.yml` beside the existing config-parity check. Verified it catches the real bug: deleting `= /api` from the chart makes it fail by name.
+
 - [x] (P1, S) **`trackApiWrites.settle` waits for the write the test named, not every write on the page** ✅ 2026-08-06
   - CI failure on one shard: `personal-board.spec.ts:213` timed out with `in-flight=1 acked=1/1` — its own PATCH had been acknowledged the whole time, and it failed anyway because ONE unrelated request never fired a response event. With a `match` supplied, requiring a GLOBAL drain couples every assertion to every request the page happens to have open.
   - With `match`, the wait now drains only requests that would satisfy it. **Not a weakening:** matched writes must still be both acked and drained, and with no `match` the strong global default is unchanged.
