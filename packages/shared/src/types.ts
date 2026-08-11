@@ -697,6 +697,27 @@ export interface RoadmapEpicDto {
    */
   assigneeId: string | null;
   labelIds: string[];
+  /**
+   * The same two facts, rolled up across the epic's children — so a filter can
+   * match a STORY without the client first expanding the epic to find out.
+   *
+   * Children are fetched lazily, one request per expanded epic, which means
+   * the client cannot answer "does this epic contain a story with label X?"
+   * for a collapsed row. Without these the label picker only ever matched
+   * epics, and filtering by a label that only stories carry emptied the chart
+   * — reported as "the label filter for stories is not working on the Gantt
+   * chart. It's only for epics."
+   *
+   * Free to compute: the epic query already loads every child to derive the
+   * rollup window and the done count, so this is two more columns on a query
+   * that was already running, not a second pass.
+   *
+   * Deduped ids only, same as above. `hasUnassignedChild` is separate because
+   * "unassigned" is a filter option and an array of ids cannot express it.
+   */
+  childLabelIds: string[];
+  childAssigneeIds: string[];
+  hasUnassignedChild: boolean;
 }
 
 /**

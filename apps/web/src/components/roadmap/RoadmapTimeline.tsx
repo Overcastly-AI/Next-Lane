@@ -652,8 +652,22 @@ export function RoadmapTimeline({
   const expandedIds = useMemo(() => [...expanded], [expanded]);
   const childrenByEpic = useExpandedEpicChildren(projectId, expandedIds);
 
+  /**
+   * Does ONE issue — epic or story — pass the filters?
+   *
+   * Used for both, which is the point: the child rows previously ignored the
+   * filters entirely, so expanding an epic under an active label filter
+   * listed every story it had. Founder: "the label filter for stories is not
+   * working on the Gantt chart. It's only for epics."
+   *
+   * The text query is deliberately NOT applied to stories. The input says
+   * "Filter epics by title or key" and narrowing the plan to a few epics, then
+   * seeing all of their work, is the useful reading of it — a query that also
+   * hid stories would make an expanded epic look empty for a term its own
+   * title matched.
+   */
   const matchesFilters = useCallback(
-    (e: { statusCategory: StatusCategory; assigneeId: string | null; labelIds: string[]; title: string; key: string }) => {
+    (e: { statusCategory: StatusCategory; assigneeId: string | null; labelIds: string[] }) => {
       if (hideDone && e.statusCategory === StatusCategory.DONE) return false;
       if (assigneeFilter === UNASSIGNED) {
         if (e.assigneeId) return false;
@@ -661,6 +675,34 @@ export function RoadmapTimeline({
         return false;
       }
       if (labelFilter && !e.labelIds.includes(labelFilter)) return false;
+      return true;
+    },
+    [hideDone, assigneeFilter, labelFilter],
+  );
+
+  /**
+   * Does this EPIC's row survive the filters?
+   *
+   * An epic qualifies on its own attributes OR on any of its children's, which
+   * is what makes the pickers usable at all: labels and assignees mostly live
+   * on the stories, so matching only the epic meant filtering by a
+   * story-carried label emptied the chart entirely. The rolled-up
+   * `childLabelIds` / `childAssigneeIds` answer that for a COLLAPSED epic,
+   * whose children have not been fetched.
+   *
+   * Structured as "each active filter is satisfied by the epic or by a child"
+   * rather than "the epic matches everything or a child matches everything",
+   * so filtering by assignee A and label L keeps an epic assigned to A whose
+   * story carries L. Both facts are true of that epic's work.
+   *
+   * `hideDone` and the text query stay strictly the epic's own: a DONE epic is
+   * hidden however busy its children are, and the query is epic-scoped by the
+   * input's own label.
+   */
+  const epicVisible = useCallback(
+    (e: RoadmapEpicDto) => {
+      if (hideDone && e.statusCategory === StatusCategory.DONE) return false;
+
       const q = query.trim().toLowerCase();
       if (
         q &&
@@ -669,14 +711,29 @@ export function RoadmapTimeline({
       ) {
         return false;
       }
+
+      if (labelFilter) {
+        const onEpic = e.labelIds.includes(labelFilter);
+        const onChild = e.childLabelIds.includes(labelFilter);
+        if (!onEpic && !onChild) return false;
+      }
+
+      if (assigneeFilter === UNASSIGNED) {
+        if (e.assigneeId && !e.hasUnassignedChild) return false;
+      } else if (assigneeFilter) {
+        const onEpic = e.assigneeId === assigneeFilter;
+        const onChild = e.childAssigneeIds.includes(assigneeFilter);
+        if (!onEpic && !onChild) return false;
+      }
+
       return true;
     },
     [hideDone, assigneeFilter, labelFilter, query],
   );
 
   const datedEpics = useMemo(
-    () => data.epics.filter((e) => e.start && e.end).filter(matchesFilters),
-    [data.epics, matchesFilters],
+    () => data.epics.filter((e) => e.start && e.end).filter(epicVisible),
+    [data.epics, epicVisible],
   );
   /** How many dated epics the filters are currently hiding. */
   const hiddenCount = useMemo(
@@ -685,8 +742,8 @@ export function RoadmapTimeline({
     [data.epics, datedEpics.length],
   );
   const noDateEpics = useMemo(
-    () => data.epics.filter((e) => !e.start || !e.end).filter(matchesFilters),
-    [data.epics, matchesFilters],
+    () => data.epics.filter((e) => !e.start || !e.end).filter(epicVisible),
+    [data.epics, epicVisible],
   );
 
   const rawBounds = useMemo(
@@ -1069,14 +1126,34 @@ export function RoadmapTimeline({
       y += ROW_H;
       if (!expanded.has(epic.id)) continue;
       const kids = childrenByEpic.get(epic.id);
-      if (kids === undefined) {
+      /*
+       * The stories obey the same filters as the epics. They used to be pushed
+       * straight through, so a label filter listed every story on an expanded
+       * epic regardless — the reported bug. Filtering here rather than in the
+       * query hook keeps the fetch cached across filter changes: the child
+       * list for an epic does not depend on what the pickers are set to.
+       */
+      const visibleKids = kids?.filter(matchesFilters);
+      if (visibleKids === undefined) {
         out.push({ kind: 'child-note', epicId: epic.id, text: 'Loading stories…', y });
         y += ROW_H;
-      } else if (kids.length === 0) {
-        out.push({ kind: 'child-note', epicId: epic.id, text: 'No child issues.', y });
+      } else if (visibleKids.length === 0) {
+        // Two different facts, and saying the wrong one is how a filter looks
+        // broken: an epic can be on screen BECAUSE one of its stories matched
+        // and still have no story left after `hideDone`, and "No child issues"
+        // on an epic with twelve stories reads as data loss.
+        out.push({
+          kind: 'child-note',
+          epicId: epic.id,
+          text:
+            kids!.length === 0
+              ? 'No child issues.'
+              : 'No stories match the filters.',
+          y,
+        });
         y += ROW_H;
       } else {
-        for (const child of kids) {
+        for (const child of visibleKids) {
           out.push({ kind: 'child', epicId: epic.id, child, y });
           y += ROW_H;
         }
@@ -1095,7 +1172,7 @@ export function RoadmapTimeline({
       y += ROW_H;
     }
     return out;
-  }, [datedEpics, expanded, childrenByEpic, canCreate]);
+  }, [datedEpics, expanded, childrenByEpic, canCreate, matchesFilters]);
 
   const totalRowsHeight = rows.length > 0 ? rows[rows.length - 1].y + ROW_H : 0;
 
