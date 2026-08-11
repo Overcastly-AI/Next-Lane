@@ -33,10 +33,19 @@ export default defineConfig(() => {
        *
        * Only used when the app is asked for a same-origin path; setting
        * VITE_API_URL to an absolute origin bypasses this entirely.
+       *
+       * `/health` IS part of the API surface even though it sits outside the
+       * `/api` prefix — `main.ts` excludes it (and `/health/live`) from
+       * `setGlobalPrefix` so Kubernetes probes can reach it at the root. Both
+       * are published in the OpenAPI document, so Swagger's "Try it out" calls
+       * them on THIS origin; without an entry here the SPA fallback answered
+       * with index.html and the reference reported `200 text/html` for a route
+       * that returns JSON. Anything the document publishes has to be routed.
        */
       proxy: {
         '/api': { target: apiTarget, changeOrigin: true },
         '/api-json': { target: apiTarget, changeOrigin: true },
+        '/health': { target: apiTarget, changeOrigin: true },
         '/socket.io': { target: apiTarget, changeOrigin: true, ws: true },
       },
     },

@@ -6,7 +6,12 @@
     "moduleResolution": "node",
     "ignoreDeprecations": "5.0",
     "declaration": false,
-    "removeComments": true,
+    // MUST stay false: the @nestjs/swagger CLI plugin's `introspectComments`
+    // turns the JSDoc above a DTO property into that field's `description` in
+    // the OpenAPI document. TypeScript strips comments before the plugin's
+    // transform runs when this is true, and the descriptions silently vanish
+    // (schemas still emit, just wordlessly) — see apps/api/nest-cli.json.
+    "removeComments": false,
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
     "allowSyntheticDefaultImports": true,

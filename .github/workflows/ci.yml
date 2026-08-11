@@ -250,6 +250,14 @@ jobs:
       - name: Config-parity check (docker-compose.yml vs .env.example)
         run: ./scripts/smoke-config-parity.sh
 
+      # Same-origin API routing exists twice — the Compose image builds it in
+      # the entrypoint, the Helm chart renders a ConfigMap that overrides the
+      # image's config entirely. A route added to one and forgotten in the
+      # other does NOT 404: the SPA fallback answers with index.html, so the
+      # symptom is the app's own HTML where the API was expected.
+      - name: Nginx-parity check (Compose entrypoint vs Helm ConfigMap)
+        run: ./scripts/smoke-nginx-parity.sh
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 

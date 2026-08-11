@@ -115,6 +115,7 @@ Format: `- [ ] (P1, M) title — description [src]` · P0 critical / P1 now / P2
 
 ## Ready (top of queue)
 
+
 **Re-sequenced 2026-07-09 (vision-steward pass — Pages kickoff, founder
 directive 2026-07-06: "How can we add a confluence type section?"; scope
 sharpened same day: "Could it be hybrid of confluence and obsidian md? I
@@ -156,6 +157,16 @@ together as one coherent frontend-builder slice; see the ticked entry in
 #4/#5 (issue↔page cross-linking, full-text search) renumbered to #1/#2,
 and the two pre-existing decision-gated items renumber from #6/#7 to
 #3/#4 accordingly.
+
+**Queued 2026-08-11 (out of band — kept off the numbered list so the
+dependency-sequenced Pages items keep their numbers):**
+
+- [ ] (P2, M) **The API reference describes requests but not responses** [found while fixing the empty-DTO defect, 2026-08-11]
+  - Enabling the `@nestjs/swagger` plugin fixed request bodies. Responses did not follow: **199 of 253 operations emit `{"type": "object"}` with no fields**, and the other 54 (deletes, `/health`) emit no content block at all.
+  - **Why the plugin cannot fix this one:** it infers response shapes from a handler's declared return type, and ours are declared in `packages/shared/src/types.ts` as TypeScript **interfaces** (`IssueDto`, `ProjectDto`, `BoardDto`, …). Interfaces have no runtime presence, so there is nothing to reflect. Most controller methods do not declare a return type at all.
+  - **Why it matters:** the founder's stated use case is a Python script that reads issues to build a deck — that script consumes *responses*. Today the reference tells you what to send and not what comes back, so the shapes have to be learned by calling the endpoint and printing the JSON.
+  - Options, cheapest first: (a) `@ApiOkResponse({ type: … })` with response classes for the ~8 core shapes covering the most-called reads; (b) generate schemas from the shared interfaces at build time (`ts-json-schema-generator`) and register them with `@ApiExtraModels` — no drift, but a new build step; (c) convert the shared DTOs to classes, which ripples into the web bundle.
+  - **Do not hand-write schemas that can drift from the real payload** — a response doc that is confidently wrong is worse than an absent one.
 
 1. ✅ **Pages — issue ↔ page cross-linking** (SHIPPED 2026-07-09 — remove on
    next groom) — `PageIssueLink` parse-on-save sync via `extractIssueNumbers`
@@ -817,6 +828,30 @@ _Hardening Night close-out ingest (2026-07-06) — P2s:_
 - [x] (P2, S) Docs site Overcastly v2 re-theme (2026-06-28) — `docs-site/.vitepress/theme/custom.css` rewritten: Overcastly v2 token system (canvas `#15161a`/`#1c1d22`/`#25262c`, ink `#f4f4f1`/`#b8b9b6`/`#6f7075`, accent `#4F8BFF`/`#7AA8FF`, success `#7BD389`, hairlines `rgba(255,255,255,0.08/0.16)`); dotted-grid body background (signature element, radial-gradient dots at 32px grid); pill buttons (`999px`); mono-uppercase eyebrows on sidebar group titles, table `<th>`, code-block lang labels, custom-block titles; `h2` accent bar; `appearance:'dark'` in `config.ts`; SVG logos + favicon to `#4F8BFF`; theme-color meta to `#4F8BFF`; WCAG-AA verified; build clean 4.4s. [oss-curator / frontend-design]
 
 ## Already Done (recent shipments — ticked for reference)
+
+- [x] (P0, S) **Swagger's "Try it out" returned SPA HTML instead of JSON** ✅ 2026-08-11 [founder: *"when running the API from swagger i get html as the response body. Example /health calls url/health"*]
+  - Reproduced first: on the app origin `GET /health` returned **`200 text/html`** with `<!doctype html>`, same for `/health/live`; both return JSON when called on the API directly.
+  - **Cause:** `main.ts` does `setGlobalPrefix('api', { exclude: ['health', 'health/live'] })`, so those two are the only documented routes outside `/api/`. Swagger issues *Try it out* against the app's own origin, so they were the only published paths the `/api/` proxy rule did not already cover — and **all three proxies got them wrong, each differently**: Vite did not forward `/health` at all, while Compose and Helm both used `location = /health`, an exact match that cannot match `/health/live`.
+  - **Nothing 404'd.** `try_files $uri $uri/ /index.html` answered, so the reference showed a 200 of app HTML where JSON belongs — the same failure mode as the Helm gap fixed in the same PR, which is the tell that hand-listing routes in three files *was* the defect.
+  - **Fixed as a class:** both nginx locations became prefixes (covers every subpath; an unknown `/health/*` now gets an honest 404 from the API), and `/health` joined the Vite proxy.
+  - **The guard reads the API instead of repeating it.** `smoke-nginx-parity.sh` parses the `exclude` array out of `main.ts` and asserts all three configs route each excluded path, rejecting the exact-match form by name. Verified failing on each real regression: reverting the entrypoint to `= /health` fails; deleting the Vite entry fails with its own message. `smoke-web-csp.sh` (real image, CI) now probes `/health` *and* `/health/live` for the fall-through — the subpath specifically, because the parent passed throughout the bug.
+  - New e2e derives the path list from the live document, so a route added outside the prefix is covered the day it appears. **Its first version skipped in every local run** — it gated on `data-embedded` (whether the *app* is configured to call the API here) instead of whether this origin proxies at all; now it probes `/api-json` directly. The same file already warned about exactly that class of mistake.
+  - **Gates:** 26/26 e2e desktop+mobile, parity script green, `tsc --noEmit` clean on both apps.
+
+- [x] (P0, S) **Swagger showed DTO names and none of their fields** ✅ 2026-08-11 [founder: *"None of the dTO are showing in swagger. Also I don't know how to format the body."*]
+  - Measured before touching anything: `/api-json` returned 200, 166 paths, 89 schemas, and `POST /api/issues` correctly `$ref`'d `CreateIssueDto` — so the first guess ("no schemas at all") was wrong. The real state was **89 of 89 schemas being `{"type": "object", "properties": {}}`**: every DTO present by name, not one field described. That is why it looked fine and was unusable.
+  - **Cause:** `apps/api/nest-cli.json` had no `plugins` array. NestJS synthesises request schemas with the `@nestjs/swagger` CLI transformer, reading each DTO's TS types, its `class-validator` decorators and its JSDoc; there are **zero `@ApiProperty` decorators across 75 DTO files**, so with the transformer off there was nothing left to emit. It fails silently — schemas still register, just empty.
+  - **After:** 94 schemas, **0 empty**. `CreateIssueDto` publishes 16 fields with types, `required: [projectId, title]`, real enum members, `class-validator` bounds (title maxLength 300, storyPoints 0–999) and the JSDoc prose per property.
+  - **`removeComments: true` had to go** in `apps/api/tsconfig.json` — TypeScript strips comments before the transform runs, so with it on the schemas emit *wordlessly*: the same defect, one degree quieter. The flag now carries a comment explaining why it must stay false.
+  - Fixed alongside: `bearerFormat` said `JWT`, the misleading half of the truth for this page's audience — a script authenticates with a PAT, and "JWT" sends the reader hunting for a login endpoint. Swagger UI also gained `filter` (253 operations), alphabetical sorting, and `persistAuthorization` so a pasted token survives the embedded `/developers` frame re-rendering instead of reading as "Try it out is broken".
+  - **Gates:** `api-docs-page.spec.ts` gained a property-level test — no schema may have zero fields, and `CreateIssueDto` must carry types, required list, enum members, validator bounds and JSDoc descriptions. 4/4 desktop passed; the same assertion replayed against the saved pre-fix document fails (89/89 empty), so the guard is real rather than tautological. `tsc --noEmit` clean.
+
+- [x] (P1, S) **Helm served the app's own HTML where the API reference should be** ✅ 2026-08-06 [founder: *"How does helm handle this?"*]
+  - Asked as a question, and answering it honestly found a bug. Helm's `web.apiMode: same-origin` renders its OWN nginx ConfigMap that overrides the image's config (the pod runs read-only), and the Ingress sends `path: /` to the **web** Service — so the web pod does the proxying. The Compose changes do not touch it, which is correct.
+  - But that ConfigMap proxied only `/api/` and `/socket.io/`. It was missing **`= /api`** (the Swagger UI is at exactly /api, a different location from /api/), **`= /api-json`**, and **`= /health`** — the last one while a comment in the file claimed /health was "also proxied for convenience".
+  - **The failure mode is why nobody noticed:** a missing location does not 404. The SPA fallback `try_files $uri $uri/ /index.html` answers, so those paths quietly returned the app's HTML. On Kubernetes the API reference served the SPA, and the new `/developers` page would have framed Next Lane inside itself instead of Swagger.
+  - Fixed all three, and the false comment.
+  - **`scripts/smoke-nginx-parity.sh`** compares the two configs by the only thing that matters — which paths each routes to the API — and fails when one gains a route the other lacks. Wired into `ci.yml` beside the existing config-parity check. Verified it catches the real bug: deleting `= /api` from the chart makes it fail by name.
 
 - [x] (P1, S) **`trackApiWrites.settle` waits for the write the test named, not every write on the page** ✅ 2026-08-06
   - CI failure on one shard: `personal-board.spec.ts:213` timed out with `in-flight=1 acked=1/1` — its own PATCH had been acknowledged the whole time, and it failed anyway because ONE unrelated request never fired a response event. With a `match` supplied, requiring a GLOBAL drain couples every assertion to every request the page happens to have open.
