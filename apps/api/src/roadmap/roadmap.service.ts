@@ -121,6 +121,11 @@ export class RoadmapService {
             startDate: true,
             dueDate: true,
             sprint: { select: { startDate: true, endDate: true } },
+            // For the rolled-up filter facets below. The children are already
+            // being loaded for the rollup window and the done count, so these
+            // ride along on a query that was running anyway.
+            assigneeId: true,
+            labels: { select: { labelId: true } },
           },
         },
       },
@@ -135,8 +140,17 @@ export class RoadmapService {
     const epics: RoadmapEpicDto[] = epicRows.map((epic) => {
       const childCount = epic.children.length;
       let doneCount = 0;
+      // Rolled-up filter facets, so the chart can match a story on a COLLAPSED
+      // epic. Sets rather than arrays because an epic with fifty stories
+      // sharing three labels should ship three ids, not fifty.
+      const childLabelIds = new Set<string>();
+      const childAssigneeIds = new Set<string>();
+      let hasUnassignedChild = false;
       for (const child of epic.children) {
         if (doneStatusIds.has(child.statusId)) doneCount += 1;
+        if (child.assigneeId) childAssigneeIds.add(child.assigneeId);
+        else hasUnassignedChild = true;
+        for (const l of child.labels) childLabelIds.add(l.labelId);
       }
 
       // ── What the children actually span ────────────────────────────────
@@ -226,6 +240,9 @@ export class RoadmapService {
         fromOwnDates,
         assigneeId: epic.assigneeId,
         labelIds: epic.labels.map((l) => l.labelId),
+        childLabelIds: [...childLabelIds],
+        childAssigneeIds: [...childAssigneeIds],
+        hasUnassignedChild,
       };
     });
 

@@ -56,6 +56,8 @@ describe('RoadmapService', () => {
         children: [
           {
             statusId: 'done-1', // counts as done
+            labels: [],
+            assigneeId: null,
             sprint: {
               startDate: new Date('2026-02-01T00:00:00.000Z'),
               endDate: new Date('2026-02-14T00:00:00.000Z'),
@@ -63,6 +65,8 @@ describe('RoadmapService', () => {
           },
           {
             statusId: 'todo-1', // not done
+            labels: [],
+            assigneeId: null,
             sprint: {
               startDate: new Date('2026-03-01T00:00:00.000Z'),
               endDate: new Date('2026-03-14T00:00:00.000Z'),
@@ -130,6 +134,8 @@ describe('RoadmapService', () => {
         children: [
           {
             statusId: 'done-1',
+            labels: [],
+            assigneeId: null,
             sprint: {
               // Would derive a very different window if own-dates weren't prioritized.
               startDate: new Date('2026-02-01T00:00:00.000Z'),
@@ -185,7 +191,7 @@ describe('RoadmapService', () => {
         status: { category: StatusCategory.TODO },
         assigneeId: null,
         labels: [],
-        children: [{ statusId: 'todo-1', sprint: null }],
+        children: [{ statusId: 'todo-1', sprint: null, labels: [], assigneeId: null }],
       },
     ]);
     prisma.sprint.findMany.mockResolvedValue([]);
@@ -220,6 +226,133 @@ describe('RoadmapService', () => {
     const result = await service.getRoadmap('user-1', PROJECT_ID);
     expect(result.epics[0].childCount).toBe(0);
     expect(result.epics[0].progress).toBe(0);
+  });
+
+  // -------------------------------------------------------------------------
+  // Rolled-up child facets — what lets the chart filter by a STORY's label
+  // -------------------------------------------------------------------------
+
+  it("rolls its children's labels and assignees up onto the epic, deduped", async () => {
+    prisma.status.findMany.mockResolvedValue([{ id: 'done-1' }]);
+    prisma.issue.findMany.mockResolvedValue([
+      {
+        id: 'epic-9',
+        number: 9,
+        title: 'Billing',
+        createdAt: new Date('2026-01-01T00:00:00.000Z'),
+        status: { category: StatusCategory.IN_PROGRESS },
+        // The epic itself carries NEITHER the label nor the assignee its
+        // children do — the whole point. Filtering by `label-be` has to reach
+        // this epic, or a label that lives only on stories empties the chart.
+        assigneeId: null,
+        labels: [{ labelId: 'label-epic-only' }],
+        children: [
+          {
+            statusId: 'todo-1',
+            sprint: null,
+            assigneeId: 'user-a',
+            labels: [{ labelId: 'label-be' }, { labelId: 'label-urgent' }],
+          },
+          {
+            statusId: 'todo-1',
+            sprint: null,
+            assigneeId: 'user-a', // same person again — must not duplicate
+            labels: [{ labelId: 'label-be' }], // same label again
+          },
+          {
+            statusId: 'todo-1',
+            sprint: null,
+            assigneeId: null, // nobody — the "Unassigned" filter option
+            labels: [],
+          },
+        ],
+      },
+    ]);
+    prisma.sprint.findMany.mockResolvedValue([]);
+
+    const epic = (await service.getRoadmap('user-1', PROJECT_ID)).epics[0];
+
+    expect([...epic.childLabelIds].sort()).toEqual(['label-be', 'label-urgent']);
+    expect(epic.childAssigneeIds).toEqual(['user-a']);
+    expect(epic.hasUnassignedChild).toBe(true);
+    // The epic's own facets stay its own — the rollup is additional, not a
+    // replacement, so a filter can still tell "this epic" from "its work".
+    expect(epic.labelIds).toEqual(['label-epic-only']);
+    expect(epic.assigneeId).toBeNull();
+  });
+
+  it('reports no unassigned child when every child has an assignee', async () => {
+    prisma.status.findMany.mockResolvedValue([{ id: 'done-1' }]);
+    prisma.issue.findMany.mockResolvedValue([
+      {
+        id: 'epic-10',
+        number: 10,
+        title: 'Fully staffed',
+        createdAt: new Date('2026-01-01T00:00:00.000Z'),
+        status: { category: StatusCategory.TODO },
+        assigneeId: 'user-z',
+        labels: [],
+        children: [
+          { statusId: 'todo-1', sprint: null, assigneeId: 'user-b', labels: [] },
+        ],
+      },
+    ]);
+    prisma.sprint.findMany.mockResolvedValue([]);
+
+    const epic = (await service.getRoadmap('user-1', PROJECT_ID)).epics[0];
+    expect(epic.hasUnassignedChild).toBe(false);
+    expect(epic.childAssigneeIds).toEqual(['user-b']);
+    expect(epic.childLabelIds).toEqual([]);
+  });
+
+  it('leaves the facets empty for a childless epic rather than undefined', async () => {
+    prisma.status.findMany.mockResolvedValue([{ id: 'done-1' }]);
+    prisma.issue.findMany.mockResolvedValue([
+      {
+        id: 'epic-11',
+        number: 11,
+        title: 'Empty',
+        createdAt: new Date('2026-01-01T00:00:00.000Z'),
+        status: { category: StatusCategory.TODO },
+        assigneeId: null,
+        labels: [],
+        children: [],
+      },
+    ]);
+    prisma.sprint.findMany.mockResolvedValue([]);
+
+    const epic = (await service.getRoadmap('user-1', PROJECT_ID)).epics[0];
+    expect(epic.childLabelIds).toEqual([]);
+    expect(epic.childAssigneeIds).toEqual([]);
+    // `false`, not undefined — the client reads this directly in a boolean
+    // position and an absent field would quietly mean "no unassigned work".
+    expect(epic.hasUnassignedChild).toBe(false);
+  });
+
+  it("selects the children's labels and assignee, or the rollup is empty for everyone", async () => {
+    prisma.status.findMany.mockResolvedValue([{ id: 'done-1' }]);
+    prisma.issue.findMany.mockResolvedValue([]);
+    prisma.sprint.findMany.mockResolvedValue([]);
+
+    await service.getRoadmap('user-1', PROJECT_ID);
+
+    // Belt to the compiler's braces, not a substitute for it: Prisma's
+    // generated types mean deleting these two lines from the select fails to
+    // COMPILE where the facets are built, which was verified by doing it. This
+    // asserts the shape a mock has to imitate, so a fixture that drops them
+    // cannot quietly make every rollup empty in the tests above.
+    expect(prisma.issue.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        include: expect.objectContaining({
+          children: {
+            select: expect.objectContaining({
+              assigneeId: true,
+              labels: { select: { labelId: true } },
+            }),
+          },
+        }),
+      }),
+    );
   });
 
   // -------------------------------------------------------------------------
@@ -318,12 +451,16 @@ describe('RoadmapService', () => {
         children: [
           {
             statusId: 'todo-1',
+            labels: [],
+            assigneeId: null,
             startDate: new Date('2026-05-04T00:00:00.000Z'),
             dueDate: new Date('2026-05-15T00:00:00.000Z'),
             sprint: null,
           },
           {
             statusId: 'todo-1',
+            labels: [],
+            assigneeId: null,
             startDate: new Date('2026-06-01T00:00:00.000Z'),
             dueDate: new Date('2026-06-30T00:00:00.000Z'),
             sprint: null,
@@ -359,6 +496,8 @@ describe('RoadmapService', () => {
         children: [
           {
             statusId: 'todo-1',
+            labels: [],
+            assigneeId: null,
             startDate: new Date('2026-09-01T00:00:00.000Z'),
             dueDate: new Date('2026-09-10T00:00:00.000Z'),
             // Explicit dates win: this sprint window must NOT widen the epic.
@@ -393,12 +532,16 @@ describe('RoadmapService', () => {
         children: [
           {
             statusId: 'todo-1',
+            labels: [],
+            assigneeId: null,
             startDate: new Date('2026-04-02T00:00:00.000Z'),
             dueDate: new Date('2026-04-20T00:00:00.000Z'),
             sprint: null,
           },
           {
             statusId: 'todo-1',
+            labels: [],
+            assigneeId: null,
             startDate: new Date('2026-04-20T00:00:00.000Z'),
             dueDate: new Date('2026-05-10T00:00:00.000Z'),
             sprint: null,
