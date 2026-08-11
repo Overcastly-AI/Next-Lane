@@ -73,6 +73,15 @@ async function bootstrap() {
    * `.setVersion(APP_VERSION)` rather than a literal: this said `0.1.0` for
    * fifteen minor releases, so every client generated from it carried a
    * version that had not been true since the first week.
+   *
+   * THE BODIES COME FROM `apps/api/nest-cli.json`. Every request schema in
+   * this document is synthesised by the `@nestjs/swagger` CLI plugin from the
+   * DTO's TypeScript types, its `class-validator` decorators and the JSDoc
+   * above each property. Without that plugin every schema emits as a bare
+   * `{"type": "object"}` with no properties — which is what shipped until
+   * v0.17: the reference listed 89 DTOs by name and not one of their fields,
+   * so nobody could tell what to put in a request body. Do not remove the
+   * plugin, and do not set `removeComments` back to true in tsconfig.json.
    */
   const config = new DocumentBuilder()
     .setTitle('Next Lane API')
@@ -90,12 +99,41 @@ async function bootstrap() {
         'OpenAPI 3, for client generators, Postman/Insomnia, or an agent reading',
         'the surface directly.',
         '',
+        '**Request bodies.** Each endpoint below documents its body field by',
+        'field — type, whether it is required, allowed enum values and length or',
+        'range limits — and *Try it out* pre-fills a skeleton you can edit. Two',
+        'things to know before you send one: bodies are validated strictly, so an',
+        'unknown property is a `400` rather than being ignored, and anything not',
+        'marked required may simply be omitted.',
+        '',
         '**Events.** For push rather than poll, subscribe a webhook in Project',
         'settings → Webhooks.',
       ].join('\n'),
     )
     .setVersion(APP_VERSION)
-    .addBearerAuth()
+    /*
+     * Named 'bearer' deliberately — that is the default name the bare
+     * `@ApiBearerAuth()` on every controller refers to, and renaming the
+     * scheme here would leave those decorators pointing at a scheme that no
+     * longer exists (operations silently lose their padlock).
+     *
+     * `bearerFormat` said 'JWT', which is only half true and the misleading
+     * half: a browser session uses a JWT, but a script — the audience of this
+     * page — uses a Personal Access Token, and someone reading 'JWT' goes
+     * looking for a login endpoint they do not need.
+     */
+    .addBearerAuth(
+      {
+        type: 'http',
+        scheme: 'bearer',
+        bearerFormat: 'Personal Access Token',
+        description:
+          'Paste a Personal Access Token (`nlp_...`) from Settings → API ' +
+          'tokens. Do not include the word "Bearer" — it is added for you. ' +
+          'A session JWT works here too, but a token is what a script wants.',
+      },
+      'bearer',
+    )
     .build();
   const document = SwaggerModule.createDocument(app, config);
 
@@ -110,7 +148,26 @@ async function bootstrap() {
    */
   const docsEnabled = process.env.API_DOCS_ENABLED !== 'false';
   if (docsEnabled) {
-    SwaggerModule.setup('api', app, document);
+    /*
+     * 253 operations is a lot to scroll. `filter` gives the reader a search
+     * box, the sorters make the list predictable rather than
+     * registration-ordered, and `persistAuthorization` keeps the token you
+     * pasted across a reload — without it, the embedded reference on
+     * /developers logs you out every time the page re-renders, which reads as
+     * "Try it out is broken".
+     */
+    SwaggerModule.setup('api', app, document, {
+      swaggerOptions: {
+        persistAuthorization: true,
+        filter: true,
+        docExpansion: 'list',
+        tagsSorter: 'alpha',
+        operationsSorter: 'alpha',
+        defaultModelsExpandDepth: 3,
+        defaultModelExpandDepth: 3,
+      },
+      customSiteTitle: 'Next Lane API reference',
+    });
   }
 
   const port = Number(process.env.API_PORT ?? 4000);
