@@ -16,6 +16,14 @@ staged here by hand (see [`RELEASING.md`](./RELEASING.md))._
 
 ---
 
+## [0.17.2] — 2026-08-11
+
+[Compare with v0.17.1](https://github.com/Overcastly-AI/Next-Lane/compare/v0.17.1...v0.17.2)
+
+### Bug Fixes
+
+* **roadmap:** filter stories on the Gantt, not just epics ([#89](https://github.com/Overcastly-AI/Next-Lane/issues/89)) ([c41e778](https://github.com/Overcastly-AI/Next-Lane/commit/c41e77884231af4ea60acb526a9128f4cd252803))
+
 ## [0.17.1] — 2026-08-11
 
 [Compare with v0.17.0](https://github.com/Overcastly-AI/Next-Lane/compare/v0.17.0...v0.17.1)
