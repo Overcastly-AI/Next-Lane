@@ -16,6 +16,14 @@ staged here by hand (see [`RELEASING.md`](./RELEASING.md))._
 
 ---
 
+## [0.17.3] — 2026-09-05
+
+[Compare with v0.17.2](https://github.com/Overcastly-AI/Next-Lane/compare/v0.17.2...v0.17.3)
+
+### Security
+
+* **deps:** close 29 of 33 advisories, and stop Dependabot duplicating itself ([#95](https://github.com/Overcastly-AI/Next-Lane/issues/95)) ([a7e1953](https://github.com/Overcastly-AI/Next-Lane/commit/a7e195394856beb096ff6b152785a9cf41bf0c33)), closes [#94](https://github.com/Overcastly-AI/Next-Lane/issues/94) [#93](https://github.com/Overcastly-AI/Next-Lane/issues/93) [#83](https://github.com/Overcastly-AI/Next-Lane/issues/83) [#94](https://github.com/Overcastly-AI/Next-Lane/issues/94) [#93](https://github.com/Overcastly-AI/Next-Lane/issues/93) [#83](https://github.com/Overcastly-AI/Next-Lane/issues/83)
+
 ## [0.17.2] — 2026-08-11
 
 [Compare with v0.17.1](https://github.com/Overcastly-AI/Next-Lane/compare/v0.17.1...v0.17.2)
