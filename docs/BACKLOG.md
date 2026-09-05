@@ -168,6 +168,41 @@ dependency-sequenced Pages items keep their numbers):**
   - Options, cheapest first: (a) `@ApiOkResponse({ type: … })` with response classes for the ~8 core shapes covering the most-called reads; (b) generate schemas from the shared interfaces at build time (`ts-json-schema-generator`) and register them with `@ApiExtraModels` — no drift, but a new build step; (c) convert the shared DTOs to classes, which ripples into the web bundle.
   - **Do not hand-write schemas that can drift from the real payload** — a response doc that is confidently wrong is worse than an absent one.
 
+**Queued 2026-09-05 (dependency-maintenance pass — kept off the numbered list,
+same as the 2026-08-11 entry above). Each of these exists because it is the
+ONLY way to close a live advisory that an override cannot reach:**
+
+- [ ] (P1, M) **NestJS 10 → 12** — `@nestjs/core` carries a moderate advisory
+  (GHSA-337j-9hxr-rhxg, output neutralization) patched only in `>= 11.1.18`.
+  We are on 10.4.22, two majors back, so there is no patch release to take and
+  no override that helps — the whole `@nestjs/*` family moves together
+  (common/core/platform-express/platform-socket.io/websockets/jwt/passport/
+  swagger/testing/cli). Dependabot will never propose it: `.github/dependabot.yml`
+  ignores every `semver-major` by design, which is exactly why this drift went
+  unseen. Do it as a deliberate slice with the full gate, not inside a feature PR.
+- [ ] (P1, M) **react-router 6 → 7** — two moderate advisories (open redirect via
+  backslash in `<Link>`/`useNavigate`; arbitrary constructor injection via
+  deserialization) are patched only in `>= 7.18.0`. 6.30.6 — the newest 6.x, now
+  pinned — closed the third (`react-router-dom` open-redirect→XSS) and cannot
+  close these two. v7 is the framework's stated migration path; the v6 line is
+  not getting the backport.
+- [ ] (P2, S) **`apps/api` `file-type` 16 → 21** — moderate advisory (infinite
+  loop in the ASF parser on malformed input) patched in `>= 21.3.1`. The dep is
+  pinned to `"16"` because v17+ is ESM-only and the API is CommonJS, so this is a
+  code change (dynamic `import()` at the two magic-byte call sites — attachment
+  upload and workspace-logo upload), not a version bump. `@nestjs/common`'s own
+  transitive copy is already forced to `^21.3.2` by a scoped override.
+- [ ] (P2, M) **Prisma 5.22 → 7.x** — no open advisory, two majors behind. Not
+  urgent; listed so the gap is tracked rather than discovered later. Same
+  major-ignore blind spot as NestJS above.
+- [ ] (P2, S) **Groom this Ready queue** — nine numbered items in this section are
+  ticked `✅ SHIPPED … remove on next groom` (Pages slices, 2026-07-09) and have
+  been carried ever since, so the queue reads as ~13 items of work when 4 are
+  actually open. The last groom pass recorded here is 2026-07-09; five weeks of
+  shipped work (the Gantt/roadmap wave and the API-reference wave) went in via
+  each build agent's own same-commit ticks, with no groom pass over the top.
+  [maintenance pass, 2026-09-05]
+
 1. ✅ **Pages — issue ↔ page cross-linking** (SHIPPED 2026-07-09 — remove on
    next groom) — `PageIssueLink` parse-on-save sync via `extractIssueNumbers`
    + `GET /pages/:id/issues` + `GET /issues/:id/pages` (bounded+truncated, 6
@@ -828,6 +863,13 @@ _Hardening Night close-out ingest (2026-07-06) — P2s:_
 - [x] (P2, S) Docs site Overcastly v2 re-theme (2026-06-28) — `docs-site/.vitepress/theme/custom.css` rewritten: Overcastly v2 token system (canvas `#15161a`/`#1c1d22`/`#25262c`, ink `#f4f4f1`/`#b8b9b6`/`#6f7075`, accent `#4F8BFF`/`#7AA8FF`, success `#7BD389`, hairlines `rgba(255,255,255,0.08/0.16)`); dotted-grid body background (signature element, radial-gradient dots at 32px grid); pill buttons (`999px`); mono-uppercase eyebrows on sidebar group titles, table `<th>`, code-block lang labels, custom-block titles; `h2` accent bar; `appearance:'dark'` in `config.ts`; SVG logos + favicon to `#4F8BFF`; theme-color meta to `#4F8BFF`; WCAG-AA verified; build clean 4.4s. [oss-curator / frontend-design]
 
 ## Already Done (recent shipments — ticked for reference)
+
+- [x] (P1, M) **Dependency & security maintenance pass** ✅ 2026-09-05 — `pnpm audit --prod` went **33 vulnerabilities (7 high / 23 moderate / 3 low) → 4 (0 high / 4 moderate / 0 low)**.
+  - **Direct bumps** — every `package.json` change in Dependabot #94 (which itself supersedes #93 and #83), plus #94's `@aws-sdk/client-s3` lockfile float (3.1100.0→3.1127.0; its `^3` range is untouched): `dompurify` 3.4.12→3.4.14, `mermaid` 11.16.0→11.17.2, `marked` 18.0.7→18.0.11, `react-router-dom` ^6.26.2→^6.30.6 (resolved 6.30.4→6.30.6), `@tanstack/react-query` 5.101.4→5.102.8, `@playwright/test` 1.62.0→1.62.1, `postcss` 8.5.24→8.5.26, `bullmq` 5.81.2→5.81.4, `csv-parse` 7.0.1→7.0.2, `nodemailer` 9.0.3→9.0.6, `tsx` 4.23.1→4.23.12, `semantic-release` 25.0.8→25.0.9.
+  - **Seven new `pnpm.overrides`** for advisories in transitive deps no direct bump can reach — `js-yaml ^4.3.1` (2 high, via `@nestjs/swagger`), `socket.io-parser ^4.2.7` (high, zero-attachment memory exhaustion via `@nestjs/platform-socket.io`), `fast-uri ^3.1.6` (4 high — SSRF + host confusion, via the MCP SDK's `ajv`), `qs ^6.16.0`, `body-parser ^1.20.6`, `@xmldom/xmldom ^0.8.15` (via `@node-saml/node-saml`), `hono ^4.12.34` (via `@modelcontextprotocol/sdk`), plus the scoped `"@nestjs/common>file-type": "^21.3.2"` — scoped so it cannot drag `apps/api`'s deliberately CommonJS-pinned `file-type@16` with it.
+  - **Dependabot config de-duplicated** — the npm ecosystem had four entries (`/`, `/apps/api`, `/apps/web`, `/packages/shared`), but Dependabot reads `pnpm-workspace.yaml`, so the root entry already covers every package. That is why #93 (web) and #83 (api) were strict *subsets* of #94 (root): three PRs to review for one set of updates. Now one npm entry plus the github-actions one.
+  - **Gates:** `tsc --noEmit` clean across api/web/mcp/shared; `pnpm build` clean; unit suites green — api 2188/2188 (102 suites), web 59, shared 210, MCP 162 (+1 skipped). E2E could not run here (no Docker/Postgres in this sandbox) and is left to CI's `e2e.yml`, which gates the PR.
+  - **Not fixed here, deliberately** — the 4 remaining moderates each need a major upgrade or a code change, not a bump; filed at the top of § Ready. [maintenance pass, 2026-09-05]
 
 - [x] (P1, S) **The Gantt label filter matched epics only, so stories were never filtered** ✅ 2026-08-11 [founder: *"the label filter for stories is not working on the Gantt chart. It's only for epics. Can stories be included?"*]
   - **Two defects wearing one symptom.** (1) Child rows were pushed onto the chart without ever consulting the filter predicate — expanding an epic under a label filter listed every story. (2) An epic qualified on its own labels only, and labels mostly live on stories, so filtering by a story-carried label emptied the chart entirely.

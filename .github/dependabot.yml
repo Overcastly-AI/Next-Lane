@@ -4,75 +4,17 @@ version: 2
 # ecosystem, and automatic MAJOR-version PRs are suppressed (majors are
 # breaking and handled deliberately — security advisories still come through
 # regardless of the `ignore` below). This keeps the open-PR count small.
+#
+# ONE npm entry, at the root. Dependabot reads pnpm-workspace.yaml, so the
+# root directory already covers apps/api, apps/web, apps/mcp and
+# packages/shared — PR #94 (root) bumped both apps' package.json files. The
+# per-package entries that used to sit below duplicated it: #93 (apps/web)
+# and #83 (apps/api) were strict subsets of #94, three PRs to review for one
+# set of updates. Do not re-add them.
 updates:
-  # Root workspace (covers shared devDependencies like prettier)
+  # Every workspace package, via the pnpm workspace root
   - package-ecosystem: npm
     directory: /
-    schedule:
-      interval: weekly
-      day: monday
-      time: "06:00"
-      timezone: UTC
-    open-pull-requests-limit: 5
-    labels:
-      - dependencies
-    groups:
-      npm-minor-patch:
-        update-types:
-          - minor
-          - patch
-    ignore:
-      - dependency-name: "*"
-        update-types:
-          - version-update:semver-major
-
-  # API app
-  - package-ecosystem: npm
-    directory: /apps/api
-    schedule:
-      interval: weekly
-      day: monday
-      time: "06:00"
-      timezone: UTC
-    open-pull-requests-limit: 5
-    labels:
-      - dependencies
-      - backend
-    groups:
-      npm-minor-patch:
-        update-types:
-          - minor
-          - patch
-    ignore:
-      - dependency-name: "*"
-        update-types:
-          - version-update:semver-major
-
-  # Web app
-  - package-ecosystem: npm
-    directory: /apps/web
-    schedule:
-      interval: weekly
-      day: monday
-      time: "06:00"
-      timezone: UTC
-    open-pull-requests-limit: 5
-    labels:
-      - dependencies
-      - frontend
-    groups:
-      npm-minor-patch:
-        update-types:
-          - minor
-          - patch
-    ignore:
-      - dependency-name: "*"
-        update-types:
-          - version-update:semver-major
-
-  # Shared package
-  - package-ecosystem: npm
-    directory: /packages/shared
     schedule:
       interval: weekly
       day: monday
