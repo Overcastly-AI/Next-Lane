@@ -16,6 +16,14 @@ staged here by hand (see [`RELEASING.md`](./RELEASING.md))._
 
 ---
 
+## [0.17.4] — 2026-09-10
+
+[Compare with v0.17.3](https://github.com/Overcastly-AI/Next-Lane/compare/v0.17.3...v0.17.4)
+
+### Bug Fixes
+
+* **issues:** stop CSV import dropping parents, components, versions and custom fields ([#97](https://github.com/Overcastly-AI/Next-Lane/issues/97)) ([b450703](https://github.com/Overcastly-AI/Next-Lane/commit/b4507033995dbaebde1337b8feb1c846f5112f8b))
+
 ## [0.17.3] — 2026-09-05
 
 [Compare with v0.17.2](https://github.com/Overcastly-AI/Next-Lane/compare/v0.17.2...v0.17.3)
