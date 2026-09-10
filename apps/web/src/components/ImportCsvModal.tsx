@@ -70,9 +70,25 @@ export function ImportCsvModal({ projectId, onClose }: ImportCsvModalProps) {
     importCsv(file)
       .then((result) => {
         setPhase({ kind: 'done', result });
-        toast.success(
-          `Imported ${result.created} ${result.created === 1 ? 'issue' : 'issues'}.`,
-        );
+        const count = `${result.created} ${result.created === 1 ? 'issue' : 'issues'}`;
+        // The modal closes on success, so this line is the last thing the user
+        // is told. It must not read as "everything came across" when part of
+        // the file did not: an unqualified success message here is what let a
+        // half-transferred project look like a finished migration.
+        const dropped = result.unimportedColumns.length;
+        const partial = result.warnings.length;
+        if (dropped > 0 || partial > 0) {
+          const notes: string[] = [];
+          if (dropped > 0) {
+            notes.push(`${dropped} ${dropped === 1 ? 'column' : 'columns'} not imported`);
+          }
+          if (partial > 0) {
+            notes.push(`${partial} ${partial === 1 ? 'row' : 'rows'} partly imported`);
+          }
+          toast.info(`Imported ${count} — ${notes.join(', ')}.`);
+        } else {
+          toast.success(`Imported ${count}.`);
+        }
         onClose();
       })
       .catch((err: unknown) => {
@@ -235,6 +251,45 @@ export function ImportCsvModal({ projectId, onClose }: ImportCsvModalProps) {
               <p className="text-xs text-ink-500">
                 No importable rows found. The file may be empty or missing a Title column.
               </p>
+            )}
+
+            {/*
+              What the file carries and this import will not apply.
+              Amber, not red: these rows import — part of their content does
+              not. It sits in the PREVIEW rather than after the write because
+              this is the only moment the user can still do something about
+              it, and "Imported 143 issues" with no caveat is exactly how a
+              half-transferred project passes for a whole one.
+            */}
+            {previewResult.unimportedColumns.length > 0 && (
+              <div className="space-y-1.5">
+                <p className="text-xs font-medium text-amber-700">
+                  {previewResult.unimportedColumns.length}{' '}
+                  {previewResult.unimportedColumns.length === 1
+                    ? 'column in this file will not be imported'
+                    : 'columns in this file will not be imported'}
+                  :
+                </p>
+                <ul
+                  className="max-h-40 overflow-y-auto rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800 space-y-0.5"
+                  aria-label="Columns that will not be imported"
+                >
+                  {previewResult.unimportedColumns.map((c) => (
+                    <li
+                      key={c.column}
+                      data-testid="import-csv-unimported-column"
+                      className="leading-snug"
+                    >
+                      <span className="font-medium">{c.column}</span> — {c.reason}
+                    </li>
+                  ))}
+                </ul>
+                <p className="text-xs text-ink-500">
+                  Moving a whole instance? A CSV carries issues only — no
+                  comments, attachments, history or wiki pages. Copy the
+                  database instead.
+                </p>
+              </div>
             )}
 
             {previewResult.errors.length > 0 && (

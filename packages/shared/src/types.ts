@@ -2196,6 +2196,18 @@ export interface UpdateWorkLogDto {
 export type ImportSource = 'generic' | 'jira' | 'github' | 'linear';
 
 /**
+ * A column the uploaded file carried that the import did not apply, with the
+ * reason it could not be. Structured rather than a pre-formatted sentence so
+ * the UI can present the column and the reason differently.
+ */
+export interface UnimportedColumn {
+  /** The header exactly as it appeared in the file, e.g. "CF: Severity". */
+  column: string;
+  /** Why it was not applied, phrased for the person who uploaded the file. */
+  reason: string;
+}
+
+/**
  * One row-level error from a CSV import. `row` is 1-based (header = row 0,
  * first data row = row 1).
  */
@@ -2217,6 +2229,23 @@ export interface ImportIssuesResultDto {
   created: number;
   skipped: number;
   errors: ImportIssueRowError[];
+  /**
+   * Rows that imported, with something in them that did not apply — an
+   * unresolvable parent key, a custom-field cell that would not coerce. The
+   * issue exists; part of it did not survive.
+   */
+  warnings: ImportIssueRowError[];
+  /**
+   * Columns present in the uploaded file whose content this import did not
+   * apply, each with the reason: keys and timestamps that cannot round-trip,
+   * `CF:` columns with no matching definition in the target project, and
+   * columns from other trackers we don't understand.
+   *
+   * Silence here is what let an instance-to-instance move look successful
+   * while dropping parents, components, versions, estimates and custom
+   * fields — so the report names them and the UI shows them.
+   */
+  unimportedColumns: UnimportedColumn[];
   dryRun: boolean;
 }
 

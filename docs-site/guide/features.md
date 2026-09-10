@@ -328,10 +328,31 @@ the same Share panel.
   parent, original estimate, created/updated — plus one column per custom
   field.
 - **CSV import** — import issues from the board or backlog (*Import CSV*)
-  with a **dry-run preview** before anything is written.
+  with a **dry-run preview** before anything is written. The preview lists any
+  column in your file that will **not** be imported, and why.
 - **Tracker importers** — the importer understands **Jira**, **GitHub
   issues**, and **Linear** CSV exports directly (pick the source in the import
   dialog), mapping their column conventions onto Next Lane fields.
+
+::: warning CSV is not a backup
+Export/import moves **issues**, not an instance. A CSV carries no comments,
+attachments, work logs, issue links, checklists, activity history, wiki pages,
+dashboards, boards, workflows or members — and four issue columns cannot
+round-trip at all (`Key`, `Reporter`, `Created`, `Updated` are re-assigned by
+the target project; `Sprint` is not recreated). The import preview names every
+one of these for the file you upload.
+
+To move a whole instance to another machine, copy the database and the uploads
+volume — see [Backups](./self-hosting#backups-postgresql).
+:::
+
+**What a CSV round trip does carry**, when you export from one project and
+import into another: title, description, type, status, priority, assignee (by
+email, if that person is a member of the target workspace), story points,
+labels, start/due dates, original estimate, component and fix versions (created
+by name in the target project if absent), parent links between rows in the same
+file, and custom-field values — for which a field of the same name must already
+exist in the target project, or the column is reported as unimported.
 
 ---
 

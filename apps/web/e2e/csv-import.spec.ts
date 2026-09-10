@@ -137,6 +137,76 @@ test.describe('CSV import – desktop', () => {
   });
 });
 
+/**
+ * A file that came OUT of Next Lane, going back in.
+ *
+ * Founder report: a project exported from one instance and imported into
+ * another "did not have all the data". It did not: the exporter writes columns
+ * the importer used to ignore, and the preview said only "2 issues will be
+ * created" — the same sentence it shows for a file that lost nothing. The
+ * disclosure has to be visible BEFORE the import runs, because that is the
+ * last moment the user can decide to move the database instead.
+ */
+const EXPORT_SHAPED_CSV = [
+  'Key,Title,Type,Status,Priority,Assignee,Reporter,Story Points,Sprint,Labels,' +
+    'Start Date,Due Date,Description,Component,Fix Versions,Parent,' +
+    'Original Estimate (minutes),CF: Severity,Created,Updated',
+  'NL-1,Exported epic,EPIC,,MEDIUM,,Someone Else,,Sprint 7,,,,,,,,,,' +
+    '2026-01-01T00:00:00.000Z,2026-01-02T00:00:00.000Z',
+  'NL-2,Exported story,STORY,,MEDIUM,,Someone Else,,Sprint 7,,,,,Billing,2.1.0,NL-1,240,High,' +
+    '2026-01-01T00:00:00.000Z,2026-01-02T00:00:00.000Z',
+].join('\n');
+
+test.describe('CSV import – what will not come across', () => {
+  test('the preview names the columns that will not be imported', async ({
+    page,
+    request,
+  }) => {
+    const probe = await fetch(`${API_URL}/api/auth/me`).catch(() => null);
+    if (!probe) {
+      test.skip(true, 'API not reachable in this environment (ECONNREFUSED)');
+      return;
+    }
+
+    const { project } = await setupIsolatedProject(page, request, {
+      label: 'csv-roundtrip',
+      openBoard: false,
+    });
+
+    await gotoBacklog(page, project.id);
+    await page.getByTestId('import-csv').click();
+    await expect(page.getByTestId('import-csv-modal')).toBeVisible();
+
+    await page.getByTestId('import-csv-file').setInputFiles({
+      name: 'exported-issues.csv',
+      mimeType: 'text/csv',
+      buffer: Buffer.from(EXPORT_SHAPED_CSV),
+    });
+
+    const summary = page.getByTestId('import-csv-dryrun-summary');
+    await expect(summary).toBeVisible({ timeout: 15_000 });
+
+    // Every column that will not be applied is named, with its reason.
+    const dropped = page.getByTestId('import-csv-unimported-column');
+    await expect(dropped.filter({ hasText: 'Key' }).first()).toBeVisible();
+    await expect(dropped.filter({ hasText: 'Reporter' }).first()).toBeVisible();
+    await expect(dropped.filter({ hasText: 'Sprint' }).first()).toBeVisible();
+    // A CF: column with no definition in this project says so, rather than
+    // vanishing — this is the one a migrating user must act on.
+    await expect(
+      dropped.filter({ hasText: 'CF: Severity' }).first(),
+    ).toContainText('no custom field of that name');
+
+    // The columns the importer now applies must NOT be listed as dropped.
+    await expect(dropped.filter({ hasText: 'Component' })).toHaveCount(0);
+    await expect(dropped.filter({ hasText: 'Fix Versions' })).toHaveCount(0);
+    await expect(dropped.filter({ hasText: 'Parent' })).toHaveCount(0);
+
+    // And the user is pointed at the tool that does move everything.
+    await expect(summary).toContainText('Copy the database instead');
+  });
+});
+
 test.describe('CSV import – mobile (390 px)', () => {
   test.use({ viewport: { width: 390, height: 844 } });
 

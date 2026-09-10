@@ -158,7 +158,18 @@ with persistent per-project agent memory. See [AI Agents & MCP](./agents-mcp).
 
 Yes. Use *Import CSV* on the board or backlog view — the importer understands
 Jira, GitHub issues, and Linear CSV exports directly (plus a generic CSV
-format) and shows a dry-run preview before writing anything.
+format) and shows a dry-run preview before writing anything. The preview also
+lists any column in your file that will not be imported, so you can see what a
+given export does and does not carry before you commit to it.
+
+**Can I move my data to another Next Lane instance with CSV export/import?**
+
+Only the issues, and not every field of them. CSV export/import is an
+issue-list tool: it carries no comments, attachments, work logs, issue links,
+checklists, activity history, wiki pages, dashboards, boards, workflows or
+members, and `Key`, `Reporter`, `Created`, `Updated` and `Sprint` do not
+round-trip. To move an instance, copy the PostgreSQL database and the uploads
+volume — see [Backups](./self-hosting#backups-postgresql).
 
 **Does Next Lane support Markdown in issue descriptions?**
 
