@@ -70,6 +70,11 @@ docker compose exec -T db psql -U nextlane nextlane < backup-2026-01-01.sql
 Schedule this with cron or a systemd timer. The named volume `postgres-data`
 is the only stateful asset (plus the `uploads` volume for file attachments).
 
+**This is also how you move an instance to another machine** — restore the dump
+and copy the `uploads` volume. CSV export/import is an issue-list tool, not a
+backup: it carries no comments, attachments, history, wiki pages, dashboards or
+members. See [Import and export](./features#import-and-export).
+
 ---
 
 ## Kubernetes — Helm chart

@@ -81,12 +81,21 @@ interface PrismaMockOpts {
   statuses?: typeof TODO_STATUS[];
   members?: { id: string; email: string }[];
   labels?: { id: string; name: string; color: string; projectId: string }[];
+  /** Pre-existing components in the TARGET project (matched by name). */
+  components?: { id: string; name: string; projectId: string }[];
+  /** Pre-existing fix versions in the TARGET project (matched by name). */
+  versions?: { id: string; name: string; projectId: string }[];
+  /** Custom-field definitions in the TARGET project (matched by name). */
+  customFieldDefs?: { id: string; name: string; type: string; projectId: string }[];
 }
 
 interface Mocks {
   prisma: PrismaService;
   labelCreate: jest.Mock;
   issueLabelUpsert: jest.Mock;
+  componentCreate: jest.Mock;
+  versionCreate: jest.Mock;
+  issueVersionUpsert: jest.Mock;
 }
 
 function buildMocks(opts: PrismaMockOpts = {}): Mocks {
@@ -94,6 +103,9 @@ function buildMocks(opts: PrismaMockOpts = {}): Mocks {
   const statuses = opts.statuses ?? [TODO_STATUS];
   const members = opts.members ?? [ALICE];
   const labels = opts.labels ?? [];
+  const components = opts.components ?? [];
+  const versions = opts.versions ?? [];
+  const customFieldDefs = opts.customFieldDefs ?? [];
 
   const labelCreate = jest.fn().mockImplementation(
     async (args: { data: { name: string; color: string; projectId: string } }) => ({
@@ -105,6 +117,22 @@ function buildMocks(opts: PrismaMockOpts = {}): Mocks {
   );
 
   const issueLabelUpsert = jest.fn().mockResolvedValue({});
+
+  const componentCreate = jest.fn().mockImplementation(
+    async (args: { data: { name: string; projectId: string } }) => ({
+      id: `component-${args.data.name}`,
+      name: args.data.name,
+      projectId: args.data.projectId,
+    }),
+  );
+  const versionCreate = jest.fn().mockImplementation(
+    async (args: { data: { name: string; projectId: string } }) => ({
+      id: `version-${args.data.name}`,
+      name: args.data.name,
+      projectId: args.data.projectId,
+    }),
+  );
+  const issueVersionUpsert = jest.fn().mockResolvedValue({});
 
   const prisma = {
     project: {
@@ -133,18 +161,43 @@ function buildMocks(opts: PrismaMockOpts = {}): Mocks {
     issueLabel: {
       upsert: issueLabelUpsert,
     },
+    component: {
+      findMany: jest.fn().mockResolvedValue(components),
+      create: componentCreate,
+    },
+    version: {
+      findMany: jest.fn().mockResolvedValue(versions),
+      create: versionCreate,
+    },
+    customFieldDefinition: {
+      findMany: jest.fn().mockResolvedValue(customFieldDefs),
+    },
+    issueVersion: {
+      upsert: issueVersionUpsert,
+    },
   } as unknown as PrismaService;
 
-  return { prisma, labelCreate, issueLabelUpsert };
+  return {
+    prisma,
+    labelCreate,
+    issueLabelUpsert,
+    componentCreate,
+    versionCreate,
+    issueVersionUpsert,
+  };
 }
 
 /** Build IssuesImportService with given deps. */
 function makeService(
   prisma: PrismaService,
   issueCreateFn?: jest.Mock,
+  issueUpdateFn?: jest.Mock,
 ): IssuesImportService {
   const issuesService = {
     create: issueCreateFn ?? jest.fn().mockResolvedValue(makeIssueDto()),
+    // The parent pass re-enters IssuesService.update so the cycle guard and
+    // activity log apply to an imported parent exactly as to a hand-set one.
+    update: issueUpdateFn ?? jest.fn().mockResolvedValue(makeIssueDto()),
   } as unknown as IssuesService;
 
   return new IssuesImportService(prisma, issuesService);
@@ -1012,5 +1065,283 @@ describe('IssuesImportService.importCsv — formula-injection guard stripping', 
       USER_ID,
       expect.objectContaining({ title: '=SUM(A1)' }),
     );
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Round-trip fidelity: the columns the exporter writes must either be applied
+// or named. Founder report: a project exported from one instance and imported
+// into another arrived with its parents, components, versions, estimates and
+// custom fields missing, and the import reported plain success.
+// The end-to-end proof lives in `csv-roundtrip.integration.spec.ts`; these pin
+// the mapping decisions without needing a database.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** The full export header, as `IssuesService.exportCsv` writes it. */
+const EXPORT_HEADER =
+  'Key,Title,Type,Status,Priority,Assignee,Reporter,Story Points,Sprint,Labels,' +
+  'Start Date,Due Date,Description,Component,Fix Versions,Parent,' +
+  'Original Estimate (minutes),CF: Severity,Created,Updated\r\n';
+
+/** One row in that shape. Order matters — it mirrors the exporter exactly. */
+function exportRow(o: {
+  key?: string;
+  title: string;
+  type?: string;
+  component?: string;
+  fixVersions?: string;
+  parent?: string;
+  estimate?: string;
+  severity?: string;
+}): string {
+  return (
+    [
+      o.key ?? '',
+      o.title,
+      o.type ?? 'TASK',
+      'To Do',
+      'MEDIUM',
+      '', // Assignee
+      'Someone Else', // Reporter
+      '', // Story Points
+      'Sprint 7', // Sprint
+      '', // Labels
+      '', // Start Date
+      '', // Due Date
+      '', // Description
+      o.component ?? '',
+      o.fixVersions ?? '',
+      o.parent ?? '',
+      o.estimate ?? '',
+      o.severity ?? '',
+      '2026-01-01T00:00:00.000Z', // Created
+      '2026-01-02T00:00:00.000Z', // Updated
+    ].join(',') + '\r\n'
+  );
+}
+
+describe('IssuesImportService.importCsv — export round trip', () => {
+  it('names every column it does not apply, with a reason for each', async () => {
+    const { prisma } = buildMocks();
+    const service = makeService(prisma);
+
+    const result = await service.importCsv(
+      USER_ID,
+      PROJECT_ID,
+      EXPORT_HEADER + exportRow({ title: 'Anything' }),
+    );
+
+    const named = result.unimportedColumns.map((c) => c.column);
+    expect(named).toEqual(
+      expect.arrayContaining(['Key', 'Reporter', 'Sprint', 'Created', 'Updated']),
+    );
+    for (const entry of result.unimportedColumns) {
+      expect(entry.reason).toBeTruthy();
+    }
+  });
+
+  it('does not list the columns it now applies', async () => {
+    const { prisma } = buildMocks({
+      customFieldDefs: [
+        { id: 'cf-1', name: 'Severity', type: 'TEXT', projectId: PROJECT_ID },
+      ],
+    });
+    const service = makeService(prisma);
+
+    const result = await service.importCsv(
+      USER_ID,
+      PROJECT_ID,
+      EXPORT_HEADER + exportRow({ title: 'Anything' }),
+    );
+
+    const named = result.unimportedColumns.map((c) => c.column);
+    for (const applied of [
+      'Parent',
+      'Component',
+      'Fix Versions',
+      'Original Estimate (minutes)',
+      'CF: Severity',
+    ]) {
+      expect(named).not.toContain(applied);
+    }
+  });
+
+  it('reports a CF: column with no matching definition instead of dropping it', async () => {
+    const { prisma } = buildMocks({ customFieldDefs: [] });
+    const service = makeService(prisma);
+
+    const result = await service.importCsv(
+      USER_ID,
+      PROJECT_ID,
+      EXPORT_HEADER + exportRow({ title: 'Anything', severity: 'High' }),
+    );
+
+    const severity = result.unimportedColumns.find(
+      (c) => c.column === 'CF: Severity',
+    );
+    expect(severity).toBeDefined();
+    expect(severity!.reason).toContain('no custom field of that name');
+  });
+
+  it('creates a component that does not exist yet and assigns it', async () => {
+    const { prisma, componentCreate } = buildMocks();
+    const createFn = jest.fn().mockResolvedValue(makeIssueDto());
+    const service = makeService(prisma, createFn);
+
+    await service.importCsv(
+      USER_ID,
+      PROJECT_ID,
+      EXPORT_HEADER + exportRow({ title: 'Anything', component: 'Billing' }),
+    );
+
+    expect(componentCreate).toHaveBeenCalledWith({
+      data: { projectId: PROJECT_ID, name: 'Billing' },
+    });
+    expect(createFn.mock.calls[0][1]).toMatchObject({
+      componentId: 'component-Billing',
+    });
+  });
+
+  it('matches an existing component by name rather than creating a duplicate', async () => {
+    const { prisma, componentCreate } = buildMocks({
+      components: [{ id: 'comp-existing', name: 'Billing', projectId: PROJECT_ID }],
+    });
+    const createFn = jest.fn().mockResolvedValue(makeIssueDto());
+    const service = makeService(prisma, createFn);
+
+    await service.importCsv(
+      USER_ID,
+      PROJECT_ID,
+      EXPORT_HEADER + exportRow({ title: 'Anything', component: 'billing' }),
+    );
+
+    expect(componentCreate).not.toHaveBeenCalled();
+    expect(createFn.mock.calls[0][1]).toMatchObject({ componentId: 'comp-existing' });
+  });
+
+  it('attaches every fix version in the cell', async () => {
+    const { prisma, issueVersionUpsert } = buildMocks();
+    const service = makeService(prisma);
+
+    await service.importCsv(
+      USER_ID,
+      PROJECT_ID,
+      EXPORT_HEADER +
+        exportRow({ title: 'Anything', fixVersions: '2.1.0; 2.2.0' }),
+    );
+
+    expect(issueVersionUpsert).toHaveBeenCalledTimes(2);
+  });
+
+  it('carries the original estimate through to create', async () => {
+    const { prisma } = buildMocks();
+    const createFn = jest.fn().mockResolvedValue(makeIssueDto());
+    const service = makeService(prisma, createFn);
+
+    await service.importCsv(
+      USER_ID,
+      PROJECT_ID,
+      EXPORT_HEADER + exportRow({ title: 'Anything', estimate: '240' }),
+    );
+
+    expect(createFn.mock.calls[0][1]).toMatchObject({
+      originalEstimateMinutes: 240,
+    });
+  });
+
+  it('coerces a custom-field cell to the definition’s type', async () => {
+    const { prisma } = buildMocks({
+      customFieldDefs: [
+        { id: 'cf-1', name: 'Severity', type: 'NUMBER', projectId: PROJECT_ID },
+      ],
+    });
+    const createFn = jest.fn().mockResolvedValue(makeIssueDto());
+    const service = makeService(prisma, createFn);
+
+    await service.importCsv(
+      USER_ID,
+      PROJECT_ID,
+      EXPORT_HEADER + exportRow({ title: 'Anything', severity: '3' }),
+    );
+
+    // A string "3" would be rejected by validateAndNormalize — the number must
+    // arrive as a number.
+    expect(createFn.mock.calls[0][1]).toMatchObject({
+      customFields: { 'cf-1': 3 },
+    });
+  });
+
+  it('warns about an uncoercible custom-field cell instead of failing the row', async () => {
+    const { prisma } = buildMocks({
+      customFieldDefs: [
+        { id: 'cf-1', name: 'Severity', type: 'NUMBER', projectId: PROJECT_ID },
+      ],
+    });
+    const service = makeService(prisma);
+
+    const result = await service.importCsv(
+      USER_ID,
+      PROJECT_ID,
+      EXPORT_HEADER + exportRow({ title: 'Anything', severity: 'very bad' }),
+    );
+
+    expect(result.created).toBe(1);
+    expect(result.errors).toHaveLength(0);
+    expect(result.warnings[0].message).toContain('Severity');
+  });
+
+  it('links a child to a parent that appears LATER in the file', async () => {
+    const { prisma } = buildMocks();
+    let n = 0;
+    const createFn = jest
+      .fn()
+      .mockImplementation(async () => makeIssueDto({ id: `issue-${++n}` }));
+    const updateFn = jest.fn().mockResolvedValue(makeIssueDto());
+    const service = makeService(prisma, createFn, updateFn);
+
+    // Child first, epic second — a two-pass link is the only thing that works.
+    const csv =
+      EXPORT_HEADER +
+      exportRow({ key: 'NL-2', title: 'Child', parent: 'NL-1' }) +
+      exportRow({ key: 'NL-1', title: 'Epic', type: 'EPIC' });
+
+    const result = await service.importCsv(USER_ID, PROJECT_ID, csv);
+
+    expect(result.warnings).toHaveLength(0);
+    expect(updateFn).toHaveBeenCalledWith(USER_ID, 'issue-1', {
+      parentId: 'issue-2',
+    });
+  });
+
+  it('warns when the parent key is not a row in the file', async () => {
+    const { prisma } = buildMocks();
+    const createFn = jest.fn().mockResolvedValue(makeIssueDto({ id: 'issue-1' }));
+    const updateFn = jest.fn();
+    const service = makeService(prisma, createFn, updateFn);
+
+    const result = await service.importCsv(
+      USER_ID,
+      PROJECT_ID,
+      EXPORT_HEADER + exportRow({ key: 'NL-2', title: 'Orphan', parent: 'NL-99' }),
+    );
+
+    expect(result.created).toBe(1);
+    expect(updateFn).not.toHaveBeenCalled();
+    expect(result.warnings[0].message).toContain('NL-99');
+  });
+
+  it('reports unimported columns on a dry run too, before anything is written', async () => {
+    const { prisma } = buildMocks();
+    const service = makeService(prisma);
+
+    const result = await service.importCsv(
+      USER_ID,
+      PROJECT_ID,
+      EXPORT_HEADER + exportRow({ title: 'Anything' }),
+      { dryRun: true },
+    );
+
+    expect(result.dryRun).toBe(true);
+    expect(result.unimportedColumns.length).toBeGreaterThan(0);
   });
 });

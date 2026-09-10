@@ -1919,10 +1919,14 @@ export class IssuesService {
     // ("CF: <name>"), in definition order, so no stored data is invisible in
     // the download.
 
-    // Build the CSV. Column names shared with the importer (Title, Type,
-    // Status, Priority, Assignee, Story Points, Start Date, Due Date, Labels,
-    // Description) keep the export round-trippable; the extra columns are
-    // ignored on import.
+    // Build the CSV. Every column here is one the importer either applies or
+    // names back to the user as unimported — see `IssuesImportService` and
+    // `csv-roundtrip.integration.spec.ts`, which drives a real export through
+    // a real import and asserts exactly that. ADDING A COLUMN HERE WITHOUT
+    // TEACHING THE IMPORTER ABOUT IT IS THE BUG THAT SPEC EXISTS TO CATCH:
+    // this header and that importer drifted apart once already, and the result
+    // was a project that moved between instances having quietly lost its
+    // parent links, components, fix versions, estimates and custom fields.
     const HEADER = [
       'Key',
       'Title',

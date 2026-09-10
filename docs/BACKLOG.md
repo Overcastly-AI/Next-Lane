@@ -168,6 +168,40 @@ dependency-sequenced Pages items keep their numbers):**
   - Options, cheapest first: (a) `@ApiOkResponse({ type: … })` with response classes for the ~8 core shapes covering the most-called reads; (b) generate schemas from the shared interfaces at build time (`ts-json-schema-generator`) and register them with `@ApiExtraModels` — no drift, but a new build step; (c) convert the shared DTOs to classes, which ripples into the web bundle.
   - **Do not hand-write schemas that can drift from the real payload** — a response doc that is confidently wrong is worse than an absent one.
 
+**Queued 2026-09-10 (CSV round-trip fix — the two things it deliberately did
+NOT do, both stated to the founder rather than quietly skipped):**
+
+- [ ] (P1, L) **Workspace export / import that actually moves an instance** —
+  the founder moved a deployment between machines with *Export CSV* → *Import
+  CSV* and lost data, because a CSV is an issue list. The round-trip fix
+  (shipped 2026-09-10) closes the per-issue losses and makes the rest visible,
+  but the entities a CSV cannot express are still unmovable through the
+  product: comments, attachments, work logs, issue links, checklists,
+  watchers, activity history, wiki pages and their graph, dashboards, boards,
+  statuses, workflows, automations, saved filters, sprints, components,
+  versions, members and roles. Today the honest answer is `pg_dump` + the
+  uploads volume, which is now documented — but "copy the database" is not an
+  answer for someone moving ONE workspace off a shared instance, and it is not
+  an answer an agent can execute over MCP. **Scope to decide at build time:** a
+  workspace-scoped archive (JSON manifest + attachment blobs) with an importer
+  that re-maps ids and reports what it could not place, versus per-entity CSV
+  round trips. **Acceptance:** export a workspace from instance A, import into
+  a clean instance B, and have the issue count, comment count, attachment
+  bytes, page-link graph edges and member roles match — asserted by a test that
+  drives two real stacks, not by inspection. **Territory:** a new
+  `apps/api/src/workspace-transfer/**`, `apps/mcp/src/**`, plus a Settings
+  surface. [founder report 2026-09-10]
+
+- [ ] (P2, S) **Decide whether CSV import should recreate sprints** — `Sprint`
+  is the one export column that is withheld by choice rather than by
+  impossibility: the importer could create-or-match a sprint by name the way it
+  now does components and fix versions, but a sprint carries lifecycle a CSV
+  does not (state, dates, and the single-active-sprint rule per project), so
+  importing one would invent that state. It is currently reported as
+  unimported. Either implement it as PLANNED-state create-or-match, or keep the
+  refusal and say so in the docs — the current position is defensible but
+  should be a decision on the record. [CSV round-trip fix 2026-09-10]
+
 **Queued 2026-09-05 (dependency-maintenance pass — kept off the numbered list,
 same as the 2026-08-11 entry above). Each of these exists because it is the
 ONLY way to close a live advisory that an override cannot reach:**
@@ -863,6 +897,13 @@ _Hardening Night close-out ingest (2026-07-06) — P2s:_
 - [x] (P2, S) Docs site Overcastly v2 re-theme (2026-06-28) — `docs-site/.vitepress/theme/custom.css` rewritten: Overcastly v2 token system (canvas `#15161a`/`#1c1d22`/`#25262c`, ink `#f4f4f1`/`#b8b9b6`/`#6f7075`, accent `#4F8BFF`/`#7AA8FF`, success `#7BD389`, hairlines `rgba(255,255,255,0.08/0.16)`); dotted-grid body background (signature element, radial-gradient dots at 32px grid); pill buttons (`999px`); mono-uppercase eyebrows on sidebar group titles, table `<th>`, code-block lang labels, custom-block titles; `h2` accent bar; `appearance:'dark'` in `config.ts`; SVG logos + favicon to `#4F8BFF`; theme-color meta to `#4F8BFF`; WCAG-AA verified; build clean 4.4s. [oss-curator / frontend-design]
 
 ## Already Done (recent shipments — ticked for reference)
+
+- [x] (P0, M) **CSV export → import silently dropped five columns, so a project moved between instances arrived incomplete** ✅ 2026-09-10 [founder: *"I deployed next lane on someone's computer and exported the information and imported on their machine. It seem to not have all the data. Can you trace and fix"*]
+  - **Traced to two surfaces disagreeing about one file.** `IssuesService.exportCsv` writes 17 fixed columns plus one per custom-field definition. `IssuesImportService` built its `CreateIssueDto` from ten of them. `Parent`, `Component`, `Fix Versions`, `Original Estimate (minutes)` and every `CF:` column were parsed out of the file and never referenced again — no error, no warning, no line in the import report. The importer's own doc header did not even list them, and its `KNOWN_COLUMNS` set was dead code that had drifted out of date. Result: epic hierarchy, components, releases, estimates and every custom-field value vanished on the way in, and the UI said "Imported N issues".
+  - **Fixed at the mapping, not the symptom.** `CreateIssueDto` already accepted `parentId`, `componentId`, `customFields` and `originalEstimateMinutes` — the importer simply never populated them. Components and fix versions are now created-or-matched by name in the target project (the same treatment labels already had); custom-field values are matched to a definition of the same **name** (ids differ across instances) and coerced to its declared type, since `validateAndNormalize` rejects `"5"` for a NUMBER field and would otherwise have failed every row it touched; parents are linked in a **second pass** keyed on the file's own `Key` column, so a child listed before its epic still lands under it, and the link goes through `IssuesService.update` so the cycle guard and activity log apply exactly as they would to a parent set by hand.
+  - **Silence was the other half of the defect.** `ImportIssuesResultDto` gains `unimportedColumns` — every column the file carries that this import does not apply, each with its reason — and `warnings`, for a row that imported with something in it unapplied (an unresolvable parent key, a custom-field cell that would not coerce). The modal shows both in the **dry-run preview**, which is the last moment the user can decide to copy the database instead, and the success toast stops reading as unqualified success when something was left behind. `Key`/`Reporter`/`Created`/`Updated`/`Sprint` still do not round-trip — that is defensible; being quiet about it was not.
+  - **Evidence.** `csv-roundtrip.integration.spec.ts` — real app, real Postgres, real HTTP — exports a project carrying an epic, a child story, a component, a fix version, an estimate and a custom field, then imports that exact file into a second project: 9 assertions, verified **6-red** against the unfixed service before being trusted. Plus 12 unit tests on the mapping decisions and 2 e2e (desktop + mobile) on the disclosure, the e2e verified red against the unfixed modal. API 2200/2200, web 59, e2e 16/16 on the CSV suites, `tsc --noEmit` + build clean.
+  - **Said out loud rather than hidden:** a CSV is an issue list. Comments, attachments, work logs, issue links, checklists, history, wiki pages, dashboards, boards, workflows and members were never in it and are not now — `docs-site` (features, FAQ, self-hosting) now says so and points at `pg_dump` + the uploads volume for moving an instance. A real workspace-level transfer is filed at the top of § Ready. [founder report 2026-09-10]
 
 - [x] (P1, M) **Dependency & security maintenance pass** ✅ 2026-09-05 — `pnpm audit --prod` went **33 vulnerabilities (7 high / 23 moderate / 3 low) → 4 (0 high / 4 moderate / 0 low)**.
   - **Direct bumps** — every `package.json` change in Dependabot #94 (which itself supersedes #93 and #83), plus #94's `@aws-sdk/client-s3` lockfile float (3.1100.0→3.1127.0; its `^3` range is untouched): `dompurify` 3.4.12→3.4.14, `mermaid` 11.16.0→11.17.2, `marked` 18.0.7→18.0.11, `react-router-dom` ^6.26.2→^6.30.6 (resolved 6.30.4→6.30.6), `@tanstack/react-query` 5.101.4→5.102.8, `@playwright/test` 1.62.0→1.62.1, `postcss` 8.5.24→8.5.26, `bullmq` 5.81.2→5.81.4, `csv-parse` 7.0.1→7.0.2, `nodemailer` 9.0.3→9.0.6, `tsx` 4.23.1→4.23.12, `semantic-release` 25.0.8→25.0.9.
