@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Locator, type Page } from '@playwright/test';
 import { API_URL, setupIsolatedProject } from './helpers';
 
 /**
@@ -72,6 +72,29 @@ async function dragRowTo(
   });
 }
 
+/**
+ * The panel's width after a resize keystroke, once the DOM has caught up.
+ *
+ * `aria-valuenow` on the handle commits a frame BEFORE the panel's measured
+ * box does, so sampling `boundingBox()` straight after a keypress can read the
+ * old width while the new one has already been declared. That is not
+ * hypothetical: CI read a width of 272 immediately after `End` had set
+ * `aria-valuenow` to 480, so the clamp assertion compared 272 against the
+ * settled 480 and failed on a clamp that was working correctly. Locally the
+ * same race lost the first keypress instead (240 where 272 was declared).
+ *
+ * Waiting for the measured box to agree with the declared value fixes the race
+ * without weakening anything — it asserts the stronger property, that the
+ * panel actually renders at the width the separator claims.
+ */
+async function settledWidth(handle: Locator, panel: Locator): Promise<number> {
+  const declared = Number(await handle.getAttribute('aria-valuenow'));
+  await expect
+    .poll(async () => Math.round((await panel.boundingBox())!.width))
+    .toBe(declared);
+  return declared;
+}
+
 test.describe('Docs nav — draggable', () => {
   test('the divider resizes the page tree, and the width survives a reload', async ({
     page,
@@ -127,23 +150,23 @@ test.describe('Docs nav — draggable', () => {
     await expect(handle).toHaveAttribute('role', 'separator');
     await expect(handle).toHaveAccessibleName(/resize the page list/i);
 
-    const start = (await panel.boundingBox())!.width;
+    const start = await settledWidth(handle, panel);
     await handle.focus();
     await page.keyboard.press('ArrowRight');
     await page.keyboard.press('ArrowRight');
-    expect((await panel.boundingBox())!.width).toBeGreaterThan(start);
+    expect(await settledWidth(handle, panel)).toBeGreaterThan(start);
 
     // Held against the maximum rather than growing without bound — a tree that
     // can eat the whole document defeats the point of the tree.
     await page.keyboard.press('End');
-    const max = (await panel.boundingBox())!.width;
+    const max = await settledWidth(handle, panel);
     await page.keyboard.press('ArrowRight');
-    expect((await panel.boundingBox())!.width).toBe(max);
+    expect(await settledWidth(handle, panel)).toBe(max);
 
     await page.keyboard.press('Home');
-    const min = (await panel.boundingBox())!.width;
+    const min = await settledWidth(handle, panel);
     await page.keyboard.press('ArrowLeft');
-    expect((await panel.boundingBox())!.width).toBe(min);
+    expect(await settledWidth(handle, panel)).toBe(min);
     // Still wide enough to be a usable tree, not a sliver.
     expect(min).toBeGreaterThanOrEqual(180);
   });
