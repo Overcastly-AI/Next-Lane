@@ -7,7 +7,8 @@ import {
   Patch,
   Post,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import { SprintResponse } from '../common/dto/api-responses.dto';
 import { SprintsService } from './sprints.service';
 import { CreateSprintDto, UpdateSprintDto } from './dto/sprint.dto';
 import { CurrentUser, AuthUser } from '../auth/current-user.decorator';
@@ -20,6 +21,7 @@ export class SprintsController {
   constructor(private readonly sprints: SprintsService) {}
 
   @Get('projects/:projectId/sprints')
+  @ApiOkResponse({ type: SprintResponse, isArray: true })
   @RequireScope('projects:read')
   findAll(
     @CurrentUser() user: AuthUser,
@@ -29,6 +31,7 @@ export class SprintsController {
   }
 
   @Post('projects/:projectId/sprints')
+  @ApiCreatedResponse({ type: SprintResponse })
   @RequireScope('projects:write')
   create(
     @CurrentUser() user: AuthUser,
@@ -39,6 +42,7 @@ export class SprintsController {
   }
 
   @Patch('sprints/:id')
+  @ApiOkResponse({ type: SprintResponse })
   @RequireScope('projects:write')
   update(
     @CurrentUser() user: AuthUser,

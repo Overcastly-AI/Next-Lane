@@ -12,7 +12,8 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiConsumes, ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import { WorkspaceResponse } from '../common/dto/api-responses.dto';
 import { diskStorage } from 'multer';
 import * as os from 'os';
 import * as crypto from 'crypto';
@@ -53,18 +54,21 @@ export class WorkspacesController {
   constructor(private readonly workspaces: WorkspacesService) {}
 
   @Get()
+  @ApiOkResponse({ type: WorkspaceResponse, isArray: true })
   @RequireScope('workspaces:read')
   findAll(@CurrentUser() user: AuthUser) {
     return this.workspaces.findAll(user.id);
   }
 
   @Post()
+  @ApiCreatedResponse({ type: WorkspaceResponse })
   @RequireScope('workspaces:write')
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateWorkspaceDto) {
     return this.workspaces.create(user.id, dto);
   }
 
   @Get(':id')
+  @ApiOkResponse({ type: WorkspaceResponse })
   @RequireScope('workspaces:read')
   findOne(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.workspaces.findOne(user.id, id);
@@ -72,6 +76,7 @@ export class WorkspacesController {
 
   /** PATCH /workspaces/:id — update name and/or brandColor. Admin-only. */
   @Patch(':id')
+  @ApiOkResponse({ type: WorkspaceResponse })
   @RequireScope('workspaces:write')
   update(
     @CurrentUser() user: AuthUser,

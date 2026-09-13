@@ -43,9 +43,27 @@ function useApiOrigin() {
   }, []);
 }
 
+/*
+ * Runnable, and verified against a live API rather than written from memory.
+ *
+ * The first version of these was wrong in the way that wastes the most time:
+ * `GET /api/issues` is PAGINATED and answers `{items, nextCursor}`, but the
+ * examples iterated the response directly — the Python one looped over the two
+ * string keys and died on `i["key"]`, the Node one called `.map` on an object.
+ * `GET /api/projects` really does return a bare array, so the two look
+ * inconsistent and the copied example failed on the interesting half. Both now
+ * read `items` and follow `nextCursor`, which is also the only honest way to
+ * show a list endpoint that stops at a page boundary.
+ */
 const SNIPPETS = {
-  curl: (base: string) => `curl -s -H "Authorization: Bearer $NEXT_LANE_TOKEN" \\
-  "${base}/api/projects?workspaceId=$WORKSPACE_ID" | jq .`,
+  curl: (base: string) => `# Projects come back as a plain array.
+curl -s -H "Authorization: Bearer $NEXT_LANE_TOKEN" \\
+  "${base}/api/projects?workspaceId=$WORKSPACE_ID" | jq '.[] | {id, key, name}'
+
+# Issues are PAGINATED — the rows are under .items, and .nextCursor
+# is null once you have them all.
+curl -s -H "Authorization: Bearer $NEXT_LANE_TOKEN" \\
+  "${base}/api/issues?projectId=$PROJECT_ID" | jq '.items[] | {key, title}'`,
   python: (base: string) => `import os, requests
 
 BASE  = "${base}"
@@ -54,18 +72,50 @@ TOKEN = os.environ["NEXT_LANE_TOKEN"]      # nlp_...
 s = requests.Session()
 s.headers["Authorization"] = f"Bearer {TOKEN}"
 
-projects = s.get(f"{BASE}/api/projects", params={"workspaceId": WORKSPACE_ID}).json()
-issues   = s.get(f"{BASE}/api/issues", params={"projectId": projects[0]["id"]}).json()
+# A plain array.
+projects = s.get(f"{BASE}/api/projects",
+                 params={"workspaceId": WORKSPACE_ID}).json()
 
-for i in issues:
-    print(i["key"], i["title"], i["status"]["name"])`,
+# Paginated: rows under "items", follow "nextCursor" until it is None.
+def all_issues(project_id):
+    cursor = None
+    while True:
+        params = {"projectId": project_id, "limit": 100}
+        if cursor:
+            params["cursor"] = cursor
+        page = s.get(f"{BASE}/api/issues", params=params).json()
+        yield from page["items"]
+        cursor = page["nextCursor"]
+        if not cursor:
+            return
+
+for i in all_issues(projects[0]["id"]):
+    # "status" is only expanded on some endpoints — statusId is always there.
+    print(i["key"], i["title"], i.get("status", {}).get("name"))`,
   node: (base: string) => `const BASE = "${base}";
 const token = process.env.NEXT_LANE_TOKEN;   // nlp_...
 
-const res = await fetch(\`\${BASE}/api/issues?projectId=\${projectId}\`, {
-  headers: { Authorization: \`Bearer \${token}\` },
-});
-const issues = await res.json();
+// Paginated: read \`items\`, then follow \`nextCursor\` until it is null.
+async function allIssues(projectId) {
+  const out = [];
+  let cursor = null;
+  do {
+    const url = new URL(\`\${BASE}/api/issues\`);
+    url.searchParams.set("projectId", projectId);
+    url.searchParams.set("limit", "100");
+    if (cursor) url.searchParams.set("cursor", cursor);
+
+    const res = await fetch(url, {
+      headers: { Authorization: \`Bearer \${token}\` },
+    });
+    const page = await res.json();
+    out.push(...page.items);
+    cursor = page.nextCursor;
+  } while (cursor);
+  return out;
+}
+
+const issues = await allIssues(projectId);
 console.log(issues.map((i) => \`\${i.key} \${i.title}\`));`,
 };
 
