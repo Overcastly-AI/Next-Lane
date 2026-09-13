@@ -56,7 +56,7 @@ jobs:
       contents: write # push the release commit + the vX.Y.Z tag
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           # semantic-release needs the FULL history and every tag to find the
           # last release and the commits since it.
@@ -82,12 +82,12 @@ jobs:
           echo "Baseline tags present: $(git tag --list 'v*' | tr '\n' ' ')"
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: '9.12.0'
 
       - name: Setup Node 20
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           # 22, NOT the repo-wide 20. semantic-release requires
           # `^22.14.0 || >= 24.10.0` and refuses to start otherwise:
