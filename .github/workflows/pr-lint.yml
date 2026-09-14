@@ -41,14 +41,14 @@ jobs:
       pull-requests: read
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           # fetch-depth: 0 is REQUIRED by the type-vs-paths check below — it
           # walks base..head, which a shallow clone cannot resolve.
           fetch-depth: 0
 
       - name: Setup Node 20
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 20
 
