@@ -1,5 +1,5 @@
 /**
- * ApiDocsPage — the API reference, inside the product.
+ * ApiDocsPage — the API AND agent reference, inside the product.
  *
  * Founder: "I feel like there should be a place to view the swagger docs for
  * the users." Before this, the reference existed only as a URL you had to
@@ -12,11 +12,18 @@
  * origin, the iframe would render a blank white box with a console error, so
  * this shows a link instead and says why. A page whose main content silently
  * fails is worse than one that admits the constraint.
+ *
+ * MCP LEADS, REST FOLLOWS (docs/AUDIT-PRODUCT.md Pass 14). This page used to
+ * be REST-only and never mentioned the MCP server at all, even though
+ * `README.md` documented the exact config block a user needs. `McpConnectSection`
+ * renders first for that reason — it is the product's structural
+ * differentiator, not a second developer surface bolted on beside it.
  */
-import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import { API_URL } from '@/api/client';
 import { Button } from '@/components/ui/Button';
+import { McpConnectSection } from '@/components/developers/McpConnectSection';
 
 /**
  * Where the API lives from the browser's point of view.
@@ -80,6 +87,19 @@ export function ApiDocsPage() {
   const { base, docsUrl, specUrl, sameOrigin } = useApiOrigin();
   const [lang, setLang] = useState<Lang>('curl');
   const [copied, setCopied] = useState(false);
+  const location = useLocation();
+
+  // Deep-linkable: /developers#mcp (from the API-tokens page, or anywhere
+  // else) lands scrolled to the MCP generator rather than the top of the
+  // page. Plain scrollIntoView, not smooth, when the visitor asked for
+  // reduced motion.
+  useEffect(() => {
+    if (location.hash !== '#mcp') return;
+    const el = document.getElementById('mcp');
+    if (!el) return;
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    el.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' });
+  }, [location.hash]);
 
   const snippet = SNIPPETS[lang](base);
 
@@ -109,17 +129,19 @@ export function ApiDocsPage() {
       data-embedded={sameOrigin ? 'true' : 'false'}
     >
       <header className="mb-6">
-        <h1 className="text-xl font-semibold text-ink-900">API</h1>
+        <h1 className="text-xl font-semibold text-ink-900">Developers</h1>
         <p className="mt-1 text-sm text-ink-500">
           Everything the app does, it does through this API — so anything you
-          can do here, a script can do too.
+          can do here, an agent or a script can do too.
         </p>
       </header>
+
+      <McpConnectSection apiBase={base} />
 
       {/* Getting started, before the reference: a route list answers "how" but
           not "where do I start". */}
       <section className="mb-6 rounded-xl border border-ink-200 bg-surface p-4 shadow-card sm:p-5">
-        <h2 className="text-sm font-semibold text-ink-900">Start here</h2>
+        <h2 className="text-sm font-semibold text-ink-900">Call the REST API directly</h2>
         <ol className="mt-3 space-y-2 text-sm text-ink-700">
           <li className="flex gap-2">
             <span className="font-semibold text-ink-400">1.</span>

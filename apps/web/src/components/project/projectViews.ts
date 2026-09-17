@@ -1,5 +1,6 @@
 import type { ComponentType } from 'react';
 import {
+  ViewAgentsIcon,
   ViewBacklogIcon,
   ViewBoardIcon,
   ViewDashboardsIcon,
@@ -32,7 +33,7 @@ interface BaseProjectView {
   to: string;
   label: string;
   /** Stable e2e hook, where one already exists. Do not invent new ones here. */
-  testId?: 'nav-pages' | 'nav-automation';
+  testId?: 'nav-pages' | 'nav-automation' | 'nav-agents';
 }
 
 /**
@@ -72,6 +73,12 @@ export const PROJECT_VIEWS: readonly ProjectView[] = [
   // flagship pillar and stays first-class; the founder previously could not
   // find it under More.
   { to: 'pages',       label: 'Docs',       Icon: ViewPagesIcon,      primary: true, testId: 'nav-pages' },
+  // Agent access + agent memory — the structural differentiator no incumbent
+  // matches (docs/AUDIT-PRODUCT.md Pass 14). Deliberately the same tier as
+  // Board and Docs, not a config afterthought under More: it used to live at
+  // the bottom of Settings, below the GitHub/GitLab/Gitea forms, which is
+  // where "invisible" came from.
+  { to: 'agents',      label: 'Agents',     Icon: ViewAgentsIcon,     primary: true, testId: 'nav-agents' },
   { to: 'dashboards',  label: 'Dashboards', Icon: ViewDashboardsIcon, primary: true },
   { to: 'roadmap',     label: 'Roadmap',    Icon: ViewRoadmapIcon,    primary: true },
   { to: 'reports',     label: 'Reports',    Icon: ViewReportsIcon,    primary: true },

@@ -52,6 +52,7 @@ import { WorkspaceSettingsPage } from '@/pages/WorkspaceSettingsPage';
 import { NotificationsPage } from '@/pages/NotificationsPage';
 import { AdminSsoSettingsPage } from '@/pages/AdminSsoSettingsPage';
 import { PagesPage } from '@/pages/PagesPage';
+import { AgentsPage } from '@/pages/AgentsPage';
 import { WorkspaceDocsPage } from '@/pages/WorkspaceDocsPage';
 
 const queryClient = new QueryClient({
@@ -274,6 +275,7 @@ export default function App() {
               <Route path="pages" element={<PagesPage />} />
               <Route path="pages/graph" element={<PagesPage />} />
               <Route path="pages/:pageId" element={<PagesPage />} />
+              <Route path="agents" element={<AgentsPage />} />
               <Route path="dashboards" element={<DashboardsPage />} />
               <Route path="reports" element={<ReportsPage />} />
               <Route path="analytics" element={<ProjectAnalyticsPage />} />
