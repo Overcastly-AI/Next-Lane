@@ -2,7 +2,7 @@
 
 A [Model Context Protocol](https://modelcontextprotocol.io) server that lets
 external AI agents — **Claude Desktop**, **Claude Code**, and any other MCP host
-— **read and write** a Next Lane instance end-to-end: **130 tools** covering
+— **read and write** a Next Lane instance end-to-end: **132 tools** covering
 workspaces/projects, workflows / SDLC, issues (incl. links, labels, comments
 with author-or-admin edit/delete, checklists, worklogs), boards, statuses,
 sprints, components, versions, custom fields, saved NLQL filters, automation
@@ -204,7 +204,7 @@ minimal, so there is no `verbose` mode.
 | `list_issue_links`  | List an issue's typed links/dependencies (`issueId`); includes link ids. **paged**. |
 | `list_labels`       | List a project's labels with ids + colors (`projectId`). **paged**.    |
 | `list_users`        | List users (workspace members) — for assignee ids. Optional `q` filters server-side by case-insensitive name/email substring. **compact** `{id, name, email}`. |
-| `search_issues`     | Full-text issue search (`q`, optional `projectId`). Each hit carries a **`snippet`** — a highlighted excerpt of the matching description — so relevance is judged without a follow-up `get_issue`. **Server-side paged** (`total`/`hasMore` describe `issues`; `projectsTotal` covers `projects`). |
+| `search_issues`     | Full-text issue search (`q`, optional `projectId`). Each hit carries a **`snippet`** — a highlighted excerpt of the matching description — so relevance is judged without a follow-up `get_issue`. **Server-side paged**, uniform `{items, total, limit, offset, hasMore}` (plus a `projects` array of matched project names/keys; its own count is `projectsTotal`). |
 | `search_comments`   | Full-text search over issue **comments** — where decisions get written down (`q`, optional `projectId`). Returns `{id, issueId, issueKey, issueTitle, projectId, projectKey, authorName, createdAt, snippet}`. **Server-side paged**. |
 | `list_sprints`      | List a project's sprints (`projectId`). **compact** `{id, name, state}`. |
 | `list_components`   | List a project's components (`projectId`). **compact** `{id, name, defaultAssignee}`. |
