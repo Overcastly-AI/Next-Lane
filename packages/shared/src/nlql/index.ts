@@ -52,6 +52,7 @@ export type {
   EvalContext,
   NlqlUser,
   NlqlSprint,
+  NlqlComponent,
   NlqlCustomFieldDef,
 } from './evaluator';
 
@@ -59,6 +60,7 @@ export type {
 export {
   validateQuery,
   getReferencedFieldKinds,
+  getReferencedStandardFields,
   resolveQueryNames,
   queryReferencesMe,
   NLQL_MAX_LENGTH,
@@ -68,6 +70,8 @@ export type {
   ValidateOptions,
   ValidateCustomFieldDef,
   ResolveNamesContext,
+  NlqlStatusRef,
+  NlqlLabelRef,
 } from './validate';
 
 // Autocomplete suggestion engine

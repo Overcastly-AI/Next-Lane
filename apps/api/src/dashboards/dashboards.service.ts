@@ -16,6 +16,7 @@ import {
   filterIssues,
   validateQuery,
   getReferencedFieldKinds,
+  getReferencedStandardFields,
   resolveQueryNames,
   queryReferencesMe,
   type DashboardDataDto,
@@ -23,7 +24,10 @@ import {
   type DashboardGadgetResult,
   type DashboardSummaryDto,
   type IssueDto,
+  type NlqlComponent,
+  type NlqlLabelRef,
   type NlqlSprint,
+  type NlqlStatusRef,
   type NlqlUser,
   type ValidateCustomFieldDef,
 } from '@next-lane/shared';
@@ -491,19 +495,29 @@ export class DashboardsService {
     if (issuesTruncated) issueRows.splice(DASHBOARD_ISSUES_CAP);
     const issues: IssueDto[] = issueRows.map(toIssueDto);
 
-    // Batch-load the NLQL side-context (workspace members + project sprints)
-    // ONCE for the whole dashboard, not once per gadget and never per issue —
-    // union the field kinds referenced across every gadget's stored query so
-    // a dashboard with no user/sprint-referencing gadgets skips both queries
-    // entirely. See MCP-QA pass 1, finding 1.
+    // Batch-load the NLQL side-context (workspace members + project
+    // sprints/statuses/labels/components) ONCE for the whole dashboard, not
+    // once per gadget and never per issue — union the field kinds referenced
+    // across every gadget's stored query so a dashboard with no
+    // user/sprint/status/label/component-referencing gadgets skips those
+    // queries entirely. See MCP-QA pass 1, finding 1 and pass 4, finding E1.
     const referencedKinds = new Set<string>();
+    const referencedFields = new Set<string>();
     for (const row of gadgetRows) {
       for (const kind of getReferencedFieldKinds(row.query)) referencedKinds.add(kind);
+      for (const field of getReferencedStandardFields(row.query)) referencedFields.add(field);
     }
-    const { users, sprints } = await loadNlqlEvalContext(this.prisma, dashboard.projectId, {
-      includeUsers: referencedKinds.has('user'),
-      includeSprints: referencedKinds.has('sprint'),
-    });
+    const { users, sprints, statuses, labels, components } = await loadNlqlEvalContext(
+      this.prisma,
+      dashboard.projectId,
+      {
+        includeUsers: referencedKinds.has('user'),
+        includeSprints: referencedKinds.has('sprint'),
+        includeStatuses: referencedFields.has('status'),
+        includeLabels: referencedKinds.has('array'),
+        includeComponents: referencedKinds.has('component'),
+      },
+    );
 
     // Evaluate every gadget in parallel — `evaluateGadget` never throws (it
     // catches internally and returns a per-gadget `error`), so `Promise.all`
@@ -521,6 +535,9 @@ export class DashboardsService {
           customFieldDefs,
           users,
           sprints,
+          statuses,
+          labels,
+          components,
         ),
       ),
     );
@@ -546,6 +563,9 @@ export class DashboardsService {
     customFieldDefs: ValidateCustomFieldDef[],
     users: NlqlUser[],
     sprints: NlqlSprint[],
+    statuses: NlqlStatusRef[],
+    labels: NlqlLabelRef[],
+    components: NlqlComponent[],
   ): Promise<DashboardGadgetResult> {
     const base = {
       gadgetId: row.id,
@@ -559,15 +579,16 @@ export class DashboardsService {
       return { ...base, error: validation.error?.message ?? 'Invalid query' };
     }
 
-    // Fail loud on an unresolved assignee/reporter/sprint NAME (MCP-QA pass
-    // 1, finding 1 residual) — but only THIS gadget's result becomes an
-    // error state; one bad gadget query must never fail the whole dashboard
-    // read (same per-gadget-error contract as every other check below).
-    const nameCheck = resolveQueryNames(row.query, { users, sprints });
+    // Fail loud on an unresolved assignee/reporter/sprint/status/label/
+    // component value (MCP-QA pass 1, finding 1 + pass 4, finding E1) — but
+    // only THIS gadget's result becomes an error state; one bad gadget query
+    // must never fail the whole dashboard read (same per-gadget-error
+    // contract as every other check below).
+    const nameCheck = resolveQueryNames(row.query, { users, sprints, statuses, labels, components });
     if (!nameCheck.ok) {
       return {
         ...base,
-        error: nameCheck.error?.message ?? 'Unknown user or sprint reference',
+        error: nameCheck.error?.message ?? 'Unknown query reference',
       };
     }
 
@@ -591,6 +612,7 @@ export class DashboardsService {
         customFieldDefs,
         users,
         sprints,
+        components,
       });
     } catch (err) {
       return {

@@ -188,6 +188,7 @@ function makeIssueRow(overrides: {
     updatedAt: now,
     project: { key: 'NL' },
     parent: overrides.parent ?? null,
+    componentId: overrides.component?.id ?? null,
     component: overrides.component ?? null,
     versions: overrides.versions ?? [],
     status: overrides.status ?? { id: 'status-1', name: 'To Do', category: StatusCategory.TODO, order: 0, projectId: 'proj-1' },
@@ -209,6 +210,12 @@ function makePrisma(opts: {
   members?: Array<{ id: string; email: string; name: string }>;
   /** Project sprints, for `sprint = "<name>"` NLQL resolution. */
   sprints?: Array<{ id: string; name: string }>;
+  /** Project statuses, for `status = "<name>"` NLQL resolution. */
+  statuses?: Array<{ id: string; name: string }>;
+  /** Project labels, for `label = "<name>"` NLQL resolution. */
+  labels?: Array<{ id: string; name: string }>;
+  /** Project components, for `component = "<name>"` NLQL resolution. */
+  components?: Array<{ id: string; name: string }>;
 } = {}) {
   const isMember = opts.isMember ?? true;
   const projectKey = opts.projectKey ?? 'NL';
@@ -216,6 +223,9 @@ function makePrisma(opts: {
   const customFieldDefs = opts.customFieldDefs ?? [];
   const members = opts.members ?? [];
   const sprints = opts.sprints ?? [];
+  const statuses = opts.statuses ?? [];
+  const labels = opts.labels ?? [];
+  const components = opts.components ?? [];
 
   return {
     project: {
@@ -242,6 +252,15 @@ function makePrisma(opts: {
     },
     sprint: {
       findMany: jest.fn().mockResolvedValue(sprints),
+    },
+    status: {
+      findMany: jest.fn().mockResolvedValue(statuses),
+    },
+    label: {
+      findMany: jest.fn().mockResolvedValue(labels),
+    },
+    component: {
+      findMany: jest.fn().mockResolvedValue(components),
     },
   } as unknown as PrismaService;
 }
@@ -768,6 +787,145 @@ describe('IssuesService.exportCsv — unresolved user/sprint name → 400', () =
     await expect(
       service.exportCsv('user-1', 'proj-1', 'assignee = me()'),
     ).resolves.toBeDefined();
+  });
+});
+
+// ── NLQL unresolved status/type/priority/label/component → 400 (MCP-QA pass
+// 4, finding E1) ──────────────────────────────────────────────────────────
+//
+// The assignee/sprint 400 above only ever covered `user`/`sprint`-kind
+// fields. `status`, `type`, `priority`, `label`/`labels`, and
+// `component`/`componentId` returned a confident `{items:[],total:0}`
+// (empty CSV body) on a typo instead of a 400 — this is the exact end-to-end
+// path (`GET /projects/:id/issues.csv`) the MCP `list_issues` query oracle
+// drives, so a silently-wrong CSV export here is a silently-wrong answer an
+// agent forwards to a human.
+
+describe('IssuesService.exportCsv — unresolved status/type/priority/label/component → 400', () => {
+  it('400s on a typo\'d status name with an actionable message (the audit repro)', async () => {
+    const prisma = makePrisma({
+      issues: [makeIssueRow()],
+      statuses: [{ id: 'status-1', name: 'In Progress' }],
+    });
+    const service = makeService(prisma);
+
+    await expect(
+      service.exportCsv('user-1', 'proj-1', 'status = "In Progres"'),
+    ).rejects.toMatchObject({
+      status: 400,
+      message: expect.stringContaining(
+        'unknown status "In Progres" — use an exact status name; see list_statuses',
+      ),
+    });
+  });
+
+  it('400s on an invalid type value with the valid list (the audit repro: TSK)', async () => {
+    const prisma = makePrisma({ issues: [makeIssueRow()] });
+    const service = makeService(prisma);
+
+    await expect(
+      service.exportCsv('user-1', 'proj-1', 'type = TSK'),
+    ).rejects.toMatchObject({
+      status: 400,
+      message: expect.stringContaining(
+        'unknown type "TSK" — valid types: TASK, BUG, STORY, EPIC, SUBTASK',
+      ),
+    });
+  });
+
+  it('400s on an invalid priority value with the valid list (the audit repro: URGENT)', async () => {
+    const prisma = makePrisma({ issues: [makeIssueRow()] });
+    const service = makeService(prisma);
+
+    await expect(
+      service.exportCsv('user-1', 'proj-1', 'priority = URGENT'),
+    ).rejects.toMatchObject({
+      status: 400,
+      message: expect.stringContaining(
+        'unknown priority "URGENT" — valid priorities: LOWEST, LOW, MEDIUM, HIGH, HIGHEST',
+      ),
+    });
+  });
+
+  it('400s on a typo\'d label name with an actionable message (the audit repro: backendd)', async () => {
+    const prisma = makePrisma({
+      issues: [makeIssueRow()],
+      labels: [{ id: 'label-1', name: 'backend' }],
+    });
+    const service = makeService(prisma);
+
+    await expect(
+      service.exportCsv('user-1', 'proj-1', 'label = "backendd"'),
+    ).rejects.toMatchObject({
+      status: 400,
+      message: expect.stringContaining(
+        'unknown label "backendd" — use an exact label name; see list_labels',
+      ),
+    });
+  });
+
+  it('400s on an unresolved component name with an actionable message (the audit repro: nope)', async () => {
+    const prisma = makePrisma({
+      issues: [makeIssueRow()],
+      components: [{ id: 'comp-1', name: 'Mobile App' }],
+    });
+    const service = makeService(prisma);
+
+    await expect(
+      service.exportCsv('user-1', 'proj-1', 'component = "nope"'),
+    ).rejects.toMatchObject({
+      status: 400,
+      message: expect.stringContaining(
+        'unknown component "nope" — use an exact component name or an id; see list_components',
+      ),
+    });
+  });
+
+  it('does NOT 400 on a resolved status/type/priority/label/component (regression guard)', async () => {
+    const prisma = makePrisma({
+      issues: [makeIssueRow()],
+      statuses: [{ id: 'status-1', name: 'To Do' }],
+      labels: [{ id: 'label-1', name: 'backend' }],
+      components: [{ id: 'comp-1', name: 'Mobile App' }],
+    });
+    const service = makeService(prisma);
+
+    await expect(
+      service.exportCsv(
+        'user-1',
+        'proj-1',
+        'status = "To Do" AND type = BUG AND priority = HIGH AND label != "backend"',
+      ),
+    ).resolves.toBeDefined();
+  });
+
+  it('does not load statuses/labels/components when the query never references those fields', async () => {
+    const prisma = makePrisma({ issues: [makeIssueRow()] });
+    const service = makeService(prisma);
+
+    await service.exportCsv('user-1', 'proj-1', 'priority = MEDIUM');
+    expect(prisma.status.findMany).not.toHaveBeenCalled();
+    expect(prisma.label.findMany).not.toHaveBeenCalled();
+    expect(prisma.component.findMany).not.toHaveBeenCalled();
+  });
+
+  it('a REAL component filters the export correctly (component evaluation dead-code fix)', async () => {
+    // Before this fix, `componentId` was hardcoded to `null` in the
+    // evaluator regardless of the issue's actual component — every
+    // `component = ...` query silently matched zero issues, valid or not.
+    const mobile = { id: 'comp-mobile', name: 'Mobile App' };
+    const api = { id: 'comp-api', name: 'API' };
+    const issues = [
+      makeIssueRow({ id: 'i-1', number: 1, title: 'Mobile bug', component: mobile }),
+      makeIssueRow({ id: 'i-2', number: 2, title: 'API bug', component: api }),
+    ];
+    const prisma = makePrisma({ issues, components: [mobile, api] });
+    const service = makeService(prisma);
+
+    const { csv } = await service.exportCsv('user-1', 'proj-1', 'component = "Mobile App"');
+    const lines = csv.split('\r\n').filter(Boolean);
+    expect(lines).toHaveLength(2); // header + 1 match
+    expect(lines[1]).toContain('Mobile bug');
   });
 });
 

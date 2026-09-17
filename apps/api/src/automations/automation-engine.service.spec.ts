@@ -127,6 +127,15 @@ function makePrisma(rules: object[] = []) {
     sprint: {
       findMany: jest.fn().mockResolvedValue([]),
     },
+    status: {
+      findMany: jest.fn().mockResolvedValue([]),
+    },
+    label: {
+      findMany: jest.fn().mockResolvedValue([]),
+    },
+    component: {
+      findMany: jest.fn().mockResolvedValue([]),
+    },
   };
 }
 
@@ -543,6 +552,79 @@ describe('AutomationEngineService', () => {
       expect(good).toBeDefined();
       expect(bad?.status).toBe(AutomationRunStatus.FAILED);
       expect(good?.status).toBe(AutomationRunStatus.SUCCESS);
+    });
+
+    // ── status/type/priority/label/component (MCP-QA pass 4, finding E1) ────
+    //
+    // The assignee/sprint fail-loud fix above only ever reached `user`/
+    // `sprint`-kind conditions. A rule condition like `status = "In Progres"`
+    // (a typo) used to silently evaluate to `false` (SKIPPED, indistinguishable
+    // from a real non-match) instead of FAILING loud — exactly the same class
+    // of bug, just in the automation engine instead of the CSV/dashboard path.
+
+    it('resolves a real status by name in a rule condition (regression guard)', async () => {
+      const rule = makeRule({ condition: 'status = "To Do"' });
+      const prisma = makePrisma([rule]);
+      prisma.issue.findUnique.mockResolvedValue(ISSUE_ROW); // status.name = 'To Do'
+      prisma.status.findMany.mockResolvedValue([{ id: 'status-1', name: 'To Do' }]);
+      const { engine, issues } = makeEngine(prisma);
+
+      await engine.onIssueCreated(makeEvent());
+
+      expect(issues.update).toHaveBeenCalledWith(
+        RULE_CREATOR_ID,
+        ISSUE_ID,
+        { priority: Priority.HIGH },
+        { automated: true },
+      );
+      const row = firstRunRow(prisma);
+      expect(row.status).toBe(AutomationRunStatus.SUCCESS);
+    });
+
+    it('a typo\'d status name is FAILED with an actionable error, not silently SKIPPED', async () => {
+      const rule = makeRule({ condition: 'status = "In Progres"' });
+      const prisma = makePrisma([rule]);
+      prisma.status.findMany.mockResolvedValue([{ id: 'status-2', name: 'In Progress' }]);
+      const { engine, issues } = makeEngine(prisma);
+
+      await engine.onIssueCreated(makeEvent());
+
+      expect(issues.update).not.toHaveBeenCalled();
+      const row = firstRunRow(prisma);
+      expect(row.matched).toBe(false);
+      expect(row.status).toBe(AutomationRunStatus.FAILED);
+      expect(String(row.error)).toContain(
+        'unknown status "In Progres" — use an exact status name; see list_statuses',
+      );
+    });
+
+    it('an invalid priority value is FAILED with the valid list, needing no DB context', async () => {
+      const rule = makeRule({ condition: 'priority = URGENT' });
+      const prisma = makePrisma([rule]);
+      const { engine, issues } = makeEngine(prisma);
+
+      await engine.onIssueCreated(makeEvent());
+
+      expect(issues.update).not.toHaveBeenCalled();
+      const row = firstRunRow(prisma);
+      expect(row.status).toBe(AutomationRunStatus.FAILED);
+      expect(String(row.error)).toContain(
+        'unknown priority "URGENT" — valid priorities: LOWEST, LOW, MEDIUM, HIGH, HIGHEST',
+      );
+      // Fixed enums never need the statuses/labels/components side-context.
+      expect(prisma.status.findMany).not.toHaveBeenCalled();
+    });
+
+    it('does not query statuses/labels/components when no triggered rule references those fields', async () => {
+      const rule = makeRule({ condition: 'priority = High' });
+      const prisma = makePrisma([rule]);
+      const { engine } = makeEngine(prisma);
+
+      await engine.onIssueCreated(makeEvent());
+
+      expect(prisma.status.findMany).not.toHaveBeenCalled();
+      expect(prisma.label.findMany).not.toHaveBeenCalled();
+      expect(prisma.component.findMany).not.toHaveBeenCalled();
     });
 
     it('does not fail on assignee = me()', async () => {

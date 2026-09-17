@@ -272,6 +272,68 @@ describe('evaluator — sprints (MCP-QA pass 1, finding 1)', () => {
   });
 });
 
+// `componentId` used to be hardcoded to always return `null` here
+// ("No first-class component field on IssueDto yet") even though IssueDto
+// has carried a real `componentId` since the component feature shipped —
+// every `component = ...` query silently matched zero issues, valid or not.
+// Fixed alongside the fail-loud guard (validate.test.ts) since a "valid"
+// component name still returning a confident empty result is the same class
+// of bug. Mirrors "evaluator — sprints" exactly (id-or-name resolution).
+describe('evaluator — components', () => {
+  const COMPONENT_API = { id: 'comp-1', name: 'API' };
+  const COMPONENT_WEB = { id: 'comp-2', name: 'Web App' };
+  const ctx: EvalContext = { components: [COMPONENT_API, COMPONENT_WEB] };
+
+  it('component matches by exact id', () => {
+    const issue = makeIssue({ componentId: COMPONENT_WEB.id });
+    expect(evalQuery('component = "comp-2"', issue, ctx)).toBe(true);
+    expect(evalQuery('component = "comp-1"', issue, ctx)).toBe(false);
+  });
+
+  it('component matches by exact name (also via the componentId alias)', () => {
+    const issue = makeIssue({ componentId: COMPONENT_WEB.id });
+    expect(evalQuery('component = "Web App"', issue, ctx)).toBe(true);
+    expect(evalQuery('componentId = "Web App"', issue, ctx)).toBe(true);
+    expect(evalQuery('component = "API"', issue, ctx)).toBe(false);
+  });
+
+  it('component name match is case-insensitive', () => {
+    const issue = makeIssue({ componentId: COMPONENT_WEB.id });
+    expect(evalQuery('component = "web app"', issue, ctx)).toBe(true);
+  });
+
+  it('!= is the negation of =', () => {
+    const issue = makeIssue({ componentId: COMPONENT_WEB.id });
+    expect(evalQuery('component != "Web App"', issue, ctx)).toBe(false);
+    expect(evalQuery('component != "API"', issue, ctx)).toBe(true);
+  });
+
+  it('IN matches any candidate by name or id', () => {
+    const issue = makeIssue({ componentId: COMPONENT_API.id });
+    expect(evalQuery('component IN ("Web App", "API")', issue, ctx)).toBe(true);
+    expect(evalQuery('component IN ("Web App")', issue, ctx)).toBe(false);
+  });
+
+  it('IS EMPTY / IS NOT EMPTY reflect whether a component is assigned', () => {
+    const noComponent = makeIssue({ componentId: null });
+    const withComponent = makeIssue({ componentId: COMPONENT_API.id });
+    expect(evalQuery('component IS EMPTY', noComponent, ctx)).toBe(true);
+    expect(evalQuery('component IS NOT EMPTY', withComponent, ctx)).toBe(true);
+  });
+
+  it('a name that resolves to no known component silently matches nothing (no error) — mirrors sprint semantics', () => {
+    const issue = makeIssue({ componentId: COMPONENT_API.id });
+    expect(evalQuery('component = "Nonexistent Component"', issue, ctx)).toBe(false);
+    expect(() => evalQuery('component = "Nonexistent Component"', issue, ctx)).not.toThrow();
+  });
+
+  it('without ctx.components, name comparisons fall back to literal (still no throw)', () => {
+    const issue = makeIssue({ componentId: COMPONENT_WEB.id });
+    expect(evalQuery('component = "Web App"', issue, {})).toBe(false);
+    expect(evalQuery('component = "comp-2"', issue, {})).toBe(true); // raw id still matches
+  });
+});
+
 describe('evaluator — custom fields', () => {
   const defs: NlqlCustomFieldDef[] = [
     { id: 'cf-sev', key: 'severity', name: 'Severity', type: CustomFieldType.SELECT },
