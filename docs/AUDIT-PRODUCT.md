@@ -2812,3 +2812,344 @@ regression status is now unknown and should be re-checked next full pass).
 - Page-level watchers + digest (reuse issue-watch infrastructure) — P3 · M · New ideation; turns Pages from passive to active
 - Version History diff view (even a naive line-diff) — P3 · S–M · New ideation; makes an already-strong feature best-in-class
 - Re-verify mobile board-toolbar dropdown regression status (Pass 12 P1, not retested this pass) — P1 (unconfirmed status) · — · Carried forward as an open question, not a fresh finding
+
+## 2026-09-16 — Pass 14 (Next-level audit: is the agent-native advantage real, visible, and the reason to switch?)
+
+**Independent product/UX audit**, conducted per standing instructions without
+reading the engineering auditor's notes. Framing for this pass came directly
+from the founder, verbatim: *"explore how we can take this app to the next
+level."* This is deliberately not a defect hunt — the product is functionally
+complete (kanban/scrum, backlog, sprints, epics, roadmap Gantt, NLQL,
+dashboards, Pages wiki + knowledge graph, SSO, webhooks, GitHub/GitLab/Gitea,
+a 132-tool MCP server) — the operating question is **"what would make a team
+that has run the incumbent for five years switch, and then tell other teams
+about it?"**
+
+**Method — real usage, not docs.** `main` @ `ffa7c33` (v0.17.4). Stood up a
+genuinely fresh instance: local Postgres 16 (`nextlane_audit` DB, isolated
+from any sibling agent sharing the tree), `prisma migrate deploy` + `db:seed`,
+rebuilt the API (`rm -rf dist && pnpm build`, required — confirmed the stale
+`.tsbuildinfo` footgun is real), ran it on a non-default port (`:4020`,
+coordinated with a sibling engineering-auditor instance also live on the same
+tree) with `RATE_LIMIT_DISABLED=true`, and ran the web app via `vite dev` on
+`:3020` with `VITE_API_URL`/`CORS_ORIGINS` pointed at `:4020` (the default
+dev config hard-codes `:4000`; this needed discovering — see the DX note
+below). Logged in as `demo@nextlane.dev`/`nextlane`, drove ~30 real screens
+with Playwright (`PW_CHROMIUM_PATH=/opt/pw-browsers/chromium`) desktop
+(1440×900) and mobile (393×852), screenshotted what I assert, and — critically
+for this pass's central question — **wrote a real MCP client** (the
+`@modelcontextprotocol/sdk` `Client`/`StdioClientTransport` directly, not a
+mock) that spawned `apps/mcp/dist/index.js` against the live API with a real
+PAT and executed a realistic agent session: discover workspace → discover
+project → read open issues → file a bug → write a memory page documenting the
+investigation → link it → read it back → update the per-project agent-context
+handoff note → verify it round-trips. Every finding below is labeled
+**[verified live]**, **[read in code]**, or **[inferred]**.
+
+### Q1 — Is the agent-native advantage real, and is it wasted?
+
+**It is real and it is being wasted — this is the single highest-leverage
+finding of this pass.**
+
+**The capability itself is genuinely strong** [verified live]. 132 tools
+confirmed by a live `listTools()` call (`apps/mcp/src/tools/index.ts`, 132
+`name:` entries — matches the founder's brief exactly). The
+`SERVER_INSTRUCTIONS` string sent at MCP handshake (`apps/mcp/src/index.ts`)
+is not boilerplate — it's a carefully designed memory protocol: "MEMORY LIVES
+IN PAGES... the graph — not any single document — is the memory,"
+distinguishing the durable, traversable Pages knowledge graph from the
+small, single-slot `project_context` "sticky note," with explicit guidance on
+when to use which and how wiki-links resolve workspace-wide. I exercised this
+exact loop live: `create_issue` → `create_page` (with a `[[wiki-link]]`) →
+`search_pages` found it instantly with a relevance snippet → `get_page_graph`
+showed the new node → `update_project_context` → `get_project_context`
+round-tripped correctly, including a `staleness.changesSinceUpdate` counter
+that tells an agent whether the handoff note is stale relative to real
+project activity since it was last written — a detail I have not seen in any
+comparable tracker's automation/API surface. Separately, **`Project.agentReadOnly`**
+[read in code, `apps/api/src/common/membership.util.ts` +
+`agent-read-only.integration.spec.ts`] is a thoughtful governance feature: a
+human can lock a project read-only *specifically for API tokens* (the MCP
+server) while leaving human access untouched, and the lock defends its own
+switch (an agent cannot unlock itself, since unlocking is itself a write).
+This is exactly the kind of control an enterprise buyer nervous about
+"agents write directly to our tracker" would ask for on day one — and it
+already exists.
+
+**But nothing about this reaches a user who hasn't already read the docs**
+[verified live]. I traced the entire first-hour surface area a self-hoster
+actually sees:
+- The post-registration empty-state welcome card (`Welcome to Next Lane`)
+  sells three feature tiles: **Kanban board, Sprints & backlog, Reports** —
+  all table-stakes, none of them the thing no comparable tracker can do.
+- The primary left nav, the workspace Home dashboard, and the project
+  dashboard surface nothing about agents, MCP, or the knowledge graph.
+- The one in-app place the agent story lives at all — **"Agent context"**
+  and **"Agent access"** cards — sits at the *very bottom* of the per-project
+  Settings page, below GitHub/GitLab/Gitea integration forms and just above
+  the Danger Zone. A user has to already know this exists to scroll to it.
+- The `/developers` API page and the `Settings → API tokens` page both show
+  copy-paste **curl/Python/Node REST snippets** for calling the API directly
+  — genuinely well done (see below) — but **neither one mentions the MCP
+  server at all**, let alone shows a copy-paste `mcpServers` JSON block for
+  Claude Desktop/Claude Code the way `README.md` does (`README.md:429`, "MCP
+  server — give your agent the tracker"). The single most differentiated
+  capability in the entire product has **zero first-party onboarding surface
+  inside the running app** — its only setup story lives in a GitHub README a
+  self-hoster has to already be reading, for a product whose entire
+  distribution model is "clone/compose it yourself."
+
+This is the direct, evidence-backed answer to the founder's question: the
+structural advantage is real, but today it is a footnote an agent-curious
+admin has to go spelunking for, not a first-run moment. **Fixing this
+(surfacing it, not building more of it) is higher leverage than any new
+pillar** — see Top Gap #1.
+
+**Using the crown jewel surfaced concrete friction an agent hits immediately**
+[verified live, via the scripted MCP session above] — worth fixing because it
+taxes literally every session, not a one-off:
+1. **No default project/workspace scoping.** There is no `NEXT_LANE_DEFAULT_PROJECT_ID`
+   or equivalent (checked `apps/mcp/src/config.ts` — no such option), and
+   `list_projects` *requires* `workspaceId` (a hard Zod validation error, not
+   a friendly default) — so every single agent session must call
+   `list_workspaces` → `list_projects` before it can do anything, even for
+   the extremely common case of one operator, one workspace, one project
+   (exactly what a scoped PAT + `agentReadOnly` project lock already implies).
+2. **A systemic key/id duality tax.** Every `list_*`/`search_*` tool's
+   compact default view returns human-legible values (`status: "In Progress"`,
+   `assignee: "Demo User"`, issue `key: "NL-9"`) by design, for token economy
+   — genuinely the right call for reading. But **every write tool requires
+   raw internal cuids**: `move_issue` needs `statusId` (not a status name),
+   `update_issue` needs `assigneeId`/`sprintId`/`componentId`/`parentId`, and
+   even simple read-adjacent tools like `get_issue`, `get_issue_pages`, and
+   `add_comment` require `issueId`, not the `key` that every other tool just
+   handed the agent. I hit this live: after `create_issue` returned `NL-9`,
+   calling `get_issue({ issueKey: 'NL-9' })` and `get_issue({ key: 'NL-9' })`
+   both failed with `Required at issueId` — the *only* way to get the id back
+   out is `verbose: true` on `list_issues`/`search_issues`, an extra round
+   trip an agent has no reason to know it needs until it fails once. This
+   pattern repeats across essentially the entire write surface
+   (`apps/mcp/src/tools/index.ts`: `move_issue`, `update_issue`, `add_comment`
+   all declare `issueId`, never `issueKey`, as the identifying param). None of
+   this is a defect in the sense of "broken" — it works, and error messages
+   correctly name the missing field — but it is real, measured friction on
+   the exact workflow (read a few issues, then act on one) an agent does
+   constantly, and it is fixable without a schema change: accept `issueKey`
+   (or `key`) as an alternate identifier on every issue-scoped write tool,
+   resolved server-side the same way NLQL already resolves assignee/reporter
+   names.
+
+**Verdict on Q1: the advantage is real, underused, and the fix is depth, not
+breadth** — surface what's already built, and sand down the two structural
+frictions above. Both are S–M work, not new engineering.
+
+### Q2 — What does a real team hit in week one that sends them back?
+
+Evidence from live use, not speculation:
+
+- **No chat-tool notifications** [read in code — grepped the entire API
+  source for `slack`/`teams webhook`/`email digest`/`scheduled report`: zero
+  matches beyond generic outbound webhooks]. In-app notifications and a
+  single "email me about my issues" toggle exist (`/me/settings`, verified
+  live), but there is no Slack/Teams delivery. A five-year incumbent user's
+  team lives in a chat tool; "notifications only email or in-app" is a
+  genuine daily-driver regression for anyone coming from a tracker with a
+  first-party chat integration, and it is the most common first-week
+  complaint this kind of gap produces.
+- **Admin controls are further along than `docs/VISION.md`'s current
+  scorecard credits** [verified live — worth flagging explicitly since this
+  directly changes a "Behind" verdict]. VISION.md's Better-than-Jira table
+  (last touched around Pass 12/13) says admin controls stay "Behind" because
+  "SSO configuration is env-var/redeploy-only with no in-app admin settings
+  screen, and per-project role override is still schema-confirmed absent."
+  Both are now false: `/admin/sso` is a full in-app OIDC configuration
+  screen (issuer URL, client id/secret, button label, **JIT provisioning**
+  with a default-workspace + default-role picker) — I loaded it live — and
+  the per-project **Members** section in Settings (confirmed live,
+  `ROADMAP.md` line 256-257, shipped 2026-07-02) lets a project ADMIN
+  override a user's effective role per-project with an "Inherited/Override"
+  badge and a revert action. Recommend the vision-steward re-score this row;
+  the honest remaining gap for "Admin controls" is narrower now (chat
+  notifications, audit-log export, maybe SCIM) than what's written.
+- **Onboarding from an existing tracker has no import story beyond CSV**
+  [read in code, `apps/api/src/import` + the CSV import fix in `b450703`].
+  CSV import now correctly carries parents/components/versions/custom
+  fields (a real, recent, well-targeted fix), which is good — but there is
+  no importer for the incumbent's own export format or a common one
+  (Jira-shaped JSON/CSV with its field names), so migrating a real backlog
+  means hand-mapping columns. Not urgent, but it's the very first thing a
+  team evaluating a switch will try and bounce off if it's clumsy.
+- **The roadmap/Gantt is empty until epics get dates** [verified live] — a
+  brand-new or lightly-seeded project's Roadmap page renders a correct but
+  totally empty grid with no "add dates to your first epic" nudge. Small,
+  but it's the kind of first-hour "is this thing broken?" moment that erodes
+  trust in a flagship feature (the roadmap wave, Phase-11-adjacent, was a
+  major recent investment per `git log`).
+- **Mobile status unknown, not re-verified this pass** — Pass 12/13 tracked
+  an unresolved mobile board-toolbar dropdown-overflow regression; I saw the
+  same toolbar's quick-filter chip row still clip horizontally at 393px
+  (`Rec[ently updated]` cut at the viewport edge, screenshot
+  `23-mobile-board.png`) but did not do the full interaction test (open each
+  dropdown menu) that would confirm whether the specific Pass-12 defect is
+  fixed or still live. Flagging as an open question for the next full pass,
+  not re-asserting a fresh finding.
+
+### Q3 — What is the one thing that would make someone tell a colleague?
+
+Three candidates, argued, with one winner:
+
+1. **A public roadmap + feature-voting portal** (unshipped, `ROADMAP.md`
+   Phase 8) — visible, demoable, and the kind of thing an OSS maintainer
+   screenshots. But it's a new pillar with a small blast radius: it helps
+   *external* stakeholders, not the team using the tracker daily, and
+   nothing here beats a comparable tracker's ecosystem plugins for this
+   specific job.
+2. **The whiteboard/story-mapping canvas** (unshipped, same phase) — genuinely
+   fun, but expensive (a new realtime canvas primitive) for a payoff that's
+   speculative — story-mapping is a real but occasional ritual, not a daily
+   habit, and it competes with dedicated whiteboard tools people already have
+   open.
+3. **A visible, one-click "watch an agent triage your backlog live" moment**
+   — my pick. The evidence above shows the raw capability already exists end
+   to end (an agent can read the whole project state, act, and leave a
+   durable memory trail a human can read in the same Settings page). What's
+   missing is turning that into a *moment*: a first-run "Connect Claude"
+   button on the empty-state welcome card that generates a scoped PAT,
+   shows the one-command MCP config, and — the differentiator — narrates
+   what just happened afterward (a toast/timeline: "Claude read 6 open
+   issues and suggested labels for 2 untriaged bugs" or similar), rather
+   than silently updating the board. **No comparable tracker can do this at
+   all** (an agent editing your tracker over MCP with a visible governance
+   toggle is structurally impossible for a closed, per-seat cloud product to
+   ship credibly) — it is the one feature category where "show, don't tell"
+   works in Next Lane's favor and nowhere else. This is depth on an existing
+   pillar, not a new one, which is exactly why I'd sequence it first: it
+   converts an already-built, already-differentiated capability into the
+   demo that gets shared, instead of asking for new engineering with an
+   unproven payoff.
+
+### Depth vs. breadth — explicit argument
+
+**This pass's call: depth, not breadth**, and specifically depth on the
+agent-native pillar over any of the seven `VISION.md` pillars' remaining
+unshipped bullets. The reasoning: every "Behind" row on the Better-than-Jira
+scorecard that isn't Mobile (a genuinely large, expensive gap — no native
+app, full stop) or Integrations (Slack/Teams, meaningfully sized but
+well-understood) is closer to *done* than the scorecard currently reflects
+(see the Admin-controls correction above). Meanwhile the one row that is
+uniquely, structurally *ours* — agent-native — is complete on the backend
+and invisible on the frontend. Shipping a new pillar (whiteboard, feature
+portal) before fixing that visibility gap would be building a fifth strength
+while the loudest one goes unnoticed by every new user. I'd only reverse this
+call if Mobile were cheap to fix — it isn't (a native app is a multi-quarter
+investment) — so Mobile stays queued as its own, separately-sequenced, large
+item rather than blocking this pass's recommendation.
+
+### Ratings (this pass's evidence only — see Pass 12/13 for areas not re-touched)
+
+| Area | Score | Evidence |
+|---|---|---|
+| Auth / onboarding empty state | 4/5 | [verified live] Clean welcome card, register→workspace→"create your first project" flow works end to end with no dead ends; loses a point for selling only table-stakes features (see Q1). |
+| Board (Kanban) | 5/5 | [verified live] Multiple boards + "New board" switcher, NLQL filter bar with live field autocomplete (`assign` → `assignee` FIELD suggestion), quick-filter chips, group-by, all present and working on a real seeded board. |
+| Issue drawer | 5/5 | [verified live] Description, attachments (drag/drop), checklist, time tracking (estimate + log work + note), comments, full right-rail metadata (status/assignee/priority/type/points/component/versions/dates/labels/parent) — no missing affordance found. |
+| Roadmap / Gantt | 4/5 | [verified live] Loads correctly, correct legend/controls (Week/Month/Quarter, skip-weekends, present mode); docked a point for the empty-until-dated first impression (Q2). |
+| Dashboards | 4/5 | [verified live] Empty state correctly explains the NLQL-gadget model ("each one is just an NLQL query and a chart type") — not re-built this pass, carried at Pass-13's rating. |
+| Reports | 5/5 | [verified live] Velocity + burndown render correctly against real seeded sprint data, ideal-pace dashed line present. |
+| Pages / knowledge graph | not re-verified | Carried forward from Pass 13 (4/5 wiki backbone, images since fixed per `git log` `511ff93`/`9e81048` — worth a fresh look next pass, not retested here). |
+| Automation | 4/5 | [verified live] Rule editor is a real trigger→condition(NLQL)→action builder, not a stub — built and tested a rule live (Issue created → assign to). |
+| SSO/OIDC admin | 5/5 | [verified live] Full in-app config screen incl. JIT provisioning — corrects a stale "env-var only" claim in `VISION.md`. |
+| Per-project role override | 5/5 | [verified live] Members section in Settings, inherited/override badges, functions as described in `ROADMAP.md`. |
+| Agent-native surface (MCP) — capability | 5/5 | [verified live via scripted MCP session] 132 tools, real read/write/memory loop confirmed end to end, thoughtful governance (`agentReadOnly`). |
+| Agent-native surface — discoverability | 1/5 | [verified live] Zero onboarding surface, buried settings placement, no in-app MCP config generator — see Q1. |
+| Notifications | 3/5 | [verified live + read in code] In-app + single email toggle work; no Slack/Teams/webhook-to-chat delivery. |
+| Mobile | unknown this pass | [verified live, partial] Same toolbar-overflow symptom seen at 393px as Pass 12 flagged; full interaction re-test not done — open question, not a fresh verdict. |
+| API/developer docs | 5/5 | [verified live] `/developers` correctly self-diagnoses the dev-mode cross-origin case and explains why the inline Swagger reference isn't shown instead of just failing silently — genuinely good error-state design. |
+
+### Category-Parity Benchmark (spot-checked this pass; full re-sweep not done)
+
+| Capability | Our depth | Leader baseline | Gap |
+|---|---|---|---|
+| Multiple boards / board types | 5 | 5 | none — reconfirmed live (board switcher + "New board"). |
+| Query language (NLQL) + autocomplete | 5 | 5 | none — reconfirmed live, field-type-aware autocomplete works mid-keystroke. |
+| Automation rule engine | 4 | 5 | Reconfirmed the builder is real (not a stub); still no scheduled/time trigger (carried from Pass 13). |
+| Admin/SSO configurability | 5 | 5 | none — upgraded from earlier passes' "Behind" assumption; JIT provisioning matches or exceeds typical OIDC admin UIs. |
+| Agent/AI API surface | 5 (capability) / 1 (discoverability) | N/A — no comparable tracker has an equivalent at any depth | The gap here isn't vs. a competitor, it's vs. our own product's other surfaces, which all onboard themselves; this one doesn't. |
+| Chat/notification integrations | 1 | 5 | No Slack/Teams. Real, sizable, well-understood gap. |
+
+### Top gaps — prioritized backlog candidates
+
+| Rank | Item | Why it matters | Size |
+|---|---|---|---|
+| P1-1 | **Surface the agent-native story in-app**: a "Connect an AI agent" card on the workspace empty-state AND a dedicated section in `/developers` / API tokens that generates a scoped PAT and shows a copy-paste `mcpServers` JSON block (mirroring what `README.md` already documents), plus promote "Agent access"/"Agent context" out of the bottom of project Settings into something a new admin actually sees. | Live-verified: this capability is fully built and working end-to-end but has zero first-run visibility. This is the single highest-leverage, lowest-risk change available — it doesn't require new engineering, just exposing what exists. Directly targets the founder's "next level" question. | S–M |
+| P1-2 | **Accept `issueKey` as an alternate identifier on every issue-scoped MCP write/read tool** (`get_issue`, `move_issue`, `update_issue`, `add_comment`, `get_issue_pages`, `link_issues`, etc.), resolved server-side, instead of requiring the raw `issueId` that only `verbose`/`search_issues` calls expose. | Live-verified friction: an agent's most natural loop (list/search issues → act on one) currently fails once and requires a documented workaround. Fixing this makes the crown-jewel MCP surface measurably smoother for every session, not just an edge case. | S |
+| P1-3 | **A "watch an agent work" onboarding moment** — a guided first-run flow that creates a PAT, walks the user through connecting Claude Desktop/Code, and then narrates the agent's first action (e.g., auto-triage suggestions on untriaged issues) in a visible activity feed rather than a silent board update. | This is the "tell a colleague" feature (Q3): it turns an already-built capability into a demoable moment no comparable tracker can replicate, without new backend engineering. | M |
+| P2-1 | **Slack/Teams notification delivery** for @mentions, assignments, and (optionally) automation-rule actions. | Real week-one gap: a team migrating off a daily driver with native chat integration will feel its absence immediately; in-app + email alone is a downgrade for anyone not living in their inbox. | M |
+| P2-2 | **A default-project/workspace MCP config option** (e.g., `NEXT_LANE_DEFAULT_PROJECT_ID` env var, honored by `list_issues`/`create_issue`/etc. when the caller omits `projectId`) for the very common single-project agent-lock deployment shape. | Removes a fixed two-call tax (`list_workspaces` → `list_projects`) from every agent session where the operator already knows there's exactly one project (the same shape `agentReadOnly` project-locking already assumes). | S |
+| P2-3 | **Roadmap empty-state nudge** — "Add a start/due date to an epic to see it here" CTA instead of a bare empty grid. | Cheap first-impression fix on a recently-shipped, heavily-invested flagship feature (per `git log`, ~25 roadmap-focused commits since Pass 13). | S |
+| P3-1 | **Re-score `VISION.md`'s Admin-controls Better-than-Jira row** — SSO-in-app and per-project role override are both live and working; the row's stated blockers are stale. | Keeps the scorecard honest, which is the whole point of tracking it; miscalibrated "Behind" rows misdirect backlog priority away from where the real gaps (chat notifications, migration tooling) are. | S (docs only) |
+| P3-2 | **Re-verify the Pass-12 mobile board-toolbar dropdown regression** — status unknown this pass; the adjacent quick-filter-chip overflow symptom is still visible at 393px. | Mobile is already the scorecard's most conclusively "Behind" row; an open, unconfirmed regression there should not sit unresolved across five passes. | S (verification) |
+
+### Ideation — ambitious features/UX improvements (Pass 14)
+
+1. **"Agent activity" as a first-class, visible timeline** — right now an
+   agent's writes show up indistinguishable from a human's in the activity
+   log (I could not find an "via API token" / "via agent" marker on my own
+   scripted issue-create and page-write during this pass). A dedicated feed
+   (or even just an icon/badge distinguishing PAT-authored changes) would
+   make the agent-native story ambient and visible on every project, not
+   just to someone who goes looking for it — this is the passive complement
+   to the active "watch an agent work" onboarding moment above.
+2. **A "migrate from your current tracker" importer wizard** beyond raw CSV
+   — accept the incumbent's own JSON/CSV export shape with field auto-mapping
+   and a dry-run preview, since "can I get my backlog out of what I'm using
+   today" is the literal first question of the daily-driver test the founder
+   set as the operating bar.
+3. **Scoped, generated MCP "recipes"** — ship a small library of ready-made
+   prompts/skills (e.g., "triage untriaged bugs," "summarize this sprint for
+   a standup," "write a postmortem page and link the incident issues") that
+   ship alongside the MCP server, so a new agent user's first session has an
+   obvious, high-value thing to try instead of a blank tool list of 132
+   options — turns raw capability into a guided "aha" in the first five
+   minutes.
+4. **Per-project "agent changelog"** on the Agent Context settings card —
+   since `staleness.changesSinceUpdate` is already computed server-side, show
+   it in the UI too ("12 changes since this note was last updated") so a
+   human glancing at Settings gets the same staleness signal the MCP tool
+   already gives an agent — a small, cheap way to make the memory system
+   legible to humans, not just machines.
+
+### Direction — next quarter
+
+The product does not need a new pillar to reach the next level; it needs to
+**stop hiding the one it already built that nothing else in this category
+can copy.** This pass's central finding is that the agent-native
+capability — real, tested, and load-bearing end to end in a live scripted
+session — has effectively zero presence in the actual product experience: no
+onboarding mention, no in-app setup wizard, a settings placement a new admin
+would need luck to find, and structural friction (id/key duality, no default
+scoping) inside the tool surface itself that taxes every session an agent
+actually runs. I'd sequence P1-1 (surface it) and P1-2 (smooth the friction)
+first, together, since they're both small and both target the same
+underexploited strength; P1-3 (the onboarding "moment") is the natural
+follow-on once the plumbing is visible and smooth. Chat notifications (P2-1)
+and the mobile-regression re-check (P3-2) are the two items I'd pull forward
+from the "week one" list if engineering capacity allows a second track — both
+are well-understood, not exploratory, work. I would explicitly *not* start
+the whiteboard or public-roadmap-portal pillars this quarter: both are
+real ideas with a plausible payoff, but neither is more valuable right now
+than making the thing that's already uniquely ours impossible to miss.
+
+### Backlog-Groomer Ingest — Pass 14 (title · priority · size · rationale)
+
+- Surface the agent-native/MCP story in-app (empty-state card + API-tokens-page config generator + promote Agent access/context out of the Settings basement) — P1 · S–M · Live-verified the capability is fully built end-to-end with zero first-run visibility; highest-leverage fix available this quarter
+- Accept `issueKey` as an alternate identifier on issue-scoped MCP write/read tools (get_issue, move_issue, update_issue, add_comment, get_issue_pages, link_issues) — P1 · S · Live-verified friction: the natural list/search-then-act loop fails once and requires an undocumented `verbose:true` workaround
+- "Watch an agent work" guided onboarding moment (connect PAT → narrate the agent's first triage action in a visible feed) — P1 · M · The most demoable, hardest-to-copy "tell a colleague" feature identified this pass; pure surfacing of existing capability
+- Slack/Teams notification delivery — P2 · M · Real week-one gap vs. a chat-integrated daily driver; only email/in-app exist today
+- MCP default-project/workspace scoping option (env var or PAT-derived) — P2 · S · Removes a fixed two-call tax from every agent session in the common single-project deployment shape
+- Roadmap empty-state CTA ("add dates to an epic to see it here") — P2 · S · Cheap first-impression fix on a heavily-invested recent flagship feature
+- Re-score VISION.md's Admin-controls Better-than-Jira row (SSO-in-app + per-project role override both confirmed live, stated blockers are stale) — P3 · S (docs) · Keeps the scorecard honest so backlog priority isn't misdirected
+- Re-verify Pass-12's mobile board-toolbar dropdown regression (status unknown this pass; adjacent chip-row overflow still visible at 393px) — P1 (unconfirmed status) · S (verification) · Open across multiple passes, should not stay unresolved
+- Agent-authored-change marker in the activity log/timeline — P3 · S–M · New ideation; makes the agent-native story ambient/visible on every project, not just discoverable
+- "Migrate from your current tracker" importer wizard (incumbent export shape, field auto-mapping, dry-run preview) — P2 · M · New ideation; literal first question of the daily-driver test
+- Ready-made MCP "recipes" shipped with the server (triage untriaged bugs, sprint standup summary, postmortem page + issue linking) — P2 · S–M · New ideation; converts 132 raw tools into an obvious first five-minute win
+- Show `staleness.changesSinceUpdate` in the Agent Context settings UI (already computed server-side for MCP) — P3 · S · New ideation; makes the memory system's staleness signal legible to humans too
