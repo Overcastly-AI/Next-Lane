@@ -4,7 +4,9 @@
  * Web UI for the per-project agent-context handoff document (backend +
  * MCP surface shipped in commit 8ffc160, `apps/api/src/agent-context/`):
  * `GET/PUT /projects/:id/agent-context`, realtime
- * `project-agent-context.updated` event.
+ * `project-agent-context.updated` event. Lives on the project's "Agents" tab
+ * (`/projects/:id/agents`, promoted out of Settings — docs/AUDIT-PRODUCT.md
+ * Pass 14) alongside the agent-access lock.
  *
  * Covers, on both configured Playwright projects (chromium-desktop 1280,
  * mobile-chrome ~393px) via the shared playwright.config.ts:
@@ -33,10 +35,10 @@ import {
   type IsolatedContext,
 } from './helpers';
 
-async function gotoSettings(page: Page, projectId: string): Promise<void> {
-  await page.goto(`/projects/${projectId}/settings`);
+async function gotoAgents(page: Page, projectId: string): Promise<void> {
+  await page.goto(`/projects/${projectId}/agents`);
   await expect(
-    page.getByRole('heading', { name: /^settings$/i }).first(),
+    page.getByRole('heading', { name: /^agents$/i }).first(),
   ).toBeVisible({ timeout: 15_000 });
 }
 
@@ -79,7 +81,7 @@ test.describe('Agent context panel', () => {
       openBoard: false,
     });
 
-    await gotoSettings(page, ctx.project.id);
+    await gotoAgents(page, ctx.project.id);
     const section = agentSection(page);
     await expect(section.getByRole('heading', { name: 'Agent context' })).toBeVisible();
     await expect(
@@ -104,7 +106,7 @@ test.describe('Agent context panel', () => {
       openBoard: false,
     });
 
-    await gotoSettings(page, ctx.project.id);
+    await gotoAgents(page, ctx.project.id);
     const section = agentSection(page);
     await section.getByTestId('agent-context-edit').click();
 
@@ -147,14 +149,14 @@ test.describe('Agent context panel', () => {
     });
 
     // Session B: the SAME user, a second live browser context, already on
-    // the settings page before the write happens in session A.
+    // the Agents page before the write happens in session A.
     const ctxB = await browser.newContext();
     const pageB = await loginViaToken(ctxB, ctx.user);
-    await gotoSettings(pageB, ctx.project.id);
+    await gotoAgents(pageB, ctx.project.id);
     await expect(agentSection(pageB).getByTestId('agent-context-empty')).toBeVisible();
 
     // Session A writes.
-    await gotoSettings(page, ctx.project.id);
+    await gotoAgents(page, ctx.project.id);
     const sectionA = agentSection(page);
     await sectionA.getByTestId('agent-context-edit').click();
     await sectionA
@@ -177,7 +179,7 @@ test.describe('Agent context panel', () => {
     await addWorkspaceMember(request, ctx.token, ctx.workspaceId, viewer.email, 'VIEWER');
     const ctxC = await browser.newContext();
     const pageC = await loginViaToken(ctxC, viewer);
-    await gotoSettings(pageC, ctx.project.id);
+    await gotoAgents(pageC, ctx.project.id);
     const sectionC = agentSection(pageC);
     await expect(sectionC.getByTestId('agent-context-rendered')).toBeVisible({
       timeout: 10_000,
@@ -203,7 +205,7 @@ test.describe('Agent context panel', () => {
     });
 
     // Write the handoff document first, establishing a baseline updatedAt.
-    await gotoSettings(page, ctx.project.id);
+    await gotoAgents(page, ctx.project.id);
     const section = agentSection(page);
     await section.getByTestId('agent-context-edit').click();
     await section
@@ -241,7 +243,7 @@ test.describe('Agent context panel', () => {
       openBoard: false,
     });
 
-    await gotoSettings(page, ctx.project.id);
+    await gotoAgents(page, ctx.project.id);
     const section = agentSection(page);
     await section.getByTestId('agent-context-edit').click();
     const textarea = section.getByTestId('agent-context-textarea');
@@ -278,7 +280,7 @@ test.describe('Agent context panel — mobile (393px)', () => {
       openBoard: false,
     });
 
-    await gotoSettings(page, ctx.project.id);
+    await gotoAgents(page, ctx.project.id);
     const section = agentSection(page);
     await section.getByTestId('agent-context-edit').click();
     await section

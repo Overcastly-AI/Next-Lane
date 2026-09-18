@@ -16,6 +16,7 @@ import {
   useCreateApiToken,
   useRevokeApiToken,
 } from '@/api/api-tokens';
+import { ConnectAgentCallout } from '@/components/developers/ConnectAgentCallout';
 
 /** Human-readable label for each scope string. */
 const SCOPE_LABELS: Record<string, string> = {
@@ -330,6 +331,19 @@ export function ApiTokensSection() {
         </Button>
       }
     >
+      {/*
+       * The agent story, at the moment a token exists to power it.
+       *
+       * A person on this page is either about to mint a token or already
+       * has one — precisely the moment "you could point an MCP client at
+       * this" lands. Before this callout the only route to that fact was
+       * the README, which you have to leave the product to read
+       * (docs/AUDIT-PRODUCT.md Pass 14).
+       */}
+      <div className="mb-4">
+        <ConnectAgentCallout />
+      </div>
+
       {/*
        * The reference, at the moment it is wanted.
        *
