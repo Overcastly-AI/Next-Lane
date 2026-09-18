@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { CustomFieldType } from '../enums';
-import { filterIssues, type NlqlSprint, type NlqlUser } from './evaluator';
+import { filterIssues, type NlqlComponent, type NlqlSprint, type NlqlUser } from './evaluator';
 import {
   NLQL_MAX_LENGTH,
   getReferencedFieldKinds,
+  getReferencedStandardFields,
   queryReferencesMe,
   resolveQueryNames,
   validateQuery,
+  type NlqlLabelRef,
+  type NlqlStatusRef,
 } from './validate';
 import type { IssueDto } from '../types';
 import { IssueType, Priority, StatusCategory } from '../enums';
@@ -83,6 +86,11 @@ describe('getReferencedFieldKinds', () => {
 
   it('reports "sprint" for sprint references', () => {
     expect(getReferencedFieldKinds('sprint = "July-B"')).toEqual(new Set(['sprint']));
+  });
+
+  it('reports "component" (not "id") for component/componentId references', () => {
+    expect(getReferencedFieldKinds('component = "API"')).toEqual(new Set(['component']));
+    expect(getReferencedFieldKinds('componentId = "c1"')).toEqual(new Set(['component']));
   });
 
   it('reports every distinct kind across a compound query', () => {
@@ -218,8 +226,16 @@ describe('resolveQueryNames (MCP-QA pass 1, finding 1 residual)', () => {
     expect(resolveQueryNames('sprint IS NOT EMPTY', { sprints: [] })).toEqual({ ok: true });
   });
 
-  it('ignores fields other than user/sprint kind entirely', () => {
-    expect(resolveQueryNames('status = "Nonexistent Status"')).toEqual({ ok: true });
+  it('ignores fields with no "does this exist" check at all (title/key/dates/numbers)', () => {
+    expect(resolveQueryNames('title = "Anything at all"')).toEqual({ ok: true });
+    expect(resolveQueryNames('key = "NL-999999"')).toEqual({ ok: true });
+    expect(resolveQueryNames('storyPoints = 999')).toEqual({ ok: true });
+    expect(resolveQueryNames('dueDate < "2099-01-01"')).toEqual({ ok: true });
+  });
+
+  it('a genuinely valid fixed-enum value (priority = HIGH) is accepted with no context', () => {
+    // Unlike status/label/component, type/priority/statusCategory need no
+    // ctx at all — they are closed, global enums.
     expect(resolveQueryNames('priority = HIGH')).toEqual({ ok: true });
   });
 
@@ -237,6 +253,212 @@ describe('resolveQueryNames (MCP-QA pass 1, finding 1 residual)', () => {
     const r = resolveQueryNames('assignee =');
     expect(r.ok).toBe(false);
     expect(r.error?.message).toMatch(/Expected a value/);
+  });
+});
+
+// MCP-QA pass 4 (token-efficiency pass), finding E1: the fail-loud guard
+// above only ever reached assignee/reporter/sprint. `status`, `type`,
+// `priority`, `label`/`labels`, and `component`/`componentId` returned a
+// plausible, wrong `{items:[],total:0}` on a typo instead of an error —
+// exactly the class of bug the guard exists to kill, just left unfinished.
+describe('resolveQueryNames — status/type/priority/label/component (MCP-QA pass 4, finding E1)', () => {
+  const STATUS_TODO: NlqlStatusRef = { id: 'status-cljk3n9d80000todo01', name: 'To Do' };
+  const STATUS_IN_PROGRESS: NlqlStatusRef = {
+    id: 'status-cljk3n9d80000inprog2',
+    name: 'In Progress',
+  };
+  const LABEL_BACKEND: NlqlLabelRef = { id: 'label-cljk3n9d80000back01', name: 'backend' };
+  const COMPONENT_API: NlqlComponent = { id: 'comp-cljk3n9d80000api001', name: 'API' };
+
+  // ── status (dynamic, per-project, matched by name) ──────────────────────
+
+  it('accepts a resolved status by name (case-insensitive) and by id', () => {
+    const ctx = { statuses: [STATUS_TODO, STATUS_IN_PROGRESS] };
+    expect(resolveQueryNames('status = "In Progress"', ctx)).toEqual({ ok: true });
+    expect(resolveQueryNames('status = "in progress"', ctx)).toEqual({ ok: true });
+    expect(resolveQueryNames(`status = "${STATUS_TODO.id}"`, ctx)).toEqual({ ok: true });
+  });
+
+  it('rejects a typo\'d status name with a 400-shaped, actionable message', () => {
+    // The exact repro from the audit: "In Progres" (missing an "s").
+    const r = resolveQueryNames('status = "In Progres"', { statuses: [STATUS_IN_PROGRESS] });
+    expect(r.ok).toBe(false);
+    expect(r.error?.message).toBe(
+      'unknown status "In Progres" — use an exact status name; see list_statuses',
+    );
+  });
+
+  it('rejects a status that genuinely does not exist in this project', () => {
+    const r = resolveQueryNames('status = "Blocked"', { statuses: [STATUS_TODO] });
+    expect(r.ok).toBe(false);
+    expect(r.error?.message).toMatch(/unknown status "Blocked"/);
+  });
+
+  it('rejects a status name when ctx.statuses is empty/absent (was the silent-zero bug)', () => {
+    expect(resolveQueryNames('status = "In Progress"').ok).toBe(false);
+    expect(resolveQueryNames('status = "In Progress"', { statuses: [] }).ok).toBe(false);
+  });
+
+  it('does NOT grant id-shape leniency for an unresolved status (name-only field — see family 2)', () => {
+    // A cuid-shaped literal that is not one of this project's real status ids
+    // would never match at evaluation time either (status compares by NAME),
+    // so it must still be flagged — unlike assignee/sprint/component.
+    const staleShapedId = 'cljk3n9d80000ab12notreal';
+    const r = resolveQueryNames(`status = "${staleShapedId}"`, { statuses: [STATUS_TODO] });
+    expect(r.ok).toBe(false);
+  });
+
+  // ── label / labels (dynamic, per-project, matched by name) ──────────────
+
+  it('accepts a resolved label by name (case-insensitive) and by id, in = and IN', () => {
+    const ctx = { labels: [LABEL_BACKEND] };
+    expect(resolveQueryNames('label = "backend"', ctx)).toEqual({ ok: true });
+    expect(resolveQueryNames('labels = "Backend"', ctx)).toEqual({ ok: true }); // case-insensitive
+    expect(resolveQueryNames(`label = "${LABEL_BACKEND.id}"`, ctx)).toEqual({ ok: true });
+    expect(resolveQueryNames('labels IN ("backend")', ctx)).toEqual({ ok: true });
+  });
+
+  it('rejects a typo\'d label name with a 400-shaped, actionable message', () => {
+    // The exact repro from the audit: "backendd" (extra "d").
+    const r = resolveQueryNames('label = "backendd"', { labels: [LABEL_BACKEND] });
+    expect(r.ok).toBe(false);
+    expect(r.error?.message).toBe(
+      'unknown label "backendd" — use an exact label name; see list_labels',
+    );
+  });
+
+  it('rejects a label name when ctx.labels is empty/absent', () => {
+    expect(resolveQueryNames('label = "backend"').ok).toBe(false);
+  });
+
+  // ── component / componentId (dynamic, per-project, matched by name or id) ──
+
+  it('accepts a resolved component by name (case-insensitive) and by id', () => {
+    const ctx = { components: [COMPONENT_API] };
+    expect(resolveQueryNames('component = "API"', ctx)).toEqual({ ok: true });
+    expect(resolveQueryNames('component = "api"', ctx)).toEqual({ ok: true });
+    expect(resolveQueryNames(`component = "${COMPONENT_API.id}"`, ctx)).toEqual({ ok: true });
+  });
+
+  it('rejects an unresolved component name with a 400-shaped, actionable message', () => {
+    // The exact repro from the audit: "nope".
+    const r = resolveQueryNames('component = "nope"', { components: [COMPONENT_API] });
+    expect(r.ok).toBe(false);
+    expect(r.error?.message).toBe(
+      'unknown component "nope" — use an exact component name or an id; see list_components',
+    );
+  });
+
+  it('grants id-shape leniency for component, matching assignee/sprint (component IS raw-id-compared)', () => {
+    const staleCuid = 'cljk3n9d80000ab12removed';
+    expect(
+      resolveQueryNames(`component = "${staleCuid}"`, { components: [COMPONENT_API] }),
+    ).toEqual({ ok: true });
+  });
+
+  // ── type (fixed, global enum) ────────────────────────────────────────────
+
+  it('accepts every valid IssueType value, case-insensitively, with no context', () => {
+    for (const t of ['TASK', 'BUG', 'STORY', 'EPIC', 'SUBTASK', 'bug']) {
+      expect(resolveQueryNames(`type = ${t}`)).toEqual({ ok: true });
+    }
+  });
+
+  it('rejects an invalid type with the valid list in the message', () => {
+    // The exact repro from the audit: "TSK" (typo for TASK).
+    const r = resolveQueryNames('type = TSK');
+    expect(r.ok).toBe(false);
+    expect(r.error?.message).toBe(
+      'unknown type "TSK" — valid types: TASK, BUG, STORY, EPIC, SUBTASK',
+    );
+  });
+
+  // ── priority (fixed, global enum) ────────────────────────────────────────
+
+  it('accepts every valid Priority value, case-insensitively, with no context', () => {
+    for (const p of ['LOWEST', 'LOW', 'MEDIUM', 'HIGH', 'HIGHEST', 'high']) {
+      expect(resolveQueryNames(`priority = ${p}`)).toEqual({ ok: true });
+    }
+  });
+
+  it('rejects an invalid priority (bareword that is NOT a real enum member) with the valid list', () => {
+    // The exact repro from the audit: URGENT is not a priority this system
+    // has — it must be rejected, not silently matched to zero.
+    const r = resolveQueryNames('priority = URGENT');
+    expect(r.ok).toBe(false);
+    expect(r.error?.message).toBe(
+      'unknown priority "URGENT" — valid priorities: LOWEST, LOW, MEDIUM, HIGH, HIGHEST',
+    );
+  });
+
+  // ── statusCategory (fixed, global enum — same mechanism, proactively closed too) ──
+
+  it('accepts every valid StatusCategory value, case-insensitively, with no context', () => {
+    for (const c of ['TODO', 'IN_PROGRESS', 'DONE', 'todo']) {
+      expect(resolveQueryNames(`statusCategory = ${c}`)).toEqual({ ok: true });
+    }
+  });
+
+  it('rejects an invalid statusCategory with the valid list', () => {
+    const r = resolveQueryNames('statusCategory = INPROGRESS'); // missing underscore
+    expect(r.ok).toBe(false);
+    expect(r.error?.message).toBe(
+      'unknown statusCategory "INPROGRESS" — valid categories: TODO, IN_PROGRESS, DONE',
+    );
+  });
+
+  // ── cross-cutting ────────────────────────────────────────────────────────
+
+  it('checks every candidate in an IN list for a fixed enum, not just the first', () => {
+    const r = resolveQueryNames('type IN (BUG, TSK)');
+    expect(r.ok).toBe(false);
+    expect(r.error?.message).toMatch(/unknown type "TSK"/);
+  });
+
+  it('is unaffected by IS EMPTY / IS NOT EMPTY on these fields (no operand to resolve)', () => {
+    expect(resolveQueryNames('labels IS EMPTY')).toEqual({ ok: true });
+    expect(resolveQueryNames('component IS NOT EMPTY')).toEqual({ ok: true });
+  });
+
+  it('combining a valid fixed-enum clause with an unresolved dynamic one still fails loud', () => {
+    const r = resolveQueryNames('type = BUG AND status = "Blocked"', { statuses: [] });
+    expect(r.ok).toBe(false);
+    expect(r.error?.message).toMatch(/unknown status "Blocked"/);
+  });
+});
+
+describe('getReferencedStandardFields', () => {
+  it('distinguishes status from type/priority/statusCategory despite sharing the "enum" kind', () => {
+    expect(getReferencedStandardFields('status = "Done"')).toEqual(new Set(['status']));
+    expect(getReferencedStandardFields('type = BUG')).toEqual(new Set(['type']));
+    expect(getReferencedStandardFields('priority = HIGH')).toEqual(new Set(['priority']));
+    expect(getReferencedStandardFields('statusCategory = DONE')).toEqual(
+      new Set(['statusCategory']),
+    );
+  });
+
+  it('reports every distinct field across a compound query', () => {
+    expect(
+      getReferencedStandardFields('status = "Done" AND priority = HIGH AND type = BUG'),
+    ).toEqual(new Set(['status', 'priority', 'type']));
+  });
+
+  it('includes ORDER BY fields', () => {
+    expect(getReferencedStandardFields('type = BUG ORDER BY status')).toEqual(
+      new Set(['type', 'status']),
+    );
+  });
+
+  it('does not report fields for quoted (custom-field) tokens', () => {
+    expect(getReferencedStandardFields('"Severity" = high')).toEqual(new Set());
+  });
+
+  it('returns an empty set on a parse error rather than throwing', () => {
+    expect(getReferencedStandardFields('status =')).toEqual(new Set());
+  });
+
+  it('returns an empty set for an empty query', () => {
+    expect(getReferencedStandardFields('')).toEqual(new Set());
   });
 });
 

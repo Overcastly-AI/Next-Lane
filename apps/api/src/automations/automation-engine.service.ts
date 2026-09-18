@@ -30,6 +30,7 @@ import {
   parse,
   evaluate,
   getReferencedFieldKinds,
+  getReferencedStandardFields,
   resolveQueryNames,
 } from '@next-lane/shared';
 import type {
@@ -38,6 +39,8 @@ import type {
   IssueDto,
   EvalContext,
   NlqlCustomFieldDef,
+  NlqlLabelRef,
+  NlqlStatusRef,
 } from '@next-lane/shared';
 import {
   AUTOMATION_EVENTS,
@@ -45,6 +48,21 @@ import {
 } from './automation-events';
 import { toIssueDto } from '../issues/issue.mapper';
 import { loadNlqlEvalContext } from '../common/nlql-eval-context.util';
+
+/**
+ * `EvalContext` widened with the extra `status`/`label` side-context
+ * `resolveQueryNames` needs but `evaluate`/`filterIssues` never read (see
+ * `ResolveNamesContext` in `@next-lane/shared`). Kept as a distinct type
+ * (rather than adding `statuses`/`labels` to `EvalContext` itself) since the
+ * evaluator's own comparisons resolve `status = "<name>"` and
+ * `label = "<name>"` directly against the issue's already-hydrated
+ * `status.name`/`labels[].name` — no separate id/name lookup table is ever
+ * needed there, unlike `user`/`sprint`/`component`.
+ */
+type RuleEvalContext = EvalContext & {
+  statuses: NlqlStatusRef[];
+  labels: NlqlLabelRef[];
+};
 
 /** Full Prisma include for building the IssueDto passed to the NLQL evaluator. */
 const issueInclude = {
@@ -139,19 +157,24 @@ export class AutomationEngineService {
 
     const issueDto = toIssueDto(issueRecord);
 
-    // Build EvalContext (custom field defs + project users/sprints for
-    // me()/name resolution). Only queries workspace members / project
-    // sprints when at least one triggered rule's condition actually
-    // references a `user`- or `sprint`-kind field — an event-driven path
-    // must stay cheap. See MCP-QA pass 1, finding 1.
+    // Build EvalContext (custom field defs + project users/sprints/statuses/
+    // labels/components for me()/name resolution). Only queries each
+    // side-context when at least one triggered rule's condition actually
+    // references the relevant field(s) — an event-driven path must stay
+    // cheap. See MCP-QA pass 1, finding 1 and pass 4, finding E1.
     const referencedKinds = new Set<string>();
+    const referencedFields = new Set<string>();
     for (const rule of rules) {
       if (!rule.condition) continue;
       for (const kind of getReferencedFieldKinds(rule.condition)) referencedKinds.add(kind);
+      for (const field of getReferencedStandardFields(rule.condition)) referencedFields.add(field);
     }
     const evalCtx = await this.buildEvalContext(projectId, {
       includeUsers: referencedKinds.has('user'),
       includeSprints: referencedKinds.has('sprint'),
+      includeStatuses: referencedFields.has('status'),
+      includeLabels: referencedKinds.has('array'),
+      includeComponents: referencedKinds.has('component'),
     });
 
     // Collect run-row data objects across all rules, then batch-insert at the
@@ -184,7 +207,7 @@ export class AutomationEngineService {
       createdById: string | null;
     },
     issueDto: IssueDto,
-    evalCtx: EvalContext,
+    evalCtx: RuleEvalContext,
     actorUserId: string,
     trigger: AutomationTrigger,
   ): Promise<Prisma.AutomationRunCreateManyInput> {
@@ -197,14 +220,14 @@ export class AutomationEngineService {
     if (rule.condition) {
       try {
         const ast = parse(rule.condition);
-        // Fail loud on an unresolved assignee/reporter/sprint NAME (MCP-QA
-        // pass 1, finding 1 residual) — mirrors the existing invalid-
-        // condition handling below (FAILED run, logged, engine keeps
-        // running) rather than crashing the event pipeline or silently
-        // treating the rule as non-matching.
+        // Fail loud on an unresolved assignee/reporter/sprint/status/label/
+        // component value (MCP-QA pass 1, finding 1 + pass 4, finding E1) —
+        // mirrors the existing invalid-condition handling below (FAILED run,
+        // logged, engine keeps running) rather than crashing the event
+        // pipeline or silently treating the rule as non-matching.
         const nameCheck = resolveQueryNames(rule.condition, evalCtx);
         if (!nameCheck.ok) {
-          throw new Error(nameCheck.error?.message ?? 'Unknown user or sprint reference');
+          throw new Error(nameCheck.error?.message ?? 'Unknown query reference');
         }
         matched = evaluate(ast, issueDto, evalCtx);
       } catch (err) {
@@ -358,8 +381,14 @@ export class AutomationEngineService {
 
   private async buildEvalContext(
     projectId: string,
-    options: { includeUsers: boolean; includeSprints: boolean },
-  ): Promise<EvalContext> {
+    options: {
+      includeUsers: boolean;
+      includeSprints: boolean;
+      includeStatuses: boolean;
+      includeLabels: boolean;
+      includeComponents: boolean;
+    },
+  ): Promise<RuleEvalContext> {
     // Load custom field definitions for the project.
     const fieldRows = await this.prisma.customFieldDefinition.findMany({
       where: { projectId },
@@ -372,11 +401,17 @@ export class AutomationEngineService {
       type: r.type as NlqlCustomFieldDef['type'],
     }));
 
-    // Workspace members (assignee/reporter name-or-email resolution) and
-    // project sprints (sprint name resolution) — loaded conditionally by the
-    // caller based on what the triggered rules' conditions reference.
-    const { users, sprints } = await loadNlqlEvalContext(this.prisma, projectId, options);
+    // Workspace members (assignee/reporter name-or-email resolution),
+    // project sprints (sprint name resolution), and project statuses/
+    // labels/components (their respective fail-loud name checks) — each
+    // loaded conditionally by the caller based on what the triggered rules'
+    // conditions reference.
+    const { users, sprints, statuses, labels, components } = await loadNlqlEvalContext(
+      this.prisma,
+      projectId,
+      options,
+    );
 
-    return { customFieldDefs, users, sprints };
+    return { customFieldDefs, users, sprints, components, statuses, labels };
   }
 }
