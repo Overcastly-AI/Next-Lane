@@ -3253,3 +3253,146 @@ e2e-asserted string preserved — this was a visual pass, not a rewrite.
 `RecentActivityCard` real-content pass (icons per notification type, grouping)
 was never in scope for either audit or this build. Third surface of this pass
 is a separate builder — see its own dated entry / commit for status.
+
+---
+
+## 2026-09-19 — `improve-ui` design-elevation pass #3 — MyWorkPage shipped, and independent verification of the whole pass
+
+**Workflow:** `.claude/workflows/improve-ui.md`. This closes the three-surface
+design-elevation pass recorded in the two entries above. `frontend-builder` was
+the 3rd of 3 sequential builders; territory was `pages/MyWorkPage.tsx` only
+(`IssueRow` / `StatusPill`). Commits: `167775e` (drawer), `e415093` (pulse),
+`b66adfa` (my-work), all on `chore/improve-ui-workflow`.
+
+**Pass totals:** 29 findings raised across the three audits, **14 kept** after
+the adversarial sift, all 14 built. Surfaces redesigned:
+`issue/IssueDetailDrawer.tsx` (with `AttachmentsPanel`, `ChecklistSection`,
+`TimeTrackingSection`, `CommentsPanel`, `ActivityPanel`), `PulseDashboardPage.tsx`,
+`MyWorkPage.tsx`.
+
+### MyWorkPage — 4 findings kept of 12 raised, all built
+
+1. **`StatusPill` had no fixed-width slot** — the status column's `x` ranged
+   1028–1060px across the 41-row NOVA seed (measured per row, not eyeballed).
+   Worth recording *why* the obvious fix is wrong: fixing the widths of the
+   *preceding* optional chips does not fix the column, because `StatusPill`'s own
+   text length ("In Progress" vs "To Do") still shifts the `flex-1` title's right
+   edge and therefore everything after it. Fixed by moving the entire trailing
+   metadata cluster (sprint, due/overdue, status, project, priority) into one CSS
+   grid with 5 fixed pixel tracks. Re-measured: `x` range is now exactly **0px**
+   across all 41 rows.
+2. **Issue-key contrast 2.56:1 → 4.83:1** (`text-slate-400` → `text-ink-500`).
+3. **Subtitle contrast 4.20:1 → 6.68:1** (`text-slate-500` → `text-ink-600`),
+   plus the same sweep on the h1 / section label / row title / hover / border
+   colors.
+4. **Section count badge was a third hand-rolled gray pill** — routed through the
+   shared `Badge` component.
+
+Plus one item **outside** the sifted 4, taken because this pass's quality floor
+requires it: `IssueRow`'s button had no `focus-visible` ring at all (WCAG 2.4.7);
+added, matching `PulseDashboard`'s `MyIssuesCard` row convention.
+
+### REFUTED — do not re-raise these
+
+This is the most reusable part of the entry. Each of the following was raised,
+investigated, and **found not to be a defect**. Re-raising them costs a build
+cycle and lands the same "won't fix" each time.
+
+- **"Drawer Delete button has no visible focus ring"** — **false positive, test
+  methodology.** Tailwind's ring is a `box-shadow` with a ~120ms transition;
+  reading computed style synchronously right after `keyboard.press('Tab')` catches
+  it mid-transition at zero. Re-read after the transition settles: correct,
+  visible ring. Any future focus-ring audit must wait out the transition before
+  reading `boxShadow`.
+- **"`AttachmentsPanel` collapsed dropzone has no visible focus ring"** —
+  **false positive, tooling semantics.** Playwright's `locator.focus()` calls DOM
+  `.focus()` directly, which Chromium does **not** treat as `:focus-visible`;
+  only real keyboard navigation does. Driven with real sequential `Tab` presses,
+  the ring renders correctly (screenshot-confirmed). Focus-visible assertions must
+  use `keyboard.press('Tab')`, never `locator.focus()`.
+- **"Collapse Checklist's and Time Tracking's add-affordances when empty"**
+  (raised in pass #1, restated here because it looks like an obvious symmetry with
+  the `AttachmentsPanel` fix) — **refused on contract grounds.**
+  `checklist.spec.ts` / `time-tracking.spec.ts` assert `checklist-add-input` /
+  `worklog-add-minutes` visible on a fresh empty issue with no prior expand step.
+  Collapsing them breaks a golden e2e contract, not a cosmetic assertion.
+- **"Re-order the drawer sidebar ahead of the main column on mobile"** —
+  evaluated, **not built.** It trades "Status needs a scroll" for "Description
+  and Comments need a scroll" — a worse regression. The header-pinned
+  `StatusHeaderPicker` solves the named problem with no trade-off.
+- **"Replace the Pulse workspace `<select>` / reconsider whether the picker
+  belongs on the page"** — **refused on contract grounds.** `#pulse-ws-select` is
+  driven by `workspace-switcher.spec.ts`, the CLAUDE.md-designated canonical
+  cross-page state-coherence suite, plus `workspace-settings.spec.ts`. The id and
+  native `<select>` semantics were preserved; only the styling moved to the shared
+  primitive.
+- **"`DateInput` should use the unified `formatDate` helper"** — **refused.** Its
+  file-header comment documents why the control must stay a native `type=date`;
+  the finding itself agreed the constraint is legitimate.
+
+### Independent verification (separate QA agent, environment stood up from scratch)
+
+Not trusting builder claims: fresh local Postgres 16 DB `nextlane_ui_verify`,
+`prisma migrate deploy` + seed, API built clean (`rm -rf dist *.tsbuildinfo`) on
+:4240, and the web served as a **real production artifact** (`pnpm build` +
+`vite preview --strictPort` on :3240), not the dev server. `docker compose config`
+validated syntactically clean (no Docker daemon in this sandbox; the prod
+build/preview is the closest available proxy).
+
+- `pnpm --filter @next-lane/web lint` (`tsc --noEmit`): **clean**.
+- vitest: **59/59**.
+- e2e regression across `chromium-desktop` (1280×800) and `mobile-chrome`
+  (Pixel 5): **176/176 passed** (1 expected desktop-only drag-and-drop skip) over
+  `issue-detail`, `my-work`, `pulse-dashboard`, `checklist`, `attachments`,
+  `attachment-admin-delete`, `time-tracking`, `board`, `nav-sidebar`,
+  `mobile-breadcrumb`, `personal-board`, `theme`, `skip-link`, `qa-adversarial`,
+  `viewer-aware-ui`, `toast`, `inline-card-status`.
+- **Coverage gap found and closed by QA:** the new header Status quick-picker
+  (`data-testid="issue-status-quickpick"`) had **zero** spec coverage, and it is
+  exactly the two-controls-one-field shape the workspace-switcher bug class taught
+  us to distrust. New `apps/web/e2e/issue-status-quickpick.spec.ts` covers
+  bidirectional header↔sidebar sync, `page.reload()` persistence, and the
+  VIEWER-disabled state — **4/4 both viewports**. This was the only file QA added;
+  no application source was touched.
+- Adversarial manual checks at 1440×900 and 393×852: no horizontal overflow
+  anywhere (`document.scrollWidth === window.innerWidth`), including a
+  manufactured stress case — a custom status named
+  `"Awaiting Stakeholder Sign-Off Review"` assigned to a real issue. The
+  fixed-width grid held on desktop (pill truncates inside its 92px track) and the
+  title correctly ceded space on mobile. The "fixed-width columns don't shift"
+  claim is true for real data, not just short seed data. Also verified: Comments
+  render directly under Description on both viewports; `SectionHeading` renders
+  identically across Attachments/Checklist/Time Tracking/Comments/Activity with
+  "Log work" visibly demoted; the quick-picker wraps onto its own row on mobile
+  and is disabled for VIEWER; `formatDate`/`formatDateTime` unified with full
+  timestamps in `title`; empty states on a genuinely fresh 0-issue user; and a
+  **forced 500** on Pulse's Recent Activity (route interception) renders the
+  `ErrorState` correctly on both viewports with no infinite-spinner artifact.
+
+**Verdict: ACCEPT** — no regressions on either viewport across all three surfaces.
+
+**Honesty note carried forward from QA:** touch-persistent row actions were
+screenshot-confirmed only for `CommentsPanel` at 393px. `AttachmentRow`,
+`ChecklistItem` and `WorklogRow` use the identical
+`opacity-100 md:opacity-0 md:group-hover:opacity-100` pattern byte-for-byte and
+their CRUD specs pass on `mobile-chrome`, but they were **inferred-consistent, not
+independently screenshotted**. Worth a 30-second confirmation on the next pass.
+
+### Left open
+
+- **Real, pre-existing a11y gap (not a regression of this pass** — confirmed via
+  `git diff bcf667d..HEAD`**):** the drawer's "Edit description" button
+  (`aria-label="Edit description"`) has `focus:outline-none` with no ring or
+  border fallback; real keyboard Tab lands on it with **zero** visible indicator
+  (`boxShadow: none`, `outlineColor: transparent`). Filed for the next pass.
+- **Pulse:** hierarchy re-order (lead with `Assigned to me` over the admin action
+  row) and `Projects`-section `Card`/`CardHeader` parity; a `RecentActivityCard`
+  real-content pass (per-type icons, grouping) was never in scope.
+- **My Work:** sort/filter/pagination, duplicate-issue-across-sections badge, the
+  remainder of the `ink-*` token migration, `StatusPill`'s own chip vocabulary,
+  conditional project badge, mobile metadata density, icon accessible names.
+- **Drawer sidebar (out of this pass's territory):** `LabelPicker`,
+  `ParentSubtasks`, `LinkedIssuesSection`, `MentionComposer` carry a *third and
+  fourth* heading treatment beyond the two this pass unified
+  ("Labels"/"Parent"/"Sub-tasks" sentence-case vs. "LINKED ISSUES" tracked caps).
+- Touch-persistence screenshot confirmation for the three inferred rows above.
