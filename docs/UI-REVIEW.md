@@ -327,7 +327,8 @@ Each item below is redesigned design-skill-led, then ✅ when shipped + verified
 **Phase C — Pages**
 - [x] Auth: `LoginPage` · `RegisterPage` · `ForgotPasswordPage` — `slate-*`/`brand-*` → `ink-*`/`signal-*`; password label → `text-xs font-medium text-ink-600`; forgot-password link consistent; email chip in success state uses `<code>` mono; error banners get `role="alert"` + border ✅ 2026-06-29
 - [ ] `AuthShell` · `ResetPasswordPage` (already clean; no changes needed)
-- [ ] `PulseDashboardPage` · `DashboardPage` · `MyWorkPage`
+- [x] `PulseDashboardPage` — collapsed the permanently-empty `RecentActivityCard` to a one-line affordance, raw `<select>` → shared `Select` primitive (kept `#pulse-ws-select` id/native semantics for the `workspace-switcher`/`workspace-settings` canonical suites), new opt-in `Button`/`Select` `lg` (40px) size on the admin row for the touch-target floor, `ink-500`→`ink-600` on the "Workspace" label + "PROJECTS" heading (4.47:1 → 6.98:1) ✅ 2026-09-19 (see dated run record below)
+- [ ] `DashboardPage` · `MyWorkPage`
 - [ ] `BoardPage` · `BacklogPage` · `TriagePage`
 - [ ] `ReportsPage` (+ `reports/BurndownChart` · `VelocityChart` · `CumulativeFlowChart`)
 - [x] `RoadmapPage` — `slate-*` → `ink-*` throughout (heading, description, card border, shell breadcrumb, canvas background); breadcrumb matches AutomationsPage reference pattern (shrink-0/min-w-0/overflow-hidden) ✅ 2026-06-29
@@ -3117,3 +3118,87 @@ treatment beyond the two this pass unified ("Labels"/"Parent"/"Sub-tasks"
 sentence-case vs. "LINKED ISSUES" tracked caps) — filed as a follow-up in
 `docs/BACKLOG.md` § Already Done / carry-forward rather than silently left for
 the next auditor to re-discover from scratch.
+
+---
+
+## 2026-09-19 — `improve-ui` design-elevation pass #2 — PulseDashboardPage shipped
+
+**Workflow:** `.claude/workflows/improve-ui.md`, continuing from the same pass as
+the `IssueDetailDrawer` run above. `frontend-builder` was the 2nd of 3 sequential
+builders in this pass; territory was `pages/PulseDashboardPage.tsx` only (plus the
+two shared primitives it needed, `ui/Button.tsx` and `ui/Select.tsx`).
+
+**Input:** the 2026-09-19 `PulseDashboardPage` audit further up this file, sifted
+down to 5 findings, 4 code-level + 1 meta (the audit filing itself, no fix
+attached). All 4 code findings were verified still accurate against current
+source before building — none were refuted.
+
+**4 findings, all kept and built:**
+
+1. **Permanently-empty `RecentActivityCard` was the page's largest element**
+   (1006×178px desktop / 359×178px mobile, larger than `SprintSnapshotCard` +
+   `MyIssuesCard` + the `ProjectCard` combined) — the *permanent* state for a
+   solo self-hoster, not an edge case. Collapsed the `items.length === 0` branch
+   from the full dashed-border `EmptyState` to a single-line row (bell glyph +
+   "No recent activity — assignments, comments and mentions will show up
+   here."), matching `MyIssuesCard`'s card-header-plus-one-line footprint.
+   Desktop screenshot: card shrank from `y=333`–`545` to `y=333`–`389`, pulling
+   `Projects` up ~156px.
+2. **Raw `<select>` bypassed `components/ui/Select.tsx`** (native OS dropdown
+   chrome, `rounded-lg` vs `rounded`, `border-ink-300` vs `border-ink-200`,
+   `focus-visible:ring-brand-400`-only vs the primitive's
+   `focus:border-signal-500 + ring-signal-200`, `px-2` vs `px-3 pr-8`). Swapped
+   to `<Select>`, keeping the `id="pulse-ws-select"` and native `<select>`
+   semantics intact — the `workspace-switcher.spec.ts` (the CLAUDE.md-designated
+   *canonical* cross-page state-coherence suite) and `workspace-settings.spec.ts`
+   both drive this exact element via `.locator('#pulse-ws-select')` /
+   `.selectOption()` / `option:checked`, so the id and `<select>`-ness were
+   preserved rather than "reconsidering whether the picker belongs on the page
+   at all" per the audit's secondary suggestion — removing it would have broken
+   the canonical suite for a plausible-but-untested UX simplification, not a
+   named defect. This also retired the page's last `brand-*` token call site
+   for free (the primitive uses `signal-*`), closing the audit's 🟢 nit #7
+   without a separate change.
+3. **Every admin-row control measured 36px tall at both viewports** (workspace
+   `<select>`, `+ Workspace`, `Members`, `Audit log`, `+ New Project`), short of
+   the ~40px touch-target guideline, because neither `Button` nor `Select` had a
+   size above `md` (36px). Added an opt-in `lg` (40px) size to both primitives
+   — `Button.tsx`'s `sizes.lg` / `Select.tsx`'s new `uiSize` prop (named
+   `uiSize`, not `size`, because native `<select size>` is a different
+   attribute — number of visible option rows — and colliding with it produced
+   a real `tsc` error caught before commit) — and used `lg` for all five
+   controls on this row. Verified live via `getBoundingClientRect`: all five
+   now measure `height: 40` at both 1440px and 393px.
+4. **"Workspace" label and "PROJECTS" heading measured 4.47:1** (`ink-500` on
+   the page's `ink-50` background), just under WCAG 1.4.3's 4.5:1 AA floor.
+   Bumped both to `ink-600`; re-measured live via `getComputedStyle` +
+   the WCAG relative-luminance formula in-browser (not estimated): **6.98:1**.
+
+**Not built — evaluated and intentionally left out of this task's scope:** the
+audit's Top-5 items #1 (re-order the page so `Assigned to me` leads over the
+admin action row) and #4 (`Projects` section adopts the `Card`/`CardHeader`
+treatment). Neither was in the 4 code findings this run's adversarial sift kept
+— building them anyway would have been scope creep on a task explicitly scoped
+to 5 named findings, and #1 in particular is a structural layout change with
+more surface area for regression than this pass's territory review supported.
+Both remain open; filed in `docs/BACKLOG.md` alongside this entry rather than
+silently dropped.
+
+**Evidence:** before/after screenshots at 1440×900 and 393×852 captured against
+a live build (API :4231, web :3231, DB `nextlane_ui_build_1`) in this pass's
+scratchpad. Gates: `pnpm --filter @next-lane/web lint` (tsc) clean,
+`pnpm --filter @next-lane/web build` clean, vitest 6 files/59 tests green, and
+86 targeted e2e green across **both** `chromium-desktop` and `mobile-chrome`
+Playwright projects — `pulse-dashboard.spec.ts` (16), `dashboards-phase2.spec.ts`
+(12, incl. the `#pulse-ws-select` cross-workspace case), `workspace-switcher.spec.ts`
+(24, the canonical coherence suite), `workspace-settings.spec.ts` (8),
+`audit-log.spec.ts` (22, the `Members`/`Audit log` nav-button gating). Live
+`getBoundingClientRect`/`getComputedStyle` measurements taken for the tap-target
+and contrast fixes, not eyeballed. Every `data-testid`/role/aria-label/
+e2e-asserted string preserved — this was a visual pass, not a rewrite.
+
+**What's left open on this surface:** the audit's hierarchy re-order (finding
+#3) and `Projects`-section `Card` parity (finding #4), both noted above; a
+`RecentActivityCard` real-content pass (icons per notification type, grouping)
+was never in scope for either audit or this build. Third surface of this pass
+is a separate builder — see its own dated entry / commit for status.

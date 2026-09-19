@@ -2,7 +2,7 @@ import { forwardRef, type ButtonHTMLAttributes } from 'react';
 import { cn } from '@/lib/cn';
 
 type Variant = 'primary' | 'secondary' | 'ghost' | 'danger';
-type Size = 'sm' | 'md';
+type Size = 'sm' | 'md' | 'lg';
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: Variant;
@@ -31,6 +31,10 @@ const variants: Record<Variant, string> = {
 const sizes: Record<Size, string> = {
   sm: 'h-8 px-3 text-xs rounded gap-1.5 font-semibold',
   md: 'h-9 px-3.5 text-sm rounded-md gap-2 font-semibold',
+  // 40px — meets the ~40px touch-target guideline `md` (36px) falls short of.
+  // Opt-in: use for rows of controls that are a primary touch target (e.g. a
+  // page's top admin/action row), not as a blanket replacement for `md`.
+  lg: 'h-10 px-4 text-sm rounded-md gap-2 font-semibold',
 };
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
