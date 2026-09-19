@@ -239,6 +239,56 @@ than a per-page patch.
   `index.css` aliases `--nl-slate-*` to the `ink` dark scale. The token debt
   is real but it is not currently a user-visible dark-mode bug.
 
+### ✅ Closed 2026-09-19 (design-elevation pass #2, builder 3/3)
+
+An adversarially-sifted subset of 4 findings from this audit was built this
+pass; the other 8 are unchanged and still open below.
+
+- [x] **#1 Give `StatusPill` a fixed-width slot.** Re-verified live: the flex
+      layout couldn't be patched with just the pre-status chips fixed-width —
+      `StatusPill`'s own text length ("In Progress" vs "To Do") still moved
+      the flex-1 title's right edge, and with it everything downstream. Fixed
+      properly by putting the *entire* trailing metadata cluster (sprint,
+      due/overdue, status, project, priority) into one grid with 5 fixed
+      pixel tracks, `StatusPill` included (`justify-self-start` + `truncate`
+      so it doesn't stretch to fill its column). Re-measured across all 41
+      rows of the same NOVA seed: `x` range went from 31.5px to **0px** —
+      every row's status now lands at the exact same pixel.
+- [x] **#3 Issue-key contrast (2.56:1 → 4.83:1).** `text-slate-400` →
+      `text-ink-500`; verified live via `getComputedStyle` +
+      relative-luminance, not estimated.
+- [x] **#8 Section count badge routed through `Badge`.** Replaced the
+      hand-rolled `rounded-full bg-slate-100 …` span with `<Badge>{count}</Badge>`,
+      closing one of the file's three divergent "small gray pill"
+      implementations (the other, `StatusPill` itself, is finding #7, not in
+      this pass's sifted set — left open below).
+- [x] **#11 Subtitle contrast (4.20:1 → 6.68:1).** `text-slate-500` →
+      `text-ink-600` on the page subtitle; also carried to the `Section`
+      label (same failing pair, same fix) and the page `<h1>`/row title/key
+      as a consistency sweep, plus `hover:bg-slate-50` → `hover:bg-ink-50`
+      and the list container/divider colors — not a full finding-#6 token
+      migration (the due-date chip, `CATEGORY_PILL`, and `StatusPill` itself
+      keep their existing color families; only `slate-*` was touched, not the
+      semantic blue/green/amber pairs), but it clears every contrast pair
+      this pass's findings actually flagged.
+- [x] **Bonus, not in the sifted 4 but the task's own quality floor required
+      it: finding #2, `IssueRow`'s missing focus-visible ring.** A fixed-width
+      status column and AA-contrast text don't help a keyboard user who can't
+      see which row they're on. Added the app's standard
+      `focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-400`
+      convention (matches `PulseDashboardPage`'s identical `MyIssuesCard` row).
+
+**Still open** (not in this pass's sifted set, left alone by design): #4 (no
+sort/filter/pagination); #5 (duplicate issue across sections, unbadged); #6
+(the *rest* of the token migration — due-date
+chip, `CATEGORY_PILL`'s blue/green pairs, `StatusPill` itself); #7
+(`StatusPill` is still a fourth divergent chip implementation, not the
+`ring-1 ring-inset` vocabulary `IssueCard` established); #9 (project badge
+repeats with zero information gain in the common single-project case); #10
+(mobile sheds every metadata signal beyond title/key/status); #12 (icon
+accessible names, shared `issueMeta.tsx` code, out of this file's blast
+radius). Filed to `docs/BACKLOG.md`.
+
 ---
 
 ### Top 5 for the dev team (priority order)
@@ -328,7 +378,8 @@ Each item below is redesigned design-skill-led, then ✅ when shipped + verified
 - [x] Auth: `LoginPage` · `RegisterPage` · `ForgotPasswordPage` — `slate-*`/`brand-*` → `ink-*`/`signal-*`; password label → `text-xs font-medium text-ink-600`; forgot-password link consistent; email chip in success state uses `<code>` mono; error banners get `role="alert"` + border ✅ 2026-06-29
 - [ ] `AuthShell` · `ResetPasswordPage` (already clean; no changes needed)
 - [x] `PulseDashboardPage` — collapsed the permanently-empty `RecentActivityCard` to a one-line affordance, raw `<select>` → shared `Select` primitive (kept `#pulse-ws-select` id/native semantics for the `workspace-switcher`/`workspace-settings` canonical suites), new opt-in `Button`/`Select` `lg` (40px) size on the admin row for the touch-target floor, `ink-500`→`ink-600` on the "Workspace" label + "PROJECTS" heading (4.47:1 → 6.98:1) ✅ 2026-09-19 (see dated run record below)
-- [ ] `DashboardPage` · `MyWorkPage`
+- [ ] `DashboardPage`
+- [x] `MyWorkPage` (`IssueRow`/`StatusPill`) — fixed-width metadata grid (StatusPill column ragged x=1028.4–1059.8 → constant across all 41 rows), issue-key contrast 2.56:1→4.83:1, subtitle contrast 4.20:1→6.68:1, section count badge routed through shared `Badge`, plus the row button's missing `focus-visible` ring added ✅ 2026-09-19 (see dated run record below; 8 of the audit's 12 findings — sort/filter, dedup badge, rest of the token migration, `StatusPill`'s own chip vocabulary, conditional project badge, mobile metadata, icon a11y names — intentionally out of this pass's sifted scope, filed to BACKLOG)
 - [ ] `BoardPage` · `BacklogPage` · `TriagePage`
 - [ ] `ReportsPage` (+ `reports/BurndownChart` · `VelocityChart` · `CumulativeFlowChart`)
 - [x] `RoadmapPage` — `slate-*` → `ink-*` throughout (heading, description, card border, shell breadcrumb, canvas background); breadcrumb matches AutomationsPage reference pattern (shrink-0/min-w-0/overflow-hidden) ✅ 2026-06-29
