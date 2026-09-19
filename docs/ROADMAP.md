@@ -874,6 +874,8 @@ See `docs/BACKLOG.md` § Future for the filed (not-yet-Ready) epic entry.
 
 ### Current focus
 
+**Status (2026-09-19): design-elevation loop, `improve-ui` pass #2 — `IssueDetailDrawer` shipped.** Product is functionally complete (see the v1 criteria above); current work is the standing "make it look and feel premium, distinctive, and intentional" directive (CLAUDE.md § Design elevation). This pass closed the 3 `IssueDetailDrawer` findings pass #1 (2026-09-19, see `docs/UI-REVIEW.md`) audited but never built: Comments now renders immediately after Description instead of after three full-size empty capture widgets (was `Comments@760`px/desktop, `Status@995`px-scroll/mobile — now `Comments@164`px, zero-scroll Status via a new header-pinned quick-picker); Attachments/Comments/Activity headings unified onto the same tracked-caps treatment Description/Checklist/Time Tracking already used (`SectionHeading`); comment/activity/attachment/"Created" dates unified on one format (`lib/formatDate.ts`); empty-state text bumped off a WCAG-1.4.3-failing gray; row actions (checklist/worklog/attachment/comment delete-or-edit) made persistently visible on touch instead of hover-only. 128/128 targeted e2e green desktop+mobile, `tsc`/build/vitest clean, zero test-hook changes. Full writeup: `docs/UI-REVIEW.md` § 2026-09-19 pass #2, `docs/BACKLOG.md` § Already Done. Two more surfaces are in flight the same pass (sequential builders on the same branch) — see their own commits for status.
+
 **Status (2026-09-05, maintenance pass): no feature work is in flight, and the
 last thing to merge was 2026-08-11 (`v0.17.2`).** Read the dated build updates
 below as history, not as a statement of what is being built right now — the

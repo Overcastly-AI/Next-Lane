@@ -17,6 +17,7 @@ import { useToast } from '@/components/ui/Toast';
 import { errorMessage } from '@/lib/errorMessage';
 import { parseDuration, formatDuration } from '@/lib/duration';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { SectionHeading } from './SectionHeading';
 
 // ---------------------------------------------------------------------------
 // Props
@@ -50,9 +51,7 @@ export function TimeTrackingSection({
   return (
     <section data-testid="time-tracking-section" aria-label="Time tracking">
       {/* Section header */}
-      <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.08em] text-ink-500">
-        Time Tracking
-      </p>
+      <SectionHeading className="mb-3">Time Tracking</SectionHeading>
 
       {/* Estimate field */}
       <EstimateField
@@ -71,7 +70,7 @@ export function TimeTrackingSection({
       {worklogsQuery.isLoading ? (
         <p className="mt-3 text-xs text-ink-400">Loading…</p>
       ) : worklogs.length === 0 ? (
-        <p className="mt-3 text-xs text-ink-400">No time logged yet.</p>
+        <p className="mt-3 text-xs text-ink-600">No time logged yet.</p>
       ) : (
         <ul className="mt-3 space-y-1.5">
           {worklogs.map((log) => (
@@ -243,7 +242,7 @@ function EstimateField({
           Set estimate
         </button>
       ) : (
-        <span className="text-sm text-ink-400">No estimate</span>
+        <span className="text-sm text-ink-500">No estimate</span>
       )}
     </div>
   );
@@ -376,9 +375,15 @@ function LogWorkForm({ issueId }: { issueId: string }) {
       className="mb-3 rounded border border-dashed border-ink-200 p-2.5"
       aria-label="Log work"
     >
-      <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.08em] text-ink-400">
-        Log work
-      </p>
+      {/*
+       * Deliberately NOT the SectionHeading treatment: "Log work" is a
+       * sub-card title one level below the "Time Tracking" section header,
+       * not a peer of it. Dropping the uppercase/tracking (sentence case,
+       * semibold, no letter-spacing) is what visually demotes it a level —
+       * matching it in color/case to the tracked caps above it made it read
+       * as another top-level section.
+       */}
+      <p className="mb-2 text-xs font-semibold text-ink-600">Log work</p>
 
       <div className="flex items-start gap-2">
         <div className="flex flex-1 flex-col gap-1.5">
@@ -522,7 +527,9 @@ function WorklogRow({
             disabled={remove.isPending}
             className={[
               'shrink-0 rounded p-0.5 text-ink-300 transition-colors duration-[120ms]',
-              'opacity-0 group-hover:opacity-100 focus-visible:opacity-100',
+              // Persistently visible on touch/coarse-pointer viewports (there's no
+              // hover to reveal it on); fades in on hover/focus at desktop widths.
+              'opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100',
               'hover:bg-red-50 hover:text-red-500',
               'focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400',
               'disabled:opacity-30',

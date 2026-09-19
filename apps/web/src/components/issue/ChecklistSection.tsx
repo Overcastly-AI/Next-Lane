@@ -15,6 +15,7 @@ import {
 import { useToast } from '@/components/ui/Toast';
 import { errorMessage } from '@/lib/errorMessage';
 import { cn } from '@/lib/cn';
+import { SectionHeading } from './SectionHeading';
 
 interface Props {
   issueId: string;
@@ -35,20 +36,22 @@ export function ChecklistSection({
   return (
     <section data-testid="checklist-section" aria-label="Checklist">
       {/* Section header */}
-      <div className="mb-2 flex items-center justify-between">
-        <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-ink-500">
-          Checklist
-        </p>
-        {progress.total > 0 && (
-          <span
-            data-testid="checklist-progress"
-            className="text-xs font-semibold tabular-nums text-ink-500"
-            aria-label={`${progress.done} of ${progress.total} done`}
-          >
-            {progress.done}/{progress.total}
-          </span>
-        )}
-      </div>
+      <SectionHeading
+        className="mb-2"
+        action={
+          progress.total > 0 && (
+            <span
+              data-testid="checklist-progress"
+              className="text-xs font-semibold tabular-nums text-ink-500"
+              aria-label={`${progress.done} of ${progress.total} done`}
+            >
+              {progress.done}/{progress.total}
+            </span>
+          )
+        }
+      >
+        Checklist
+      </SectionHeading>
 
       {/* Progress bar — hidden when total is 0 */}
       {progress.total > 0 && (
@@ -83,7 +86,7 @@ export function ChecklistSection({
 
       {/* Item list */}
       {items.length === 0 ? (
-        <p className="mb-3 text-xs text-ink-400">No checklist items yet.</p>
+        <p className="mb-3 text-xs text-ink-600">No checklist items yet.</p>
       ) : (
         <ul className="mb-3 space-y-1">
           {items.map((item) => (
@@ -196,7 +199,9 @@ function ChecklistItem({
           disabled={remove.isPending}
           className={[
             'shrink-0 rounded p-0.5 text-ink-300 transition-colors duration-[120ms]',
-            'opacity-0 group-hover:opacity-100 focus-visible:opacity-100',
+            // Persistently visible on touch/coarse-pointer viewports (there's no
+            // hover to reveal it on); fades in on hover/focus at desktop widths.
+            'opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100',
             'hover:bg-red-50 hover:text-red-500',
             'focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400',
             'disabled:opacity-30',

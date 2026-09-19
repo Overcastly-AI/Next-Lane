@@ -23,6 +23,8 @@ import { Field } from '@/components/ui/Field';
 import { DateInput } from '@/components/ui/DateInput';
 import { useOverlay } from '@/lib/useOverlay';
 import { errorMessage } from '@/lib/errorMessage';
+import { formatDate } from '@/lib/formatDate';
+import { cn } from '@/lib/cn';
 import { useToast } from '@/components/ui/Toast';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { ErrorState, LoadingState } from '@/components/ui/States';
@@ -216,8 +218,10 @@ function DrawerBody({
 
   return (
     <>
-      {/* Drawer header */}
-      <header className="flex items-center justify-between border-b border-ink-100 px-5 py-3">
+      {/* Drawer header — wraps to two rows below `sm:` so the status
+          quick-picker never crowds out the watch/delete/close cluster on a
+          390px phone (see StatusHeaderPicker for why it exists). */}
+      <header className="flex flex-wrap items-center justify-between gap-y-2 border-b border-ink-100 px-5 py-3">
         <div className="flex items-center gap-2">
           <IssueTypeIcon type={issue.type} className="h-4 w-4 text-ink-400" />
           {/* Issue key — DISPATCH mono data signature */}
@@ -233,6 +237,15 @@ function DrawerBody({
           )}
         </div>
         <div className="flex items-center gap-1">
+          {/* Status quick-picker — pinned in the header so the single most
+              frequent action on an issue is always reachable without
+              scrolling, on any viewport. */}
+          <StatusHeaderPicker
+            issue={issue}
+            statuses={statuses}
+            editable={editable}
+            onPatch={onPatch}
+          />
           {/* Watch toggle — any role can watch */}
           <button
             type="button"
@@ -413,6 +426,18 @@ function DrawerBody({
               )}
             </div>
 
+            {/*
+             * Comments sit right under Description — the actual conversation,
+             * not one of the "capture" widgets below it. Previously Comments
+             * was the LAST thing in the main column, after Attachments,
+             * Checklist and Time Tracking (each rendered at full size even
+             * empty): on a fresh issue that meant ~1150px of desktop scroll
+             * (and ~2100px on mobile) before reaching the one comment anyone
+             * had actually written. See AttachmentsPanel's collapsed empty
+             * state for the other half of that fix.
+             */}
+            <CommentsPanel issueId={issue.id} users={users} editable={editable} />
+
             <AttachmentsPanel
               issueId={issue.id}
               editable={editable}
@@ -439,8 +464,6 @@ function DrawerBody({
             <GitlabLinksSection issueId={issue.id} />
             <GiteaLinksSection issueId={issue.id} />
             <LinkedPagesSection issueId={issue.id} projectId={issue.projectId} />
-
-            <CommentsPanel issueId={issue.id} users={users} editable={editable} />
           </div>
 
           {/* Sidebar */}
@@ -586,7 +609,7 @@ function DrawerBody({
             />
 
             <div className="border-t border-ink-100 pt-3 text-xs text-ink-400">
-              Created {new Date(issue.createdAt).toLocaleDateString()}
+              Created {formatDate(issue.createdAt)}
             </div>
 
             <ActivityPanel
@@ -641,7 +664,7 @@ function ComponentField({
           {components.find((c) => c.id === componentId)?.name ?? 'Unknown'}
         </span>
       ) : (
-        <span className="text-sm text-ink-400">None</span>
+        <span className="text-sm text-ink-500">None</span>
       )}
     </Field>
   );
@@ -741,7 +764,7 @@ function VersionsField({
         )}
 
         {currentVersions.length === 0 && !editable && (
-          <span className="text-sm text-ink-400">None</span>
+          <span className="text-sm text-ink-500">None</span>
         )}
 
         {/* Dropdown to add versions */}
@@ -839,7 +862,7 @@ function VersionsField({
         )}
 
         {editable && versions.length === 0 && (
-          <span className="text-xs text-ink-400">
+          <span className="text-xs text-ink-600">
             No versions yet — add them in Settings.
           </span>
         )}
@@ -894,7 +917,7 @@ function StartDateField({
           })}
         </span>
       ) : (
-        <span className="text-sm text-ink-400">None</span>
+        <span className="text-sm text-ink-500">None</span>
       )}
     </Field>
   );
@@ -965,8 +988,80 @@ function DueDateField({
           )}
         </span>
       ) : (
-        <span className="text-sm text-ink-400">None</span>
+        <span className="text-sm text-ink-500">None</span>
       )}
     </Field>
+  );
+}
+
+/**
+ * Category → status-arc dot color, mirroring the board's column-header
+ * signal progression (graphite "queued" → cobalt "in motion" → eucalyptus
+ * "arrived") so the header pill reads as the same visual language as the
+ * rest of the app, not a one-off control.
+ */
+const STATUS_HEADER_DOT: Record<string, string> = {
+  TODO: 'bg-ink-400',
+  IN_PROGRESS: 'bg-signal-600',
+  DONE: 'bg-emerald-500',
+};
+
+/**
+ * Compact Status quick-picker pinned in the drawer header, above the
+ * scrollable body — always on screen regardless of scroll position.
+ *
+ * Why this exists: the sidebar's own Status field (`#d-status`, still the
+ * canonical control both write to) can sit ~1 viewport below the fold on a
+ * phone, because the drawer's 3-column grid collapses to a single column
+ * below `md:` and DOM order wins — the whole main column (Description,
+ * Comments, Attachments, …) renders before any sidebar field. Status is the
+ * single most frequently changed field on an issue, so it gets a persistent
+ * shortcut here rather than requiring every mobile user to scroll past the
+ * main column first. Both controls stay in sync (same `issue.statusId`,
+ * same `onPatch`) — there is exactly one source of truth, just two entry
+ * points to it.
+ */
+function StatusHeaderPicker({
+  issue,
+  statuses,
+  editable,
+  onPatch,
+}: {
+  issue: IssueWithWatch;
+  statuses: StatusDto[];
+  editable: boolean;
+  onPatch: (field: keyof IssueDto, value: unknown) => void;
+}) {
+  const current = statuses.find((s) => s.id === issue.statusId);
+  const dot = STATUS_HEADER_DOT[current?.category ?? ''] ?? 'bg-ink-400';
+
+  return (
+    <div className="relative flex shrink-0 items-center">
+      <span
+        aria-hidden="true"
+        className={cn('pointer-events-none absolute left-2.5 h-1.5 w-1.5 rounded-full', dot)}
+      />
+      <select
+        id="d-status-header"
+        aria-label="Status"
+        data-testid="issue-status-quickpick"
+        value={issue.statusId}
+        disabled={!editable}
+        onChange={(e) => onPatch('statusId', e.target.value)}
+        className={cn(
+          'h-7 max-w-[8.5rem] appearance-none truncate rounded-full border border-ink-200 bg-surface py-0 pl-5 pr-6 text-[11px] font-semibold text-ink-700 sm:max-w-[11rem]',
+          'transition-colors duration-[120ms] hover:border-signal-300',
+          'focus:border-signal-400 focus:outline-none focus:ring-2 focus:ring-signal-200',
+          'disabled:cursor-not-allowed disabled:opacity-60',
+          "bg-[url('data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 fill=%22none%22 viewBox=%220 0 24 24%22 stroke=%22%238b95a8%22 stroke-width=%222%22><path stroke-linecap=%22round%22 stroke-linejoin=%22round%22 d=%22M19 9l-7 7-7-7%22/></svg>')] bg-[length:11px] bg-[right_0.5rem_center] bg-no-repeat",
+        )}
+      >
+        {statuses.map((s) => (
+          <option key={s.id} value={s.id}>
+            {s.name}
+          </option>
+        ))}
+      </select>
+    </div>
   );
 }

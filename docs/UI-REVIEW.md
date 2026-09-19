@@ -319,7 +319,8 @@ Each item below is redesigned design-skill-led, then ✅ when shipped + verified
 - [ ] `board/CreateIssueModal` · `board/ColumnFormModal`
 - [x] `board/BoardWorkflowSelector` — badge ring-inset + ENFORCED chip ✅ 2026-06-29
 - [x] `board/FromTemplateMenu` — system animation applied ✅ 2026-06-29
-- [ ] `issue/IssueDetailDrawer` · `issue/CommentsPanel` · `issue/AttachmentsPanel` · `issue/ActivityPanel` · `issue/LabelPicker` · `issue/MentionComposer` · `issue/ParentSubtasks` · `issue/issueMeta`
+- [x] `issue/IssueDetailDrawer` · `issue/CommentsPanel` · `issue/AttachmentsPanel` · `issue/ActivityPanel` — main-column reorder (Comments under Description), unified `SectionHeading`, collapsed empty Attachments drop-zone, header `StatusHeaderPicker`, consistent `formatDate`, WCAG-AA empty-state contrast, touch-persistent row actions ✅ 2026-09-19 (see dated run record below)
+- [ ] `issue/LabelPicker` · `issue/MentionComposer` · `issue/ParentSubtasks` · `issue/issueMeta` — sidebar sub-panels, out of scope for the 2026-09-19 pass (main column only); `LabelPicker`/`ParentSubtasks`/`LinkedIssuesSection` visually confirmed to carry a third/fourth heading treatment distinct from the now-unified main column, see BACKLOG follow-up
 - [x] `issue/TimeTrackingSection` — progress % label + signal/red token ✅ 2026-06-29
 - [x] `issue/ChecklistSection` — progress % label + emerald-complete / signal-in-progress ✅ 2026-06-29
 
@@ -3025,3 +3026,94 @@ doc diff — exactly the shared-tree edit race `CLAUDE.md` warns about. Next run
 time on the same branch**, re-run QA against the actual diff, and commit
 `docs/UI-REVIEW.md` together with the code and the ROADMAP/BACKLOG tick, per the
 same-commit rule. Do not let an audit sit unstaged across other tool calls.
+
+---
+
+## 2026-09-19 — `improve-ui` design-elevation pass #2 — IssueDetailDrawer shipped
+
+**Workflow:** `.claude/workflows/improve-ui.md`, continuing from pass #1 above.
+Pass #1 stopped after Audit and lost 3 of its `IssueDetailDrawer` findings before
+they were written up; this run re-derived the drawer findings from scratch via a
+fresh adversarial sift (5 kept, all P2) and carried them through Redesign → Verify
+→ Record. `frontend-builder` was the 1st of 3 sequential builders in this pass;
+territory was `issue/IssueDetailDrawer.tsx` + `AttachmentsPanel`/`ChecklistSection`/
+`TimeTrackingSection`/`CommentsPanel`/`ActivityPanel` only.
+
+**Method:** measured live against a real running build (API :4230, web :3230, DB
+`nextlane_ui_build_0`) on the same seeded issue the earlier audit used (NOVA-6,
+`nextlane_ui_audit_0` seed script) — not a source-code skim. Drawer scroll metrics
+read via `[role=dialog] .nl-scroll`'s `scrollHeight`/`scrollTop`, not eyeballed.
+
+**5 findings, all kept and built** (see the matching `docs/BACKLOG.md` § Already
+Done entry for full technical detail — not duplicated here):
+
+1. **Comments buried under three full-size empty capture widgets** — `Comments@760`
+   desktop / `Status@995` mobile (~1.3 viewports of scroll) before the fix,
+   `Comments@164` after. Fixed via (a) reordering Comments to render right after
+   Description, (b) collapsing `AttachmentsPanel`'s drop-zone to a single-line
+   disclosure when empty, (c) a new header-pinned `StatusHeaderPicker` so Status —
+   the single most frequent action — never requires scrolling on any viewport.
+   **Checklist's and Time Tracking's own add-affordances were deliberately left
+   full-size** — `checklist.spec.ts`/`time-tracking.spec.ts` assert
+   `checklist-add-input`/`worklog-add-minutes` visible on a fresh empty issue with
+   no prior expand step, so collapsing them would have broken a golden e2e
+   contract, not just a cosmetic regression. Documented in-code, not silently
+   dropped.
+2. **Two competing heading systems** — `slate-600` sentence case
+   (Attachments/Comments/Activity) vs. `ink-500` tracked uppercase caps
+   (Description/Checklist/Time Tracking/`Field`), two genuinely different CSS-var
+   hex values, not a rendering coincidence. Unified behind a new
+   `issue/SectionHeading.tsx`; the nested "Log work" sub-heading was deliberately
+   given a *third*, distinct treatment (sentence-case `ink-600`, no tracking) so
+   it demotes correctly to one level below "Time Tracking" rather than becoming a
+   fourth instance of the same top-level pattern.
+3. **Three date-formatting conventions on one drawer** — raw
+   `toLocaleString()`/`toLocaleDateString()` (comment timestamp, "Created …",
+   attachment upload date) vs. Start/Due date's own explicit-options "Sep 19,
+   2026". Unified via a new `lib/formatDate.ts`; comment/activity timestamps keep
+   full precision via a `title` tooltip, matching the existing `WorklogRow`
+   relative-time pattern rather than a net information loss. `DateInput`'s native
+   `type=date` control was explicitly NOT touched — its own file-header comment
+   documents why it must stay native, and the finding agreed that constraint is
+   legitimate.
+4. **Empty-state text below WCAG 1.4.3** — `slate-400`/`ink-400` on "No … yet."
+   strings measured at ≈2.6–3.0:1 on white via the relative-luminance formula
+   (not eyeballed). Bumped to `-500`/`-600`, verified ≥4.5:1 with the same
+   formula before shipping — a claim this doc doesn't repeat without the number
+   behind it.
+5. **Row actions invisible on touch** — `opacity-0 group-hover:*`/`focus-within:*`
+   on checklist/worklog/attachment/comment row actions has zero discoverable
+   affordance on a coarse-pointer device (no `:hover` state to reveal them).
+   Made persistently visible below `md:`, reverting to hover-reveal at desktop
+   widths — confirmed with a real 393px-viewport screenshot of a populated
+   worklog row, not just a class-name diff.
+
+**A 6th candidate finding from the original brief — reordering the sidebar ahead
+of the main column on mobile via CSS `order` — was evaluated and NOT built.**
+Flipping `order-1`/`order-2` on the two grid columns would put ~12 sidebar fields
+(Status, Assignee, Priority, Type, Story points, Component, Versions, dates,
+Labels, Parent, Linked issues, custom fields) ahead of Title/Description/Comments
+on mobile — trading "Status needs a scroll" for "Description and Comments need a
+scroll," a worse regression for a P2 finding that names Status specifically. The
+header-pinned `StatusHeaderPicker` (finding 1c) solves the named problem — Status
+reachable with zero scroll — without that trade-off; this was the finding's own
+documented alternative option, not an invented substitute.
+
+**Evidence:** before/after screenshots at 1440×900 and 393×852 (top-of-drawer,
+mid-scroll, bottom-of-drawer, hover-reveal, dark mode) captured against the live
+build in this pass's scratchpad and posted to the user during the build. Gates:
+`tsc --noEmit` clean, `pnpm --filter @next-lane/web build` clean, vitest 59/59,
+and 128/128 targeted e2e green across both the `chromium-desktop` and
+`mobile-chrome` Playwright projects (attachments, attachment-admin-delete,
+checklist, time-tracking, markdown-rendering, mention-autocomplete, issue-detail,
+qa-adversarial, viewer-aware-ui, date-input-typing, workflow-robustness incl. the
+`#d-status` named-workflow-enforcement case). Every `data-testid`/role/aria-label/
+e2e-asserted string preserved — this was a visual/structural pass, not a rewrite.
+
+**What's left open on this surface:** `LabelPicker`/`ParentSubtasks`/
+`LinkedIssuesSection` (sidebar) and `MentionComposer` were out of this pass's file
+territory. Screenshots taken mid-pass show they carry a *third and fourth* heading
+treatment beyond the two this pass unified ("Labels"/"Parent"/"Sub-tasks"
+sentence-case vs. "LINKED ISSUES" tracked caps) — filed as a follow-up in
+`docs/BACKLOG.md` § Already Done / carry-forward rather than silently left for
+the next auditor to re-discover from scratch.
