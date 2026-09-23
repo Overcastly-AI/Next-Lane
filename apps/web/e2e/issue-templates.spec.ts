@@ -61,7 +61,7 @@ test.describe('Issue Templates — Settings UI (desktop)', () => {
       openBoard: false,
     });
 
-    await page.goto(`/projects/${ctx.project.id}/settings`);
+    await page.goto(`/projects/${ctx.project.id}/settings/templates`);
 
     // Wait for the templates section to appear.
     const section = page.getByTestId('templates-manager');
@@ -97,7 +97,7 @@ test.describe('Issue Templates — Settings UI (desktop)', () => {
     // Pre-create a template via API.
     await createTemplate(request, ctx.token, ctx.project.id, { name: 'Existing' });
 
-    await page.goto(`/projects/${ctx.project.id}/settings`);
+    await page.goto(`/projects/${ctx.project.id}/settings/templates`);
     const section = page.getByTestId('templates-manager');
     await expect(section).toBeVisible({ timeout: 15_000 });
 
@@ -124,7 +124,7 @@ test.describe('Issue Templates — Settings UI (desktop)', () => {
     // Pre-create a template via API.
     await createTemplate(request, ctx.token, ctx.project.id, { name: 'ToDelete' });
 
-    await page.goto(`/projects/${ctx.project.id}/settings`);
+    await page.goto(`/projects/${ctx.project.id}/settings/templates`);
     const section = page.getByTestId('templates-manager');
     await expect(section).toBeVisible({ timeout: 15_000 });
 
@@ -227,7 +227,7 @@ test.describe('Issue Templates — mobile (390px)', () => {
       name: 'Mobile Test Template',
     });
 
-    await page.goto(`/projects/${ctx.project.id}/settings`);
+    await page.goto(`/projects/${ctx.project.id}/settings/templates`);
     const section = page.getByTestId('templates-manager');
     await expect(section).toBeVisible({ timeout: 15_000 });
 

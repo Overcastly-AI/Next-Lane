@@ -72,7 +72,7 @@ async function getWorkflowTransitions(
 // ---------------------------------------------------------------------------
 
 async function openGraphView(page: import('@playwright/test').Page, projectId: string) {
-  await page.goto(`/projects/${projectId}/settings`);
+  await page.goto(`/projects/${projectId}/settings/work`);
 
   // Scroll to the workflows manager.
   const manager = page.getByTestId('workflows-manager');

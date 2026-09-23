@@ -32,7 +32,7 @@ test.describe('Webhooks settings UI', () => {
       openBoard: false,
     });
 
-    await page.goto(`/projects/${ctx.project.id}/settings`);
+    await page.goto(`/projects/${ctx.project.id}/settings/integrations`);
 
     const section = page
       .locator('section')
@@ -96,7 +96,7 @@ test.describe('Webhooks settings UI', () => {
     );
 
     await login(page, { email: viewer.email, password: viewer.password });
-    await page.goto(`/projects/${ctx.project.id}/settings`);
+    await page.goto(`/projects/${ctx.project.id}/settings/integrations`);
 
     // Settings page renders, but the Webhooks section is not shown to viewers.
     await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible();

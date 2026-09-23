@@ -129,7 +129,7 @@ test.describe('PR auto-transition-on-merge — desktop', () => {
     expect(done, 'expected a default "Done" status').toBeDefined();
 
     // ── Settings: enable auto-transition-on-merge, target "Done" ──────────
-    await page.goto(`/projects/${ctx.project.id}/settings`);
+    await page.goto(`/projects/${ctx.project.id}/settings/integrations`);
     const githubSection = page.getByTestId('github-section');
     await expect(githubSection.getByTestId('github-webhook-url')).toBeVisible({ timeout: 8_000 });
 

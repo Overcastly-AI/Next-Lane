@@ -61,7 +61,7 @@ test.describe('Custom fields', () => {
     });
 
     // ---- Navigate to Settings and create a Bug-only SELECT field ----
-    await page.goto(`/projects/${ctx.project.id}/settings`);
+    await page.goto(`/projects/${ctx.project.id}/settings/work`);
     await expect(
       page.getByRole('heading', { name: 'Custom fields' }),
     ).toBeVisible({ timeout: 10_000 });
@@ -223,7 +223,7 @@ test.describe('Custom fields — mobile', () => {
       openBoard: false,
     });
 
-    await page.goto(`/projects/${ctx.project.id}/settings`);
+    await page.goto(`/projects/${ctx.project.id}/settings/work`);
     await expect(
       page.getByRole('heading', { name: 'Custom fields' }),
     ).toBeVisible({ timeout: 10_000 });

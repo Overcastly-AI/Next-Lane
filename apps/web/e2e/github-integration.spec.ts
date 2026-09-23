@@ -52,7 +52,7 @@ test.describe('GitHub integration — desktop', () => {
     });
 
     // ── Settings UI: connect the repo ────────────────────────────────────
-    await page.goto(`/projects/${ctx.project.id}/settings`);
+    await page.goto(`/projects/${ctx.project.id}/settings/integrations`);
 
     const section = page.getByTestId('github-section');
     await expect(section.getByRole('heading', { name: 'GitHub' })).toBeVisible();
@@ -198,7 +198,7 @@ test.describe('GitHub integration — desktop', () => {
     await addWorkspaceMember(request, ctx.token, ctx.workspaceId, member.email, 'MEMBER');
     await login(page, { email: member.email, password: member.password });
 
-    await page.goto(`/projects/${ctx.project.id}/settings`);
+    await page.goto(`/projects/${ctx.project.id}/settings/integrations`);
     const section = page.getByTestId('github-section');
     await expect(section).toBeVisible({ timeout: 10_000 });
     await expect(section.getByTestId('github-connected-summary')).toContainText(
@@ -222,7 +222,7 @@ test.describe('GitHub integration — mobile (390px)', () => {
       openBoard: false,
     });
 
-    await page.goto(`/projects/${ctx.project.id}/settings`);
+    await page.goto(`/projects/${ctx.project.id}/settings/integrations`);
     const section = page.getByTestId('github-section');
     await expect(section).toBeVisible({ timeout: 10_000 });
 

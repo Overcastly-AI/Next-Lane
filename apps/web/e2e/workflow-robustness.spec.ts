@@ -173,7 +173,7 @@ test.describe('Named workflows manager — CRUD (desktop)', () => {
       label: 'wfm-create',
       openBoard: false,
     });
-    await page.goto(`/projects/${ctx.project.id}/settings`);
+    await page.goto(`/projects/${ctx.project.id}/settings/work`);
 
     const manager = page.getByTestId('workflows-manager');
     await manager.scrollIntoViewIfNeeded();
@@ -205,7 +205,7 @@ test.describe('Named workflows manager — CRUD (desktop)', () => {
     });
     await createNamedWorkflow(request, ctx.token, ctx.project.id, { name: 'Ops' });
 
-    await page.goto(`/projects/${ctx.project.id}/settings`);
+    await page.goto(`/projects/${ctx.project.id}/settings/work`);
     const manager = page.getByTestId('workflows-manager');
     await manager.scrollIntoViewIfNeeded();
     await expect(page.getByTestId('workflow-row').first()).toBeVisible({ timeout: 15_000 });
@@ -271,7 +271,7 @@ test.describe('Named workflows manager — CRUD (desktop)', () => {
         }
 
         // UI: the workflow list shows the correct transition count badge.
-        await page.goto(`/projects/${ctx.project.id}/settings`);
+        await page.goto(`/projects/${ctx.project.id}/settings/work`);
         const row = page.getByTestId('workflow-row').first();
         await row.scrollIntoViewIfNeeded();
         await expect(row).toContainText(`${body.transitions.length}T`, { timeout: 10_000 });
@@ -291,7 +291,7 @@ test.describe('Named workflows manager — CRUD (desktop)', () => {
     });
 
     // Delete the workflow via Settings.
-    await page.goto(`/projects/${ctx.project.id}/settings`);
+    await page.goto(`/projects/${ctx.project.id}/settings/work`);
     const manager = page.getByTestId('workflows-manager');
     await manager.scrollIntoViewIfNeeded();
     await page.getByTestId('workflow-row').first().click();
@@ -340,7 +340,7 @@ test.describe('Named workflows manager — CRUD (desktop)', () => {
       });
       await createNamedWorkflow(request, ctx.token, ctx.project.id, { name: 'Original Name' });
 
-      await page.goto(`/projects/${ctx.project.id}/settings`);
+      await page.goto(`/projects/${ctx.project.id}/settings/work`);
       const manager = page.getByTestId('workflows-manager');
       await manager.scrollIntoViewIfNeeded();
       await page.getByTestId('workflow-row').first().click();
@@ -370,7 +370,7 @@ test.describe('Transition & gate editor — robustness (desktop)', () => {
       request,
       'wf-gate-dupe',
     );
-    await page.goto(`/projects/${ctx.project.id}/settings`);
+    await page.goto(`/projects/${ctx.project.id}/settings/work`);
     const manager = page.getByTestId('workflows-manager');
     await manager.scrollIntoViewIfNeeded();
     await page.getByTestId('workflow-row').filter({ hasText: workflow.name }).click();
@@ -492,7 +492,7 @@ test.describe('Transition & gate editor — robustness (desktop)', () => {
         request,
         'wf-gate-blank',
       );
-      await page.goto(`/projects/${ctx.project.id}/settings`);
+      await page.goto(`/projects/${ctx.project.id}/settings/work`);
       const manager = page.getByTestId('workflows-manager');
       await manager.scrollIntoViewIfNeeded();
       await page.getByTestId('workflow-row').filter({ hasText: workflow.name }).click();
@@ -534,7 +534,7 @@ test.describe('Workflow graph builder — persistence (desktop)', () => {
     const statuses = await getStatuses(request, ctx.token, ctx.project.id);
     const done = statuses.find((s) => s.category === 'DONE')!;
 
-    await page.goto(`/projects/${ctx.project.id}/settings`);
+    await page.goto(`/projects/${ctx.project.id}/settings/work`);
     const manager = page.getByTestId('workflows-manager');
     await manager.scrollIntoViewIfNeeded();
     await page.getByTestId('workflow-row').first().click();
@@ -551,7 +551,7 @@ test.describe('Workflow graph builder — persistence (desktop)', () => {
 
     // Navigate away and back.
     await page.goto(`/projects/${ctx.project.id}/board`);
-    await page.goto(`/projects/${ctx.project.id}/settings`);
+    await page.goto(`/projects/${ctx.project.id}/settings/work`);
     await manager.scrollIntoViewIfNeeded();
     await page.getByTestId('workflow-row').first().click();
     await page.getByTestId('workflow-graph-toggle').getByRole('radio', { name: /graph/i }).click();
@@ -790,7 +790,7 @@ test.describe('Enforcement toggle robustness (desktop)', () => {
     request,
   }) => {
     const ctx = await setupIsolatedProject(page, request, { label: 'enf-rapid', openBoard: false });
-    await page.goto(`/projects/${ctx.project.id}/settings`);
+    await page.goto(`/projects/${ctx.project.id}/settings/work`);
     const section = page.getByTestId('workflow-settings');
     await section.scrollIntoViewIfNeeded();
     await expect(section).toBeVisible({ timeout: 15_000 });
@@ -825,7 +825,7 @@ test.describe('Enforcement toggle robustness (desktop)', () => {
     const ctx = await setupIsolatedProject(page, request, { label: 'enf-rapid-named', openBoard: false });
     const wf = await createNamedWorkflow(request, ctx.token, ctx.project.id, { name: 'Toggle Me' });
 
-    await page.goto(`/projects/${ctx.project.id}/settings`);
+    await page.goto(`/projects/${ctx.project.id}/settings/work`);
     const manager = page.getByTestId('workflows-manager');
     await manager.scrollIntoViewIfNeeded();
     await page.getByTestId('workflow-row').first().click();
@@ -883,7 +883,7 @@ test.describe('Workflows robustness — mobile (390px)', () => {
     request,
   }) => {
     const ctx = await setupIsolatedProject(page, request, { label: 'wfm-mobile', openBoard: false });
-    await page.goto(`/projects/${ctx.project.id}/settings`);
+    await page.goto(`/projects/${ctx.project.id}/settings/work`);
     const manager = page.getByTestId('workflows-manager');
     await manager.scrollIntoViewIfNeeded();
     await expect(manager).toBeVisible({ timeout: 15_000 });

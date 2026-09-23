@@ -140,7 +140,7 @@ test.describe('GitLab auto-transition-on-merge — desktop', () => {
     expect(done, 'expected a default "Done" status').toBeDefined();
 
     // ── Settings: enable auto-transition-on-merge, target "Done" ──────────
-    await page.goto(`/projects/${ctx.project.id}/settings`);
+    await page.goto(`/projects/${ctx.project.id}/settings/integrations`);
     const gitlabSection = page.getByTestId('gitlab-section');
     await expect(gitlabSection.getByTestId('gitlab-webhook-url')).toBeVisible({ timeout: 8_000 });
 
