@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { allTools } from './index.js';
+import { allTools, registerTools } from './index.js';
 import { NextLaneClient } from '../client.js';
 import type { NextLaneConfig } from '../config.js';
 
@@ -1309,7 +1309,7 @@ describe('tool registry', () => {
     });
     const res = await tool('search_issues').handler({ q: 'bug', limit: 1 }, client);
     const body = JSON.parse(res.content[0].text);
-    expect(body.issues).toEqual([
+    expect(body.items).toEqual([
       { id: 's1', key: 'NL-1', snippet: 'a \uE000bug\uE001 in checkout' },
     ]);
     expect(body.projects).toEqual([{ id: 'p1', key: 'NL' }]);
@@ -1328,7 +1328,7 @@ describe('tool registry', () => {
     });
     const res = await tool('search_issues').handler({ q: 'bug', limit: 10 }, client);
     const body = JSON.parse(res.content[0].text);
-    expect(body.issues).toHaveLength(2);
+    expect(body.items).toHaveLength(2);
     expect(body.total).toBe(2);
     expect(body.hasMore).toBe(false);
   });
@@ -2204,5 +2204,375 @@ describe('pages (knowledge base) tools', () => {
     const d = tool('get_page_graph').description;
     expect(d).toMatch(/\{id, title, projectId, projectKey, updatedAt\}/);
     expect(d).toMatch(/get_workspace_page_graph/);
+  });
+});
+
+// ── Token-efficiency pass (docs/MCP-QA.md, "Pass 4 — 2026-09-16") ───────────
+
+describe('token efficiency', () => {
+  /** A fetch stub that returns a different canned response per successive call. */
+  function sequencedClient(
+    responses: { status: number; body: unknown; contentType?: string }[],
+  ) {
+    let i = 0;
+    const fetchImpl = vi.fn(async () => {
+      const r = responses[Math.min(i, responses.length - 1)];
+      i++;
+      return new Response(typeof r.body === 'string' ? r.body : JSON.stringify(r.body), {
+        status: r.status,
+        headers: { 'Content-Type': r.contentType ?? 'application/json' },
+      });
+    });
+    return { client: new NextLaneClient(config, fetchImpl as unknown as typeof fetch), fetchImpl };
+  }
+
+  it('jsonResult emits compact (non-pretty-printed) JSON — no indentation whitespace', async () => {
+    const { client } = clientWith(200, { id: 'i1', key: 'NL-1', title: 'x' });
+    const res = await tool('get_issue').handler({ issueId: 'i1' }, client);
+    expect(res.content[0].text).not.toMatch(/\n/);
+    expect(res.content[0].text).toBe('{"id":"i1","key":"NL-1","title":"x"}');
+  });
+
+  it('create_issue returns a lean ack by default, and the full object with verbose:true', async () => {
+    const fullIssue = {
+      id: 'i1',
+      key: 'NL-42',
+      title: 'New issue',
+      rank: '0|abc',
+      status: { id: 's1', name: 'To Do', category: 'TODO', projectId: 'p1' },
+      statusId: 's1',
+      assignee: null,
+      priority: 'MEDIUM',
+      type: 'TASK',
+      versions: [],
+      checklistProgress: { done: 0, total: 0 },
+    };
+    const { client: c1 } = sequencedClient([
+      { status: 200, body: { id: 'p1', key: 'NL', name: 'Next Lane' } },
+      { status: 201, body: fullIssue },
+    ]);
+    const lean = await tool('create_issue').handler({ projectId: 'p1', title: 'New issue' }, c1);
+    const leanBody = JSON.parse(lean.content[0].text);
+    expect(leanBody).toEqual({
+      id: 'i1',
+      key: 'NL-42',
+      title: 'New issue',
+      status: 'To Do',
+      assignee: null,
+      priority: 'MEDIUM',
+      type: 'TASK',
+      project: { id: 'p1', key: 'NL', name: 'Next Lane' },
+    });
+    expect(leanBody.rank).toBeUndefined();
+    expect(leanBody.versions).toBeUndefined();
+    expect(leanBody.checklistProgress).toBeUndefined();
+
+    const { client: c2 } = sequencedClient([
+      { status: 200, body: { id: 'p1', key: 'NL', name: 'Next Lane' } },
+      { status: 201, body: fullIssue },
+    ]);
+    const verbose = await tool('create_issue').handler(
+      { projectId: 'p1', title: 'New issue', verbose: true },
+      c2,
+    );
+    const verboseBody = JSON.parse(verbose.content[0].text);
+    expect(verboseBody.rank).toBe('0|abc');
+    expect(verboseBody.checklistProgress).toEqual({ done: 0, total: 0 });
+    expect(verboseBody.project).toEqual({ id: 'p1', key: 'NL', name: 'Next Lane' });
+  });
+
+  it('move_issue returns {id, key, status} by default, the full object with verbose:true', async () => {
+    const fullIssue = {
+      id: 'i1',
+      key: 'NL-9',
+      title: 'Unrelated title',
+      rank: '0|xyz',
+      status: { id: 's2', name: 'In Progress', category: 'IN_PROGRESS' },
+      statusId: 's2',
+      assignee: { id: 'u1', name: 'Ada', email: 'ada@x.dev' },
+      priority: 'HIGH',
+      type: 'BUG',
+    };
+    const { client: c1 } = clientWith(200, fullIssue);
+    const lean = await tool('move_issue').handler({ issueId: 'i1', statusId: 's2' }, c1);
+    expect(JSON.parse(lean.content[0].text)).toEqual({
+      id: 'i1',
+      key: 'NL-9',
+      status: 'In Progress',
+    });
+
+    const { client: c2 } = clientWith(200, fullIssue);
+    const verbose = await tool('move_issue').handler(
+      { issueId: 'i1', statusId: 's2', verbose: true },
+      c2,
+    );
+    expect(JSON.parse(verbose.content[0].text)).toEqual(fullIssue);
+  });
+
+  it('update_issue and set_issue_parent return the same lean ack shape, verbose opts into the full object', async () => {
+    const fullIssue = {
+      id: 'i1',
+      key: 'NL-3',
+      title: 'Renamed',
+      rank: '0|abc',
+      status: { id: 's1', name: 'To Do' },
+      assignee: null,
+      priority: 'LOW',
+      type: 'TASK',
+    };
+    const { client: c1 } = clientWith(200, fullIssue);
+    const lean = await tool('update_issue').handler({ issueId: 'i1', title: 'Renamed' }, c1);
+    expect(JSON.parse(lean.content[0].text)).toEqual({
+      id: 'i1',
+      key: 'NL-3',
+      title: 'Renamed',
+      status: 'To Do',
+      assignee: null,
+      priority: 'LOW',
+      type: 'TASK',
+    });
+
+    const { client: c2 } = clientWith(200, fullIssue);
+    const verbose = await tool('update_issue').handler(
+      { issueId: 'i1', title: 'Renamed', verbose: true },
+      c2,
+    );
+    expect(JSON.parse(verbose.content[0].text).rank).toBe('0|abc');
+
+    const { client: c3 } = clientWith(200, fullIssue);
+    const parentLean = await tool('set_issue_parent').handler(
+      { issueId: 'i1', parentId: null },
+      c3,
+    );
+    expect(JSON.parse(parentLean.content[0].text)).toEqual({
+      id: 'i1',
+      key: 'NL-3',
+      title: 'Renamed',
+      status: 'To Do',
+      assignee: null,
+      priority: 'LOW',
+      type: 'TASK',
+    });
+  });
+
+  it('list_project_activity drops raw id/issueId and resolves status/assignee ids to names', async () => {
+    const { client, fetchImpl } = sequencedClient([
+      {
+        status: 200,
+        body: {
+          items: [
+            {
+              id: 'act-1',
+              kind: 'ISSUE_FIELD',
+              issueId: 'i1',
+              issueKey: 'NL-1',
+              actor: { id: 'u1', name: 'Ada Lovelace' },
+              summary: 'status: cmstatusOld → cmstatusNew',
+              field: 'status',
+              from: 'cmstatusOld',
+              to: 'cmstatusNew',
+              createdAt: '2026-09-01T00:00:00.000Z',
+            },
+            {
+              id: 'act-2',
+              kind: 'ISSUE_FIELD',
+              issueId: 'i1',
+              issueKey: 'NL-1',
+              actor: { id: 'u1', name: 'Ada Lovelace' },
+              summary: 'created the issue',
+              field: 'created',
+              from: null,
+              to: null,
+              createdAt: '2026-09-01T00:00:00.000Z',
+            },
+            {
+              id: 'act-3',
+              kind: 'COMMENT',
+              issueId: 'i1',
+              issueKey: 'NL-1',
+              actor: { id: 'u1', name: 'Ada Lovelace' },
+              summary: 'commented',
+              createdAt: '2026-09-01T00:00:01.000Z',
+            },
+          ],
+          nextCursor: null,
+        },
+      },
+      // Only `status` appears among field-typed items, so only the statuses
+      // list is fetched — never sprints/components/labels/users.
+      {
+        status: 200,
+        body: [
+          { id: 'cmstatusOld', name: 'To Do' },
+          { id: 'cmstatusNew', name: 'In Progress' },
+        ],
+      },
+    ]);
+    const res = await tool('list_project_activity').handler({ projectId: 'p1' }, client);
+    const body = JSON.parse(res.content[0].text);
+    expect(body.items).toEqual([
+      {
+        kind: 'ISSUE_FIELD',
+        issueKey: 'NL-1',
+        actor: 'Ada Lovelace',
+        summary: 'status: To Do → In Progress',
+        field: 'status',
+        from: 'To Do',
+        to: 'In Progress',
+        at: '2026-09-01T00:00:00.000Z',
+      },
+      {
+        kind: 'ISSUE_FIELD',
+        issueKey: 'NL-1',
+        actor: 'Ada Lovelace',
+        summary: 'created the issue',
+        field: 'created',
+        at: '2026-09-01T00:00:00.000Z',
+      },
+      {
+        kind: 'COMMENT',
+        issueKey: 'NL-1',
+        actor: 'Ada Lovelace',
+        summary: 'commented',
+        at: '2026-09-01T00:00:01.000Z',
+      },
+    ]);
+    // No raw cuid survives anywhere in the response.
+    expect(res.content[0].text).not.toContain('cmstatusOld');
+    expect(res.content[0].text).not.toContain('cmstatusNew');
+    expect(res.content[0].text).not.toContain('act-1');
+    expect(res.content[0].text).not.toContain('"issueId"');
+    expect(fetchImpl.mock.calls[1][0]).toBe('http://localhost:4000/api/projects/p1/statuses');
+  });
+
+  it('list_project_activity fetches no id-name maps when no field needs one (pure comment/work-log page)', async () => {
+    const { client, fetchImpl } = clientWith(200, {
+      items: [
+        {
+          id: 'act-1',
+          kind: 'WORK_LOG',
+          issueId: 'i1',
+          issueKey: 'NL-1',
+          actor: { id: 'u1', name: 'Ada' },
+          summary: 'logged 30m',
+          createdAt: '2026-09-01T00:00:00.000Z',
+        },
+      ],
+      nextCursor: null,
+    });
+    await tool('list_project_activity').handler({ projectId: 'p1' }, client);
+    expect(fetchImpl.mock.calls).toHaveLength(1);
+  });
+
+  it('search_issues returns the uniform {items, total, limit, offset, hasMore} envelope, not {issues}', async () => {
+    const { client } = clientWith(200, {
+      issues: [{ id: 's1', key: 'NL-1', snippet: 'a bug' }],
+      projects: [{ id: 'p1', key: 'NL' }],
+      paging: {
+        issues: { limit: 10, offset: 0, total: 1, hasMore: false },
+        projects: { limit: 10, offset: 0, total: 1, hasMore: false },
+      },
+    });
+    const res = await tool('search_issues').handler({ q: 'bug' }, client);
+    const body = JSON.parse(res.content[0].text);
+    expect(body.items).toEqual([{ id: 's1', key: 'NL-1', snippet: 'a bug' }]);
+    expect(body.issues).toBeUndefined();
+    expect(body.total).toBe(1);
+    expect(body.hasMore).toBe(false);
+    expect(body.projects).toEqual([{ id: 'p1', key: 'NL' }]);
+  });
+
+  // ── registerTools() dispatch: issueId/epicId key resolution + tools/list ──
+
+  /** Minimal fake McpServer capturing registered tool callbacks and the
+   *  ListTools request handler, without needing the real SDK class. */
+  function fakeMcpServer() {
+    const callbacks = new Map<
+      string,
+      (args: Record<string, unknown>) => Promise<{ content: { type: string; text: string }[]; isError?: boolean }>
+    >();
+    let listToolsHandler: (() => unknown) | undefined;
+    const fake = {
+      registerTool: (
+        name: string,
+        _config: unknown,
+        cb: (args: Record<string, unknown>) => Promise<{ content: { type: string; text: string }[] }>,
+      ) => {
+        callbacks.set(name, cb);
+      },
+      server: {
+        setRequestHandler: (_schema: unknown, handler: () => unknown) => {
+          listToolsHandler = handler;
+        },
+      },
+    };
+    return { fake, callbacks, getListToolsHandler: () => listToolsHandler! };
+  }
+
+  it('resolves an issue KEY to its id via /search before dispatching to the handler (move_issue)', async () => {
+    const { fake, callbacks } = fakeMcpServer();
+    const { client, fetchImpl } = sequencedClient([
+      { status: 200, body: { issues: [{ id: 'i-real-1', key: 'NL-4' }], projects: [] } },
+      { status: 200, body: { id: 'i-real-1', key: 'NL-4', status: { name: 'Done' } } },
+    ]);
+    registerTools(fake as any, client);
+    const cb = callbacks.get('move_issue')!;
+    const result = await cb({ issueId: 'NL-4', statusId: 's-done' });
+    expect(fetchImpl.mock.calls[0][0]).toContain('/api/search?');
+    expect(fetchImpl.mock.calls[0][0]).toContain('q=NL-4');
+    expect(fetchImpl.mock.calls[1][0]).toBe('http://localhost:4000/api/issues/i-real-1/move');
+    expect(result.isError).toBeUndefined();
+  });
+
+  it('passes a plain issue id straight through, without any /search round trip', async () => {
+    const { fake, callbacks } = fakeMcpServer();
+    const { client, fetchImpl } = clientWith(200, { id: 'i1', key: 'NL-1', title: 'x' });
+    registerTools(fake as any, client);
+    const cb = callbacks.get('get_issue')!;
+    await cb({ issueId: 'i1' });
+    expect(fetchImpl.mock.calls).toHaveLength(1);
+    expect(fetchImpl.mock.calls[0][0]).toBe('http://localhost:4000/api/issues/i1');
+  });
+
+  it('an unresolvable issue key fails with a clear, actionable error (not a REST 404)', async () => {
+    const { fake, callbacks } = fakeMcpServer();
+    const { client } = clientWith(200, { issues: [], projects: [] });
+    registerTools(fake as any, client);
+    const cb = callbacks.get('get_issue')!;
+    const result = await cb({ issueId: 'NL-999' });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toMatch(/No issue found with key "NL-999"/);
+    expect(result.content[0].text).toMatch(/search_issues \/ list_issues/);
+  });
+
+  it('resolves epicId the same way as issueId (get_epic_overview)', async () => {
+    const { fake, callbacks } = fakeMcpServer();
+    const { client, fetchImpl } = sequencedClient([
+      { status: 200, body: { issues: [{ id: 'epic-real', key: 'NL-1' }], projects: [] } },
+      { status: 200, body: { id: 'epic-real', key: 'NL-1', title: 'Epic', children: [] } },
+    ]);
+    registerTools(fake as any, client);
+    const cb = callbacks.get('get_epic_overview')!;
+    await cb({ epicId: 'NL-1' });
+    expect(fetchImpl.mock.calls[1][0]).toBe('http://localhost:4000/api/issues/epic-real');
+  });
+
+  it('tools/list handler strips $schema, additionalProperties, and the execution block', () => {
+    const { fake, getListToolsHandler } = fakeMcpServer();
+    registerTools(fake as any, {} as NextLaneClient);
+    const result = getListToolsHandler()() as { tools: Record<string, unknown>[] };
+    expect(result.tools.length).toBe(allTools.length);
+    for (const t of result.tools) {
+      expect(t).not.toHaveProperty('execution');
+      expect(t).not.toHaveProperty('outputSchema');
+      const schema = t.inputSchema as Record<string, unknown>;
+      expect(schema).not.toHaveProperty('$schema');
+      expect(schema).not.toHaveProperty('additionalProperties');
+      expect(schema.type).toBe('object');
+    }
+    // Spot-check one concrete tool's trimmed shape end to end.
+    const moveIssue = result.tools.find((t) => t.name === 'move_issue')!;
+    const props = (moveIssue.inputSchema as { properties: Record<string, unknown> }).properties;
+    expect(Object.keys(props)).toEqual(expect.arrayContaining(['issueId', 'statusId', 'boardId']));
   });
 });
