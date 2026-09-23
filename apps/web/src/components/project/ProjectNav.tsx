@@ -277,15 +277,28 @@ export function ProjectNav({ projectId }: { projectId: string }) {
   // moment someone actually taps it. `aria-current="page"` is set by
   // `NavLink` automatically on the active tab, so no extra plumbing is
   // needed to find it.
+  //
+  // We scroll the strip ourselves rather than calling `el.scrollIntoView()`.
+  // In Blink, `Element.scrollIntoView()` ALSO moves the document's sequential
+  // focus navigation starting point onto the scrolled element, so the next
+  // Tab press resumes from this tab instead of from the top of the document.
+  // That silently decommissioned the skip link: on a fresh board page the
+  // first Tab landed on "Backlog" (the tab after the active one) instead of
+  // "Skip to content" — see e2e/skip-link.spec.ts. Setting `scrollLeft` on
+  // the container does not touch the focus starting point, and it is the
+  // better behaviour anyway: it moves only the strip, never the page.
   useEffect(() => {
-    const el = scrollerRef.current?.querySelector<HTMLElement>('[aria-current="page"]');
-    if (!el) return;
+    const scroller = scrollerRef.current;
+    const el = scroller?.querySelector<HTMLElement>('[aria-current="page"]');
+    if (!scroller || !el) return;
+    const tab = el.getBoundingClientRect();
+    const strip = scroller.getBoundingClientRect();
+    let delta = 0;
+    if (tab.left < strip.left) delta = tab.left - strip.left;
+    else if (tab.right > strip.right) delta = tab.right - strip.right;
+    if (delta === 0) return;
     const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    el.scrollIntoView({
-      behavior: reduceMotion ? 'auto' : 'smooth',
-      inline: 'nearest',
-      block: 'nearest',
-    });
+    scroller.scrollBy({ left: delta, behavior: reduceMotion ? 'auto' : 'smooth' });
   }, [location.pathname]);
 
   // Close menu on outside click
