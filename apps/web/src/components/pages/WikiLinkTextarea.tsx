@@ -101,6 +101,28 @@ export const WikiLinkTextarea = forwardRef<WikiLinkTextareaHandle, WikiLinkTexta
 
     const [dropActive, setDropActive] = useState(false);
 
+    /**
+     * Caret an insertion asked for, applied once React has committed the value.
+     *
+     * Was a `requestAnimationFrame` — a frame LATER than the commit. Setting a
+     * textarea's value parks the caret at the end, so a keystroke arriving in
+     * that gap lands at the end of the document rather than after the inserted
+     * link. CI caught exactly that on a loaded runner: clicking a page in the
+     * picker and immediately typing " HERE" stranded the leading space at the
+     * end while "HERE" landed correctly.
+     *
+     * `useLayoutEffect` runs synchronously after the DOM mutation, closing the
+     * gap. Still `setSelectionRange` only, never `.focus()` — the documented
+     * focus-loss rule for every composer here.
+     */
+    const pendingCaretRef = useRef<number | null>(null);
+    useLayoutEffect(() => {
+      const caret = pendingCaretRef.current;
+      if (caret === null) return;
+      pendingCaretRef.current = null;
+      textareaRef.current?.setSelectionRange(caret, caret);
+    });
+
     useImperativeHandle(ref, () => ({
       focus() {
         textareaRef.current?.focus();
@@ -113,12 +135,7 @@ export const WikiLinkTextarea = forwardRef<WikiLinkTextareaHandle, WikiLinkTexta
         const end = el.selectionEnd ?? start;
         const newValue = `${live.slice(0, start)}${text}${live.slice(end)}`;
         onChange(newValue);
-        const caret = start + text.length;
-        // setSelectionRange only, never .focus() — the documented focus-loss
-        // rule for every composer in this codebase.
-        requestAnimationFrame(() => {
-          textareaRef.current?.setSelectionRange(caret, caret);
-        });
+        pendingCaretRef.current = start + text.length;
       },
     }));
 
@@ -171,10 +188,7 @@ export const WikiLinkTextarea = forwardRef<WikiLinkTextareaHandle, WikiLinkTexta
         onChange(newValue);
         setQuery(null);
 
-        const newCaret = before.length + insertion.length;
-        requestAnimationFrame(() => {
-          textareaRef.current?.setSelectionRange(newCaret, newCaret);
-        });
+        pendingCaretRef.current = before.length + insertion.length;
       },
       [value, startIndex, onChange],
     );
