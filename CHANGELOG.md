@@ -16,6 +16,14 @@ staged here by hand (see [`RELEASING.md`](./RELEASING.md))._
 
 ---
 
+## [0.17.6] — 2026-09-23
+
+[Compare with v0.17.5](https://github.com/Overcastly-AI/Next-Lane/compare/v0.17.5...v0.17.6)
+
+### Bug Fixes
+
+* **nlql:** stop status, type, priority, label and component queries silently matching nothing ([#101](https://github.com/Overcastly-AI/Next-Lane/issues/101)) ([ce209d8](https://github.com/Overcastly-AI/Next-Lane/commit/ce209d83e06086cc35c6f2bee48cefdeb63d7f4d))
+
 ## [0.17.5] — 2026-09-23
 
 [Compare with v0.17.4](https://github.com/Overcastly-AI/Next-Lane/compare/v0.17.4...v0.17.5)
