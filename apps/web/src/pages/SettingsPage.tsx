@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Role, StatusCategory, type StatusDto } from '@next-lane/shared';
 import { useProject, useUpdateProject, useArchiveProject } from '@/api/projects';
 import { useStatuses, useLabels } from '@/api/meta';
@@ -16,8 +16,6 @@ import { WebhooksSection } from '@/components/settings/WebhooksSection';
 import { GithubSection } from '@/components/settings/GithubSection';
 import { GitlabSection } from '@/components/settings/GitlabSection';
 import { GiteaSection } from '@/components/settings/GiteaSection';
-import { AgentContextSection } from '@/components/settings/AgentContextSection';
-import { AgentAccessSection } from '@/components/settings/AgentAccessSection';
 import { ShareSection } from '@/components/settings/ShareSection';
 import { CustomFieldsSection } from '@/components/settings/CustomFieldsSection';
 import { ComponentsSection } from '@/components/settings/ComponentsSection';
@@ -203,9 +201,24 @@ export function SettingsPage() {
 
         <GiteaSection projectId={projectId} isAdmin={isAdmin} />
 
-        <AgentContextSection projectId={projectId} myRole={myRole} />
-
-        <AgentAccessSection projectId={projectId} myRole={myRole} />
+        {/*
+         * Agent access + agent context moved to their own "Agents" tab
+         * (top of the project nav, next to Docs) — the audit's own finding
+         * was that a structural differentiator buried below GitHub/GitLab/
+         * Gitea forms is, for a new user, invisible. This pointer is only
+         * for someone who scrolled this far out of habit.
+         */}
+        <Link
+          to={`/projects/${projectId}/agents`}
+          data-testid="settings-agents-pointer"
+          className="flex items-center justify-between gap-3 rounded-xl border border-ink-200 bg-surface px-4 py-3 text-sm shadow-card transition-colors duration-[120ms] hover:border-signal-300 hover:bg-signal-50/40"
+        >
+          <span className="font-medium text-ink-800">
+            Looking for agent access or agent context? They live in{' '}
+            <span className="font-semibold text-signal-700">Agents</span> now.
+          </span>
+          <span aria-hidden="true" className="text-signal-600">→</span>
+        </Link>
 
         {isAdmin && <ShareSection projectId={projectId} />}
 

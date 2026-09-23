@@ -232,6 +232,7 @@ export function ProjectNav({ projectId }: { projectId: string }) {
   const buttonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const scrollerRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const { isBlocking, confirmDiscard } = useUnsavedChangesGuard();
 
@@ -265,6 +266,40 @@ export function ProjectNav({ projectId }: { projectId: string }) {
       location.pathname.startsWith(`/projects/${projectId}/${tab.to}/`),
     ) ?? null;
   const isMoreActive = activeMoreTab !== null;
+
+  // Keep the active tab visible in the horizontally-scrolling strip.
+  //
+  // The strip always opens scrolled to its own left edge, and the primary
+  // tab count has grown (Board/Backlog/Triage/Docs/Agents/Dashboards/
+  // Roadmap/Reports) to the point that at 390px only the first four or five
+  // fit — adding Agents here (rather than the sidebar-only More menu) is the
+  // whole point of promoting it, so it must not land half-clipped the
+  // moment someone actually taps it. `aria-current="page"` is set by
+  // `NavLink` automatically on the active tab, so no extra plumbing is
+  // needed to find it.
+  //
+  // We scroll the strip ourselves rather than calling `el.scrollIntoView()`.
+  // In Blink, `Element.scrollIntoView()` ALSO moves the document's sequential
+  // focus navigation starting point onto the scrolled element, so the next
+  // Tab press resumes from this tab instead of from the top of the document.
+  // That silently decommissioned the skip link: on a fresh board page the
+  // first Tab landed on "Backlog" (the tab after the active one) instead of
+  // "Skip to content" — see e2e/skip-link.spec.ts. Setting `scrollLeft` on
+  // the container does not touch the focus starting point, and it is the
+  // better behaviour anyway: it moves only the strip, never the page.
+  useEffect(() => {
+    const scroller = scrollerRef.current;
+    const el = scroller?.querySelector<HTMLElement>('[aria-current="page"]');
+    if (!scroller || !el) return;
+    const tab = el.getBoundingClientRect();
+    const strip = scroller.getBoundingClientRect();
+    let delta = 0;
+    if (tab.left < strip.left) delta = tab.left - strip.left;
+    else if (tab.right > strip.right) delta = tab.right - strip.right;
+    if (delta === 0) return;
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    scroller.scrollBy({ left: delta, behavior: reduceMotion ? 'auto' : 'smooth' });
+  }, [location.pathname]);
 
   // Close menu on outside click
   useEffect(() => {
@@ -329,7 +364,10 @@ export function ProjectNav({ projectId }: { projectId: string }) {
         Now only the tabs scroll; More and Settings sit outside the scroller
         so both stay visible and hit-testable at any width.
       */}
-      <div className="nl-tabstrip -mb-px flex min-w-0 items-center overflow-x-auto">
+      <div
+        ref={scrollerRef}
+        className="nl-tabstrip -mb-px flex min-w-0 items-center overflow-x-auto"
+      >
         {PRIMARY_TABS.map((tab) => (
           <NavLink
             key={tab.to}
