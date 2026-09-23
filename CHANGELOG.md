@@ -16,6 +16,14 @@ staged here by hand (see [`RELEASING.md`](./RELEASING.md))._
 
 ---
 
+## [0.18.0] — 2026-09-23
+
+[Compare with v0.17.6](https://github.com/Overcastly-AI/Next-Lane/compare/v0.17.6...v0.18.0)
+
+### Features
+
+* **mcp:** accept issue keys, and cut a real agent session by a quarter of its tokens ([#102](https://github.com/Overcastly-AI/Next-Lane/issues/102)) ([b390ee5](https://github.com/Overcastly-AI/Next-Lane/commit/b390ee5da92780a6b20b1eda788937218dc52808))
+
 ## [0.17.6] — 2026-09-23
 
 [Compare with v0.17.5](https://github.com/Overcastly-AI/Next-Lane/compare/v0.17.5...v0.17.6)
