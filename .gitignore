@@ -48,3 +48,9 @@ dump.rdb
 
 # QA agents' transient browser-exploration scratch scripts (never deliverables)
 apps/web/_qa_*.mjs
+
+# Isolated git worktrees the harness creates for parallel build agents. These
+# are ephemeral checkouts of this same repo (auto-removed when the agent ends),
+# so committing one would add a whole second copy of the tree to history. The
+# rest of .claude/ — agents, skills, workflows — stays tracked.
+.claude/worktrees/

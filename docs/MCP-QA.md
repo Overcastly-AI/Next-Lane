@@ -639,3 +639,564 @@ description in full, but not blocking.
   graph tools agree on the ambiguous same-title target id, `list_pages
   verbose` is 25-capped with `hasMore` and no 429, and `get_page_links` carries
   `truncated`. All independently reproduced above.
+
+---
+
+## Pass 4 — 2026-09-16 (token-efficiency pass, `ffa7c33` / v0.17.4)
+
+**Scope.** The founder's ask verbatim: *"reduce token usage via the MCP."*
+Cost is the primary axis; AX correctness is secondary and only reported where
+a cost finding is also a correctness finding. Four cost centres measured
+separately: (1) the fixed cost of the tool list in every conversation's system
+prompt, (2) response payload per call, (3) calls per question, (4) retry/error
+cost.
+
+**Method.** Local Postgres (`nextlane_mcpqa`), API built from `ffa7c33` and run
+on **:4010** (`API_PORT`, not `PORT` — see "environment note" below),
+`apps/mcp` built from the committed tree, driven over **stdio** by a real MCP
+client (`@modelcontextprotocol/sdk` 1.30.0 `Client` + `StdioClientTransport`),
+**PAT auth** (`nlp_…`, all scopes). Engagement: project **TKQ42** "Billing
+Revamp TokenQA" — 1 epic + 16 children, 2 sprints, 3 labels, 4 `BLOCKS` links,
+bulk-labelling, status moves, comments, a deliberate misfile + correction, a
+wrong-status + correction, then an interrogation round of nine natural PM
+questions. **56 tool calls**, every response byte- and token-counted. Then a
+**volume project VOL23 with 300 issues + 100 status moves** (created through
+`create_issue`/`move_issue`, not SQL) so every scale number below is measured,
+not extrapolated. Token counts are `o200k_base` (`gpt-tokenizer`); bytes are
+exact UTF-8. Treat tokens as ±10% vs Claude's tokenizer — every finding also
+carries the exact byte count.
+
+### Headline
+
+> A realistic **56-call** PM session costs **58,449 tokens**.
+> **29,273 of them (50%) are spent before the agent does anything** — they are
+> the `tools/list` payload plus server instructions, paid in full in every
+> conversation.
+> The other 29,176 are response payloads, of which a measured **79% is waste**
+> (pretty-print whitespace, ids repeated 3×, nulls, empty arrays, full issue
+> objects echoed back from writes).
+> Applying the fixes below: **58,449 → ~18,662 tokens (-68%)** with **no loss
+> of capability** and only two contract changes.
+
+| Cost centre | Measured now | After proposed fixes |
+| --- | --- | --- |
+| 1. Fixed `tools/list` + instructions | **28,554 + 719 = 29,273 tok** (123,802 B, 132 tools) | ~12,500 tok |
+| 2. Response payload (56-call session) | **29,176 tok** | ~6,162 tok |
+| 3. Calls per question | 6 calls / 6,518 tok for "status update"; 1+N for "what's blocking" | 1–2 calls |
+| 4. Retry/error cost | **10–59 tok/error** — already excellent | unchanged |
+
+---
+
+### Cost centre 1 — the fixed cost of existing at all (the headline)
+
+Serialized exactly as the server advertises it (`tools/list` result, 132 tools):
+
+| Measure | Value |
+| --- | --- |
+| Tools | **132** |
+| Wire bytes | **123,802 B** |
+| Wire tokens | **28,554** |
+| Server `instructions` (sent at `initialize`) | 3,314 B / **719 tok** |
+| Split | descriptions **10,181 tok** · input schemas **15,639 tok** · names 429 tok |
+| Median tool | 174 tok · worst `create_issue` **717 tok** · cheapest `get_unread_notification_count` 37 tok |
+
+Per-family (tokens, % of the 26,249 tok attributable to individual tools):
+
+| Family | Tools | Tokens | % |
+| --- | --- | --- | --- |
+| issues | 19 | 5,335 | 20.3 |
+| pages | 19 | 4,938 | 18.8 |
+| projects | 10 | 2,039 | 7.8 |
+| dashboards | 9 | 1,767 | 6.7 |
+| workflow | 10 | 1,575 | 6.0 |
+| page templates | 5 | 1,329 | 5.1 |
+| automations | 6 | 1,183 | 4.5 |
+| reports/misc ("other") | 8 | 1,130 | 4.3 |
+| …18 more families | 46 | 6,953 | 26.5 |
+
+**Worst offenders (tokens = name + description + schema):**
+
+```
+717  create_issue              (desc 261, schema 454, 17 props)
+691  list_issues               (desc 322, schema 366, 11 props)
+555  create_dashboard_gadget   (desc  84, schema 467,  5 props)
+531  bulk_update_issues        (desc 222, schema 305, 10 props)
+529  update_issue              (desc 121, schema 406, 14 props)
+470  update_dashboard_gadget   (desc  31, schema 435,  5 props)
+463  create_page_template      (desc 224, schema 236,  6 props)
+441  search_pages              (desc 288, schema 151,  4 props)
+```
+
+**Finding T1 — P1 — 3,813 tok of pure per-tool boilerplate, repeated 132×.**
+Every advertised tool carries three constant blocks the host does not need
+per-tool:
+
+| Boilerplate | × tools | tok each | total |
+| --- | --- | --- | --- |
+| `"$schema":"http://json-schema.org/draft-07/schema#"` | 132 | 14 | **1,848** |
+| `"execution":{"taskSupport":"forbidden"}` | 132 | 9 | **1,188** |
+| `"additionalProperties":false` | 129 | 5 | 645 |
+| `"type":"object"` wrapper | 132 | 4 | 132 (unavoidable) |
+
+*Honest attribution:* `execution.taskSupport:"forbidden"` is **injected by the
+SDK**, not by Next Lane — `McpServer.registerTool` hardcodes it
+(`@modelcontextprotocol/sdk/dist/esm/server/mcp.js:694`). Reclaiming that
+1,188 tok means owning the `ListTools` handler (`server.setRequestHandler`)
+instead of relying on `registerTool`'s default serialization, or post-
+processing the list result. The `$schema`/`additionalProperties` 2,493 tok are
+ours: they come from zod→JSON-Schema conversion and can be stripped in the
+same handler. **Zero contract change** — the semantic schema is identical.
+**Saving: 3,813 tok/conversation. Size: S.**
+
+**Finding T2 — P1 — descriptions carry long prose that is paid every
+conversation but needed in ~1% of them.** `list_issues`' description alone is
+**322 tok** of NLQL tutorial; `create_issue` 261 tok; `search_pages` 288 tok;
+`get_page_graph` 275 tok for a 1-property tool. Total description budget:
+**10,181 tok**. Trimming every description to its first sentence (≤220 chars)
+measures **28,554 → 17,049 tok (-11,505)**.
+
+*Tradeoff, priced honestly:* a blind first-sentence trim **is** a capability
+regression for the handful of tools whose long text encodes non-obvious
+semantics — `list_issues` (NLQL grammar + the fail-loud contract),
+`link_issues` (direction semantics of BLOCKS vs BLOCKED_BY),
+`create_automation` (action `params` shapes). Recommended shape instead:
+- keep full prose on the ~8 semantically-dense tools (~1,800 tok),
+- trim the other 124 to one sentence + a pointer,
+- move the removed prose behind a **single meta-tool** `get_tool_help({tool})`
+  (~60 tok of surface) that returns the full text on demand — paid once, by the
+  agent that actually needs it, instead of by every conversation.
+**Saving: ~9,500 tok/conversation. Size: M. No contract break** (inputs and
+outputs unchanged; only descriptions move).
+
+**Finding T3 — P2 — 2,164 tok of byte-identical repeated parameter
+descriptions.** The same four pagination params are re-documented on dozens of
+tools:
+
+```
+22 × 34 tok = 748   verbose  "Return the full API object for each item instead of the compact default fields below. Only set this when you actually need the extra fields — it multiplies the response size."
+31 × 17 tok = 527   offset   "Number of items to skip, for paging through a long list (default 0)."
+33 × 13 tok = 429   limit    "Max items to return (default 50, max 200)."
+33 ×  3 tok =  99   projectId "Project id."
+```
+Documenting the pagination contract **once** in server `instructions` (it is
+already uniform: `{items,total?,limit,offset?,hasMore}`) and shortening the
+per-param text measures a further **-1,208 tok** on top of T2.
+**Saving: ~1,200 tok. Size: S. No contract break.**
+
+**Finding T4 — P2 — 34 tools are parameterisable siblings; folding them keeps
+100% coverage and reclaims ~6,135 tok.** This is the explicit resolution of
+the "fewer tools vs. full MCP coverage" tension in CLAUDE.md: **consolidation,
+not removal**. Every capability stays reachable; only the *number of
+advertised names* drops.
+
+| Fold | Tools | Tokens reclaimed |
+| --- | --- | --- |
+| `get_velocity_report` / `get_velocity_trend_report` / `get_burndown_report` / `get_cfd_report` → `get_report({kind})` | 4 → 1 | 405 |
+| dashboards + gadgets CRUD → `update_dashboard({…, gadgets})` style | 9 → 4 (6 folded) | 1,307 |
+| page templates CRUD → `manage_page_template({op})` | 5 → 2 (4 folded) | 1,035 |
+| `create/list workspace_page` + `get_workspace_page_graph` → existing page tools with `scope:"workspace"` | 3 folded | 841 |
+| `list_issue_{github,gitlab,gitea}_links` → `list_issue_scm_links({provider?})` | 3 → 1 | 674 |
+| `{get,set}_{github,gitlab}_automation_config` → `{get,set}_scm_automation_config({provider})` | 4 → 2 | 655 |
+| `get_page_backlinks` + `get_page_links` → `get_page_links({direction})` | 2 → 1 | 504 |
+| `create/update_personal_card` → one upsert | 2 → 1 | 435 |
+| `update/delete_workflow_transition` → fold into `add_workflow_transition({op})` | 2 folded | 324 |
+| notifications (`mark_read`/`mark_all_read`/`unread_count`) → 2 | 3 → 2 | 133 |
+| `remove_project_role_override` → `set_project_role_override({role:null})` | 1 folded | 94 |
+
+**132 → 98 tools.** Net after adding the discriminator enums back (~272 tok):
+**~6,135 tok saved.** **Size: L. Breaks contracts** for the 34 folded names
+(existing agent prompts/skills referencing them must be updated — worth a
+deprecation window where old names still resolve but are not advertised).
+
+**Combined T1+T2+T3+T4 (measured, not estimated): `tools/list` 28,554 →
+~11,986 tok — a 58% cut to the fixed cost of every conversation.**
+
+---
+
+### Cost centre 2 — response payload per call
+
+Session totals by tool (56 calls, 29,176 response tokens):
+
+```
+tool                     calls tokens tok/call
+create_issue                18  10888      605
+list_project_activity        1   5376     5376
+move_issue                   6   3742      624
+get_issue                    1   1664     1664
+list_issue_links             4   1281      320
+get_epic_overview            1   1215     1215
+get_project_analytics        1   1150     1150
+link_issues                  4    892      223
+list_issues                  3    802      267
+update_issue                 1    492      492
+add_comment                  2    395      198
+…
+bulk_update_issues           2     28       14   <- the good example
+```
+
+**Finding R1 — P1 — `jsonResult` pretty-prints every response with
+`JSON.stringify(value, null, 2)`; that whitespace is 25% of all response
+tokens.** One line, `apps/mcp/src/tools/index.ts:42`, applied to all **105**
+`jsonResult` call sites.
+
+Measured across the **55 JSON responses** of the session:
+
+| | Bytes | Tokens |
+| --- | --- | --- |
+| Pretty (current) | 71,684 | **29,150** |
+| Minified | 55,532 | **21,848** |
+| **Saving** | 16,152 B | **7,302 tok = 25.0%** |
+
+At scale it is worse in absolute terms: `list_issues limit=200` on VOL23 is
+**13,698 tok pretty → 9,086 minified (-34%)**; `list_project_activity
+limit=200` **33,982 → 26,070 (-23%)**.
+No human reads this text — it goes into a model's context. **Saving: 25% of
+ALL response tokens, universally. Size: S (one line). No contract break**
+(identical JSON semantics).
+
+**Finding R2 — P1 — write tools echo the entire issue object back; 83–95% of
+it is waste.** `create_issue` returns **1,403 B / 605 tok** and `move_issue`
+**1,670 B / 624 tok** — the full API object, including fields the agent just
+sent, three copies of the same ids, and empty containers. A verbatim
+`move_issue` response after moving one card to "In Progress" contains:
+
+- **id triplication**: `statusId` + `status.id`, `projectId` + `status.projectId` + `labels[].projectId`, `assigneeId` + `assignee.id`, `reporterId` + `reporter.id`
+- **never-actionable fields**: `rank:"a0"` (fractional index), `status.order`, `status.wipLimit`, `number` (derivable from `key`)
+- **PII/settings noise on every embedded user**: `avatarColor`, `emailNotifications`, `createdAt` — ×2 (assignee + reporter) = ~90 tok/response
+- **nulls and empties**: `description:null`, `startDate:null`, `componentId:null`, `originalEstimateMinutes:null`, `component:null`, `versions:[]`, `checklist:[]`, `checklistProgress:{done:0,total:0}`, `timeSpentMinutes:0`
+- **ms-precision timestamps**: `"2026-09-16T23:35:17.395Z"` where a date (or seconds) would do
+
+Before/after with a minimal-but-sufficient echo (the agent already knows what
+it sent; it needs the assigned identity + server-decided fields):
+
+| Tool | Now | Compact echo | Saving |
+| --- | --- | --- | --- |
+| `move_issue` → `{key,status,from,updatedAt}` | 624 tok | **36 tok** | **-95%** |
+| `create_issue` → `{id,key,project{key,name},type,title,status,priority,parentId,sprintId,dueDate,storyPoints}` | 605 tok | **99 tok** | **-83%** |
+| `link_issues` → `{id,type,target{key,title,status}}` | 223 tok | **46 tok** | -79% |
+| `add_comment` → `{id,issueKey,author,createdAt}` | 196 tok | **50 tok** | -74% |
+| `update_issue` (same shape as create) | 492 tok | ~99 tok | -80% |
+
+The project already knows how to do this: **`bulk_update_issues` returns
+`{"updated":4,"failed":[]}` — 34 B / 14 tok.** That is the target shape.
+
+*Scale evidence:* creating the 300-issue VOL23 project through MCP
+(300 `create_issue` + 100 `move_issue`) burned **212,659 tokens of response
+payload alone** — more than a full context window, to learn 300 issue keys.
+With compact echoes the same work costs **~33,300 tok (-84%)**.
+
+**Saving: ~84% of all write-response tokens. Size: S (reuse the existing
+`compact*` helpers on write paths). Contract change: yes, but additive-safe —
+gate the full object behind the existing `verbose: true` convention, which
+currently is not accepted on any write tool.**
+
+**Finding R3 — P1 — `list_project_activity` costs 170 tok/event and is the
+single most expensive read in the product.** Measured on VOL23 (300 issues):
+
+| Call | Bytes | Tokens |
+| --- | --- | --- |
+| `list_project_activity` (default `limit`, returns 50 events) | 21,511 | **8,548** |
+| `list_project_activity limit=200` | 85,547 | **33,982** |
+
+Per event the payload carries `id` (cuid), `issueId` (cuid), `actor.id`
+(cuid), `kind`, plus `from`/`to` that are **the same cuids already embedded in
+the `summary` string**:
+
+```json
+{ "id":"cmu4qppfr0054lshtp070u91t", "kind":"ISSUE_FIELD",
+  "issueId":"cmu4qppf0004zlshtwm6upxkz", "issueKey":"VOL23-1",
+  "actor":{"id":"cmu4qgaw6000011ttb1yob4mq","name":"Demo User"},
+  "summary":"status: cmu4qppdq004rlsht8wp5lbva → cmu4qppdq004slshta27mmp38",
+  "field":"status", "from":"cmu4qppdq004rlsht8wp5lbva",
+  "to":"cmu4qppdq004slshta27mmp38",
+  "createdAt":"2026-09-16T23:36:54.279Z" }
+```
+
+**cuids alone are 9,410 of the 33,982 tokens — 28% of the call.** And the
+`summary` is *unreadable*: an agent asked "what changed today" gets
+`status: cmu4q… → cmu4q…` and must spend an extra `list_statuses` call (161
+tok) to decode it — a cost-and-correctness defect in one.
+
+Progressive before/after on the same 200 events:
+
+| Shape | Tokens | Saving |
+| --- | --- | --- |
+| Current (pretty JSON) | 33,982 | — |
+| Minified only | 26,070 | -23% |
+| Drop `id`/`issueId`/`kind`/`from`/`to`; keep `{issueKey, actor.name, summary, time}` | 6,655 | **-80%** |
+| ↑ + resolve status/label/user ids to names in `summary` | 5,405 | **-84%** |
+| ↑ + TSV rows instead of JSON objects | 3,749 | **-89%** |
+
+Sample resolved row: `{"k":"VOL23-1","by":"Demo User","s":"status: To Do → In Progress","at":"23:36:54"}`.
+On the 17-issue TKQ42 project, a **grouped digest** form ("created: [17 keys];
+then per-issue changes") takes the same day's 31 events from **5,376 → 525 tok
+(-90%)**.
+**Saving: 80–90% on the busiest read. Size: M. Contract change: yes** (drop
+fields + resolve names) — recommend `verbose:true` returns today's shape.
+
+**Finding R4 — P2 — `get_issue` returns 1,664 tok for one issue; ~90% is
+recoverable.** Same pathologies as R2 plus an embedded `parent` that carries a
+fully-nested `status` object. A compact form
+(`{key,type,title,description,status,priority,assignee,reporter,storyPoints,
+parent{key,title,status},labels[names],dueDate,updatedAt,commentCount,
+comments[{author,at,body}],id}`) measures **167 tok (-90%)** and drops nothing
+a PM agent uses. `get_issue` currently has **no `verbose` parameter at all** —
+it is verbose-only. **Saving: ~1,500 tok per issue read. Size: S. Contract
+change: yes — add `verbose` (default false) matching every `list_*` tool.**
+
+**Finding R5 — P2 — `get_project_analytics` pads its response with 29
+all-zero rows.** 1,150 tok / 3,105 B, of which the `flow` series is 30 daily
+rows and **29 of them are `{created:0, completed:0}`** (~30 tok each). Emitting
+only non-zero days (plus `days` so the agent knows the window) and minifying:
+**1,150 → 140 tok (-88%)**, identical information.
+**Saving: ~1,000 tok/call. Size: S. No contract break** if framed as a sparse
+series with the window echoed.
+
+**Finding R6 — P2 — `get_epic_overview` 1,215 → 425 tok (-65%).** The
+flagship one-call answer is still 2-space-pretty and hydrates full child
+objects. Compacting children to `{key,title,status,assignee,priority}` and
+minifying gets it to 425 tok with the same answer.
+
+**Finding R7 — P3 — compact list rows still emit `startDate: null` on every
+row.** `compactIssue` (`apps/mcp/src/tools/index.ts:511-524`) conditionally
+adds `startDate` on `!== undefined`, which is *always* true from the API, so
+every row pays for a null. Across the session's list calls, dropping all-null
+keys from compact rows measured **13,698 → 7,086 tok on 200 rows** in
+combination with minification (-48%; the null-drop alone is ~2,000 tok of it).
+
+**Finding R8 — P3 — a tabular response shape would halve compact lists
+again.** Compact `list_issues` at 200 rows is **68.5 tok/issue**. Same data,
+same fields:
+
+| Shape | Tokens (200 issues) |
+| --- | --- |
+| Current pretty JSON objects | 13,698 |
+| Minified JSON objects | 9,086 |
+| `{columns:[…], rows:[[…]]}` | **5,246 (-62%)** |
+| TSV text block | **5,062 (-63%)** |
+| TSV + project-prefix elision on keys | **4,470 (-67%)** |
+
+Worth offering as an opt-in `format:"table"` on `list_*` tools rather than
+changing the default — JSON objects are more robust to model mis-parsing when
+rows are few; the win only matters past ~30 rows.
+
+---
+
+### Cost centre 3 — calls per question
+
+**Finding C1 — P1 — compact list rows carry no `id`, and no write tool accepts
+a `key`. Every "find it, then act on it" workflow is forced into an expensive
+second read.** This is the most structurally expensive friction found.
+
+- Compact `list_issues` row fields, verbatim: `key, title, status, assignee,
+  priority, type, startDate` — **no `id`** (`compactIssue`, tools/index.ts:511).
+- Every write tool requires an id. Measured, all with a key instead:
+  ```
+  move_issue        {issueId:"TKQ42-4"}  -> Error: Issue not found [HTTP 404]
+  update_issue      {issueId:"TKQ42-4"}  -> Error: Issue not found [HTTP 404]
+  add_comment       {issueId:"TKQ42-4"}  -> Error: Issue not found [HTTP 404]
+  link_issues       {issueId:"TKQ42-4"}  -> Error: Issue not found [HTTP 404]
+  get_epic_overview {epicId:"TKQ42-1"}   -> Error: Issue not found [HTTP 404]
+  get_issue         {issueId:"TKQ42-3"}  -> Error: Issue not found [HTTP 404]
+  ```
+  (`link_issues`' `target` **does** accept a key — so the surface is
+  internally inconsistent about it, which makes the 404 more confusing.)
+- So the agent's only routes to act on what it just listed are:
+  - re-list with `verbose:true` — measured **9,932 tok** for 50 issues vs
+    **410 tok** compact: a **24× premium** purely to obtain ids; or
+  - one `search_issues` per issue — **191 tok each**, N extra round trips
+    (and `search_issues` returns a **different envelope**, `{issues:[…]}`
+    instead of the documented `{items,…}`, plus full verbose objects).
+
+Two candidate fixes, priced:
+1. **Accept keys wherever an id is accepted** (`TKQ42-4` is unambiguous
+   project-wide). Cost: **0 extra response tokens**, removes the round trip
+   entirely. Size: M (resolve-key helper in the client). No contract break —
+   purely additive.
+2. **Add `id` to compact rows.** Cost: ~10 tok/row (**+500 tok** on a 50-row
+   list) vs the **9,932 tok** verbose alternative. Size: S. No contract break.
+
+Recommend doing **both** (1 for ergonomics, 2 so ids are available for bulk
+tools). **Saving: ~9,400 tok per act-on-a-list workflow.**
+
+**Finding C2 — P1 — "what's blocking the sprint?" takes 1 + N calls and there
+is no query that expresses it.** Measured sequence for a 8-issue sprint:
+`list_issues{sprintId}` (535 tok) → `list_issue_links` **per issue** (35–493
+tok each; 4 issues = 1,281 tok) = **5 calls / 1,816 tok**, and it scales
+linearly with sprint size (a 30-issue sprint ≈ 31 calls / ~10k tok).
+NLQL cannot express it — all four natural spellings fail:
+```
+blocked = true        -> Invalid NLQL query: Unknown field 'blocked'
+isBlocked = true      -> Invalid NLQL query: Unknown field 'isBlocked'
+linkType = BLOCKED_BY -> Invalid NLQL query: Unknown field 'linkType'
+has linked issues     -> Expected an operator after field 'has' at position 4
+```
+Fix shape: either an NLQL `blocked`/`blocking` predicate, or `list_issues`
+gaining `includeLinks:true` that hydrates `blockedBy[]`/`blocks[]` keys inline
+(~8 tok/row). Either makes it **1 call, ~600 tok** — a **~66% saving at 8
+issues and ~94% at 30**. Size: M (API-side, NLQL). No contract break.
+
+**Finding C3 — P2 — "write a status update for project X" takes 6 calls /
+6,518 response tokens.** Measured sequence: `get_epic_overview` (1,215) +
+`get_project_analytics` (1,150) + `list_sprints` (125) + `get_burndown_report`
+(581) + `list_project_activity` (3,263) + `list_issues{priority=HIGHEST AND
+status != Done}` (184). With R1/R3/R5/R6 applied the same six calls cost
+~1,400 tok; a dedicated `get_project_status({projectId, since})` digest tool
+would make it **1 call / ~500 tok (-92%)** and costs ~120 tok of tool-list
+surface — a 4:1 payback on the first use. Size: M. Additive (new tool).
+
+**Finding C4 — P2 — "what changed since yesterday" is unanswerable in
+bounded cost on a busy project.** VOL23 (one day of 300 creations + 100 moves,
+~700 events): `list_project_activity` returns **50 events / 8,548 tok** with
+`hasMore:true`. Reading the full day needs **14 paged calls ≈ 120,000
+tokens** — more than a context window for one routine question. The digest
+shape in R3 answers the same question in **~1,500 tok in one call**.
+Fix shape: a `groupBy:"issue"|"field"` / `digest:true` mode on
+`list_project_activity` that returns counts + per-issue one-liners rather than
+raw event rows.
+
+---
+
+### Cost centre 4 — retry and error cost (this is a strength)
+
+Every validation error measured was **cheap and one-retry self-correctable**:
+
+| Probe | Bytes | Tokens | Message |
+| --- | --- | --- | --- |
+| `create_issue{type:"EPICC"}` | 183 | 52 | `Invalid enum value. Expected 'TASK' \| 'BUG' \| 'STORY' \| 'EPIC' \| 'SUBTASK', received 'EPICC' at type` |
+| `update_issue{priority:"URGENT"}` | 191 | 53 | names all five valid values |
+| `create_issue{expectedProjectKey:"WRONG"}` | 185 | 59 | `Refusing to create issue: expectedProjectKey "WRONG" does not match the target project "TKQ42" (…). No issue was created.` |
+| cross-project `move_issue` | 58 | **15** | `statusId does not belong to this project [HTTP 400]` |
+| `list_issues{query}` without projectId | 67 | **19** | `list_issues: projectId is required when query (NLQL) is set.` |
+| `add_comment` missing body | 98 | 21 | `Required at body` |
+| `link_issues` bad target | 45 | 17 | `Issue "TKQ42-999" not found [HTTP 404]` |
+| NLQL misspelled assignee | 126 | 35 | `unknown user "Alex Rivrea" — use an exact display name, an id, or me(); see list_users` |
+| `get_burndown_report` missing projectId | 111 | 26 | `Required at projectId` |
+
+**Errors cost 10–59 tokens. Nothing here needs fixing for cost.** The failed
+`get_issue{key}` 404s cost 10 tok each — cheap, but see C1: they are *silently
+wrong guidance*, not a cost problem.
+
+**Finding E1 — P2 — the expensive failure mode is the silent zero, not the
+error.** `assignee`/`reporter`/`sprint` fail loud (35 tok, self-correcting).
+Five other NLQL value families return a **plausible, wrong `0`** (81 B / 35
+tok) with no signal:
+```
+status = "In Progres"   -> {items:[], total:0}   (typo, real status is "In Progress")
+status = "Blocked"      -> {items:[], total:0}   (status does not exist in this project)
+type = TSK              -> {items:[], total:0}
+priority = URGENT       -> {items:[], total:0}   (not a valid priority)
+label = "backendd"      -> {items:[], total:0}
+component = "nope"      -> {items:[], total:0}
+```
+Token cost is small per call but the *expected* cost is high: an agent either
+reports a false "nothing is blocked" (worst case) or burns a verification loop
+(`list_statuses` 161 tok + `list_labels` + retry ≈ 250 tok) on every zero
+result, forever. Extending the existing fail-loud resolution to
+status/type/priority/label/component closes it. **Size: S (API-side, same code
+path as the assignee fix). No contract break.** Cost: 0 tokens; it turns a
+correctness risk into a 35-tok error.
+
+---
+
+### What worked well (marketing-grade)
+
+- **Errors are genuinely agent-grade.** 10–59 tokens, and every single one
+  named the offending field *and* the valid alternatives. The
+  `expectedProjectKey` guard is the standout: it refuses the write, names both
+  the key you claimed and the project you actually targeted, and explicitly
+  says **"No issue was created."** — an agent recovers in exactly one retry
+  with zero collateral damage. I could not find a way to silently misfile an
+  issue when `expectedProjectKey` was supplied.
+- **`bulk_update_issues` is the reference response shape in the whole
+  surface**: `{"updated":4,"failed":[]}` — **34 bytes / 14 tokens** for a
+  4-issue mutation. Every write tool should look like this.
+- **NLQL is a real calls-per-question saver.** `status = "In Progress" AND
+  assignee = "Alex Rivera"` answered a question in **1 call / 101 tok** that
+  would otherwise be a list-plus-filter over the project.
+  `type = BUG AND status != Done ORDER BY priority DESC` → 166 tok.
+- **The compact-by-default + `limit`/`offset`/`verbose` envelope from Passes
+  1–2 is doing heavy lifting**: compact `list_issues` is 68.5 tok/issue vs
+  verbose's 499 tok/issue (**7.3×**), and the 200-item cap means no call in
+  this pass was unbounded.
+- **`get_epic_overview` still answers its question in one call** — epic +
+  16 children + `statusBreakdown` + `progress` for 1,215 tok. It is the model
+  the rest of the read surface should follow (and it gets 65% cheaper with
+  R1/R6 without losing anything).
+- **Pagination signalling is honest everywhere.** Every truncated read carried
+  `hasMore:true` + `nextCursor`; I never had to guess whether I had the whole
+  answer.
+
+### Environment note (not a product finding)
+
+The recipe in CLAUDE.md and in this agent's brief says `PORT=4000`, but
+`apps/api/src/main.ts:173` reads **`API_PORT`** (`Number(process.env.API_PORT
+?? 4000)`). Launching with `PORT=4010` silently binds **4000** — which in a
+parallel-agent session collides with a sibling's API and points their traffic
+at your database. Cost me two restarts and nearly cross-contaminated a
+sibling's run. Suggest correcting the env recipe in CLAUDE.md.
+
+---
+
+### Prioritised, costed list
+
+Ranked by saving × blast radius. "Fixed" = paid every conversation; "per-call"
+= paid per use.
+
+| # | Change | Saving | Type | Size | Breaks contract? |
+| --- | --- | --- | --- | --- | --- |
+| 1 | **Minify `jsonResult`** (drop `null, 2`) — one line, 105 call sites | **-25% of ALL response tokens** (-7,302 tok on a 56-call session; -4,612 tok on a single 200-row list) | per-call | **S** | No |
+| 2 | **Compact write echoes** (`create_issue`, `move_issue`, `update_issue`, `link_issues`, `add_comment`) behind `verbose:true` | **-84% of write payload**; 605→99 and 624→36 tok; 300-issue setup 212,659→~33,300 tok | per-call | S | Yes (additive-safe) |
+| 3 | **Strip `$schema`/`additionalProperties`/`execution` from `tools/list`** (own the ListTools handler) | **-3,813 tok** every conversation | fixed | S | No |
+| 4 | **Move long tool prose behind `get_tool_help({tool})`**, keep full text on the ~8 dense tools | **~-9,500 tok** every conversation | fixed | M | No |
+| 5 | **`list_project_activity`: drop cuids, resolve ids→names in `summary`, add `digest`/`groupBy`** | **-80…-90%**; 33,982→5,405 tok at 200 events; "what changed today" 5,376→525 | per-call | M | Yes (verbose escape) |
+| 6 | **Accept issue keys wherever an id is accepted + add `id` to compact rows** | **-9,400 tok** per act-on-a-list workflow (9,932→~500) and removes N round trips | calls | M | No (additive) |
+| 7 | **`get_issue`: add `verbose` (default compact)** | 1,664→167 tok (**-90%**) per issue read | per-call | S | Yes |
+| 8 | **Terse repeated pagination param docs; contract stated once in `instructions`** | **-1,200 tok** every conversation | fixed | S | No |
+| 9 | **`get_project_analytics`: sparse flow series** | 1,150→140 tok (**-88%**) | per-call | S | No |
+| 10 | **`get_epic_overview`: compact children** | 1,215→425 tok (-65%) | per-call | S | Yes (verbose escape) |
+| 11 | **Blocked-work query** (NLQL `blocked` predicate or `includeLinks` on `list_issues`) | 5 calls/1,816 tok → 1 call/~600 tok at 8 issues; ~94% at 30 | calls | M | No (additive) |
+| 12 | **Consolidate 34 sibling tools → 98-tool surface** (full coverage kept) | **-6,135 tok** every conversation | fixed | **L** | **Yes** — 34 names; needs a deprecation window |
+| 13 | **`get_project_status({projectId, since})` digest tool** | 6 calls/6,518 tok → 1 call/~500 tok (-92%); costs ~120 tok of surface | calls | M | No (additive) |
+| 14 | **Fail-loud on status/type/priority/label/component NLQL values** | 0 tok saved; converts a silent wrong answer into a 35-tok error | correctness | S | No |
+| 15 | **Drop all-null keys from compact rows; optional `format:"table"`** | -48% (nulls+minify) on 200 rows; TSV -67% | per-call | S/M | No (opt-in) |
+
+**Do items 1–3 first**: ~25 lines of change, no breaking contracts, and they
+cut the measured 56-call session from **58,449 → ~34,000 tokens** on their own.
+Items 1–11 land it at **~21,000**. Adding 12 reaches **~18,662 tokens, -68%**.
+
+### For the groomer
+
+- **P1 — Minify `jsonResult`** (`apps/mcp/src/tools/index.ts:42`). 25% of all
+  response tokens, one line, no contract change. (List item 1.)
+- **P1 — Compact write echoes behind `verbose:true`.** `move_issue` 624→36
+  tok, `create_issue` 605→99. Reuse the existing `compact*` helpers on write
+  paths; `bulk_update_issues` is the template. (Item 2.)
+- **P1 — Shrink the advertised tool list.** 132 tools = **28,554 tok paid in
+  every conversation, 50% of a realistic session's total**. Sub-tasks: strip
+  per-tool JSON-Schema boilerplate (-3,813, S, no break); move long prose
+  behind `get_tool_help` (-9,500, M, no break); consolidate 34 sibling tools
+  (-6,135, L, breaking). (Items 3, 4, 12.)
+- **P1 — `list_project_activity` payload.** 170 tok/event; 28% of the call is
+  cuids; `summary` embeds raw status cuids so "what changed today" is
+  *unreadable without an extra call*. Resolve names + drop cuids + add a
+  digest mode. (Item 5.)
+- **P1 — Key/id round trip.** Compact rows have no `id`; no write tool accepts
+  a key; the only workaround costs 9,932 tok for 50 issues. Accept keys and/or
+  carry `id`. Also: `search_issues` returns `{issues}` not the documented
+  `{items}` envelope. (Item 6.)
+- **P2 — `get_issue` has no `verbose` param** and is verbose-only: 1,664 tok
+  for one issue, ~90% recoverable. (Item 7.)
+- **P2 — No way to ask "what's blocking X".** NLQL rejects `blocked`,
+  `isBlocked`, `linkType`; costs 1+N calls. (Item 11.)
+- **P2 — `get_project_analytics` emits 29 all-zero flow rows** (1,150→140
+  tok). (Item 9.)
+- **P2 — NLQL silent zeros** on `status`/`type`/`priority`/`label`/
+  `component` values — the assignee/sprint fail-loud fix never reached these
+  five families. Correctness risk, not just cost. (Item 14.)
+- **P2 — No project-status digest tool**; the most common PM ask is 6 calls /
+  6,518 tok. (Item 13.)
+- **P3 — `compactIssue` emits `startDate: null` on every row**
+  (tools/index.ts:511-524). (Item 15.)
+- **P3 (docs) — CLAUDE.md env recipe says `PORT`; the API reads `API_PORT`.**
+  Silent wrong-port bind; dangerous in parallel-agent sessions.
