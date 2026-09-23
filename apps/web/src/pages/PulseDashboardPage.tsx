@@ -25,6 +25,7 @@ import {
 import { AppHeader } from '@/components/AppHeader';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
+import { Select } from '@/components/ui/Select';
 import { Avatar } from '@/components/ui/Avatar';
 import { EmptyState, ErrorState, LoadingState } from '@/components/ui/States';
 import { IssueTypeIcon } from '@/components/issue/issueMeta';
@@ -125,26 +126,28 @@ export function PulseDashboardPage() {
         <div className="space-y-1">
           <label
             htmlFor="pulse-ws-select"
-            className="block text-xs font-medium text-ink-500"
+            className="block text-xs font-medium text-ink-600"
           >
             Workspace
           </label>
           <div className="flex items-center gap-2">
-            <select
-              id="pulse-ws-select"
-              value={selectedWs ?? ''}
-              onChange={(e) => setActiveWorkspaceId(e.target.value)}
-              className="h-9 w-52 rounded-lg border border-ink-300 bg-surface px-2 text-sm text-ink-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
-            >
-              {workspaces?.map((w) => (
-                <option key={w.id} value={w.id}>
-                  {w.name}
-                </option>
-              ))}
-            </select>
+            <div className="w-52">
+              <Select
+                id="pulse-ws-select"
+                uiSize="lg"
+                value={selectedWs ?? ''}
+                onChange={(e) => setActiveWorkspaceId(e.target.value)}
+              >
+                {workspaces?.map((w) => (
+                  <option key={w.id} value={w.id}>
+                    {w.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
             <Button
               variant="secondary"
-              size="md"
+              size="lg"
               onClick={() => setWorkspaceModalOpen(true)}
             >
               + Workspace
@@ -156,7 +159,7 @@ export function PulseDashboardPage() {
             <>
               <Button
                 variant="secondary"
-                size="md"
+                size="lg"
                 onClick={() => navigate(`/workspaces/${activeWorkspace.id}/members`)}
                 data-testid="members-nav-link"
               >
@@ -164,7 +167,7 @@ export function PulseDashboardPage() {
               </Button>
               <Button
                 variant="secondary"
-                size="md"
+                size="lg"
                 onClick={() => navigate(`/workspaces/${activeWorkspace.id}/audit-log`)}
                 data-testid="audit-log-nav-link"
               >
@@ -172,7 +175,9 @@ export function PulseDashboardPage() {
               </Button>
             </>
           )}
-          <Button onClick={() => setProjectModalOpen(true)}>+ New Project</Button>
+          <Button size="lg" onClick={() => setProjectModalOpen(true)}>
+            + New Project
+          </Button>
         </div>
       </div>
 
@@ -212,7 +217,7 @@ export function PulseDashboardPage() {
           <section aria-labelledby="projects-heading">
             <h2
               id="projects-heading"
-              className="mb-3 text-sm font-semibold uppercase tracking-wide text-ink-500"
+              className="mb-3 text-sm font-semibold uppercase tracking-wide text-ink-600"
             >
               Projects
             </h2>
@@ -590,11 +595,35 @@ function RecentActivityCard({
             <ErrorState error={query.error} onRetry={() => query.refetch()} />
           </div>
         )}
+        {/*
+          Compact, not `EmptyState`'s full dashed box: this feed is
+          structurally empty for a solo self-hoster / new workspace (nothing
+          else ever populates it besides teammates' activity), so a
+          full-height placeholder here is the biggest dead-space cost on the
+          page for that exact persona. One quiet line instead.
+        */}
         {query.isSuccess && items.length === 0 && (
-          <EmptyState
-            title="No recent activity"
-            description="Notifications from issue assignments, comments and mentions appear here."
-          />
+          <div className="flex items-center gap-2 px-4 py-3 text-sm text-ink-500">
+            <svg
+              className="h-4 w-4 shrink-0 text-ink-300"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              aria-hidden="true"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"
+              />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M13.7 21a2 2 0 0 1-3.4 0" />
+            </svg>
+            <span>
+              No recent activity — assignments, comments and mentions will
+              show up here.
+            </span>
+          </div>
         )}
         {query.isSuccess && items.length > 0 && (
           <ul className="grid grid-cols-1 divide-y divide-ink-50 sm:grid-cols-2">

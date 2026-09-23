@@ -16,6 +16,22 @@ staged here by hand (see [`RELEASING.md`](./RELEASING.md))._
 
 ---
 
+## [0.20.0] — 2026-09-23
+
+[Compare with v0.19.0](https://github.com/Overcastly-AI/Next-Lane/compare/v0.19.0...v0.20.0)
+
+### Features
+
+* **web:** design-elevation pass on the issue drawer, pulse dashboard and My Work ([#105](https://github.com/Overcastly-AI/Next-Lane/issues/105)) ([a8af174](https://github.com/Overcastly-AI/Next-Lane/commit/a8af17411d4f16f4a91d62e241640b064c245c3d))
+
+## [0.19.0] — 2026-09-23
+
+[Compare with v0.18.0](https://github.com/Overcastly-AI/Next-Lane/compare/v0.18.0...v0.19.0)
+
+### Features
+
+* **web:** make the agent-native story visible in the product ([#103](https://github.com/Overcastly-AI/Next-Lane/issues/103)) ([848b72e](https://github.com/Overcastly-AI/Next-Lane/commit/848b72ea15d08a421c28cf095e268cf2d3151659))
+
 ## [0.18.0] — 2026-09-23
 
 [Compare with v0.17.6](https://github.com/Overcastly-AI/Next-Lane/compare/v0.17.6...v0.18.0)

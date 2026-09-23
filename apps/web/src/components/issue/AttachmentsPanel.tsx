@@ -9,9 +9,11 @@ import { Spinner, ErrorState } from '@/components/ui/States';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { useToast } from '@/components/ui/Toast';
 import { errorMessage } from '@/lib/errorMessage';
+import { formatDate } from '@/lib/formatDate';
 import { useAuth } from '@/auth/AuthContext';
 import { getToken } from '@/api/client';
 import { Role, type AttachmentDto } from '@next-lane/shared';
+import { SectionHeading } from './SectionHeading';
 
 /** 10 MB — kept in sync with the API default. */
 const MAX_BYTES = 10 * 1024 * 1024;
@@ -88,8 +90,17 @@ export function AttachmentsPanel({
   const toast = useToast();
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
+  // The full drop-zone is a fairly heavy widget (icon + copy + dashed frame).
+  // When the issue has no attachments yet, keep it collapsed to a single-line
+  // "+ Add attachment" affordance — matching how Description offers a slim
+  // "Add a description…" line instead of pinning an editor open — and only
+  // expand to the full drop target once the user asks to add one, drags a
+  // file over it, or an attachment already exists.
+  const [addOpen, setAddOpen] = useState(false);
   const query = useAttachments(issueId);
   const upload = useUploadAttachment(issueId);
+  const hasItems = (query.data?.length ?? 0) > 0;
+  const showFullDropzone = addOpen || dragging || hasItems || upload.isPending;
 
   const handleFiles = useCallback(
     (files: FileList | null) => {
@@ -129,30 +140,61 @@ export function AttachmentsPanel({
 
   return (
     <div className="space-y-3">
-      <p className="text-xs font-medium text-slate-600">Attachments</p>
+      <SectionHeading>Attachments</SectionHeading>
 
-      {/* Drop zone / upload button */}
+      {/* Drop zone / upload button — collapsed to a single line until there's
+          something to show or the user asks to add a file (see `showFullDropzone`). */}
       {editable && (
         <div
           role="button"
           tabIndex={0}
           aria-label="Upload attachment — drag and drop or click"
-          onDragOver={onDragOver}
+          onDragOver={(e) => {
+            onDragOver(e);
+            setAddOpen(true);
+          }}
           onDragLeave={onDragLeave}
           onDrop={onDrop}
-          onClick={() => inputRef.current?.click()}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') inputRef.current?.click();
+          onClick={() => {
+            setAddOpen(true);
+            inputRef.current?.click();
           }}
-          className={[
-            'flex cursor-pointer flex-col items-center justify-center rounded-md border-2 border-dashed px-4 py-4 text-center transition-colors',
-            dragging
-              ? 'border-brand-400 bg-brand-50'
-              : 'border-slate-200 hover:border-brand-300 hover:bg-slate-50',
-          ].join(' ')}
+          onKeyDown={(e) => {
+            if (e.key !== 'Enter' && e.key !== ' ') return;
+            e.preventDefault();
+            setAddOpen(true);
+            inputRef.current?.click();
+          }}
+          className={
+            showFullDropzone
+              ? [
+                  'flex cursor-pointer flex-col items-center justify-center rounded-md border-2 border-dashed px-4 py-4 text-center transition-colors',
+                  dragging
+                    ? 'border-brand-400 bg-brand-50'
+                    : 'border-slate-200 hover:border-brand-300 hover:bg-slate-50',
+                ].join(' ')
+              : 'flex w-full cursor-pointer items-center gap-2 rounded-md border border-dashed border-slate-200 px-3 py-2 text-left text-xs text-slate-500 transition-colors hover:border-brand-300 hover:bg-slate-50 hover:text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-400'
+          }
           data-testid="attachment-drop-zone"
         >
-          {upload.isPending ? (
+          {!showFullDropzone ? (
+            <>
+              <svg
+                className="h-4 w-4 shrink-0 text-slate-400"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={1.5}
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v14M5 12h14" />
+              </svg>
+              <span>
+                Add attachment{' '}
+                <span className="text-slate-400">— drag &amp; drop or browse</span>
+              </span>
+            </>
+          ) : upload.isPending ? (
             <div className="flex items-center gap-2 text-sm text-slate-500">
               <Spinner />
               <span>Uploading…</span>
@@ -219,7 +261,7 @@ export function AttachmentsPanel({
           ))}
         </ul>
       ) : (
-        <p className="py-1 text-sm text-slate-400">No attachments yet.</p>
+        <p className="py-1 text-sm text-slate-500">No attachments yet.</p>
       )}
     </div>
   );
@@ -270,12 +312,13 @@ function AttachmentRow({
         </p>
         <p className="text-[11px] text-slate-400">
           {formatBytes(attachment.sizeBytes)} · {attachment.uploader.name} ·{' '}
-          {new Date(attachment.createdAt).toLocaleDateString()}
+          {formatDate(attachment.createdAt)}
         </p>
       </div>
 
-      {/* Actions */}
-      <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+      {/* Actions — persistently visible on touch/coarse-pointer viewports (no
+          hover to reveal them on), fading in on hover/focus at desktop widths. */}
+      <div className="flex shrink-0 items-center gap-1 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100">
         <button
           type="button"
           onClick={handleDownload}

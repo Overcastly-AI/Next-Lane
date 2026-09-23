@@ -8,6 +8,13 @@
  * "which settings does a project have" had no answer you could read — only a
  * 909-line file you could scroll. Adding a settings section now means adding
  * it to one group here.
+ *
+ * There is deliberately no Agents group. Agent access and agent context
+ * are a daily surface, not configuration, and live on the project's own
+ * Agents tab (`/projects/:id/agents`). They were promoted out of the
+ * settings basement precisely because a structural differentiator buried
+ * under the Gitea form is, to a new user, invisible. General carries a
+ * pointer for anyone who still scrolls here out of habit.
  */
 export interface SettingsGroup {
   /** Route segment under `/projects/:id/settings/`. */
@@ -43,11 +50,6 @@ export const PROJECT_SETTINGS_GROUPS: readonly SettingsGroup[] = [
     to: 'integrations',
     label: 'Integrations',
     description: 'GitHub, GitLab, Gitea and outgoing webhooks.',
-  },
-  {
-    to: 'agents',
-    label: 'Agents',
-    description: 'What AI agents can read and change here.',
   },
 ];
 

@@ -3,6 +3,8 @@ import type { ActivityDto, StatusDto, UserDto } from '@next-lane/shared';
 import { useActivity } from '@/api/comments';
 import { Spinner } from '@/components/ui/States';
 import { titleCase } from '@/components/issue/issueMeta';
+import { SectionHeading } from './SectionHeading';
+import { formatDate, formatDateTime } from '@/lib/formatDate';
 
 /**
  * Renders one human-readable activity line. The API stores raw entity IDs in
@@ -67,13 +69,13 @@ export function ActivityPanel({
 
   return (
     <div className="border-t border-slate-100 pt-3">
-      <p className="mb-2 text-xs font-medium text-slate-600">Activity</p>
+      <SectionHeading className="mb-2">Activity</SectionHeading>
       {activityQuery.isLoading ? (
         <div className="flex justify-center py-2">
           <Spinner className="h-4 w-4" />
         </div>
       ) : activityQuery.isError ? (
-        <p className="text-xs text-slate-400">Couldn’t load activity.</p>
+        <p className="text-xs text-slate-600">Couldn’t load activity.</p>
       ) : activityQuery.data && activityQuery.data.length > 0 ? (
         <ul className="space-y-2">
           {activityQuery.data.map((a) => {
@@ -94,15 +96,18 @@ export function ActivityPanel({
                     to <span className="text-slate-600">{to}</span>
                   </>
                 )}
-                <span className="ml-1 text-slate-400">
-                  · {new Date(a.createdAt).toLocaleDateString()}
+                <span
+                  className="ml-1 text-slate-400"
+                  title={formatDateTime(a.createdAt)}
+                >
+                  · {formatDate(a.createdAt)}
                 </span>
               </li>
             );
           })}
         </ul>
       ) : (
-        <p className="text-xs text-slate-400">No activity yet.</p>
+        <p className="text-xs text-slate-600">No activity yet.</p>
       )}
     </div>
   );

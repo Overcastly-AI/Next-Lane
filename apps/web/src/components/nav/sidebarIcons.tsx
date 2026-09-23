@@ -196,6 +196,21 @@ export function ViewPagesIcon({ className }: { className?: string }) {
 }
 
 /**
+ * Agents — a chip: the one glyph in this set that reads as "machine" rather
+ * than "document" or "process", matching what this tab is (agent access +
+ * agent memory) without borrowing Docs' page shape or Automation's gear.
+ */
+export function ViewAgentsIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="7" y="7" width="10" height="10" rx="1.5" />
+      <circle cx="12" cy="12" r="2" />
+      <path d="M9 3v3M15 3v3M9 18v3M15 18v3M3 9h3M3 15h3M18 9h3M18 15h3" />
+    </svg>
+  );
+}
+
+/**
  * Home — the workspace landing page.
  *
  * A house rather than a grid or a compass: the destination is the place you

@@ -2,11 +2,13 @@ import { test, expect } from '@playwright/test';
 import { API_URL, setupIsolatedProject } from './helpers';
 
 /**
- * The "Agent access" switch in Project Settings.
+ * The "Agent access" switch, on the project's Agents tab.
  *
  * Founder: "I want to be able to lock a board so that the MCP server cannot
  * update it. Just read it." — scoped on their follow-up to "lock a project and
- * it going into read only for the MCP".
+ * it going into read only for the MCP". Moved out of Settings onto its own
+ * top-level "Agents" tab (docs/AUDIT-PRODUCT.md Pass 14: a structural
+ * differentiator buried below GitHub/GitLab/Gitea forms was invisible).
  *
  * The enforcement itself is proved against real HTTP in
  * `apps/api/src/agent-read-only.integration.spec.ts`, which is where a security
@@ -49,7 +51,7 @@ test.describe('Agent access (read-only for API tokens)', () => {
     });
     expect(before.status()).toBe(200);
 
-    await page.goto(`/projects/${ctx.project.id}/settings/agents`);
+    await page.goto(`/projects/${ctx.project.id}/agents`);
     const section = page.getByTestId('agent-access-section');
     await expect(section).toBeVisible({ timeout: 15_000 });
     // The blast radius has to be on screen: someone arriving expecting a
@@ -120,7 +122,7 @@ test.describe('Agent access (read-only for API tokens)', () => {
       data: { agentReadOnly: true },
     });
 
-    await page.goto(`/projects/${ctx.project.id}/settings/agents`);
+    await page.goto(`/projects/${ctx.project.id}/agents`);
     const toggle = page.getByTestId('agent-read-only-toggle');
     await expect(toggle).toHaveAttribute('aria-checked', 'true', {
       timeout: 15_000,

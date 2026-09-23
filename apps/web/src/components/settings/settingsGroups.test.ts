@@ -5,15 +5,21 @@ import {
 } from './settingsGroups';
 
 describe('PROJECT_SETTINGS_GROUPS', () => {
-  it('covers the six groups the spec defines', () => {
+  it('covers the five groups the spec defines', () => {
     expect(PROJECT_SETTINGS_GROUPS.map((g) => g.to)).toEqual([
       'general',
       'people',
       'work',
       'templates',
       'integrations',
-      'agents',
     ]);
+  });
+
+  // Agents is a tab, not a settings group. This is asserted rather than
+  // merely omitted because the pair has already migrated between the two
+  // homes once; a future tidy-up that re-buries them fails here first.
+  it('has no Agents group — agent access and context live on the Agents tab', () => {
+    expect(PROJECT_SETTINGS_GROUPS.map((g) => g.to)).not.toContain('agents');
   });
 
   it('has a unique route segment per group', () => {
