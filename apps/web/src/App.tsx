@@ -33,6 +33,13 @@ import { ReportsPage } from '@/pages/ReportsPage';
 import { RoadmapPage } from '@/pages/RoadmapPage';
 import { RoadmapPresentPage } from '@/pages/RoadmapPresentPage';
 import { SettingsPage } from '@/pages/SettingsPage';
+import { ProjectSettingsGeneral } from '@/pages/settings/ProjectSettingsGeneral';
+import { ProjectSettingsPeople } from '@/pages/settings/ProjectSettingsPeople';
+import { ProjectSettingsWork } from '@/pages/settings/ProjectSettingsWork';
+import { ProjectSettingsTemplates } from '@/pages/settings/ProjectSettingsTemplates';
+import { ProjectSettingsIntegrations } from '@/pages/settings/ProjectSettingsIntegrations';
+import { ProjectSettingsAgents } from '@/pages/settings/ProjectSettingsAgents';
+import { DEFAULT_PROJECT_SETTINGS_GROUP } from '@/components/settings/settingsGroups';
 import { TriagePage } from '@/pages/TriagePage';
 import { ProfileSettingsPage } from '@/pages/ProfileSettingsPage';
 import { ApiDocsPage } from '@/pages/ApiDocsPage';
@@ -284,7 +291,32 @@ export default function App() {
               />
               <Route path="triage" element={<TriagePage />} />
               <Route path="automations" element={<AutomationsPage />} />
-              <Route path="settings" element={<SettingsPage />} />
+              <Route path="settings" element={<SettingsPage />}>
+                <Route
+                  index
+                  element={
+                    <Navigate to={DEFAULT_PROJECT_SETTINGS_GROUP} replace />
+                  }
+                />
+                <Route path="general" element={<ProjectSettingsGeneral />} />
+                <Route path="people" element={<ProjectSettingsPeople />} />
+                <Route path="work" element={<ProjectSettingsWork />} />
+                <Route
+                  path="templates"
+                  element={<ProjectSettingsTemplates />}
+                />
+                <Route
+                  path="integrations"
+                  element={<ProjectSettingsIntegrations />}
+                />
+                <Route path="agents" element={<ProjectSettingsAgents />} />
+                <Route
+                  path="*"
+                  element={
+                    <Navigate to={DEFAULT_PROJECT_SETTINGS_GROUP} replace />
+                  }
+                />
+              </Route>
               <Route path="standups" element={<StandupsPage />} />
               <Route path="poker" element={<PokerStartPage />} />
               <Route path="poker/:sessionId" element={<PokerSessionPage />} />

@@ -193,7 +193,7 @@ test.describe('Public share link', () => {
     await expect(page).not.toHaveURL(/\/login/, { timeout: 15_000 });
 
     // Navigate to project settings.
-    await page.goto(`/projects/${project.id}/settings`);
+    await page.goto(`/projects/${project.id}/settings/general`);
     // Scoped to <main>: the project is deliberately named "Settings Share
     // Test" (to test the Share section below), and that name is now ALSO
     // rendered as a sidebar nav link — an unscoped page-wide /settings/i
@@ -258,7 +258,7 @@ test.describe('Public share link', () => {
     await page.getByRole('button', { name: /(log ?in|sign ?in)/i }).click();
     await expect(page).not.toHaveURL(/\/login/, { timeout: 15_000 });
 
-    await page.goto(`/projects/${project.id}/settings`);
+    await page.goto(`/projects/${project.id}/settings/general`);
     await expect(page.getByText(/public share link/i)).toBeVisible({
       timeout: 15_000,
     });

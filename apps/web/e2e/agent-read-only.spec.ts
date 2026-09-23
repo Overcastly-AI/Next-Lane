@@ -49,7 +49,7 @@ test.describe('Agent access (read-only for API tokens)', () => {
     });
     expect(before.status()).toBe(200);
 
-    await page.goto(`/projects/${ctx.project.id}/settings`);
+    await page.goto(`/projects/${ctx.project.id}/settings/agents`);
     const section = page.getByTestId('agent-access-section');
     await expect(section).toBeVisible({ timeout: 15_000 });
     // The blast radius has to be on screen: someone arriving expecting a
@@ -120,7 +120,7 @@ test.describe('Agent access (read-only for API tokens)', () => {
       data: { agentReadOnly: true },
     });
 
-    await page.goto(`/projects/${ctx.project.id}/settings`);
+    await page.goto(`/projects/${ctx.project.id}/settings/agents`);
     const toggle = page.getByTestId('agent-read-only-toggle');
     await expect(toggle).toHaveAttribute('aria-checked', 'true', {
       timeout: 15_000,

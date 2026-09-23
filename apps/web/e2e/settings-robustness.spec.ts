@@ -30,8 +30,12 @@ import {
   setupIsolatedProject,
 } from './helpers';
 
-async function gotoSettings(page: Page, projectId: string): Promise<void> {
-  await page.goto(`/projects/${projectId}/settings`);
+async function gotoSettings(
+  page: Page,
+  projectId: string,
+  group: 'general' | 'people' | 'work' | 'templates' | 'integrations' | 'agents',
+): Promise<void> {
+  await page.goto(`/projects/${projectId}/settings/${group}`);
   await expect(
     page.getByRole('heading', { name: /settings/i }).first(),
   ).toBeVisible({ timeout: 15_000 });
@@ -55,7 +59,7 @@ test.describe('Settings robustness — columns (WIP limit validation)', () => {
       label: 'wip-valid',
       openBoard: false,
     });
-    await gotoSettings(page, ctx.project.id);
+    await gotoSettings(page, ctx.project.id, 'work');
 
     // --- zero: blocked by the native min=1 constraint before submit ---
     await openAddColumnModal(page);
@@ -105,7 +109,7 @@ test.describe('Settings robustness — webhooks & GitHub format guards', () => {
       label: 'webhook-valid',
       openBoard: false,
     });
-    await gotoSettings(page, ctx.project.id);
+    await gotoSettings(page, ctx.project.id, 'integrations');
 
     await page.getByRole('button', { name: /add webhook/i }).first().click();
     await expect(page.locator('#webhook-url')).toBeVisible();
@@ -142,7 +146,7 @@ test.describe('Settings robustness — webhooks & GitHub format guards', () => {
       label: 'github-valid',
       openBoard: false,
     });
-    await gotoSettings(page, ctx.project.id);
+    await gotoSettings(page, ctx.project.id, 'integrations');
 
     const repoInput = page.getByTestId('github-repo-input');
     await repoInput.scrollIntoViewIfNeeded();
@@ -181,7 +185,7 @@ test.describe('Settings robustness — custom fields', () => {
       label: 'cf-valid',
       openBoard: false,
     });
-    await gotoSettings(page, ctx.project.id);
+    await gotoSettings(page, ctx.project.id, 'work');
 
     await page.getByRole('button', { name: /add field|add custom field/i }).first().click();
     await expect(page.locator('#cf-name')).toBeVisible();
@@ -213,7 +217,7 @@ test.describe('Settings robustness — project details persistence', () => {
       projectName: 'Persist Me',
       openBoard: false,
     });
-    await gotoSettings(page, ctx.project.id);
+    await gotoSettings(page, ctx.project.id, 'general');
 
     const newName = `Persisted Name ${Date.now()}`;
     const nameInput = page.locator('#settings-name');
@@ -252,7 +256,7 @@ test.describe('Settings robustness — project details persistence', () => {
       projectName: 'Trim Check',
       openBoard: false,
     });
-    await gotoSettings(page, ctx.project.id);
+    await gotoSettings(page, ctx.project.id, 'general');
 
     const nameInput = page.locator('#settings-name');
     await nameInput.click();
@@ -366,7 +370,7 @@ test.describe('Settings robustness — confirmed defects (fixed, regression-gate
         label: 'col-dup',
         openBoard: false,
       });
-      await gotoSettings(page, ctx.project.id);
+      await gotoSettings(page, ctx.project.id, 'work');
 
       await openAddColumnModal(page);
       await page.locator('#column-name').pressSequentially('To Do', {
@@ -404,7 +408,7 @@ test.describe('Settings robustness — confirmed defects (fixed, regression-gate
         labels: ['bug'],
         openBoard: false,
       });
-      await gotoSettings(page, ctx.project.id);
+      await gotoSettings(page, ctx.project.id, 'work');
 
       await page
         .locator('#settings-label-name')

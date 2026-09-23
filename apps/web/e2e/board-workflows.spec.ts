@@ -53,7 +53,7 @@ test.describe('Per-board named workflows — Settings (desktop)', () => {
       label: 'bwf-create',
       openBoard: false,
     });
-    await page.goto(`/projects/${ctx.project.id}/settings`);
+    await page.goto(`/projects/${ctx.project.id}/settings/work`);
 
     // Scroll to the workflows manager section.
     const manager = page.getByTestId('workflows-manager');
@@ -219,7 +219,7 @@ test.describe('Per-board named workflows — mobile', () => {
       openBoard: false,
     });
 
-    await page.goto(`/projects/${ctx.project.id}/settings`);
+    await page.goto(`/projects/${ctx.project.id}/settings/work`);
     await expect(page.getByTestId('workflows-manager')).toBeVisible({
       timeout: 15_000,
     });

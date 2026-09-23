@@ -49,7 +49,7 @@ test.describe('Components — Settings UI (desktop)', () => {
       openBoard: false,
     });
 
-    await page.goto(`/projects/${ctx.project.id}/settings`);
+    await page.goto(`/projects/${ctx.project.id}/settings/work`);
 
     // Wait for the components section to be visible.
     const section = page.getByTestId('components-section');
@@ -146,7 +146,7 @@ test.describe('Components — Settings UI (desktop)', () => {
     // Pre-create a component via API.
     await createComponent(request, ctx.token, ctx.project.id, 'Frontend');
 
-    await page.goto(`/projects/${ctx.project.id}/settings`);
+    await page.goto(`/projects/${ctx.project.id}/settings/work`);
     const section = page.getByTestId('components-section');
     await expect(section).toBeVisible({ timeout: 15_000 });
 
@@ -173,7 +173,7 @@ test.describe('Components — Settings UI (desktop)', () => {
     // Pre-create a component via API.
     await createComponent(request, ctx.token, ctx.project.id, 'ToDelete');
 
-    await page.goto(`/projects/${ctx.project.id}/settings`);
+    await page.goto(`/projects/${ctx.project.id}/settings/work`);
     const section = page.getByTestId('components-section');
     await expect(section).toBeVisible({ timeout: 15_000 });
 
@@ -215,7 +215,7 @@ test.describe('Components — mobile (390px)', () => {
     // Seed a component so the list is non-empty.
     await createComponent(request, ctx.token, ctx.project.id, 'Mobile UI');
 
-    await page.goto(`/projects/${ctx.project.id}/settings`);
+    await page.goto(`/projects/${ctx.project.id}/settings/work`);
     const section = page.getByTestId('components-section');
     await expect(section).toBeVisible({ timeout: 15_000 });
 

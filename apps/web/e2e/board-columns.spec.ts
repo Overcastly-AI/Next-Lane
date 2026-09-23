@@ -20,8 +20,12 @@ import {
  * does not depend on (or pollute) the shared demo account or other specs.
  */
 
-async function gotoSettings(page: Page, projectId: string): Promise<void> {
-  await page.goto(`/projects/${projectId}/settings`);
+async function gotoSettings(
+  page: Page,
+  projectId: string,
+  group: 'general' | 'work' = 'work',
+): Promise<void> {
+  await page.goto(`/projects/${projectId}/settings/${group}`);
   await expect(
     page.getByRole('heading', { level: 1, name: /settings/i }),
   ).toBeVisible({ timeout: 15_000 });
@@ -141,7 +145,7 @@ test.describe('Project settings — columns', () => {
       projectName: 'Settings Project',
       openBoard: false,
     });
-    await gotoSettings(page, ctx.project.id);
+    await gotoSettings(page, ctx.project.id, 'general');
 
     const newName = `Renamed Project ${Date.now()}`;
     const nameField = page.getByLabel('Name', { exact: true }).first();
@@ -174,21 +178,26 @@ test.describe('Project settings — columns', () => {
 
     // Log in as the VIEWER.
     await login(page, { email: viewer.email, password: viewer.password });
-    await gotoSettings(page, ctx.project.id);
 
+    // A VIEWER gets no write affordance anywhere in settings — a property of
+    // the whole surface, checked on both groups the split now spans:
+    // "work" (columns, labels) and "general" (details, danger zone).
+    await gotoSettings(page, ctx.project.id, 'work');
     await expect(page.getByTestId('readonly-hint')).toBeVisible();
-    // No add/save/archive affordances for a VIEWER.
     await expect(
       page.getByRole('button', { name: /add column/i }),
     ).toHaveCount(0);
+    await expect(
+      page.getByRole('button', { name: /add label/i }),
+    ).toHaveCount(0);
+
+    await gotoSettings(page, ctx.project.id, 'general');
+    await expect(page.getByTestId('readonly-hint')).toBeVisible();
     await expect(
       page.getByRole('button', { name: /save changes/i }),
     ).toHaveCount(0);
     await expect(
       page.getByRole('button', { name: /archive project/i }),
-    ).toHaveCount(0);
-    await expect(
-      page.getByRole('button', { name: /add label/i }),
     ).toHaveCount(0);
     // The name field is disabled (read-only).
     await expect(page.getByLabel('Name', { exact: true }).first()).toBeDisabled();

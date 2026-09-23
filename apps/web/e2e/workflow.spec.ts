@@ -60,7 +60,7 @@ test.describe('Configurable workflows — settings UI (desktop)', () => {
     request,
   }) => {
     const ctx = await setupIsolatedProject(page, request, { label: 'wf-ui' });
-    await page.goto(`/projects/${ctx.project.id}/settings`);
+    await page.goto(`/projects/${ctx.project.id}/settings/work`);
 
     const section = page.getByTestId('workflow-settings');
     await section.scrollIntoViewIfNeeded();
@@ -157,7 +157,7 @@ test.describe('Configurable workflows — mobile', () => {
     request,
   }) => {
     const ctx = await setupIsolatedProject(page, request, { label: 'wf-mob' });
-    await page.goto(`/projects/${ctx.project.id}/settings`);
+    await page.goto(`/projects/${ctx.project.id}/settings/work`);
     await expect(page.getByTestId('workflow-settings')).toBeVisible({
       timeout: 15_000,
     });

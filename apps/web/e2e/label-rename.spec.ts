@@ -21,7 +21,7 @@ import {
 const MOBILE = { width: 390, height: 844 };
 
 async function goToSettings(page: Page, projectId: string): Promise<void> {
-  await page.goto(`/projects/${projectId}/settings`);
+  await page.goto(`/projects/${projectId}/settings/work`);
   await expect(
     page.getByRole('heading', { name: /settings/i }).first(),
   ).toBeVisible({ timeout: 15_000 });

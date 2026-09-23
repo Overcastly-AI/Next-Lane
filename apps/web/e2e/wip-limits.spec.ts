@@ -71,7 +71,7 @@ test.describe('WIP limits — Settings UI (desktop)', () => {
       openBoard: false,
     });
 
-    await page.goto(`/projects/${ctx.project.id}/settings`);
+    await page.goto(`/projects/${ctx.project.id}/settings/work`);
 
     // Wait for the columns section to load.
     const row = page.getByTestId('settings-column-row').first();

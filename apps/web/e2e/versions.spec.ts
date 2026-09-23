@@ -52,7 +52,7 @@ test.describe('Versions — Settings UI (desktop)', () => {
       openBoard: false,
     });
 
-    await page.goto(`/projects/${ctx.project.id}/settings`);
+    await page.goto(`/projects/${ctx.project.id}/settings/work`);
 
     // Wait for the versions section to be visible.
     const section = page.getByTestId('versions-section');
@@ -88,7 +88,7 @@ test.describe('Versions — Settings UI (desktop)', () => {
     // Pre-create a version via API.
     await createVersion(request, ctx.token, ctx.project.id, 'v2.0.0');
 
-    await page.goto(`/projects/${ctx.project.id}/settings`);
+    await page.goto(`/projects/${ctx.project.id}/settings/work`);
     const section = page.getByTestId('versions-section');
     await expect(section).toBeVisible({ timeout: 15_000 });
 
@@ -185,7 +185,7 @@ test.describe('Versions — Settings UI (desktop)', () => {
     // Pre-create a version via API.
     await createVersion(request, ctx.token, ctx.project.id, 'v1.0.0-beta');
 
-    await page.goto(`/projects/${ctx.project.id}/settings`);
+    await page.goto(`/projects/${ctx.project.id}/settings/work`);
     const section = page.getByTestId('versions-section');
     await expect(section).toBeVisible({ timeout: 15_000 });
 
@@ -212,7 +212,7 @@ test.describe('Versions — Settings UI (desktop)', () => {
     // Pre-create a version via API.
     await createVersion(request, ctx.token, ctx.project.id, 'v-to-delete');
 
-    await page.goto(`/projects/${ctx.project.id}/settings`);
+    await page.goto(`/projects/${ctx.project.id}/settings/work`);
     const section = page.getByTestId('versions-section');
     await expect(section).toBeVisible({ timeout: 15_000 });
 
@@ -254,7 +254,7 @@ test.describe('Versions — mobile (390px)', () => {
     // Seed a version so the list is non-empty.
     await createVersion(request, ctx.token, ctx.project.id, 'v1.0.0-mobile');
 
-    await page.goto(`/projects/${ctx.project.id}/settings`);
+    await page.goto(`/projects/${ctx.project.id}/settings/work`);
     const section = page.getByTestId('versions-section');
     await expect(section).toBeVisible({ timeout: 15_000 });
 

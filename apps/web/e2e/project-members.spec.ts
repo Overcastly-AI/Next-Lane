@@ -31,7 +31,7 @@ import {
 } from './helpers';
 
 async function gotoSettings(page: Page, projectId: string): Promise<void> {
-  await page.goto(`/projects/${projectId}/settings`);
+  await page.goto(`/projects/${projectId}/settings/people`);
   await expect(
     page.getByRole('heading', { name: /^settings$/i }).first(),
   ).toBeVisible({ timeout: 15_000 });
