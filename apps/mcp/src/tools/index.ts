@@ -11,6 +11,8 @@
 
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
+import { zodToJsonSchema } from 'zod-to-json-schema';
 import type { NextLaneClient } from '../client.js';
 
 /**
@@ -34,12 +36,18 @@ interface ToolResult {
   isError?: boolean;
 }
 
-/** Wrap any value as a pretty-printed JSON text result. */
+/**
+ * Wrap any value as a compact (non-pretty-printed) JSON text result.
+ *
+ * Measured: `JSON.stringify(value, null, 2)` indentation alone accounted for
+ * ~25% of every response's tokens across all 105 call sites (a real-session
+ * audit) — pure whitespace an agent parses and immediately discards. No
+ * client (Claude Desktop/Code, or any MCP host) renders this text as-is for a
+ * human to read; it's consumed as JSON, so the indentation buys nothing.
+ */
 function jsonResult(value: unknown): ToolResult {
   const text =
-    value === null || value === undefined
-      ? 'OK (no content)'
-      : JSON.stringify(value, null, 2);
+    value === null || value === undefined ? 'OK (no content)' : JSON.stringify(value);
   return { content: [{ type: 'text', text }] };
 }
 
@@ -216,20 +224,25 @@ const limitParam = z
   .optional()
   .describe(`Max items to return (default ${DEFAULT_LIST_LIMIT}, max ${MAX_LIST_LIMIT}).`);
 
+// Both descriptions below are embedded on ~30 tools each (every list_*/
+// search_* tool spreads `pageParams`/`compactPageParams`), so their wording
+// is paid for repeatedly in every `tools/list` response — kept deliberately
+// terse for that reason (measured saving vs. the fuller original phrasing:
+// part of the "-1,200 tokens" repeated-prose trim; see the token-efficiency
+// audit in docs/MCP-QA.md).
 const offsetParam = z
   .number()
   .int()
   .min(0)
   .optional()
-  .describe('Number of items to skip, for paging through a long list (default 0).');
+  .describe('Items to skip, for paging (default 0).');
 
 const verboseParam = z
   .boolean()
   .optional()
   .describe(
-    'Return the full API object for each item instead of the compact default ' +
-      'fields below. Only set this when you actually need the extra fields — ' +
-      'it multiplies the response size.',
+    'Return the full API object per item instead of the compact default ' +
+      'fields. Only set when needed — it multiplies response size.',
   );
 
 /** Shared limit+offset params for list tools whose items are already minimal. */
@@ -523,6 +536,100 @@ const compactIssue = (i: ApiItem) => {
   return out;
 };
 
+/**
+ * Lean write-ack for issue-mutating tools (create_issue, update_issue,
+ * set_issue_parent) — the created/updated issue's identity plus the fields an
+ * agent actually checks after a write, never the full API object. A field
+ * report measured the full object at 605-624 tokens per write (ids repeated
+ * three ways — statusId + status.id + status.projectId —, an embedded user
+ * carrying avatarColor/emailNotifications/createdAt, plus rank, nulls,
+ * versions:[], checklistProgress:{0,0}); this ack is ~99 tokens. Mirrors
+ * `bulk_update_issues`' own lean `{updated, failed}` envelope. Pass
+ * `verbose: true` for the full object.
+ */
+const compactIssueAck = (i: ApiItem) => ({ id: i.id, ...compactIssue(i) });
+
+/**
+ * Even leaner write-ack for `move_issue`: a status change doesn't touch
+ * title/assignee/priority/type, so echoing them back is pure overhead — just
+ * confirm identity + the new status (~36 tokens vs 624 for the full object).
+ * Pass `verbose: true` for the full object.
+ */
+const compactMoveAck = (i: ApiItem) => {
+  const status = i.status as ApiItem | undefined;
+  return { id: i.id, key: i.key, status: status?.name ?? i.statusId };
+};
+
+// ---------------------------------------------------------------------------
+// issueId/epicId — accept an issue KEY (e.g. "NL-5") anywhere an issue id is
+// taken, not just an opaque cuid.
+//
+// Every write tool and most read tools take `issueId`/`epicId` as a path
+// param straight into a REST URL. Compact list rows (list_issues, search
+// results) return `key` but never `id`, so an agent acting on a row it just
+// listed previously had to pay for a verbose re-list (~24x the bytes) or a
+// search_issues round trip just to learn the id before it could act — while
+// link_issues' own `target` param already accepted a key, making the surface
+// self-contradictory. Resolving centrally here (rather than in every
+// individual handler) means every current AND future tool with an
+// `issueId`/`epicId` field gets this for free.
+// ---------------------------------------------------------------------------
+
+/** Matches an issue key like "NL-5" or "nl-42" — never a cuid (no hyphen). */
+const ISSUE_KEY_RE = /^[A-Za-z][A-Za-z0-9]*-\d+$/;
+
+/** Input field names that accept either an issue id or an issue key. */
+const ISSUE_REF_FIELDS = ['issueId', 'epicId'] as const;
+
+/**
+ * Resolve an issue key to its id via the key-shaped fast path in `/search`
+ * (exact project-key + number match, not fuzzy FTS — see
+ * `search.service.ts`'s `parseIssueKey`/`keyMatch`). Values that don't look
+ * like a key are returned unchanged (the common id case costs nothing extra).
+ */
+async function resolveIssueRef(client: NextLaneClient, value: string): Promise<string> {
+  if (!ISSUE_KEY_RE.test(value)) return value;
+  const data = await client.get<{ issues: ApiItem[] }>('/search', {
+    q: value,
+    groups: 'issues',
+    limit: 5,
+  });
+  const match = (data.issues ?? []).find(
+    (i) => typeof i.key === 'string' && i.key.toLowerCase() === value.toLowerCase(),
+  );
+  if (!match) {
+    throw new Error(
+      `No issue found with key "${value}" — check the key (case-insensitive, ` +
+        'e.g. "NL-5") or use search_issues / list_issues to find the right issue.',
+    );
+  }
+  return match.id as string;
+}
+
+/**
+ * Resolve every `ISSUE_REF_FIELDS` entry present in `args` that is key-shaped,
+ * in parallel. Returns `args` unchanged (same reference) when nothing needed
+ * resolving, so the common id-only call pays zero extra allocation.
+ */
+async function resolveIssueRefFields(
+  client: NextLaneClient,
+  args: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const toResolve = ISSUE_REF_FIELDS.filter((field) => {
+    const value = args[field];
+    return typeof value === 'string' && ISSUE_KEY_RE.test(value);
+  });
+  if (toResolve.length === 0) return args;
+  const resolved = await Promise.all(
+    toResolve.map((field) => resolveIssueRef(client, args[field] as string)),
+  );
+  const out = { ...args };
+  toResolve.forEach((field, i) => {
+    out[field] = resolved[i];
+  });
+  return out;
+}
+
 // ---------------------------------------------------------------------------
 // NLQL-filtered issue listing (`list_issues` with `query` set)
 //
@@ -758,6 +865,110 @@ async function fetchOutgoingLinks(
 }
 
 // ---------------------------------------------------------------------------
+// list_project_activity — drop raw cuids, resolve id-bearing fields to names
+//
+// The API's activity feed carries an `id` (activity-row cuid, unused by any
+// tool), `issueId` (redundant with the already-human `issueKey`), and — for
+// `status`/`assignee`/`sprint`/`component`/`label` field changes — a raw
+// cuid in `from`/`to` baked into `summary` (e.g. "status: cmu4qppdq004r… →
+// cmu4qppdq004s…"), unreadable without a follow-up list_statuses/list_users
+// call per event. A field report measured this at 170 tok/event, 28% of
+// which was raw cuids. We resolve those fields to display names here
+// (client-side, project-scoped lookups, fetched only for the field kinds
+// actually present on the page — a pure-comment/work-log page costs zero
+// extra calls) and drop the two identifier fields nothing acts on.
+// ---------------------------------------------------------------------------
+
+/** Field names whose `from`/`to` are ids needing a name lookup, mapped to the
+ *  project-scoped list endpoint that resolves them. */
+const ACTIVITY_ID_FIELD_ENDPOINTS: Record<string, (projectId: string) => string> = {
+  status: (projectId) => `/projects/${projectId}/statuses`,
+  sprint: (projectId) => `/projects/${projectId}/sprints`,
+  component: (projectId) => `/projects/${projectId}/components`,
+  label: (projectId) => `/projects/${projectId}/labels`,
+};
+
+/** Fetch `{id -> name}` for one of `ACTIVITY_ID_FIELD_ENDPOINTS`'s lists. */
+async function fetchIdNameMap(client: NextLaneClient, path: string): Promise<Map<string, string>> {
+  const rows = await client.get<ApiItem[]>(path);
+  const map = new Map<string, string>();
+  for (const r of rows) {
+    map.set(r.id as string, String((r.name as string | undefined) ?? r.id));
+  }
+  return map;
+}
+
+/** Build only the id→name maps actually needed by the `field`s present on this page. */
+async function resolveActivityMaps(
+  client: NextLaneClient,
+  projectId: string,
+  items: ApiItem[],
+): Promise<Record<string, Map<string, string>>> {
+  const fieldsPresent = new Set(items.map((i) => i.field).filter((f): f is string => Boolean(f)));
+  const maps: Record<string, Map<string, string>> = {};
+  const jobs: Promise<void>[] = [];
+  for (const field of fieldsPresent) {
+    const endpoint = ACTIVITY_ID_FIELD_ENDPOINTS[field];
+    if (endpoint) {
+      jobs.push(
+        fetchIdNameMap(client, endpoint(projectId)).then((m) => {
+          maps[field] = m;
+        }),
+      );
+    }
+  }
+  // `assignee` resolves against workspace users, not a project-scoped list.
+  if (fieldsPresent.has('assignee')) {
+    jobs.push(
+      fetchIdNameMap(client, '/users').then((m) => {
+        maps.assignee = m;
+      }),
+    );
+  }
+  await Promise.all(jobs);
+  return maps;
+}
+
+/**
+ * Re-shape one activity item: drop `id`/`issueId` (never used downstream —
+ * `issueKey` is the identity an agent acts on), collapse `actor` to its
+ * display name, and resolve `from`/`to`/`summary` from ids to names for the
+ * field kinds we have a map for. Falls back to the raw id when a referenced
+ * entity no longer exists (e.g. a deleted label) rather than dropping the
+ * event.
+ */
+function resolveActivityItem(item: ApiItem, maps: Record<string, Map<string, string>>): ApiItem {
+  const field = item.field as string | undefined;
+  const map = field ? maps[field] : undefined;
+  const resolve = (v: unknown): unknown =>
+    v === null || v === undefined ? v : (map?.get(String(v)) ?? v);
+  const from = map ? resolve(item.from) : item.from;
+  const to = map ? resolve(item.to) : item.to;
+  const actor = item.actor as ApiItem | null | undefined;
+
+  const out: ApiItem = {
+    kind: item.kind,
+    issueKey: item.issueKey,
+    actor: actor ? actor.name : null,
+    summary:
+      field && field !== 'created' && map
+        ? `${field}: ${from ?? '(none)'} → ${to ?? '(none)'}`
+        : item.summary,
+    at: item.createdAt,
+  };
+  if (field) {
+    out.field = field;
+    // 'created' always carries from:null, to:null — summary already says
+    // "created the issue", so echoing two nulls back is pure overhead.
+    if (field !== 'created') {
+      out.from = from;
+      out.to = to;
+    }
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
 // Read tools
 // ---------------------------------------------------------------------------
 
@@ -946,7 +1157,7 @@ const readTools: ToolDef[] = [
     group: 'read',
     description: 'Get a single issue by id with its full detail.',
     inputSchema: {
-      issueId: z.string().describe('Issue id.'),
+      issueId: z.string().describe('Issue id or key (e.g. "NL-5").'),
     },
     handler: (args, client) =>
       client.get(`/issues/${args.issueId}`).then(jsonResult),
@@ -960,7 +1171,7 @@ const readTools: ToolDef[] = [
       'by. Each entry includes the link id (needed for unlink_issues). Already ' +
       'a minimal shape; `limit`/`offset` cap a very heavily-linked issue.',
     inputSchema: {
-      issueId: z.string().describe('Issue id to list links for.'),
+      issueId: z.string().describe('Issue id or key (e.g. "NL-5") to list links for.'),
       ...pageParams,
     },
     handler: (args, client) =>
@@ -1016,7 +1227,7 @@ const readTools: ToolDef[] = [
       'get_issue just to find out. Matched terms are wrapped in U+E000/U+E001 ' +
       '(invisible Private Use Area sentinels, not HTML); ignore them or strip ' +
       'them, they are only markers. `limit`/`offset` are real SERVER-SIDE ' +
-      'paging: `total`/`hasMore` describe the `issues` array and `total` is ' +
+      'paging: `total`/`hasMore` describe the `items` array and `total` is ' +
       'the true match count, not the page length — page with `offset` while ' +
       '`hasMore`. Returns the minimal `SearchIssueDto` shape (no verbose mode) ' +
       'plus a `projects` array of matched project names/keys (paged by the ' +
@@ -1042,18 +1253,19 @@ const readTools: ToolDef[] = [
         limit,
         offset,
       });
-      const { items, ...envelope } = searchEnvelope(data.issues ?? [], data.paging?.issues, {
+      const envelope = searchEnvelope(data.issues ?? [], data.paging?.issues, {
         limit,
         offset,
       });
-      // The top-level total/limit/offset/hasMore describe `issues` (the uniform
-      // envelope, unchanged); `projectsTotal` covers the second array, which is
-      // paged by the same window but is almost always shorter than one page.
+      // `items` matches the uniform `{items, total, limit, offset, hasMore}`
+      // envelope every other list_*/search_* tool uses (previously `issues`,
+      // which broke that documented contract); `projectsTotal` covers the
+      // second array, which is paged by the same window but is almost always
+      // shorter than one page.
       return jsonResult({
-        issues: items,
+        ...envelope,
         projects: data.projects ?? [],
         projectsTotal: data.paging?.projects?.total ?? (data.projects ?? []).length,
-        ...envelope,
       });
     },
   },
@@ -1201,7 +1413,7 @@ const readTools: ToolDef[] = [
       'be changed by scheduling the issue directly.',
     inputSchema: {
       projectId: z.string().describe('Project id.'),
-      epicId: z.string().describe('Epic issue id.'),
+      epicId: z.string().describe('Epic issue id or key (e.g. "NL-5").'),
     },
     handler: (args, client) =>
       client
@@ -1230,7 +1442,7 @@ const readTools: ToolDef[] = [
       'List the comments on an issue (newest-relevant order). Full comment ' +
       '(including body) is already the minimal useful shape — no verbose ' +
       'mode; `limit`/`offset` page a long comment thread.',
-    inputSchema: { issueId: z.string().describe('Issue id.'), ...pageParams },
+    inputSchema: { issueId: z.string().describe('Issue id or key (e.g. "NL-5").'), ...pageParams },
     handler: (args, client) =>
       client
         .get<ApiItem[]>(`/issues/${args.issueId}/comments`)
@@ -1242,7 +1454,7 @@ const readTools: ToolDef[] = [
     description:
       'List the time-tracking work logs on an issue. Already a minimal shape ' +
       '— no verbose mode; `limit`/`offset` page an issue with many log entries.',
-    inputSchema: { issueId: z.string().describe('Issue id.'), ...pageParams },
+    inputSchema: { issueId: z.string().describe('Issue id or key (e.g. "NL-5").'), ...pageParams },
     handler: (args, client) =>
       client
         .get<ApiItem[]>(`/issues/${args.issueId}/worklogs`)
@@ -1254,7 +1466,7 @@ const readTools: ToolDef[] = [
     description:
       'List an issue’s checklist items (with done state + ids). Already a ' +
       'minimal shape — no verbose mode; `limit`/`offset` page a long checklist.',
-    inputSchema: { issueId: z.string().describe('Issue id.'), ...pageParams },
+    inputSchema: { issueId: z.string().describe('Issue id or key (e.g. "NL-5").'), ...pageParams },
     handler: (args, client) =>
       client
         .get<ApiItem[]>(`/issues/${args.issueId}/checklist`)
@@ -1297,7 +1509,7 @@ const readTools: ToolDef[] = [
       'webhook secret — configuring the integration itself is not exposed over ' +
       'MCP (admin-only, secret-bearing). Already a minimal shape; `limit`/' +
       '`offset` cap an issue with many linked PRs/commits.',
-    inputSchema: { issueId: z.string().describe('Issue id.'), ...pageParams },
+    inputSchema: { issueId: z.string().describe('Issue id or key (e.g. "NL-5").'), ...pageParams },
     handler: (args, client) =>
       client
         .get<ApiItem[]>(`/issues/${args.issueId}/github-links`)
@@ -1315,7 +1527,7 @@ const readTools: ToolDef[] = [
       'failing the whole call when the live lookup for that one PR fails ' +
       '(rate limit, deleted PR, network). Requires the `github:read` PAT ' +
       'scope when the token is scoped.',
-    inputSchema: { issueId: z.string().describe('Issue id.') },
+    inputSchema: { issueId: z.string().describe('Issue id or key (e.g. "NL-5").') },
     handler: (args, client) =>
       client.get<ApiItem[]>(`/issues/${args.issueId}/github-links/live`).then(jsonResult),
   },
@@ -1330,7 +1542,7 @@ const readTools: ToolDef[] = [
       'not exposed over MCP (admin-only, secret-bearing), mirroring the GitHub ' +
       'integration. Already a minimal shape; `limit`/`offset` cap an issue ' +
       'with many linked MRs/commits.',
-    inputSchema: { issueId: z.string().describe('Issue id.'), ...pageParams },
+    inputSchema: { issueId: z.string().describe('Issue id or key (e.g. "NL-5").'), ...pageParams },
     handler: (args, client) =>
       client
         .get<ApiItem[]>(`/issues/${args.issueId}/gitlab-links`)
@@ -1349,7 +1561,7 @@ const readTools: ToolDef[] = [
       '(no `get_issue_gitea_live_status` / `get_gitea_automation_config` tools ' +
       '— Gitea integration v1 is links-only). Already a minimal shape; ' +
       '`limit`/`offset` cap an issue with many linked PRs/commits.',
-    inputSchema: { issueId: z.string().describe('Issue id.'), ...pageParams },
+    inputSchema: { issueId: z.string().describe('Issue id or key (e.g. "NL-5").'), ...pageParams },
     handler: (args, client) =>
       client
         .get<ApiItem[]>(`/issues/${args.issueId}/gitea-links`)
@@ -1366,7 +1578,7 @@ const readTools: ToolDef[] = [
       '`get_issue_github_live_status` exactly, including per-link graceful ' +
       'degradation on a failed lookup. Requires the `gitlab:read` PAT scope ' +
       'when the token is scoped.',
-    inputSchema: { issueId: z.string().describe('Issue id.') },
+    inputSchema: { issueId: z.string().describe('Issue id or key (e.g. "NL-5").') },
     handler: (args, client) =>
       client.get<ApiItem[]>(`/issues/${args.issueId}/gitlab-links/live`).then(jsonResult),
   },
@@ -1740,7 +1952,7 @@ const readTools: ToolDef[] = [
       'sub-tasks works identically. `limit`/`offset`/`verbose` apply to the ' +
       'children list (default compact, same as list_issues).',
     inputSchema: {
-      epicId: z.string().describe('Epic (or any parent) issue id.'),
+      epicId: z.string().describe('Epic (or any parent) issue id or key (e.g. "NL-5").'),
       ...compactPageParams,
     },
     handler: async (args, client) => {
@@ -1831,9 +2043,15 @@ const readTools: ToolDef[] = [
       'you left off; omitting both starts from the beginning of the project\'s ' +
       'history. Results are OLDEST-of-the-page-first (ascending), so paging ' +
       'forward with `nextCursor` walks events in the order they happened. Each ' +
-      'item has a `kind` (ISSUE_FIELD | COMMENT | WORK_LOG), the issue it ' +
-      'belongs to (`issueId`/`issueKey`), who did it, and a one-line `summary` ' +
-      'cheap to skim without interpreting field/from/to yourself.',
+      'item is `{kind, issueKey, actor, summary, field?, from?, to?, at}` — ' +
+      '`kind` is ISSUE_FIELD | COMMENT | WORK_LOG, `actor` is a display name ' +
+      '(or null for a system change), and `summary` is a one-line, ' +
+      'already-human-readable line cheap to skim: status/assignee/sprint/' +
+      'component/label changes are resolved to names (never a raw id) both ' +
+      'in `summary` and in `field`/`from`/`to`, so "what changed" never ' +
+      'requires a follow-up list_statuses/list_users call. `field`/`from`/' +
+      '`to` are omitted for COMMENT/WORK_LOG items and for a plain "created ' +
+      'the issue" event (summary already says so).',
     inputSchema: {
       projectId: z.string().describe('Project id.'),
       since: z
@@ -1852,8 +2070,9 @@ const readTools: ToolDef[] = [
           limit: args.limit as number | undefined,
         },
       );
+      const maps = await resolveActivityMaps(client, args.projectId as string, data.items);
       return jsonResult({
-        items: data.items,
+        items: data.items.map((item) => resolveActivityItem(item, maps)),
         limit: (args.limit as number | undefined) ?? DEFAULT_LIST_LIMIT,
         hasMore: data.nextCursor !== null,
         nextCursor: data.nextCursor,
@@ -2146,7 +2365,7 @@ const readTools: ToolDef[] = [
       'find the spec/runbook/ADR behind an issue before starting it, or to ' +
       'see what documentation an issue change might invalidate. `truncated: ' +
       'true` means more pages reference the issue than the response cap.',
-    inputSchema: { issueId: z.string().describe('Issue id (not the key — the id).') },
+    inputSchema: { issueId: z.string().describe('Issue id or key (e.g. "NL-5").') },
     handler: (args, client) =>
       client.get(`/issues/${args.issueId}/pages`).then(jsonResult),
   },
@@ -2463,7 +2682,11 @@ const writeTools: ToolDef[] = [
       '`idempotencyKey` (any string you generate once, e.g. a UUID) when ' +
       'RETRYING a call after a network error/timeout/ambiguous response — a ' +
       'retry with the SAME key replays the original created issue instead of ' +
-      'filing a duplicate; omit it for a normal, non-retried call.',
+      'filing a duplicate; omit it for a normal, non-retried call. Returns a ' +
+      'compact ack by default — `{id, key, title, status, assignee, ' +
+      'priority, type, project}` — not the full issue object; pass ' +
+      '`verbose: true` for that (rank, description, labels, custom fields, ' +
+      'etc).',
     inputSchema: {
       projectId: z.string().describe('Project to create the issue in.'),
       title: z.string().min(1).max(300).describe('Issue title.'),
@@ -2510,6 +2733,7 @@ const writeTools: ToolDef[] = [
             'replays the original created issue instead of filing a duplicate. ' +
             'Omit for a normal call.',
         ),
+      verbose: verboseParam,
     },
     handler: async (args, client) => {
       const project = await client.get<ApiItem>(`/projects/${args.projectId}`);
@@ -2549,10 +2773,12 @@ const writeTools: ToolDef[] = [
         customFields: args.customFields,
       });
 
-      return jsonResult({
-        ...issue,
-        project: { id: project.id, key: project.key, name: project.name },
-      });
+      const projectRef = { id: project.id, key: project.key, name: project.name };
+      return jsonResult(
+        args.verbose
+          ? { ...issue, project: projectRef }
+          : { ...compactIssueAck(issue), project: projectRef },
+      );
     },
   },
   {
@@ -2566,9 +2792,11 @@ const writeTools: ToolDef[] = [
       'storyPoints, startDate, dueDate, and originalEstimateMinutes. When both ' +
       'startDate and dueDate end up set, startDate must be <= dueDate. To ' +
       'change status use move_issue (it can apply workflow rules); to link ' +
-      'issues use link_issues.',
+      'issues use link_issues. Returns a compact ack by default — ' +
+      '`{id, key, title, status, assignee, priority, type}` — not the full ' +
+      'issue object; pass `verbose: true` for that.',
     inputSchema: {
-      issueId: z.string().describe('Issue id to update.'),
+      issueId: z.string().describe('Issue id or key (e.g. "NL-5") to update.'),
       parentId: z
         .string()
         .nullable()
@@ -2628,25 +2856,26 @@ const writeTools: ToolDef[] = [
         .nullable()
         .optional()
         .describe('Original time-tracking estimate in minutes, or null to clear it.'),
+      verbose: verboseParam,
     },
-    handler: (args, client) =>
-      client
-        .patch(`/issues/${args.issueId}`, {
-          parentId: args.parentId,
-          title: args.title,
-          type: args.type,
-          description: args.description,
-          priority: args.priority,
-          assigneeId: args.assigneeId,
-          sprintId: args.sprintId,
-          componentId: args.componentId,
-          storyPoints: args.storyPoints,
-          startDate: args.startDate,
-          dueDate: args.dueDate,
-          customFields: args.customFields,
-          originalEstimateMinutes: args.originalEstimateMinutes,
-        })
-        .then(jsonResult),
+    handler: async (args, client) => {
+      const issue = await client.patch<ApiItem>(`/issues/${args.issueId}`, {
+        parentId: args.parentId,
+        title: args.title,
+        type: args.type,
+        description: args.description,
+        priority: args.priority,
+        assigneeId: args.assigneeId,
+        sprintId: args.sprintId,
+        componentId: args.componentId,
+        storyPoints: args.storyPoints,
+        startDate: args.startDate,
+        dueDate: args.dueDate,
+        customFields: args.customFields,
+        originalEstimateMinutes: args.originalEstimateMinutes,
+      });
+      return jsonResult(args.verbose ? issue : compactIssueAck(issue));
+    },
   },
   {
     name: 'set_issue_parent',
@@ -2656,40 +2885,50 @@ const writeTools: ToolDef[] = [
       're-parenting case (e.g. nest a subtask under a story, or a story under ' +
       'an epic). Pass parentId to attach, or parentId:null to detach. Both ' +
       'issues must be in the same project. (update_issue can do this too, ' +
-      'alongside other fields.)',
+      'alongside other fields.) Returns a compact ack by default — ' +
+      '`{id, key, title, status, assignee, priority, type}` — not the full ' +
+      'issue object; pass `verbose: true` for that.',
     inputSchema: {
-      issueId: z.string().describe('The child issue id to re-parent.'),
+      issueId: z.string().describe('The child issue id or key (e.g. "NL-5") to re-parent.'),
       parentId: z
         .string()
         .nullable()
         .describe('The new parent issue id, or null to remove the parent.'),
+      verbose: verboseParam,
     },
-    handler: (args, client) =>
-      client
-        .patch(`/issues/${args.issueId}`, { parentId: args.parentId })
-        .then(jsonResult),
+    handler: async (args, client) => {
+      const issue = await client.patch<ApiItem>(`/issues/${args.issueId}`, {
+        parentId: args.parentId,
+      });
+      return jsonResult(args.verbose ? issue : compactIssueAck(issue));
+    },
   },
   {
     name: 'move_issue',
     group: 'write',
     description:
       'Move an issue to a different status. Pass boardId to apply that board’s ' +
-      'enforced workflow rules; omit it for a plain status change.',
+      'enforced workflow rules; omit it for a plain status change. Returns a ' +
+      'compact ack by default — `{id, key, status}` — not the full issue ' +
+      'object (a status change does not touch title/assignee/priority/type, ' +
+      'so echoing them back is pure overhead); pass `verbose: true` for the ' +
+      'full object.',
     inputSchema: {
-      issueId: z.string().describe('Issue id to move.'),
+      issueId: z.string().describe('Issue id or key (e.g. "NL-5") to move.'),
       statusId: z.string().describe('Destination status id.'),
       boardId: z
         .string()
         .optional()
         .describe('Board context for workflow-enforced moves.'),
+      verbose: verboseParam,
     },
-    handler: (args, client) =>
-      client
-        .post(`/issues/${args.issueId}/move`, {
-          statusId: args.statusId,
-          boardId: args.boardId,
-        })
-        .then(jsonResult),
+    handler: async (args, client) => {
+      const issue = await client.post<ApiItem>(`/issues/${args.issueId}/move`, {
+        statusId: args.statusId,
+        boardId: args.boardId,
+      });
+      return jsonResult(args.verbose ? issue : compactMoveAck(issue));
+    },
   },
   {
     name: 'link_issues',
@@ -2700,7 +2939,7 @@ const writeTools: ToolDef[] = [
       'BLOCKED_BY for the reverse. The target may be an issue key (e.g. "NL-5") ' +
       'or an id; both issues must be in the same project. Requires MEMBER+.',
     inputSchema: {
-      issueId: z.string().describe('Source issue id (the link is from this issue).'),
+      issueId: z.string().describe('Source issue id or key (the link is from this issue).'),
       target: z
         .string()
         .describe('Target issue: a key like "NL-5" or an issue id.'),
@@ -2756,7 +2995,7 @@ const writeTools: ToolDef[] = [
       'Attach an existing label to an issue. Find the labelId with list_labels ' +
       '(or create_label first). Requires MEMBER+.',
     inputSchema: {
-      issueId: z.string().describe('Issue to label.'),
+      issueId: z.string().describe('Issue id or key (e.g. "NL-5") to label.'),
       labelId: z.string().describe('Label id to attach.'),
     },
     handler: (args, client) =>
@@ -2770,7 +3009,7 @@ const writeTools: ToolDef[] = [
     description:
       'Remove a label from an issue (issueId + labelId). Requires MEMBER+.',
     inputSchema: {
-      issueId: z.string().describe('Issue to unlabel.'),
+      issueId: z.string().describe('Issue id or key (e.g. "NL-5") to unlabel.'),
       labelId: z.string().describe('Label id to remove.'),
     },
     handler: (args, client) =>
@@ -2789,7 +3028,7 @@ const writeTools: ToolDef[] = [
       'call. Mid-session corrections don\'t need to accumulate as new ' +
       'comments — see update_comment/delete_comment.',
     inputSchema: {
-      issueId: z.string().describe('Issue to comment on.'),
+      issueId: z.string().describe('Issue id or key (e.g. "NL-5") to comment on.'),
       body: z.string().min(1).max(10000).describe('Comment body (markdown).'),
       idempotencyKey: z
         .string()
@@ -2836,7 +3075,7 @@ const writeTools: ToolDef[] = [
     name: 'delete_issue',
     group: 'write',
     description: 'Delete an issue permanently. Requires MEMBER+. Irreversible.',
-    inputSchema: { issueId: z.string().describe('Issue id to delete.') },
+    inputSchema: { issueId: z.string().describe('Issue id or key (e.g. "NL-5") to delete.') },
     handler: (args, client) =>
       client.delete(`/issues/${args.issueId}`).then(jsonResult),
   },
@@ -2935,7 +3174,7 @@ const writeTools: ToolDef[] = [
       "Set the full list of versions (fix-versions) on an issue, replacing any " +
       'existing. Pass an empty array to clear. Requires MEMBER+.',
     inputSchema: {
-      issueId: z.string().describe('Issue id.'),
+      issueId: z.string().describe('Issue id or key (e.g. "NL-5").'),
       versionIds: z.array(z.string()).describe('Version ids to set (replaces all).'),
     },
     handler: (args, client) =>
@@ -2948,7 +3187,7 @@ const writeTools: ToolDef[] = [
     group: 'write',
     description: 'Log time spent on an issue. Requires MEMBER+.',
     inputSchema: {
-      issueId: z.string().describe('Issue id.'),
+      issueId: z.string().describe('Issue id or key (e.g. "NL-5").'),
       minutes: z.number().int().min(1).describe('Minutes spent.'),
       note: z.string().max(2000).optional(),
       workedAt: z.string().optional().describe('ISO-8601 datetime; defaults to now.'),
@@ -2967,7 +3206,7 @@ const writeTools: ToolDef[] = [
     group: 'write',
     description: 'Add a checklist item to an issue. Requires MEMBER+.',
     inputSchema: {
-      issueId: z.string().describe('Issue id.'),
+      issueId: z.string().describe('Issue id or key (e.g. "NL-5").'),
       text: z.string().min(1).max(2000).describe('Checklist item text.'),
     },
     handler: (args, client) =>
@@ -4009,6 +4248,56 @@ const writeTools: ToolDef[] = [
 export const allTools: ToolDef[] = [...readTools, ...writeTools];
 
 /**
+ * Build one tool's `inputSchema` as JSON Schema, stripped of boilerplate the
+ * default conversion adds that this server never uses:
+ *  - `$schema` (a draft-07 meta-schema URI, repeated verbatim on every tool).
+ *  - `additionalProperties: false` (real input validation happens against
+ *    the zod shape itself when a call comes in — `CallToolRequest` args are
+ *    parsed with the same schema server-side — so the advertised JSON Schema
+ *    doesn't need to re-assert a constraint that's already enforced).
+ * Measured across the full toolset: -3,813 tokens (see registerTools' own
+ * note for the paired `execution` block saving).
+ */
+function trimmedInputJsonSchema(shape: z.ZodRawShape): Record<string, unknown> {
+  // `shape as any`: z.object<T>(shape: T) inferring T from the real
+  // (heterogeneous, per-tool) ZodRawShape here hits the same TS2589 "type
+  // instantiation excessively deep" the ToolRegistrar interface at the top
+  // of this file works around for the SDK's own registerTool() — a loop
+  // over ~130 structurally-different shapes is exactly the pathological
+  // case for that inference. Passing `any` makes T resolve to `any` too,
+  // which short-circuits the expansion; the actual runtime value is an
+  // ordinary ZodObject and converts correctly.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- see above
+  const objectSchema: any = z.object(shape);
+  const schema = zodToJsonSchema(objectSchema, {
+    strictUnions: true,
+    pipeStrategy: 'input',
+  }) as Record<string, unknown>;
+  delete schema.$schema;
+  stripFalseAdditionalProperties(schema);
+  return schema;
+}
+
+/**
+ * Recursively delete `additionalProperties: false` anywhere it appears (every
+ * nested zod object — e.g. `gateSchema`, `dashboardGadgetConfigSchema` — gets
+ * its own copy from the same default). Deliberately leaves
+ * `additionalProperties: {<schema>}` alone (e.g. `customFields`'s
+ * `z.record(z.unknown())`) — that conveys real information (the value type
+ * of a dictionary), not boilerplate.
+ */
+function stripFalseAdditionalProperties(node: unknown): void {
+  if (!node || typeof node !== 'object') return;
+  if (Array.isArray(node)) {
+    for (const item of node) stripFalseAdditionalProperties(item);
+    return;
+  }
+  const obj = node as Record<string, unknown>;
+  if (obj.additionalProperties === false) delete obj.additionalProperties;
+  for (const value of Object.values(obj)) stripFalseAdditionalProperties(value);
+}
+
+/**
  * Register every tool on an McpServer instance, wiring each handler to the
  * shared client. Strips undefined values are handled by the client (it skips
  * undefined query params; JSON.stringify drops undefined body props).
@@ -4024,7 +4313,8 @@ export function registerTools(server: McpServer, client: NextLaneClient): void {
       },
       async (args: Record<string, unknown>) => {
         try {
-          return await tool.handler(args ?? {}, client);
+          const resolvedArgs = await resolveIssueRefFields(client, args ?? {});
+          return await tool.handler(resolvedArgs, client);
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           return {
@@ -4035,4 +4325,25 @@ export function registerTools(server: McpServer, client: NextLaneClient): void {
       },
     );
   }
+
+  // The loop above installs the SDK's own `tools/list` handler on its first
+  // registerTool() call (McpServer.setToolRequestHandlers). That handler (a)
+  // recomputes every inputSchema through the same zodToJsonSchema conversion
+  // `trimmedInputJsonSchema` performs above, minus the stripping, and (b)
+  // hardcodes an `execution: {taskSupport: "forbidden"}` block on every
+  // single tool — registerTool() always passes that literal (see the SDK's
+  // mcp.js); this server implements no MCP tasks, so it's dead weight paid
+  // by every connecting client before a single call. `setRequestHandler`
+  // replaces a prior handler for the same method (documented behavior, not a
+  // hack), so we override it here with one built straight from `allTools`,
+  // dropping both: measured -3,813 tokens (schema boilerplate) and -1,188
+  // tokens (execution block) across the full toolset (see
+  // apps/mcp/src/tools/index.test.ts for the byte-for-byte before/after).
+  server.server.setRequestHandler(ListToolsRequestSchema, () => ({
+    tools: allTools.map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+      inputSchema: trimmedInputJsonSchema(tool.inputSchema),
+    })),
+  }));
 }

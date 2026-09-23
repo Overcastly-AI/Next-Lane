@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { setupIsolatedProject } from './helpers';
+import { API_URL, setupIsolatedProject } from './helpers';
 
 /**
  * pages-adversarial.spec.ts
@@ -22,7 +22,7 @@ test.describe('Pages adversarial QA', () => {
       openBoard: false,
     });
     async function apiCreatePage(title: string) {
-      const res = await request.post(`http://localhost:4000/api/projects/${project.id}/pages`, {
+      const res = await request.post(`${API_URL}/api/projects/${project.id}/pages`, {
         headers: { Authorization: `Bearer ${token}` },
         data: { title },
       });
@@ -215,7 +215,7 @@ test.describe('Pages adversarial QA', () => {
       openBoard: false,
     });
     async function apiCreatePage(title: string, parentId?: string) {
-      const res = await request.post(`http://localhost:4000/api/projects/${project.id}/pages`, {
+      const res = await request.post(`${API_URL}/api/projects/${project.id}/pages`, {
         headers: { Authorization: `Bearer ${token}` },
         data: { title, parentId },
       });
@@ -253,7 +253,7 @@ test.describe('Pages adversarial QA', () => {
     });
     const headers = { Authorization: `Bearer ${token}` };
     async function apiCreatePage(title: string, content?: string) {
-      const res = await request.post(`http://localhost:4000/api/projects/${project.id}/pages`, {
+      const res = await request.post(`${API_URL}/api/projects/${project.id}/pages`, {
         headers,
         data: { title, content },
       });
@@ -308,7 +308,7 @@ test.describe('Pages adversarial QA', () => {
       openBoard: false,
     });
     async function apiCreatePage(title: string, content?: string) {
-      const res = await request.post(`http://localhost:4000/api/projects/${project.id}/pages`, {
+      const res = await request.post(`${API_URL}/api/projects/${project.id}/pages`, {
         headers: { Authorization: `Bearer ${token}` },
         data: { title, content },
       });

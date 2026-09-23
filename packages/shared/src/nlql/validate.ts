@@ -13,6 +13,7 @@
  * reaching any property access.
  */
 import type { CustomFieldType } from '../enums';
+import { IssueType, Priority, StatusCategory } from '../enums';
 import type {
   FieldNode,
   Node,
@@ -21,8 +22,13 @@ import type {
 } from './ast';
 import { parse } from './parser';
 import { NlqlParseError } from './tokenizer';
-import { resolveStandardField, type FieldKind } from './fields';
-import type { NlqlSprint, NlqlUser } from './evaluator';
+import {
+  resolveStandardField,
+  type FieldKind,
+  type StandardField,
+  type StandardFieldMeta,
+} from './fields';
+import type { NlqlComponent, NlqlSprint, NlqlUser } from './evaluator';
 
 /** Maximum accepted query length, in characters. */
 export const NLQL_MAX_LENGTH = 2000;
@@ -153,6 +159,34 @@ export function getReferencedFieldKinds(query: string): Set<FieldKind> {
   return kinds;
 }
 
+/**
+ * Return the set of canonical {@link StandardField} *names* (not kinds) a
+ * query references. Needed alongside {@link getReferencedFieldKinds} because
+ * `status` shares the `'enum'` `FieldKind` with `type`/`priority`/
+ * `statusCategory` even though only `status` needs a per-project side-context
+ * (the project's actual status names, loaded from the DB) to fail loud on a
+ * typo — the other three are closed enums checked against a fixed constant
+ * list, no round trip needed. Lets a caller decide precisely whether to pay
+ * for loading `ctx.statuses` rather than firing on every `'enum'`-kind query.
+ * Same parse-tolerant contract as {@link getReferencedFieldKinds}: returns an
+ * empty set on a parse error rather than throwing.
+ */
+export function getReferencedStandardFields(query: string): Set<StandardField> {
+  const fields = new Set<StandardField>();
+  let ast: Query;
+  try {
+    ast = parse(query);
+  } catch {
+    return fields;
+  }
+  for (const field of collectQueryFields(ast)) {
+    if (field.quoted) continue;
+    const meta = resolveStandardField(field.name);
+    if (meta) fields.add(meta.field);
+  }
+  return fields;
+}
+
 // ── Name resolution (fail-loud prepare step) ────────────────────────────────
 //
 // MCP-QA pass 1, finding 1 residual: `assignee = "Alex Rivera"` and
@@ -166,17 +200,63 @@ export function getReferencedFieldKinds(query: string): Set<FieldKind> {
 // for an agent- or human-facing *server* surface: a confidently-empty result
 // set reads as "nobody has this name" instead of "there is no such user".
 //
+// MCP-QA pass 4 (token-efficiency pass, finding E1): the original fix above
+// only ever reached `user`/`sprint`-kind comparisons. `status`, `type`,
+// `priority`, `label`/`labels`, and `component`/`componentId` were left on
+// the old silent-zero path — `status = "In Progres"`, `priority = URGENT`,
+// `label = "backendd"`, etc. all returned a confident `{items:[],total:0}`
+// instead of an error. This section now covers all eight name/value-
+// checkable standard fields with the SAME mechanism (one function, one
+// `ValidationResult` contract) rather than a second one, but with per-field-
+// family resolution rules since the fields fall into three genuinely
+// different shapes:
+//
+//  1. `user` / `sprint` / `component` — dynamic, per-project reference data
+//     where the ISSUE'S OWN FIELD VALUE is the raw id (`assigneeId`,
+//     `sprintId`, `componentId`). An operand that looks like an id but isn't
+//     in the supplied context might still be a legitimate (e.g. stale/
+//     cross-project) id that will genuinely compare equal at evaluation time
+//     — see `looksLikeOpaqueId`. These three get the SAME id-shape leniency.
+//  2. `status` / `label` — also dynamic, per-project reference data, but the
+//     evaluator compares by the resolved NAME, never a raw id
+//     (`getFieldValue` returns `issue.status?.name` / the labels' `.name`s).
+//     An id-shaped operand here would never actually match anything at
+//     evaluation time either way, so granting it the same leniency would
+//     just swap one silent zero for another. These two are checked strictly
+//     by name (or a known id from the supplied context, which — being a
+//     REAL id for this project — is never a "typo").
+//  3. `type` / `priority` / `statusCategory` — fixed, global enums
+//     (`IssueType`/`Priority`/`StatusCategory`). No per-project context is
+//     ever needed; the operand (case-insensitively) either is or isn't one
+//     of the five-or-fewer known values.
+//
 // `resolveQueryNames` is a separate PREPARE step server call sites run once
 // per evaluation (after `validateQuery` and alongside loading
-// ctx.users/ctx.sprints), never inside the evaluator's own per-issue loop. It
-// walks the same AST looking only at `user`/`sprint`-kind comparisons and
-// flags an operand as unresolved when it is neither `me()` nor an opaque-id-
-// shaped literal (see `looksLikeOpaqueId`) and matches no entry in the
-// supplied context.
+// ctx.users/ctx.sprints/ctx.statuses/ctx.labels/ctx.components — see
+// `getReferencedFieldKinds`/`getReferencedStandardFields` for cheaply
+// determining which side-contexts a given query actually needs), never
+// inside the evaluator's own per-issue loop.
 
 export interface ResolveNamesContext {
   users?: NlqlUser[];
   sprints?: NlqlSprint[];
+  components?: NlqlComponent[];
+  /** Project statuses — checked by name (or a known id); see family 2 above. */
+  statuses?: NlqlStatusRef[];
+  /** Project labels — checked by name only (never by id); see family 2 above. */
+  labels?: NlqlLabelRef[];
+}
+
+/** A project status, for the `status` fail-loud name check. */
+export interface NlqlStatusRef {
+  id: string;
+  name: string;
+}
+
+/** A project label, for the `label`/`labels` fail-loud name check. */
+export interface NlqlLabelRef {
+  id: string;
+  name: string;
 }
 
 /**
@@ -256,14 +336,115 @@ function sprintResolves(value: string, sprints: NlqlSprint[]): boolean {
   return sprints.some((s) => s.id === value || s.name.toLowerCase() === lower);
 }
 
+function componentResolves(value: string, components: NlqlComponent[]): boolean {
+  const lower = value.toLowerCase();
+  return components.some((c) => c.id === value || c.name.toLowerCase() === lower);
+}
+
 /**
- * Fail-loud prepare step for `user`/`sprint`-kind comparisons: returns
- * `{ ok: false }` when a comparison's operand looks like a name (not `me()`,
- * not opaque-id-shaped — see {@link looksLikeOpaqueId}) but resolves to no
- * entry in `ctx.users`/`ctx.sprints`. Never throws on a parse error — mirrors
- * {@link validateQuery}'s structured-result contract so callers can treat the
- * two checks uniformly (run `validateQuery` first; only call this once that
- * passes, since it assumes a syntactically valid, field-resolvable query).
+ * `status`/`label` resolve by name only (or a known id from the supplied
+ * context) — deliberately NO {@link looksLikeOpaqueId} leniency. Unlike
+ * `user`/`sprint`/`component`, the evaluator never compares these fields
+ * against a raw id at evaluation time (`getFieldValue` returns the resolved
+ * status NAME / the labels' NAMEs, not an id) — an id-shaped literal that
+ * isn't a known id would never actually match anything either way, so
+ * granting it a leniency pass would just convert one silent zero into
+ * another. See the section comment above for the full family breakdown.
+ */
+function statusResolves(value: string, statuses: NlqlStatusRef[]): boolean {
+  const lower = value.toLowerCase();
+  return statuses.some((s) => s.id === value || s.name.toLowerCase() === lower);
+}
+
+function labelResolves(value: string, labels: NlqlLabelRef[]): boolean {
+  const lower = value.toLowerCase();
+  return labels.some((l) => l.id === value || l.name.toLowerCase() === lower);
+}
+
+const ISSUE_TYPE_VALUES: string[] = Object.values(IssueType);
+const PRIORITY_VALUES: string[] = Object.values(Priority);
+const STATUS_CATEGORY_VALUES: string[] = Object.values(StatusCategory);
+
+/** Fixed, global enums (`type`/`priority`/`statusCategory`) — case-insensitive
+ * membership against a hardcoded, always-in-sync-with-the-evaluator list. No
+ * per-project context is ever needed. Mirrors the evaluator's own
+ * case-insensitive equality (`evalStringComparison(..., false)`) so a
+ * lowercase or mixed-case but genuinely valid value (e.g. `priority = high`)
+ * is never flagged — only a value that is not a member of the enum AT ALL
+ * (e.g. `priority = URGENT`, which this system has no such priority) is. */
+function fixedEnumResolves(value: string, values: string[]): boolean {
+  return values.includes(value.toUpperCase());
+}
+
+interface ResolveNamesData {
+  users: NlqlUser[];
+  sprints: NlqlSprint[];
+  components: NlqlComponent[];
+  statuses: NlqlStatusRef[];
+  labels: NlqlLabelRef[];
+}
+
+/** Returns an error message when `literal` fails to resolve for `meta`'s
+ * field/kind, or `null` when it resolves (or the field/kind isn't
+ * name-checkable at all — dates, numbers, title/text/key/parentId, etc.). */
+function checkOperand(
+  meta: StandardFieldMeta,
+  literal: string,
+  data: ResolveNamesData,
+): string | null {
+  switch (meta.kind) {
+    case 'user': {
+      if (userResolves(literal, data.users)) return null;
+      if (looksLikeOpaqueId(literal)) return null;
+      return `unknown user "${literal}" — use an exact display name, an id, or me(); see list_users`;
+    }
+    case 'sprint': {
+      if (sprintResolves(literal, data.sprints)) return null;
+      if (looksLikeOpaqueId(literal)) return null;
+      return `unknown sprint "${literal}" — use an exact sprint name or an id; see list_sprints`;
+    }
+    case 'component': {
+      if (componentResolves(literal, data.components)) return null;
+      if (looksLikeOpaqueId(literal)) return null;
+      return `unknown component "${literal}" — use an exact component name or an id; see list_components`;
+    }
+    case 'array': {
+      // `labels` is the only 'array'-kind standard field today.
+      if (labelResolves(literal, data.labels)) return null;
+      return `unknown label "${literal}" — use an exact label name; see list_labels`;
+    }
+    case 'enum': {
+      switch (meta.field) {
+        case 'status':
+          if (statusResolves(literal, data.statuses)) return null;
+          return `unknown status "${literal}" — use an exact status name; see list_statuses`;
+        case 'type':
+          if (fixedEnumResolves(literal, ISSUE_TYPE_VALUES)) return null;
+          return `unknown type "${literal}" — valid types: ${ISSUE_TYPE_VALUES.join(', ')}`;
+        case 'priority':
+          if (fixedEnumResolves(literal, PRIORITY_VALUES)) return null;
+          return `unknown priority "${literal}" — valid priorities: ${PRIORITY_VALUES.join(', ')}`;
+        case 'statusCategory':
+          if (fixedEnumResolves(literal, STATUS_CATEGORY_VALUES)) return null;
+          return `unknown statusCategory "${literal}" — valid categories: ${STATUS_CATEGORY_VALUES.join(', ')}`;
+        default:
+          return null; // no other 'enum'-kind standard fields today
+      }
+    }
+    default:
+      return null; // string/number/date/id fields have no "does this exist" check
+  }
+}
+
+/**
+ * Fail-loud prepare step: returns `{ ok: false }` when a comparison's operand
+ * fails to resolve for its field (see {@link checkOperand} for the exact
+ * per-family rules — `user`/`sprint`/`component` names-or-ids,
+ * `status`/`label` names, `type`/`priority`/`statusCategory` fixed enums).
+ * Never throws on a parse error — mirrors {@link validateQuery}'s structured-
+ * result contract so callers can treat the two checks uniformly (run
+ * `validateQuery` first; only call this once that passes, since it assumes a
+ * syntactically valid, field-resolvable query).
  *
  * Intentionally NOT called by {@link evaluate}/{@link filterIssues} — those
  * stay pure and keep their documented silent-fallback semantics for library
@@ -291,37 +472,27 @@ export function resolveQueryNames(
   const operands: ComparisonOperands[] = [];
   if (ast.where) collectComparisonOperands(ast.where, operands);
 
-  const users = ctx.users ?? [];
-  const sprints = ctx.sprints ?? [];
+  const data: ResolveNamesData = {
+    users: ctx.users ?? [],
+    sprints: ctx.sprints ?? [],
+    components: ctx.components ?? [],
+    statuses: ctx.statuses ?? [],
+    labels: ctx.labels ?? [],
+  };
 
   for (const { field, values } of operands) {
-    if (field.quoted) continue; // custom fields are never 'user'/'sprint' kind
+    if (field.quoted) continue; // custom fields are never name-checked here
     const meta = resolveStandardField(field.name);
-    if (!meta || (meta.kind !== 'user' && meta.kind !== 'sprint')) continue;
+    if (!meta) continue;
 
     for (const value of values) {
       const literal = literalOperandString(value);
       if (literal === null) continue; // me()/number/boolean — never a name
 
-      // Try to resolve as a name FIRST; id-shape leniency only applies to
-      // operands that also failed resolution (a resolvable name always
-      // wins, whatever its shape).
-      const resolved =
-        meta.kind === 'user' ? userResolves(literal, users) : sprintResolves(literal, sprints);
-      if (resolved) continue;
-      if (looksLikeOpaqueId(literal)) continue; // could be a legitimate stale raw id
+      const message = checkOperand(meta, literal, data);
+      if (message === null) continue;
 
-      const hint =
-        meta.kind === 'user'
-          ? 'use an exact display name, an id, or me(); see list_users'
-          : 'use an exact sprint name or an id; see list_sprints';
-      return {
-        ok: false,
-        error: {
-          message: `unknown ${meta.kind} "${literal}" — ${hint}`,
-          position: field.position,
-        },
-      };
+      return { ok: false, error: { message, position: field.position } };
     }
   }
 

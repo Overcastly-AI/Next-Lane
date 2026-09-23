@@ -47,6 +47,7 @@ import {
   filterIssues,
   validateQuery,
   getReferencedFieldKinds,
+  getReferencedStandardFields,
   resolveQueryNames,
 } from '@next-lane/shared';
 import type {
@@ -1882,28 +1883,38 @@ export class IssuesService {
     // Apply NLQL filter if a query was provided (already validated above).
     // Batch-load the side-context the query actually needs (workspace
     // members for assignee/reporter name-or-email resolution, project
-    // sprints for sprint name resolution) exactly once — never per issue —
-    // and only for the field kinds this query references. See MCP-QA pass 1,
-    // finding 1: without this, `assignee = "Alex Rivera"` / `sprint =
-    // "July-B"` silently matched zero issues.
+    // sprints/statuses/labels/components for their respective name
+    // resolution) exactly once — never per issue — and only for the field
+    // kinds this query references. See MCP-QA pass 1, finding 1: without
+    // this, `assignee = "Alex Rivera"` / `sprint = "July-B"` silently
+    // matched zero issues; pass 4, finding E1: the same was true of
+    // `status`/`label`/`component` values until this loader grew them too.
     if (trimmedQ) {
       const referencedKinds = getReferencedFieldKinds(trimmedQ);
-      const { users, sprints } = await loadNlqlEvalContext(this.prisma, projectId, {
-        includeUsers: referencedKinds.has('user'),
-        includeSprints: referencedKinds.has('sprint'),
-      });
+      const referencedFields = getReferencedStandardFields(trimmedQ);
+      const { users, sprints, statuses, labels, components } = await loadNlqlEvalContext(
+        this.prisma,
+        projectId,
+        {
+          includeUsers: referencedKinds.has('user'),
+          includeSprints: referencedKinds.has('sprint'),
+          includeStatuses: referencedFields.has('status'),
+          includeLabels: referencedKinds.has('array'),
+          includeComponents: referencedKinds.has('component'),
+        },
+      );
 
-      // Fail loud on an unresolved assignee/reporter/sprint NAME (MCP-QA
-      // pass 1, finding 1 residual): a typo'd or nonexistent name must never
-      // silently evaluate to a confident "0 results" on this agent-facing
-      // path (also the MCP `list_issues` query oracle — see
-      // `fetchNlqlFilteredIssues` in apps/mcp) — an agent/human would walk
-      // away believing nobody matches when the truth is there is no such
-      // user/sprint.
-      const nameCheck = resolveQueryNames(trimmedQ, { users, sprints });
+      // Fail loud on an unresolved assignee/reporter/sprint/status/label/
+      // component value (MCP-QA pass 1, finding 1 + pass 4, finding E1): a
+      // typo'd or nonexistent value must never silently evaluate to a
+      // confident "0 results" on this agent-facing path (also the MCP
+      // `list_issues` query oracle — see `fetchNlqlFilteredIssues` in
+      // apps/mcp) — an agent/human would walk away believing nobody matches
+      // when the truth is there is no such user/sprint/status/label/component.
+      const nameCheck = resolveQueryNames(trimmedQ, { users, sprints, statuses, labels, components });
       if (!nameCheck.ok) {
         throw new BadRequestException(
-          `Invalid NLQL query: ${nameCheck.error?.message ?? 'unresolved user or sprint reference'}`,
+          `Invalid NLQL query: ${nameCheck.error?.message ?? 'unresolved query reference'}`,
         );
       }
 
@@ -1911,6 +1922,7 @@ export class IssuesService {
         currentUserId: userId,
         users,
         sprints,
+        components,
         customFieldDefs,
       });
     }

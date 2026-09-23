@@ -1,6 +1,6 @@
 {
   "name": "@next-lane/mcp",
-  "version": "0.17.4",
+  "version": "0.17.6",
   "private": false,
   "description": "Model Context Protocol (MCP) server for Next Lane — read & write a project's workflows/SDLC and core entities from external agents (Claude Desktop, Claude Code, etc.).",
   "license": "MIT",
@@ -50,7 +50,8 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.30.0",
-    "zod": "3.25.76"
+    "zod": "3.25.76",
+    "zod-to-json-schema": "^3.25.2"
   },
   "devDependencies": {
     "@types/node": "^22.20.1",
