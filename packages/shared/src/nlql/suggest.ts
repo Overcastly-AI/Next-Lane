@@ -169,6 +169,7 @@ function opsForKind(kind: string): OpSuggestion[] {
     case 'array': return OPS_ARRAY;
     case 'id': return OPS_ID;
     case 'sprint': return OPS_SPRINT;
+    case 'component': return OPS_SPRINT; // same id-or-name equals semantics
     default: return OPS_ENUM;
   }
 }

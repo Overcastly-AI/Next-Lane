@@ -16,6 +16,30 @@ staged here by hand (see [`RELEASING.md`](./RELEASING.md))._
 
 ---
 
+## [0.18.0] — 2026-09-23
+
+[Compare with v0.17.6](https://github.com/Overcastly-AI/Next-Lane/compare/v0.17.6...v0.18.0)
+
+### Features
+
+* **mcp:** accept issue keys, and cut a real agent session by a quarter of its tokens ([#102](https://github.com/Overcastly-AI/Next-Lane/issues/102)) ([b390ee5](https://github.com/Overcastly-AI/Next-Lane/commit/b390ee5da92780a6b20b1eda788937218dc52808))
+
+## [0.17.6] — 2026-09-23
+
+[Compare with v0.17.5](https://github.com/Overcastly-AI/Next-Lane/compare/v0.17.5...v0.17.6)
+
+### Bug Fixes
+
+* **nlql:** stop status, type, priority, label and component queries silently matching nothing ([#101](https://github.com/Overcastly-AI/Next-Lane/issues/101)) ([ce209d8](https://github.com/Overcastly-AI/Next-Lane/commit/ce209d83e06086cc35c6f2bee48cefdeb63d7f4d))
+
+## [0.17.5] — 2026-09-23
+
+[Compare with v0.17.4](https://github.com/Overcastly-AI/Next-Lane/compare/v0.17.4...v0.17.5)
+
+### Bug Fixes
+
+* **web:** place the caret at the commit, not a frame later, after a wiki-link insert ([#106](https://github.com/Overcastly-AI/Next-Lane/issues/106)) ([a77e202](https://github.com/Overcastly-AI/Next-Lane/commit/a77e202a6a8764b4e918940d2b31b52b0a566132))
+
 ## [0.17.4] — 2026-09-10
 
 [Compare with v0.17.3](https://github.com/Overcastly-AI/Next-Lane/compare/v0.17.3...v0.17.4)

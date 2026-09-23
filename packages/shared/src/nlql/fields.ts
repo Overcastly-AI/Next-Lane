@@ -37,7 +37,8 @@ export type FieldKind =
   | 'date'
   | 'array' // membership semantics for `=`/IN, substring for `~`
   | 'id' // opaque id string, exact match only
-  | 'sprint'; // resolves a sprint id OR an exact (case-insensitive) sprint name
+  | 'sprint' // resolves a sprint id OR an exact (case-insensitive) sprint name
+  | 'component'; // resolves a component id OR an exact (case-insensitive) component name
 
 export interface StandardFieldMeta {
   field: StandardField;
@@ -92,8 +93,8 @@ const ALIASES: Record<string, StandardFieldMeta> = {
   parentid: { field: 'parentId', kind: 'id' },
   parent: { field: 'parentId', kind: 'id' },
 
-  componentid: { field: 'componentId', kind: 'id' },
-  component: { field: 'componentId', kind: 'id' },
+  componentid: { field: 'componentId', kind: 'component' },
+  component: { field: 'componentId', kind: 'component' },
 };
 
 /**
