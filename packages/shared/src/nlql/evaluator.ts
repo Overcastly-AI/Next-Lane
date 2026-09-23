@@ -12,17 +12,19 @@
  *  - String "contains" (`~`) uses String.prototype.includes — a RegExp is never
  *    built from user input, so there is no ReDoS surface.
  *
- * Documented behavior for library consumers — unresolved user/sprint names:
- *  - `assignee`/`reporter` (`user`-kind) and `sprint` (`sprint`-kind) fields
- *    resolve a comparison operand against `ctx.users`/`ctx.sprints` (by id,
- *    then case-insensitive email/name). When the operand matches nothing,
- *    {@link resolveUserOperand}/{@link resolveSprintOperand} deliberately fall
- *    back to treating it as a literal id rather than throwing — a query
- *    referencing an unknown name therefore matches zero issues *silently*,
- *    the same as any other non-matching value. This is intentional and
- *    covered by dedicated tests (`evaluator.test.ts`, "a name that resolves
- *    to no known user/sprint silently matches nothing (no error)") so any
- *    future change here is a deliberate one, not a regression.
+ * Documented behavior for library consumers — unresolved user/sprint/component names:
+ *  - `assignee`/`reporter` (`user`-kind), `sprint` (`sprint`-kind), and
+ *    `component`/`componentId` (`component`-kind) fields resolve a comparison
+ *    operand against `ctx.users`/`ctx.sprints`/`ctx.components` (by id, then
+ *    case-insensitive email/name). When the operand matches nothing,
+ *    {@link resolveUserOperand}/{@link resolveSprintOperand}/
+ *    {@link resolveComponentOperand} deliberately fall back to treating it as
+ *    a literal id rather than throwing — a query referencing an unknown name
+ *    therefore matches zero issues *silently*, the same as any other
+ *    non-matching value. This is intentional and covered by dedicated tests
+ *    (`evaluator.test.ts`, "a name that resolves to no known user/sprint/
+ *    component silently matches nothing (no error)") so any future change
+ *    here is a deliberate one, not a regression.
  *  - This is the right default for a pure, side-effect-free evaluator over an
  *    in-memory array. It is the *wrong* default for a server surface backing
  *    an agent or a human query bar, where "0 results" reads as "nobody has
@@ -66,6 +68,13 @@ export interface NlqlSprint {
   name: string;
 }
 
+/** A project component, for resolving the `component`/`componentId` field by
+ * name (not just id) — mirrors {@link NlqlSprint}. */
+export interface NlqlComponent {
+  id: string;
+  name: string;
+}
+
 export interface NlqlCustomFieldDef {
   id: string;
   key: string;
@@ -79,6 +88,8 @@ export interface EvalContext {
   users?: NlqlUser[];
   /** Project sprints, used to resolve `sprint = "<name>"` (in addition to id). */
   sprints?: NlqlSprint[];
+  /** Project components, used to resolve `component = "<name>"` (in addition to id). */
+  components?: NlqlComponent[];
   customFieldDefs?: NlqlCustomFieldDef[];
 }
 
@@ -180,8 +191,14 @@ function getFieldValue(
     case 'parentId':
       return issue.parentId;
     case 'componentId':
-      // No first-class component field on IssueDto yet; treat as absent.
-      return null;
+      // IssueDto carries a real componentId (added after this evaluator was
+      // written — see `component`/`componentId` in `types.ts`); this used to
+      // unconditionally return null, so every `component = ...` query
+      // silently matched zero issues regardless of whether the value was
+      // valid. Fixed alongside the fail-loud guard below since a "valid"
+      // component name still returning a confident empty result would be the
+      // exact same class of bug.
+      return issue.componentId;
     default: {
       // Exhaustiveness guard.
       const _never: never = resolved.field;
@@ -316,6 +333,25 @@ function resolveSprintOperand(raw: unknown, ctx: EvalContext): string | null {
   return str;
 }
 
+/**
+ * Resolve a comparison value for the `component`/`componentId` field into a
+ * component id. Mirrors {@link resolveSprintOperand} exactly: accepts a raw
+ * id or a name matched via ctx.components (case-insensitive, exact match),
+ * falling back to treating the raw value as a literal id when it matches no
+ * known component (e.g. a stale/cross-project id).
+ */
+function resolveComponentOperand(raw: unknown, ctx: EvalContext): string | null {
+  if (raw === null || raw === undefined) return null;
+  const str = String(raw);
+  const components = ctx.components ?? [];
+  const byId = components.find((c) => c.id === str);
+  if (byId) return byId.id;
+  const lower = str.toLowerCase();
+  const byName = components.find((c) => c.name.toLowerCase() === lower);
+  if (byName) return byName.id;
+  return str;
+}
+
 // ── Comparison engine ─────────────────────────────────────────────────────────
 
 const PRIORITY_RANK = PRIORITY_ORDER;
@@ -364,6 +400,8 @@ function evalComparison(
       return evalUserComparison(fieldValue, node.op, operand, ctx);
     case 'sprint':
       return evalSprintComparison(fieldValue, node.op, operand, ctx);
+    case 'component':
+      return evalComponentComparison(fieldValue, node.op, operand, ctx);
     case 'date':
       return evalDateComparison(fieldValue, node.op, operand);
     case 'number':
@@ -454,6 +492,28 @@ function evalSprintComparison(
 ): boolean {
   const fieldId = fieldValue === null || fieldValue === undefined ? null : String(fieldValue);
   const operandId = resolveSprintOperand(operand, ctx);
+  switch (op) {
+    case '=':
+      return fieldId !== null && fieldId === operandId;
+    case '!=':
+      return fieldId !== operandId;
+    case '~':
+      return fieldId !== null && operandId !== null && fieldId.includes(operandId);
+    case '!~':
+      return !(fieldId !== null && operandId !== null && fieldId.includes(operandId));
+    default:
+      return false;
+  }
+}
+
+function evalComponentComparison(
+  fieldValue: unknown,
+  op: ComparisonOp,
+  operand: unknown,
+  ctx: EvalContext,
+): boolean {
+  const fieldId = fieldValue === null || fieldValue === undefined ? null : String(fieldValue);
+  const operandId = resolveComponentOperand(operand, ctx);
   switch (op) {
     case '=':
       return fieldId !== null && fieldId === operandId;

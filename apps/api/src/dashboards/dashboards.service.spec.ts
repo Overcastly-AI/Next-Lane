@@ -46,6 +46,9 @@ function makePrisma() {
     project: { findUnique: jest.fn().mockResolvedValue({ workspaceId: 'ws-1' }) },
     membership: { findMany: jest.fn().mockResolvedValue([]) },
     sprint: { findMany: jest.fn().mockResolvedValue([]) },
+    status: { findMany: jest.fn().mockResolvedValue([]) },
+    label: { findMany: jest.fn().mockResolvedValue([]) },
+    component: { findMany: jest.fn().mockResolvedValue([]) },
   } as unknown as PrismaService & {
     dashboard: {
       findMany: jest.Mock;
@@ -70,6 +73,9 @@ function makePrisma() {
     project: { findUnique: jest.Mock };
     membership: { findMany: jest.Mock };
     sprint: { findMany: jest.Mock };
+    status: { findMany: jest.Mock };
+    label: { findMany: jest.Mock };
+    component: { findMany: jest.Mock };
   };
 }
 
@@ -481,6 +487,13 @@ describe('DashboardsService', () => {
         makeIssueRow(1, { statusName: 'In Progress' }),
         makeIssueRow(2, { statusName: 'To Do' }),
       ]);
+      // The gadget's query references `status` by name — the fail-loud guard
+      // (MCP-QA pass 4, finding E1) needs the project's real status list to
+      // resolve "In Progress" as a legitimate value, not a typo.
+      prisma.status.findMany.mockResolvedValue([
+        { id: 'status-1', name: 'In Progress' },
+        { id: 'status-2', name: 'To Do' },
+      ]);
 
       const result = await service.getDashboardData('user-1', DASHBOARD_ID);
 
@@ -867,6 +880,10 @@ describe('DashboardsService', () => {
       prisma.issue.findMany.mockResolvedValue([
         makeIssueRow(1, { statusName: 'In Progress' }),
         makeIssueRow(2, { statusName: 'To Do' }),
+      ]);
+      prisma.status.findMany.mockResolvedValue([
+        { id: 'status-1', name: 'In Progress' },
+        { id: 'status-2', name: 'To Do' },
       ]);
 
       const result = await service.getPublicDashboardData(DASHBOARD_ID);
