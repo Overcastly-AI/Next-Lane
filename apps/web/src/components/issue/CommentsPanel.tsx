@@ -14,6 +14,8 @@ import { errorMessage } from '@/lib/errorMessage';
 import { useAuth } from '@/auth/AuthContext';
 import { MarkdownRenderer } from '@/components/ui/MarkdownRenderer';
 import { MentionComposer } from './MentionComposer';
+import { SectionHeading } from './SectionHeading';
+import { formatDate, formatDateTime } from '@/lib/formatDate';
 import type { CommentDto, UserDto } from '@next-lane/shared';
 
 export function CommentsPanel({
@@ -47,7 +49,7 @@ export function CommentsPanel({
 
   return (
     <div className="space-y-3">
-      <p className="text-xs font-medium text-slate-600">Comments</p>
+      <SectionHeading>Comments</SectionHeading>
 
       {editable && (
       <form onSubmit={onSubmit} className="flex gap-2">
@@ -108,7 +110,7 @@ export function CommentsPanel({
           ))}
         </ul>
       ) : (
-        <p className="py-2 text-sm text-slate-400">No comments yet.</p>
+        <p className="py-2 text-sm text-slate-500">No comments yet.</p>
       )}
     </div>
   );
@@ -171,11 +173,14 @@ function CommentItem({
           <span className="text-sm font-medium text-slate-800">
             {comment.author.name}
           </span>
-          <span className="text-xs text-slate-400">
-            {new Date(comment.createdAt).toLocaleString()}
+          <span
+            className="text-xs text-slate-400"
+            title={formatDateTime(comment.createdAt)}
+          >
+            {formatDate(comment.createdAt)}
           </span>
           {isOwn && !editing && (
-            <span className="ml-auto flex gap-2 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+            <span className="ml-auto flex gap-2 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100">
               <button
                 type="button"
                 onClick={startEdit}

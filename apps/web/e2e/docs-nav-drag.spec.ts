@@ -121,8 +121,17 @@ test.describe('Docs nav — draggable', () => {
     await page.mouse.move(box.x + 120, box.y + box.height / 2, { steps: 10 });
     await page.mouse.up();
 
+    // Poll rather than measure once. `mouse.up()` resolves when the event has
+    // been dispatched, not when the resize has finished committing to layout,
+    // so a single read can land mid-drag. On a loaded CI runner this failed
+    // with width=252 against an expected >320 — exactly ONE of the ten 12px
+    // steps applied, which is the signature of reading before the rest had
+    // been processed rather than of a drag that did not take. The threshold
+    // is unchanged; this only waits for the value.
+    await expect
+      .poll(async () => (await panel.boundingBox())!.width, { timeout: 5_000 })
+      .toBeGreaterThan(before + 80);
     const after = (await panel.boundingBox())!.width;
-    expect(after).toBeGreaterThan(before + 80);
 
     // Persisted, not just held in component state.
     await page.reload();

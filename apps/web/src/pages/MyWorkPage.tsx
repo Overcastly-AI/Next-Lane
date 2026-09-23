@@ -36,8 +36,8 @@ export function MyWorkPage() {
   return (
     <Shell>
       <div className="mb-6">
-        <h1 className="text-xl font-semibold text-slate-900">My Work</h1>
-        <p className="mt-1 text-sm text-slate-500">
+        <h1 className="text-xl font-semibold text-ink-900">My Work</h1>
+        <p className="mt-1 text-sm text-ink-600">
           Your issues across every project you belong to.
         </p>
       </div>
@@ -137,17 +137,15 @@ function Section({
   return (
     <section>
       <div className="mb-2 flex items-baseline gap-2">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-600">
           {title}
         </h2>
-        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">
-          {count}
-        </span>
+        <Badge>{count}</Badge>
       </div>
       {issues.length === 0 ? (
         <EmptyState title={emptyTitle} description={emptyDescription} action={emptyAction} />
       ) : (
-        <ul className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-surface">
+        <ul className="divide-y divide-ink-100 overflow-hidden rounded-xl border border-ink-200 bg-surface">
           {issues.map((issue) => (
             <IssueRow key={issue.id} issue={issue} onOpen={onOpen} />
           ))}
@@ -170,52 +168,76 @@ function IssueRow({
       <button
         type="button"
         onClick={() => onOpen(issue)}
-        className="flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-slate-50"
+        className="flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-ink-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-400"
       >
         <IssueTypeIcon type={issue.type} />
-        <span className="shrink-0 font-mono text-xs text-slate-400">
+        <span className="shrink-0 font-mono text-xs text-ink-500">
           {issue.key}
         </span>
-        <span className="min-w-0 flex-1 truncate text-sm text-slate-800">
+        <span className="min-w-0 flex-1 truncate text-sm text-ink-800">
           {issue.title}
         </span>
-        {overdue && (
-          <span
-            aria-label="Overdue"
-            className="hidden shrink-0 items-center gap-1 rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-semibold text-amber-800 sm:inline-flex"
-          >
-            {/* Calendar icon */}
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-              <rect x="3" y="4" width="18" height="18" rx="2" />
-              <path strokeLinecap="round" d="M16 2v4M8 2v4M3 10h18" />
-            </svg>
-            Overdue
+        {/*
+         * Fixed-width metadata columns. Everything after the title — sprint,
+         * due-date/overdue, status, project, priority — sits in one grid
+         * with fixed pixel tracks, so each column (StatusPill in particular)
+         * always lands at the same x no matter which optional chips are
+         * present in a given row, or how long any chip's own text is. A
+         * single flex row with auto-width siblings can't guarantee that: the
+         * flex-1 title would absorb whatever space those siblings don't use,
+         * shifting every column that follows.
+         * `contents` on mobile lets the (hidden) chips drop out of flow
+         * entirely below `sm`, leaving just the always-visible StatusPill;
+         * `sm:grid` with fixed tracks takes over at the breakpoint where the
+         * rest render.
+         */}
+        <span
+          className="contents sm:grid sm:shrink-0 sm:items-center sm:gap-2"
+          style={{ gridTemplateColumns: '100px 96px 92px 56px 24px' }}
+        >
+          <span className="hidden min-w-0 sm:flex sm:items-center sm:justify-start">
+            {issue.sprintName && (
+              <Badge className="max-w-full truncate">{issue.sprintName}</Badge>
+            )}
           </span>
-        )}
-        {!overdue && issue.dueDate && (
-          <span className="hidden shrink-0 items-center gap-1 rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-600 sm:inline-flex">
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-              <rect x="3" y="4" width="18" height="18" rx="2" />
-              <path strokeLinecap="round" d="M16 2v4M8 2v4M3 10h18" />
-            </svg>
-            {new Date(issue.dueDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+          <span className="hidden min-w-0 sm:flex sm:items-center sm:justify-start">
+            {overdue ? (
+              <span
+                aria-label="Overdue"
+                className="inline-flex shrink-0 items-center gap-1 rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-semibold text-amber-800"
+              >
+                {/* Calendar icon */}
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                  <rect x="3" y="4" width="18" height="18" rx="2" />
+                  <path strokeLinecap="round" d="M16 2v4M8 2v4M3 10h18" />
+                </svg>
+                Overdue
+              </span>
+            ) : issue.dueDate ? (
+              <span className="inline-flex shrink-0 items-center gap-1 rounded bg-ink-100 px-1.5 py-0.5 text-[11px] font-medium text-ink-600">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                  <rect x="3" y="4" width="18" height="18" rx="2" />
+                  <path strokeLinecap="round" d="M16 2v4M8 2v4M3 10h18" />
+                </svg>
+                {new Date(issue.dueDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+              </span>
+            ) : null}
           </span>
-        )}
-        {issue.sprintName && (
-          <Badge className="hidden sm:inline-flex">{issue.sprintName}</Badge>
-        )}
-        <StatusPill category={issue.statusCategory} name={issue.statusName} />
-        <Badge className="hidden font-mono sm:inline-flex">
-          {issue.projectKey}
-        </Badge>
-        <PriorityIcon priority={issue.priority} className="hidden h-4 w-4 sm:flex" />
+          <StatusPill category={issue.statusCategory} name={issue.statusName} />
+          <span className="hidden min-w-0 sm:flex sm:items-center sm:justify-start">
+            <Badge className="max-w-full truncate font-mono">{issue.projectKey}</Badge>
+          </span>
+          <span className="hidden min-w-0 sm:flex sm:items-center sm:justify-start">
+            <PriorityIcon priority={issue.priority} className="h-4 w-4" />
+          </span>
+        </span>
       </button>
     </li>
   );
 }
 
 const CATEGORY_PILL: Record<StatusCategory, string> = {
-  [StatusCategory.TODO]: 'bg-slate-100 text-slate-600',
+  [StatusCategory.TODO]: 'bg-ink-100 text-ink-600',
   [StatusCategory.IN_PROGRESS]: 'bg-blue-100 text-blue-700',
   [StatusCategory.DONE]: 'bg-green-100 text-green-700',
 };
@@ -230,7 +252,7 @@ function StatusPill({
   return (
     <span
       className={cn(
-        'shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium leading-none',
+        'inline-block max-w-full shrink-0 truncate rounded-full px-2 py-0.5 text-[11px] font-medium leading-none sm:justify-self-start',
         CATEGORY_PILL[category],
       )}
     >

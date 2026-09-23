@@ -6,6 +6,313 @@
 
 ---
 
+## 2026-09-19 — MyWorkPage populated-state audit (IssueRow / StatusPill, `/my-work`)
+
+**Scope:** `apps/web/src/pages/MyWorkPage.tsx` — `IssueRow`, `StatusPill`, `Section`,
+the page `Shell` — desktop (1280px) and mobile (393px), populated state only. The
+empty state (`EmptyState` unification) was covered in earlier passes; this pass
+fills the Phase C checklist gap (line 72, `MyWorkPage` unticked) for the state
+every real user actually sees.
+
+**Method:** stood up a throwaway instance (API 4222 / web 3222 / Postgres
+`nextlane_ui_audit_2`), ran `prisma/seed-screenshots.ts` (the same script that
+produced the "NOVA" dataset referenced in the survey — login `maya@nova.dev` /
+`nextlane`), and drove the real running app with Playwright (Chromium,
+`/opt/pw-browsers/chromium-1194`) at 1280×1400 and 393×851. Every measurement
+below was taken with `getBoundingClientRect()` / `getComputedStyle()` against the
+live DOM, not read off the source. Screenshots captured: desktop full-page
+(2088px), desktop viewport, mobile full-page, mobile viewport, a row-level crop,
+a keyboard-focus capture, a network-delayed loading capture, and a mocked-500
+error capture. No app source was edited.
+
+---
+
+### 🔴 Inconsistency / bug
+
+**1. Status is the one scannable column on the page, and it is not a column.**
+`IssueRow` (MyWorkPage.tsx:160-214) inserts up to three *optional* elements —
+the overdue chip (182-194), the due-date chip (195-203), the sprint `Badge`
+(204-206) — directly before `StatusPill` (207) in a single `flex` row with no
+fixed-width slot for any of them. Live measurement across the 41-row "NOVA"
+seed (desktop, 1280px) put the `StatusPill`'s left edge anywhere from
+**x=1028.4 to x=1059.8** (a 31px swing) depending on which optional chips that
+particular row happened to have — visible in `mywork-desktop-full.png`
+(compare row `NOVA-38`, which has only a due-date chip, against `NOVA-16`,
+which has only a sprint chip: the "To Do" pill sits at two different
+x-positions). This reproduces the survey's x=1096–1130 finding independently
+(different seed run, same defect: **no reserved slot for status**).
+*Rule violated:* basic list/table scanability — a column a user is meant to
+scan vertically must occupy fixed x-coordinates; nothing here pins one.
+*Fix:* give `StatusPill` (and ideally the project/priority slots too) a fixed
+`width` via CSS grid columns for the row (`grid grid-cols-[auto_auto_1fr_auto_auto_auto_auto]`
+or a right-aligned metadata block with fixed-width children), so optional chips
+insert into their own slot rather than shifting everything after them.
+
+**2. `IssueRow`'s `<button>` has no visible focus state — WCAG 2.4.7 fail, and
+inconsistent with the rest of the app.** MyWorkPage.tsx:173's className
+(`flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors
+hover:bg-slate-50`) has no `focus-visible:*` classes at all. Tabbing to the
+first row (confirmed at Tab-stop 21 from a fresh page load) produces **zero
+visible focus indicator** — `mywork-row-focus.png` shows the row with no ring,
+outline, or background change, indistinguishable from an unfocused row.
+Compare `src/components/nav/SidebarNavContent.tsx:86/123/184/239` and
+`src/components/ui/Button.tsx:47`, which both apply the app's documented
+convention `focus-visible:outline-none focus-visible:ring-2
+focus-visible:ring-signal-500 focus-visible:ring-offset-1` (visible correctly
+in the same test run — Tab-stop 5, "My Work" nav link, shows a clean blue
+ring). *Rule violated:* WCAG 2.2 SC 2.4.7 (Focus Visible, AA) + the project's
+own established focus-ring convention used in `SidebarNavContent`/`Button`/
+`AppHeader`. *Fix:* add the same `focus-visible:outline-none
+focus-visible:ring-2 focus-visible:ring-signal-500 focus-visible:ring-offset-1`
+classes to the row button.
+
+**3. Issue-key text fails WCAG AA contrast — measured 2.56:1, needs 4.5:1.**
+The `NOVA-14` key span (`text-slate-400` on the row's `bg-surface` /
+`#ffffff` background, MyWorkPage.tsx:176-178) computes to
+`rgb(148,163,184)` text on `rgb(255,255,255)` background = **2.56:1**. WCAG
+2.2 SC 1.4.3 (AA) requires 4.5:1 for normal-sized text (this is 12px/`text-xs`
+mono, not large text, and it's identifying content — the issue key — not a
+decorative label exempt from the SC). *Fix:* move to `text-ink-500`
+(`#6b7280`, ~5.4:1 on white) or darker; `text-slate-500`/`text-ink-600` are
+safer still. Also fold into finding #6 below (the token migration) — a
+correctly-migrated `ink-500`/`ink-600` value would very likely have fixed this
+as a side effect, since `ink-400` and deeper are notably darker than
+`slate-400` at the same step.
+
+**4. No sort, group, filter, or pagination on a 41-row / 2088px-tall page —
+and the one actionable row is buried under 40 rows of noise.** Confirmed via
+DOM query: zero `<select>`, filter-trigger, or sort-control elements exist
+anywhere on `/my-work`. `Section` (MyWorkPage.tsx:120-158) renders both lists
+as flat, unordered `<ul>`s with no client- or server-side way to narrow,
+group, or page through them. Live measurement: 41 total rows (1 "Assigned to
+me" + 40 "Reported by me"), full-page screenshot height **2088px**. The single
+row a user is actually on the hook for ("Assigned to me": 1 row) sits above
+40 "Reported by me" rows the user filed but may not need to act on today —
+there is no way to collapse, sort by due date, or filter by status/sprint to
+get back to signal. *Rule violated:* no documented rule, but this directly
+contradicts the "My Work" page's stated purpose (an actionable worklist) and
+there is prior art to reuse — `BoardPage.tsx`'s `MultiSelectFilter` /
+`QuickFilterBar` (BoardPage.tsx:1406, 1684) is the established filter-chip
+pattern elsewhere in the app. *Fix:* at minimum, a status/sprint quick-filter
+using the existing `MultiSelectFilter` component, and a sort toggle (due date
+/ recently updated); consider collapsing "Reported by me" behind a
+disclosure once it exceeds ~10-15 rows.
+
+**5. The same issue renders twice with no indication it's the same item.**
+`NOVA-14` ("Export insights as scheduled PDF") appears once under "Assigned
+to me" (it's both assigned to and reported by the logged-in user) and again,
+identically, under "Reported by me" — visible side-by-side in
+`mywork-desktop-full.png`. On a page whose entire value proposition is a
+compact, scannable worklist, an unlabelled duplicate costs the user re-reading
+work they already dismissed once. *Fix:* either de-duplicate (only show it
+in "Assigned to me", the more specific bucket) or badge it ("also reported by
+you") so the repeat is legible as a repeat rather than two different issues.
+
+---
+
+### 🟡 Polish / improvement
+
+**6. File missed the `slate-*` → `ink-*` token migration the rest of Phase C
+completed.** MyWorkPage.tsx uses raw Tailwind `slate-*` throughout:
+`text-slate-900`/`text-slate-500` (39-42, heading/subtitle), `text-slate-500`
+(140, section label), `bg-slate-100 text-slate-500` (143, count badge),
+`divide-slate-100 border-slate-200` (150, list container), `hover:bg-slate-50`
+(173, row hover), `text-slate-400` (176, key), `text-slate-800` (179, title),
+`bg-slate-100 text-slate-600` (196, due-date chip), and the whole
+`CATEGORY_PILL` map (217-221: `bg-slate-100 text-slate-600` / `bg-blue-100
+text-blue-700` / `bg-green-100 text-green-700`). `src/index.css:108-115`
+documents this explicitly as legacy debt: *"`slate` and `gray` are
+pre-token-system stragglers still used directly across ~35 components... wired
+to CSS vars too... so there is no visible seam"* — confirmed true here (a
+dark-mode screenshot, `mywork-dark.png`, shows no visible break, because
+`--nl-slate-*` is aliased to the `ink` dark scale). So this is **not** a
+functional/dark-mode bug, but it is exactly the debt the standing "Design
+elevation" directive and the Phase C checklist (docs/UI-REVIEW.md line 72,
+`PulseDashboardPage · DashboardPage · MyWorkPage` still unticked) call out to
+retire. *Fix:* swap every `slate-*` class above for its `ink-*` equivalent
+(`ink-900/700/600/500/400/100/50` per `index.css:83-106`'s documented role
+table), matching the migration already done for `LoginPage`, `RoadmapPage`,
+and the `settings/*` sections (all ✅ in this file's own Phase C tracker).
+
+**7. `StatusPill` is a fourth, divergent chip implementation — not the
+established status-chip vocabulary.** MyWorkPage.tsx:223-240 renders
+`rounded-full`, no ring, `bg-slate-100 text-slate-600` / `bg-blue-100
+text-blue-700` / `bg-green-100 text-green-700`. Compare the chip vocabulary
+`board/IssueCard.tsx` already standardized on (2026-06-29 elevation pass): the
+due-date chip and PR badge both use `rounded-sm px-1.5 py-0.5 text-[10px]
+font-semibold ring-1 ring-inset` with semantic `*-50`/`*-700`/`*-200` triads,
+and use **`emerald`** for the "done/merged" case (IssueCard.tsx:215,
+`bg-emerald-50 text-emerald-700 ring-emerald-200`), not `green`. `StatusPill`
+uses a different radius (`full` vs `sm`), no ring, a different color family
+for the "done" state (`green-100/green-700` vs `emerald-*`), and a different
+padding scale in `Badge` itself sits right next to it in the same row for
+comparison. *Fix:* rebuild `StatusPill` on the same `ring-1 ring-inset`
+vocabulary — `bg-ink-100 text-ink-600 ring-ink-200` (todo), `bg-signal-50
+text-signal-700 ring-signal-200` (in-progress, matching the `signal` token's
+documented "in-progress status signal" role in `tailwind.config.js`), and
+`bg-emerald-50 text-emerald-700 ring-emerald-200` (done) — consistent with
+`IssueCard`'s established set and distinct in shape (`rounded-sm` + ring) from
+plain `Badge` chips like the sprint/project ones sitting beside it.
+
+**8. The section count badge is a *third* one-off chip, not `Badge`.**
+`Section`'s count pill (MyWorkPage.tsx:143-145: `rounded-full bg-slate-100
+px-2 py-0.5 text-xs font-medium text-slate-500`) matches neither `Badge`
+(`rounded-sm`, `ink-100`/`ink-600`, `text-[10px]`) nor `StatusPill`
+(`rounded-full`, but different padding/text size). Three different "small
+gray pill" implementations exist within one 240-line file. *Fix:* route
+through `Badge` (it already supports arbitrary `className` overrides for the
+`rounded-full` shape if that's kept) rather than hand-rolling a third
+variant.
+
+**9. The `NOVA` project badge is repeated on all 41 rows for zero
+information gain.** MyWorkPage.tsx:208-210 renders `<Badge>{issue.projectKey}</Badge>`
+unconditionally per row. The page subtitle (line 41) promises *"Your issues
+across every project you belong to"* — a claim that only pays off when a
+result set spans more than one project. In the audited dataset every row is
+`NOVA` (confirmed in both `mywork-desktop-full.png` and the crop). Today this
+badge is pure repeated noise on all 41 rows; it should earn its place only
+when it's informative. *Fix:* compute the set of distinct `projectKey`s in
+`query.data` and only render the per-row project badge when that set's size
+is `> 1`.
+
+**10. Mobile (393px) sheds every metadata signal, leaving only title + key +
+status — not a mobile-appropriate summary, just subtraction.** The overdue
+chip, due-date chip, sprint `Badge`, project `Badge`, and `PriorityIcon` are
+all `hidden … sm:inline-flex` / `hidden … sm:flex` (MyWorkPage.tsx:185, 196,
+205, 208, 211). Confirmed live at 393px (`mywork-mobile-viewport.png`): a
+phone user sees 41 rows of title + status only, with **no due date, no
+priority, no sprint** — exactly the fields a triage-on-the-go user would need
+most. (Positives while there: no horizontal overflow — `scrollWidth ===
+clientWidth === 393` confirmed — `truncate` on the title correctly prevents
+overflow even on long titles, and rows measure a clean 40px tall, at the ~40px
+tap-target floor.) *Fix:* rather than hiding the priority icon outright,
+promote it (it's a 4px-wide vertical bar cluster — cheap on space) or show a
+single highest-priority-signal dot; collapse due-date/sprint into a compact
+secondary line under the title instead of dropping them, so mobile users
+retain the fields they need to triage without opening each issue.
+
+**11. Page subtitle contrast measures 4.20:1 — just under WCAG AA 4.5:1.**
+`text-slate-500` (`rgb(100,116,139)`) on the page's `--nl-canvas` background
+(`rgb(238,241,246)`) computes to 4.20:1, which fails SC 1.4.3's 4.5:1
+threshold for normal text by a small but real margin. *Fix:* bundle with
+finding #6's token migration — `ink-600` (`#4b5563`) clears AA comfortably at
+this background.
+
+---
+
+### 🟢 Nit
+
+**12. Icon accessible names rely solely on the `title` attribute.**
+`IssueTypeIcon` and `PriorityIcon` (`src/components/issue/issueMeta.tsx:41-51,
+70-89`) use `title="…"` on a `<span>` with no `aria-label`/`role="img"`. This
+is shared code (not MyWorkPage-specific) so it's out of this file's blast
+radius to fix alone, but it affects every row on this page: `title` tooltips
+don't reliably reach touch or keyboard-only users and provide no visible
+on-page indicator. Worth a follow-up ticket against `issueMeta.tsx` rather
+than a per-page patch.
+
+---
+
+### What's already good
+
+- **Loading, error, and (previously-fixed) empty states are all correctly
+  wired through the shared primitives** — confirmed live, not just read: a
+  2s network-delayed `/me/work` response renders `LoadingState`'s centered
+  `Spinner` + "Loading your work…" (`mywork-loading.png`); a mocked 500
+  renders `ErrorState`'s icon + message + working "Try again" retry link
+  (`mywork-error.png`, matches `States.tsx` exactly, same pattern used
+  app-wide).
+- **Row buttons are real `<button type="button">` elements**, not
+  `div`-with-`onClick` — fully keyboard reachable (confirmed: Tab reaches the
+  first row at a predictable, if deep, tab-stop; Enter/Space would activate
+  it via native button semantics).
+- **Status is never color-only.** `StatusPill` always carries a text label
+  ("To Do"/"In Progress"/"Done") alongside its background color, satisfying
+  WCAG 1.4.1 even though the component itself needs the token rework in
+  finding #7.
+- **Title truncation is correct.** `truncate` on the title span prevents
+  horizontal overflow at 393px even with long titles; verified
+  `document.documentElement.scrollWidth === clientWidth === 393` — genuinely
+  no horizontal scroll anywhere on this page, desktop or mobile.
+- **Dark mode does not visually break** despite the `slate-*` usage in
+  finding #6 — `mywork-dark.png` shows a clean, seamless dark render, because
+  `index.css` aliases `--nl-slate-*` to the `ink` dark scale. The token debt
+  is real but it is not currently a user-visible dark-mode bug.
+
+### ✅ Closed 2026-09-19 (design-elevation pass #2, builder 3/3)
+
+An adversarially-sifted subset of 4 findings from this audit was built this
+pass; the other 8 are unchanged and still open below.
+
+- [x] **#1 Give `StatusPill` a fixed-width slot.** Re-verified live: the flex
+      layout couldn't be patched with just the pre-status chips fixed-width —
+      `StatusPill`'s own text length ("In Progress" vs "To Do") still moved
+      the flex-1 title's right edge, and with it everything downstream. Fixed
+      properly by putting the *entire* trailing metadata cluster (sprint,
+      due/overdue, status, project, priority) into one grid with 5 fixed
+      pixel tracks, `StatusPill` included (`justify-self-start` + `truncate`
+      so it doesn't stretch to fill its column). Re-measured across all 41
+      rows of the same NOVA seed: `x` range went from 31.5px to **0px** —
+      every row's status now lands at the exact same pixel.
+- [x] **#3 Issue-key contrast (2.56:1 → 4.83:1).** `text-slate-400` →
+      `text-ink-500`; verified live via `getComputedStyle` +
+      relative-luminance, not estimated.
+- [x] **#8 Section count badge routed through `Badge`.** Replaced the
+      hand-rolled `rounded-full bg-slate-100 …` span with `<Badge>{count}</Badge>`,
+      closing one of the file's three divergent "small gray pill"
+      implementations (the other, `StatusPill` itself, is finding #7, not in
+      this pass's sifted set — left open below).
+- [x] **#11 Subtitle contrast (4.20:1 → 6.68:1).** `text-slate-500` →
+      `text-ink-600` on the page subtitle; also carried to the `Section`
+      label (same failing pair, same fix) and the page `<h1>`/row title/key
+      as a consistency sweep, plus `hover:bg-slate-50` → `hover:bg-ink-50`
+      and the list container/divider colors — not a full finding-#6 token
+      migration (the due-date chip, `CATEGORY_PILL`, and `StatusPill` itself
+      keep their existing color families; only `slate-*` was touched, not the
+      semantic blue/green/amber pairs), but it clears every contrast pair
+      this pass's findings actually flagged.
+- [x] **Bonus, not in the sifted 4 but the task's own quality floor required
+      it: finding #2, `IssueRow`'s missing focus-visible ring.** A fixed-width
+      status column and AA-contrast text don't help a keyboard user who can't
+      see which row they're on. Added the app's standard
+      `focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-400`
+      convention (matches `PulseDashboardPage`'s identical `MyIssuesCard` row).
+
+**Still open** (not in this pass's sifted set, left alone by design): #4 (no
+sort/filter/pagination); #5 (duplicate issue across sections, unbadged); #6
+(the *rest* of the token migration — due-date
+chip, `CATEGORY_PILL`'s blue/green pairs, `StatusPill` itself); #7
+(`StatusPill` is still a fourth divergent chip implementation, not the
+`ring-1 ring-inset` vocabulary `IssueCard` established); #9 (project badge
+repeats with zero information gain in the common single-project case); #10
+(mobile sheds every metadata signal beyond title/key/status); #12 (icon
+accessible names, shared `issueMeta.tsx` code, out of this file's blast
+radius). Filed to `docs/BACKLOG.md`.
+
+---
+
+### Top 5 for the dev team (priority order)
+
+1. **Give `StatusPill` a fixed-width slot** (finding #1) — the single highest-
+   value fix on this page; status is the one thing a worklist like this is
+   scanned for, and today it's the one thing that doesn't form a column.
+2. **Add the standard `focus-visible` ring to `IssueRow`'s button** (finding
+   #2) — a one-line class addition, closes a real WCAG 2.4.7 gap, and matches
+   a convention already established in three other files.
+3. **Fix the issue-key contrast** (finding #3, 2.56:1 measured) and bundle it
+   with the overdue `slate-*` → `ink-*` sweep (finding #6) — the token
+   migration this file already owes the rest of Phase C.
+4. **Add a status/sprint quick-filter + sort control** (finding #4), reusing
+   `BoardPage`'s existing `MultiSelectFilter` — turns a 2088px scroll-only
+   dump into an actual worklist.
+5. **Make the `NOVA` project badge conditional on >1 distinct project**
+   (finding #9) — cheap, and removes real per-row noise from every single row
+   in the common (single-project) case this page's own subtitle admits is not
+   universal.
+
+---
+
+
 ## 2026-08-05 — Roadmap Gantt visual audit (founder: "Launch and audit on this chart and find ways to improve. Then work on it")
 
 Method: ran the real built app against the screenshot seed and read the rendered
@@ -62,14 +369,17 @@ Each item below is redesigned design-skill-led, then ✅ when shipped + verified
 - [ ] `board/CreateIssueModal` · `board/ColumnFormModal`
 - [x] `board/BoardWorkflowSelector` — badge ring-inset + ENFORCED chip ✅ 2026-06-29
 - [x] `board/FromTemplateMenu` — system animation applied ✅ 2026-06-29
-- [ ] `issue/IssueDetailDrawer` · `issue/CommentsPanel` · `issue/AttachmentsPanel` · `issue/ActivityPanel` · `issue/LabelPicker` · `issue/MentionComposer` · `issue/ParentSubtasks` · `issue/issueMeta`
+- [x] `issue/IssueDetailDrawer` · `issue/CommentsPanel` · `issue/AttachmentsPanel` · `issue/ActivityPanel` — main-column reorder (Comments under Description), unified `SectionHeading`, collapsed empty Attachments drop-zone, header `StatusHeaderPicker`, consistent `formatDate`, WCAG-AA empty-state contrast, touch-persistent row actions ✅ 2026-09-19 (see dated run record below)
+- [ ] `issue/LabelPicker` · `issue/MentionComposer` · `issue/ParentSubtasks` · `issue/issueMeta` — sidebar sub-panels, out of scope for the 2026-09-19 pass (main column only); `LabelPicker`/`ParentSubtasks`/`LinkedIssuesSection` visually confirmed to carry a third/fourth heading treatment distinct from the now-unified main column, see BACKLOG follow-up
 - [x] `issue/TimeTrackingSection` — progress % label + signal/red token ✅ 2026-06-29
 - [x] `issue/ChecklistSection` — progress % label + emerald-complete / signal-in-progress ✅ 2026-06-29
 
 **Phase C — Pages**
 - [x] Auth: `LoginPage` · `RegisterPage` · `ForgotPasswordPage` — `slate-*`/`brand-*` → `ink-*`/`signal-*`; password label → `text-xs font-medium text-ink-600`; forgot-password link consistent; email chip in success state uses `<code>` mono; error banners get `role="alert"` + border ✅ 2026-06-29
 - [ ] `AuthShell` · `ResetPasswordPage` (already clean; no changes needed)
-- [ ] `PulseDashboardPage` · `DashboardPage` · `MyWorkPage`
+- [x] `PulseDashboardPage` — collapsed the permanently-empty `RecentActivityCard` to a one-line affordance, raw `<select>` → shared `Select` primitive (kept `#pulse-ws-select` id/native semantics for the `workspace-switcher`/`workspace-settings` canonical suites), new opt-in `Button`/`Select` `lg` (40px) size on the admin row for the touch-target floor, `ink-500`→`ink-600` on the "Workspace" label + "PROJECTS" heading (4.47:1 → 6.98:1) ✅ 2026-09-19 (see dated run record below)
+- [ ] `DashboardPage`
+- [x] `MyWorkPage` (`IssueRow`/`StatusPill`) — fixed-width metadata grid (StatusPill column ragged x=1028.4–1059.8 → constant across all 41 rows), issue-key contrast 2.56:1→4.83:1, subtitle contrast 4.20:1→6.68:1, section count badge routed through shared `Badge`, plus the row button's missing `focus-visible` ring added ✅ 2026-09-19 (see dated run record below; 8 of the audit's 12 findings — sort/filter, dedup badge, rest of the token migration, `StatusPill`'s own chip vocabulary, conditional project badge, mobile metadata, icon a11y names — intentionally out of this pass's sifted scope, filed to BACKLOG)
 - [ ] `BoardPage` · `BacklogPage` · `TriagePage`
 - [ ] `ReportsPage` (+ `reports/BurndownChart` · `VelocityChart` · `CumulativeFlowChart`)
 - [x] `RoadmapPage` — `slate-*` → `ink-*` throughout (heading, description, card border, shell breadcrumb, canvas background); breadcrumb matches AutomationsPage reference pattern (shrink-0/min-w-0/overflow-hidden) ✅ 2026-06-29
@@ -2475,3 +2785,614 @@ Also filed during this pass:
 5. **Add a skip-link and fix the sidebar-first tab order** — currently costs every
    keyboard user 10+ tab presses (measured, scales with project count) before
    reaching page content on every single page load.
+
+---
+
+## 2026-09-19 — PulseDashboardPage (`/`) audit — hierarchy, empty state, native select
+
+Scope: single surface, `apps/web/src/pages/PulseDashboardPage.tsx` (the post-login
+landing route for every user, every session). Method: stood the real stack up
+locally (seeded Postgres, API on :4221, Vite dev server on :3221, logged in as
+`demo@nextlane.dev`), then read the rendered page — not just the source —
+at desktop 1280×900 and mobile 393×852, with `getBoundingClientRect` /
+`getComputedStyle` measurements taken in-browser via Playwright rather than
+estimated from markup. `GET /api/notifications` was hit directly with the
+session token to confirm the empty-activity claim against the live API, not
+assumed. Checklist reference: this file is unticked at `docs/UI-REVIEW.md`
+Phase C, "`PulseDashboardPage` · `DashboardPage` · `MyWorkPage`" — no prior
+dated entry exists against it.
+
+### 🔴 Inconsistency / bug
+
+1. **The page's single largest element is a permanently-empty one, and it sits
+   above the page's only other empty container.** `RecentActivityCard`
+   (`PulseDashboardPage.tsx:571-644`) measured **1006×178px** on desktop (full
+   content width) and **359×178px** on mobile — larger by area than the
+   `SprintSnapshotCard` (490×66), `MyIssuesCard` (490×89) and the single
+   `ProjectCard` (325×176) combined. Confirmed live: `GET /api/notifications`
+   with the seeded demo session returns `200 {"items":[],"unreadCount":0}` —
+   this is not a bug state, it is the **permanent** state for a brand-new
+   workspace or a solo self-hoster (the exact persona `docs/VISION.md` targets
+   — nothing ever populates this feed for a single-person instance beyond
+   self-mentions/self-assignments). The page spends its biggest visual block on
+   a feed that structurally cannot show anything for its primary target user.
+   *Fix:* shrink the empty state's footprint (the `EmptyState` primitive's
+   `py-14` plus the card's own padding is what produces 178px of dead space —
+   compare to `MyIssuesCard`'s empty state, same primitive, same padding, but
+   the card around it is only 89px tall because there's real content above the
+   fold elsewhere); or collapse `RecentActivityCard` to a compact single-line
+   affordance when `items.length === 0` instead of reserving full card height
+   for a dashed-border box that says nothing happened.
+
+2. **Workspace name and workspace-switching UI appear three times on one
+   screen, and the page's own instance is the only native form control in an
+   otherwise fully custom-styled shell.** On the rendered page the string
+   "Demo Workspace" appears in the sidebar header, the top-bar breadcrumb
+   (`AppHeader`), *and* a third time inside the `<select>` at
+   `PulseDashboardPage.tsx:133-144` — which is preceded by its own `"Workspace"`
+   label (line 126-131), so the concept is labelled and repeated three times
+   before any page content appears. That `<select>` also bypasses the app's
+   own `Select` primitive at `src/components/ui/Select.tsx`, producing
+   measurable divergence from every other dropdown-like control in the app:
+   - No `appearance-none` → renders full OS dropdown chrome (native arrow +
+     native listbox popup on click), vs. `Select.tsx:11,16` which strips native
+     appearance and paints a custom inline SVG chevron.
+   - `rounded-lg` (`PulseDashboardPage.tsx:137`) vs. `Select.tsx:11`'s `rounded`
+     — a different radius step for the same control type.
+   - `border-ink-300` vs. `Select.tsx:11`'s `border-ink-200`.
+   - Focus treatment: `focus-visible:ring-2 focus-visible:ring-brand-400` only
+     (no border-color change, no ring-offset) vs. `Select.tsx:14`'s
+     `focus:border-signal-500 focus:outline-none focus:ring-2
+     focus:ring-signal-200` (border + ring together, on any focus not just
+     `:focus-visible`) — confirmed the rendered difference by focusing both:
+     the shared `Select` produces a crisp inset `0 0 0 2px` blue ring; this
+     page's raw `<select>` produces the same-ish ring but via a different
+     mechanism, so the two will drift the next time either is touched.
+   - Padding: `px-2` vs. `Select.tsx:11`'s `px-3 pr-8` (the shared primitive
+     reserves room for its chevron; this one doesn't need to, but the
+     resulting text sits closer to the edge than any other input in the app).
+   *Fix:* replace the raw `<select>` with `<Select>` from
+   `components/ui/Select.tsx`; that alone fixes the radius/border/padding/focus
+   drift for free. Separately, reconsider surfacing the picker at all on this
+   page — the sidebar header and breadcrumb already give workspace identity
+   and switching (`nav/WorkspaceSwitcherMenuContent` per the Phase B checklist
+   entry); a third, native-chrome copy on the dashboard body reads like two
+   features that were never reconciled, not one intentional design.
+
+### 🟡 Polish / improvement
+
+3. **Visual hierarchy is inverted against the page's own data.** Reading
+   top-to-bottom by y-position on desktop: workspace admin chrome (label,
+   picker, `+ Workspace`, `Members`, `Audit log`, `+ New Project`) occupies
+   `y=91` through `y≈127`; `Active sprints` and `Assigned to me` — the
+   founder's stated "morning standup" purpose per the file's own header
+   comment (`PulseDashboardPage.tsx:1-2`, "the morning-standup home view") —
+   start at `y=197`; the actually-empty `Recent activity` runs `y=367`–`545`;
+   and `Projects` (the one section with real, permanent content — a live
+   project card) is the last thing on the page at `y≈578`, with only ~114px of
+   card below it before the 900px viewport ends. The area from the bottom of
+   the empty activity card to the bottom of the viewport (`900−545=355px`,
+   **~39% of the viewport**) is administrative-then-empty content, while
+   `Assigned to me` — 2 real, actionable issues for this user, confirmed via
+   `MyIssuesCard`'s `count` badge — is a half-width card competing for space
+   with the empty sprint/activity blocks instead of leading the page.
+   *Fix:* the file's own doc comment already states the intended order
+   (sprint → my issues → activity → projects); the rendered layout doesn't
+   match it — admin actions (`Members`, `Audit log`, `+ Workspace`) read as
+   more prominent than any of the four intended sections because they're
+   `Button` `primary`/`secondary` variants sitting in a plain flex row with no
+   card, while the actual content lives inside bordered/shadowed `Card`s below.
+   Consider moving the admin action row into the header/sidebar (where
+   `Members`/`Audit log`/workspace-switching arguably already belong per finding
+   #2) and let `Assigned to me` lead the body.
+
+4. **The `Projects` section doesn't use the page's own `Card` pattern, and its
+   heading uses a different typographic treatment than its three siblings.**
+   `SprintSnapshotCard`, `MyIssuesCard` and `RecentActivityCard` all go through
+   the local `Card` + `CardHeader` helpers (`PulseDashboardPage.tsx:268-309`),
+   which render titles as `text-sm font-semibold text-ink-800` inside a
+   `rounded-xl border border-ink-200 bg-surface shadow-card` container. The
+   `Projects` section (`PulseDashboardPage.tsx:212-228`) is a bare `<section>`
+   with no border, background, or shadow, and its heading
+   (`text-sm font-semibold uppercase tracking-wide text-ink-500`, line 213-218)
+   is upper-cased and muted (`ink-500`) instead of sentence-case and primary
+   (`ink-800`) — the fourth "section" on the page reads as a visually different
+   tier (more like a settings-page group label) than the three above it, for
+   no evident functional reason. *Fix:* route `Projects` through the same
+   `Card`/`CardHeader` pair, or if the bare-section treatment is intentional
+   (e.g. because it can hold many cards, not a list), align its heading style
+   to `CardHeader`'s so the four sections read as one family.
+
+5. **Every actionable control on this page's admin row is 36px tall, at both
+   viewport widths.** Measured via `getBoundingClientRect` on the live page:
+   the workspace `<select>`, `+ Workspace`, `Members`, `Audit log` and
+   `+ New Project` are all exactly `h: 36` at 1280px **and** at 393px — the
+   layout reflows (stacks into two rows) but no control grows for touch. This
+   traces to `Button`'s `md` size (`components/ui/Button.tsx:33`, `'h-9 …'` =
+   36px) and the raw `<select>`'s explicit `h-9` (`PulseDashboardPage.tsx:137`)
+   — there's no larger `Button`/`Select` size in the design system to opt into
+   on mobile. This is a shared-primitive limit, not unique to this page, but
+   this screen is where it's most visible: four to five of these controls sit
+   in the very first interactive row a mobile user reaches. *Fix:* either add
+   a `lg` size to `Button`/`Select` (h-10/h-11) and use it for this row on
+   mobile, or accept 36px as the app-wide floor but track it as a design-system
+   decision rather than a per-page accident.
+
+### 🟢 Nit
+
+6. **Borderline text contrast on the page's two muted labels.** Measured live
+   (computed `color`/`background-color`, WCAG relative-luminance formula):
+   the `"Workspace"` field label (`PulseDashboardPage.tsx:126-131`,
+   `text-ink-500`) and the `"PROJECTS"` section heading (line 213-218, also
+   `text-ink-500`) both render as `rgb(107,114,128)` on `rgb(244,246,249)`
+   (`ink-50`) — a contrast ratio of **4.47:1**, just under WCAG 1.4.3's 4.5:1
+   AA threshold for normal-size text. It reads fine to the eye (it's a ~0.7%
+   shortfall, not a legibility problem) but it is a measured, real AA miss.
+   *Fix:* bump to `text-ink-600` on `ink-50` backgrounds for small
+   (12-13px) muted labels, or confirm `ink-500` was tuned against `bg-surface`
+   (white) rather than the `ink-50` page background it's actually composited
+   against here — the same class reads 6.9:1 fine against white per the
+   `EmptyState` description text measured in the same pass.
+
+7. **Token-name drift: this page still writes `brand-*` where `Button.tsx`
+   writes `signal-*` for the identical color.** `tailwind.config.js` documents
+   `brand` as a **"Legacy alias… kept so existing `brand-*` classes… continue
+   to resolve"**, pointing at the same `signal` CSS vars — so
+   `focus-visible:ring-brand-400` on the raw `<select>`
+   (`PulseDashboardPage.tsx:137`) is not a bug today, but it is the kind of
+   drift the alias comment exists to eventually retire, and this page is one
+   of the remaining call sites. *Fix:* s/brand-/signal- while touching this
+   file for finding #2 above — zero visual change, one less alias to keep alive.
+
+### What's already right here
+
+- **State coverage on the query-driven cards is genuinely complete** — each of
+  `SprintSnapshotCard`, `MyIssuesCard` and `RecentActivityCard` independently
+  handles loading (`LoadingState`/skeleton rows), error (`ErrorState` +
+  retry), and empty (`EmptyState`) via the shared primitives
+  (`PulseDashboardPage.tsx:179-185, 505-520, 583-598`), and the page-level
+  workspace/project queries do the same at lines 94-119. This is exactly the
+  checklist's "every query view has loading/empty/error" requirement, done
+  correctly and per-row rather than blocking the whole page — `SprintProjectRow`
+  (line 400-408) renders its own skeleton so N projects don't gate each other.
+- **No horizontal overflow at 393px** — `document.documentElement.scrollWidth`
+  equals `clientWidth` (393) at the mobile viewport; every card and the admin
+  button row wraps/stacks cleanly instead of clipping or scrolling sideways.
+- **Permission-gated UI is real, not just hidden via CSS**: `Members`/`Audit
+  log` only render `isAdmin && activeWorkspace` (`PulseDashboardPage.tsx:155`),
+  matching the checklist's permission-restricted-state requirement.
+- **Long-content handling on real rows is solid**: issue titles truncate
+  (`truncate` on `MyIssuesCard`/`RecentActivityCard` rows), sprint names are
+  `max-w-[180px] truncate` (line 428), and `MyIssuesCard` caps its preview at
+  5 with a "+N more" overflow link (line 550-559) rather than growing
+  unbounded.
+- The focus ring on `Button`/native `<select>` **does** apply correctly on
+  real keyboard `Tab` (verified via `:focus-visible` + a settled, post-
+  transition `getComputedStyle` read, not just a screenshot — an initial
+  measurement taken mid-`transition-all` looked like a missing ring and was
+  a false alarm, caught by re-checking after the 120ms transition settled).
+
+### Top 5 for the dev team (priority order)
+
+1. **Re-order the page to match its own stated purpose** (finding #3): move
+   the admin action row (workspace switcher, `+ Workspace`, `Members`, `Audit
+   log`) out of the hero position — into the sidebar/header where the
+   workspace switcher already exists once — and let `Assigned to me` lead.
+2. **Shrink or collapse the empty `Recent activity` card** (finding #1) — it
+   is mathematically the permanent state for the self-hoster persona this
+   product targets, not an edge case; a 178px dashed box for "nothing
+   happened" is the single biggest layout cost on the page for its most
+   common viewer.
+3. **Swap the raw `<select>` for `components/ui/Select.tsx`** (finding #2) —
+   a one-line-ish change that removes native OS chrome, fixes the radius/
+   border/padding drift, and removes the third redundant workspace-name
+   surface from consideration in the same pass.
+4. **Give `Projects` the same `Card`/`CardHeader` treatment as its siblings**
+   (finding #4) so the page reads as one system instead of three cards plus a
+   settings-style list.
+5. **Decide on a ≥40px control size for the mobile admin row** (finding #5) —
+   either a new `Button`/`Select` size or an explicit, documented floor.
+
+---
+
+## 2026-09-19 — `improve-ui` design-elevation pass #1 — run record (NO REDESIGN SHIPPED)
+
+**Workflow:** `.claude/workflows/improve-ui.md` (Survey → Audit → Sift → Redesign →
+Verify → Record), first run, branch `chore/improve-ui-workflow`.
+
+**Surfaces in scope:** `issue/IssueDetailDrawer.tsx` (plus `AttachmentsPanel`,
+`ChecklistSection`, `TimeTrackingSection`, `CommentsPanel`, `ActivityPanel`),
+`PulseDashboardPage.tsx`, `MyWorkPage.tsx` (`IssueRow` / `StatusPill`).
+
+**Counts:** 29 findings raised → **14 kept** after the adversarial sift →
+**0 surfaces redesigned.**
+
+### What shipped
+
+- `.claude/workflows/improve-ui.md` — the workflow definition itself (commit `2c978f3`).
+- Two evidence-backed audit sections in this file, both dated 2026-09-19:
+  **MyWorkPage populated-state audit** (4 kept findings) and
+  **PulseDashboardPage audit** (7 kept findings).
+- **No application code.** `git diff --stat apps/` against base `b450703` is empty;
+  `git log --oneline -- apps/web/src` shows the last touch predates this branch.
+  The Redesign, Verify and Record phases never executed — the run stopped after Audit.
+
+### What was REFUTED in the sift (do not re-raise without new evidence)
+
+15 of the 29 raised findings were dropped. They failed on the same four grounds —
+future passes over these surfaces should pre-empt these classes rather than
+re-litigating them:
+
+1. **"Missing loading / empty / error state" on the Pulse cards — refuted by
+   measurement.** `SprintSnapshotCard`, `MyIssuesCard` and `RecentActivityCard`
+   each handle loading, error+retry and empty independently via the shared
+   primitives (`PulseDashboardPage.tsx:179-185, 505-520, 583-598`), and
+   `SprintProjectRow` (line 400-408) renders its own skeleton so rows don't gate
+   each other. State coverage on this page is complete; a "missing state" finding
+   here needs a named, reproduced state, not a source skim.
+2. **"Focus ring missing on `Button` / native `<select>`" — refuted as a
+   measurement artifact.** An initial `getComputedStyle` read taken mid-
+   `transition-all` showed no ring; re-read after the 120ms transition settled,
+   the ring is present and correct on real keyboard `Tab`. **Always settle the
+   transition before asserting a focus defect.** (The genuine focus failure is on
+   `IssueRow`'s `<button>`, which has no `focus-visible:*` classes at all — that
+   one survived and is kept, see the MyWorkPage section, finding 2.)
+3. **"Mobile horizontal overflow" — refuted.** `document.documentElement.scrollWidth
+   === clientWidth === 393` on both audited pages; every card and the admin row
+   wraps or stacks. No 393px overflow exists on these surfaces today.
+4. **Taste-level restyling with no rule behind it** — "the drawer feels cramped",
+   "the pills should be softer", spacing/radius preferences that cite no design
+   token, no measured value, and no design-system rule. These are the bulk of the
+   drops. The bar the sift enforced: a finding must name a violated rule, a token,
+   a WCAG criterion, or a measured number.
+
+Also refuted as *not a defect*: `focus-visible:ring-brand-400` on the Pulse
+`<select>` — `brand-*` is a documented legacy alias resolving to the same
+`signal` CSS vars, so it is drift to clean up opportunistically, **not** a bug
+(kept only as a 🟢 nit, Pulse finding 7).
+
+### What is left open
+
+- **The 14 kept findings are unbuilt.** 11 are written up here (4 MyWorkPage,
+  7 PulseDashboardPage). The remaining **3 kept `IssueDetailDrawer` findings were
+  never written up** before the run stopped — they exist only in the lost run
+  context and must be **re-derived** by re-auditing `IssueDetailDrawer.tsx` and its
+  five panels. Treat the drawer as un-audited.
+- **`IssueDetailDrawer` + `AttachmentsPanel` / `ChecklistSection` /
+  `TimeTrackingSection` / `CommentsPanel` / `ActivityPanel` remain unticked** on the
+  Phase C checklist.
+- **Highest-value kept items to build next**, in order: `IssueRow` focus ring
+  (WCAG 2.4.7 fail), issue-key contrast at 2.56:1 (WCAG 1.4.3 AA fail),
+  `StatusPill` column jitter (31px x-swing), then the Pulse hierarchy re-order.
+- **QA verdict on this run: REJECT as a redesign pass / N/A functionally** — there
+  was nothing to accept. Baseline health was confirmed clean anyway
+  (`@next-lane/shared` build clean, web `tsc --noEmit` 0 errors, vitest 6 files /
+  59 tests green); the Playwright e2e suite was correctly *not* run, since no
+  surface changed for it to cover.
+
+### Process lesson for the next run
+
+The pass produced audit findings and then stopped, leaving them as an **uncommitted**
+doc diff — exactly the shared-tree edit race `CLAUDE.md` warns about. Next run of
+`improve-ui`: sift the kept findings, have `frontend-builder` fix them **one at a
+time on the same branch**, re-run QA against the actual diff, and commit
+`docs/UI-REVIEW.md` together with the code and the ROADMAP/BACKLOG tick, per the
+same-commit rule. Do not let an audit sit unstaged across other tool calls.
+
+---
+
+## 2026-09-19 — `improve-ui` design-elevation pass #2 — IssueDetailDrawer shipped
+
+**Workflow:** `.claude/workflows/improve-ui.md`, continuing from pass #1 above.
+Pass #1 stopped after Audit and lost 3 of its `IssueDetailDrawer` findings before
+they were written up; this run re-derived the drawer findings from scratch via a
+fresh adversarial sift (5 kept, all P2) and carried them through Redesign → Verify
+→ Record. `frontend-builder` was the 1st of 3 sequential builders in this pass;
+territory was `issue/IssueDetailDrawer.tsx` + `AttachmentsPanel`/`ChecklistSection`/
+`TimeTrackingSection`/`CommentsPanel`/`ActivityPanel` only.
+
+**Method:** measured live against a real running build (API :4230, web :3230, DB
+`nextlane_ui_build_0`) on the same seeded issue the earlier audit used (NOVA-6,
+`nextlane_ui_audit_0` seed script) — not a source-code skim. Drawer scroll metrics
+read via `[role=dialog] .nl-scroll`'s `scrollHeight`/`scrollTop`, not eyeballed.
+
+**5 findings, all kept and built** (see the matching `docs/BACKLOG.md` § Already
+Done entry for full technical detail — not duplicated here):
+
+1. **Comments buried under three full-size empty capture widgets** — `Comments@760`
+   desktop / `Status@995` mobile (~1.3 viewports of scroll) before the fix,
+   `Comments@164` after. Fixed via (a) reordering Comments to render right after
+   Description, (b) collapsing `AttachmentsPanel`'s drop-zone to a single-line
+   disclosure when empty, (c) a new header-pinned `StatusHeaderPicker` so Status —
+   the single most frequent action — never requires scrolling on any viewport.
+   **Checklist's and Time Tracking's own add-affordances were deliberately left
+   full-size** — `checklist.spec.ts`/`time-tracking.spec.ts` assert
+   `checklist-add-input`/`worklog-add-minutes` visible on a fresh empty issue with
+   no prior expand step, so collapsing them would have broken a golden e2e
+   contract, not just a cosmetic regression. Documented in-code, not silently
+   dropped.
+2. **Two competing heading systems** — `slate-600` sentence case
+   (Attachments/Comments/Activity) vs. `ink-500` tracked uppercase caps
+   (Description/Checklist/Time Tracking/`Field`), two genuinely different CSS-var
+   hex values, not a rendering coincidence. Unified behind a new
+   `issue/SectionHeading.tsx`; the nested "Log work" sub-heading was deliberately
+   given a *third*, distinct treatment (sentence-case `ink-600`, no tracking) so
+   it demotes correctly to one level below "Time Tracking" rather than becoming a
+   fourth instance of the same top-level pattern.
+3. **Three date-formatting conventions on one drawer** — raw
+   `toLocaleString()`/`toLocaleDateString()` (comment timestamp, "Created …",
+   attachment upload date) vs. Start/Due date's own explicit-options "Sep 19,
+   2026". Unified via a new `lib/formatDate.ts`; comment/activity timestamps keep
+   full precision via a `title` tooltip, matching the existing `WorklogRow`
+   relative-time pattern rather than a net information loss. `DateInput`'s native
+   `type=date` control was explicitly NOT touched — its own file-header comment
+   documents why it must stay native, and the finding agreed that constraint is
+   legitimate.
+4. **Empty-state text below WCAG 1.4.3** — `slate-400`/`ink-400` on "No … yet."
+   strings measured at ≈2.6–3.0:1 on white via the relative-luminance formula
+   (not eyeballed). Bumped to `-500`/`-600`, verified ≥4.5:1 with the same
+   formula before shipping — a claim this doc doesn't repeat without the number
+   behind it.
+5. **Row actions invisible on touch** — `opacity-0 group-hover:*`/`focus-within:*`
+   on checklist/worklog/attachment/comment row actions has zero discoverable
+   affordance on a coarse-pointer device (no `:hover` state to reveal them).
+   Made persistently visible below `md:`, reverting to hover-reveal at desktop
+   widths — confirmed with a real 393px-viewport screenshot of a populated
+   worklog row, not just a class-name diff.
+
+**A 6th candidate finding from the original brief — reordering the sidebar ahead
+of the main column on mobile via CSS `order` — was evaluated and NOT built.**
+Flipping `order-1`/`order-2` on the two grid columns would put ~12 sidebar fields
+(Status, Assignee, Priority, Type, Story points, Component, Versions, dates,
+Labels, Parent, Linked issues, custom fields) ahead of Title/Description/Comments
+on mobile — trading "Status needs a scroll" for "Description and Comments need a
+scroll," a worse regression for a P2 finding that names Status specifically. The
+header-pinned `StatusHeaderPicker` (finding 1c) solves the named problem — Status
+reachable with zero scroll — without that trade-off; this was the finding's own
+documented alternative option, not an invented substitute.
+
+**Evidence:** before/after screenshots at 1440×900 and 393×852 (top-of-drawer,
+mid-scroll, bottom-of-drawer, hover-reveal, dark mode) captured against the live
+build in this pass's scratchpad and posted to the user during the build. Gates:
+`tsc --noEmit` clean, `pnpm --filter @next-lane/web build` clean, vitest 59/59,
+and 128/128 targeted e2e green across both the `chromium-desktop` and
+`mobile-chrome` Playwright projects (attachments, attachment-admin-delete,
+checklist, time-tracking, markdown-rendering, mention-autocomplete, issue-detail,
+qa-adversarial, viewer-aware-ui, date-input-typing, workflow-robustness incl. the
+`#d-status` named-workflow-enforcement case). Every `data-testid`/role/aria-label/
+e2e-asserted string preserved — this was a visual/structural pass, not a rewrite.
+
+**What's left open on this surface:** `LabelPicker`/`ParentSubtasks`/
+`LinkedIssuesSection` (sidebar) and `MentionComposer` were out of this pass's file
+territory. Screenshots taken mid-pass show they carry a *third and fourth* heading
+treatment beyond the two this pass unified ("Labels"/"Parent"/"Sub-tasks"
+sentence-case vs. "LINKED ISSUES" tracked caps) — filed as a follow-up in
+`docs/BACKLOG.md` § Already Done / carry-forward rather than silently left for
+the next auditor to re-discover from scratch.
+
+---
+
+## 2026-09-19 — `improve-ui` design-elevation pass #2 — PulseDashboardPage shipped
+
+**Workflow:** `.claude/workflows/improve-ui.md`, continuing from the same pass as
+the `IssueDetailDrawer` run above. `frontend-builder` was the 2nd of 3 sequential
+builders in this pass; territory was `pages/PulseDashboardPage.tsx` only (plus the
+two shared primitives it needed, `ui/Button.tsx` and `ui/Select.tsx`).
+
+**Input:** the 2026-09-19 `PulseDashboardPage` audit further up this file, sifted
+down to 5 findings, 4 code-level + 1 meta (the audit filing itself, no fix
+attached). All 4 code findings were verified still accurate against current
+source before building — none were refuted.
+
+**4 findings, all kept and built:**
+
+1. **Permanently-empty `RecentActivityCard` was the page's largest element**
+   (1006×178px desktop / 359×178px mobile, larger than `SprintSnapshotCard` +
+   `MyIssuesCard` + the `ProjectCard` combined) — the *permanent* state for a
+   solo self-hoster, not an edge case. Collapsed the `items.length === 0` branch
+   from the full dashed-border `EmptyState` to a single-line row (bell glyph +
+   "No recent activity — assignments, comments and mentions will show up
+   here."), matching `MyIssuesCard`'s card-header-plus-one-line footprint.
+   Desktop screenshot: card shrank from `y=333`–`545` to `y=333`–`389`, pulling
+   `Projects` up ~156px.
+2. **Raw `<select>` bypassed `components/ui/Select.tsx`** (native OS dropdown
+   chrome, `rounded-lg` vs `rounded`, `border-ink-300` vs `border-ink-200`,
+   `focus-visible:ring-brand-400`-only vs the primitive's
+   `focus:border-signal-500 + ring-signal-200`, `px-2` vs `px-3 pr-8`). Swapped
+   to `<Select>`, keeping the `id="pulse-ws-select"` and native `<select>`
+   semantics intact — the `workspace-switcher.spec.ts` (the CLAUDE.md-designated
+   *canonical* cross-page state-coherence suite) and `workspace-settings.spec.ts`
+   both drive this exact element via `.locator('#pulse-ws-select')` /
+   `.selectOption()` / `option:checked`, so the id and `<select>`-ness were
+   preserved rather than "reconsidering whether the picker belongs on the page
+   at all" per the audit's secondary suggestion — removing it would have broken
+   the canonical suite for a plausible-but-untested UX simplification, not a
+   named defect. This also retired the page's last `brand-*` token call site
+   for free (the primitive uses `signal-*`), closing the audit's 🟢 nit #7
+   without a separate change.
+3. **Every admin-row control measured 36px tall at both viewports** (workspace
+   `<select>`, `+ Workspace`, `Members`, `Audit log`, `+ New Project`), short of
+   the ~40px touch-target guideline, because neither `Button` nor `Select` had a
+   size above `md` (36px). Added an opt-in `lg` (40px) size to both primitives
+   — `Button.tsx`'s `sizes.lg` / `Select.tsx`'s new `uiSize` prop (named
+   `uiSize`, not `size`, because native `<select size>` is a different
+   attribute — number of visible option rows — and colliding with it produced
+   a real `tsc` error caught before commit) — and used `lg` for all five
+   controls on this row. Verified live via `getBoundingClientRect`: all five
+   now measure `height: 40` at both 1440px and 393px.
+4. **"Workspace" label and "PROJECTS" heading measured 4.47:1** (`ink-500` on
+   the page's `ink-50` background), just under WCAG 1.4.3's 4.5:1 AA floor.
+   Bumped both to `ink-600`; re-measured live via `getComputedStyle` +
+   the WCAG relative-luminance formula in-browser (not estimated): **6.98:1**.
+
+**Not built — evaluated and intentionally left out of this task's scope:** the
+audit's Top-5 items #1 (re-order the page so `Assigned to me` leads over the
+admin action row) and #4 (`Projects` section adopts the `Card`/`CardHeader`
+treatment). Neither was in the 4 code findings this run's adversarial sift kept
+— building them anyway would have been scope creep on a task explicitly scoped
+to 5 named findings, and #1 in particular is a structural layout change with
+more surface area for regression than this pass's territory review supported.
+Both remain open; filed in `docs/BACKLOG.md` alongside this entry rather than
+silently dropped.
+
+**Evidence:** before/after screenshots at 1440×900 and 393×852 captured against
+a live build (API :4231, web :3231, DB `nextlane_ui_build_1`) in this pass's
+scratchpad. Gates: `pnpm --filter @next-lane/web lint` (tsc) clean,
+`pnpm --filter @next-lane/web build` clean, vitest 6 files/59 tests green, and
+86 targeted e2e green across **both** `chromium-desktop` and `mobile-chrome`
+Playwright projects — `pulse-dashboard.spec.ts` (16), `dashboards-phase2.spec.ts`
+(12, incl. the `#pulse-ws-select` cross-workspace case), `workspace-switcher.spec.ts`
+(24, the canonical coherence suite), `workspace-settings.spec.ts` (8),
+`audit-log.spec.ts` (22, the `Members`/`Audit log` nav-button gating). Live
+`getBoundingClientRect`/`getComputedStyle` measurements taken for the tap-target
+and contrast fixes, not eyeballed. Every `data-testid`/role/aria-label/
+e2e-asserted string preserved — this was a visual pass, not a rewrite.
+
+**What's left open on this surface:** the audit's hierarchy re-order (finding
+#3) and `Projects`-section `Card` parity (finding #4), both noted above; a
+`RecentActivityCard` real-content pass (icons per notification type, grouping)
+was never in scope for either audit or this build. Third surface of this pass
+is a separate builder — see its own dated entry / commit for status.
+
+---
+
+## 2026-09-19 — `improve-ui` design-elevation pass #3 — MyWorkPage shipped, and independent verification of the whole pass
+
+**Workflow:** `.claude/workflows/improve-ui.md`. This closes the three-surface
+design-elevation pass recorded in the two entries above. `frontend-builder` was
+the 3rd of 3 sequential builders; territory was `pages/MyWorkPage.tsx` only
+(`IssueRow` / `StatusPill`). Commits: `167775e` (drawer), `e415093` (pulse),
+`b66adfa` (my-work), all on `chore/improve-ui-workflow`.
+
+**Pass totals:** 29 findings raised across the three audits, **14 kept** after
+the adversarial sift, all 14 built. Surfaces redesigned:
+`issue/IssueDetailDrawer.tsx` (with `AttachmentsPanel`, `ChecklistSection`,
+`TimeTrackingSection`, `CommentsPanel`, `ActivityPanel`), `PulseDashboardPage.tsx`,
+`MyWorkPage.tsx`.
+
+### MyWorkPage — 4 findings kept of 12 raised, all built
+
+1. **`StatusPill` had no fixed-width slot** — the status column's `x` ranged
+   1028–1060px across the 41-row NOVA seed (measured per row, not eyeballed).
+   Worth recording *why* the obvious fix is wrong: fixing the widths of the
+   *preceding* optional chips does not fix the column, because `StatusPill`'s own
+   text length ("In Progress" vs "To Do") still shifts the `flex-1` title's right
+   edge and therefore everything after it. Fixed by moving the entire trailing
+   metadata cluster (sprint, due/overdue, status, project, priority) into one CSS
+   grid with 5 fixed pixel tracks. Re-measured: `x` range is now exactly **0px**
+   across all 41 rows.
+2. **Issue-key contrast 2.56:1 → 4.83:1** (`text-slate-400` → `text-ink-500`).
+3. **Subtitle contrast 4.20:1 → 6.68:1** (`text-slate-500` → `text-ink-600`),
+   plus the same sweep on the h1 / section label / row title / hover / border
+   colors.
+4. **Section count badge was a third hand-rolled gray pill** — routed through the
+   shared `Badge` component.
+
+Plus one item **outside** the sifted 4, taken because this pass's quality floor
+requires it: `IssueRow`'s button had no `focus-visible` ring at all (WCAG 2.4.7);
+added, matching `PulseDashboard`'s `MyIssuesCard` row convention.
+
+### REFUTED — do not re-raise these
+
+This is the most reusable part of the entry. Each of the following was raised,
+investigated, and **found not to be a defect**. Re-raising them costs a build
+cycle and lands the same "won't fix" each time.
+
+- **"Drawer Delete button has no visible focus ring"** — **false positive, test
+  methodology.** Tailwind's ring is a `box-shadow` with a ~120ms transition;
+  reading computed style synchronously right after `keyboard.press('Tab')` catches
+  it mid-transition at zero. Re-read after the transition settles: correct,
+  visible ring. Any future focus-ring audit must wait out the transition before
+  reading `boxShadow`.
+- **"`AttachmentsPanel` collapsed dropzone has no visible focus ring"** —
+  **false positive, tooling semantics.** Playwright's `locator.focus()` calls DOM
+  `.focus()` directly, which Chromium does **not** treat as `:focus-visible`;
+  only real keyboard navigation does. Driven with real sequential `Tab` presses,
+  the ring renders correctly (screenshot-confirmed). Focus-visible assertions must
+  use `keyboard.press('Tab')`, never `locator.focus()`.
+- **"Collapse Checklist's and Time Tracking's add-affordances when empty"**
+  (raised in pass #1, restated here because it looks like an obvious symmetry with
+  the `AttachmentsPanel` fix) — **refused on contract grounds.**
+  `checklist.spec.ts` / `time-tracking.spec.ts` assert `checklist-add-input` /
+  `worklog-add-minutes` visible on a fresh empty issue with no prior expand step.
+  Collapsing them breaks a golden e2e contract, not a cosmetic assertion.
+- **"Re-order the drawer sidebar ahead of the main column on mobile"** —
+  evaluated, **not built.** It trades "Status needs a scroll" for "Description
+  and Comments need a scroll" — a worse regression. The header-pinned
+  `StatusHeaderPicker` solves the named problem with no trade-off.
+- **"Replace the Pulse workspace `<select>` / reconsider whether the picker
+  belongs on the page"** — **refused on contract grounds.** `#pulse-ws-select` is
+  driven by `workspace-switcher.spec.ts`, the CLAUDE.md-designated canonical
+  cross-page state-coherence suite, plus `workspace-settings.spec.ts`. The id and
+  native `<select>` semantics were preserved; only the styling moved to the shared
+  primitive.
+- **"`DateInput` should use the unified `formatDate` helper"** — **refused.** Its
+  file-header comment documents why the control must stay a native `type=date`;
+  the finding itself agreed the constraint is legitimate.
+
+### Independent verification (separate QA agent, environment stood up from scratch)
+
+Not trusting builder claims: fresh local Postgres 16 DB `nextlane_ui_verify`,
+`prisma migrate deploy` + seed, API built clean (`rm -rf dist *.tsbuildinfo`) on
+:4240, and the web served as a **real production artifact** (`pnpm build` +
+`vite preview --strictPort` on :3240), not the dev server. `docker compose config`
+validated syntactically clean (no Docker daemon in this sandbox; the prod
+build/preview is the closest available proxy).
+
+- `pnpm --filter @next-lane/web lint` (`tsc --noEmit`): **clean**.
+- vitest: **59/59**.
+- e2e regression across `chromium-desktop` (1280×800) and `mobile-chrome`
+  (Pixel 5): **176/176 passed** (1 expected desktop-only drag-and-drop skip) over
+  `issue-detail`, `my-work`, `pulse-dashboard`, `checklist`, `attachments`,
+  `attachment-admin-delete`, `time-tracking`, `board`, `nav-sidebar`,
+  `mobile-breadcrumb`, `personal-board`, `theme`, `skip-link`, `qa-adversarial`,
+  `viewer-aware-ui`, `toast`, `inline-card-status`.
+- **Coverage gap found and closed by QA:** the new header Status quick-picker
+  (`data-testid="issue-status-quickpick"`) had **zero** spec coverage, and it is
+  exactly the two-controls-one-field shape the workspace-switcher bug class taught
+  us to distrust. New `apps/web/e2e/issue-status-quickpick.spec.ts` covers
+  bidirectional header↔sidebar sync, `page.reload()` persistence, and the
+  VIEWER-disabled state — **4/4 both viewports**. This was the only file QA added;
+  no application source was touched.
+- Adversarial manual checks at 1440×900 and 393×852: no horizontal overflow
+  anywhere (`document.scrollWidth === window.innerWidth`), including a
+  manufactured stress case — a custom status named
+  `"Awaiting Stakeholder Sign-Off Review"` assigned to a real issue. The
+  fixed-width grid held on desktop (pill truncates inside its 92px track) and the
+  title correctly ceded space on mobile. The "fixed-width columns don't shift"
+  claim is true for real data, not just short seed data. Also verified: Comments
+  render directly under Description on both viewports; `SectionHeading` renders
+  identically across Attachments/Checklist/Time Tracking/Comments/Activity with
+  "Log work" visibly demoted; the quick-picker wraps onto its own row on mobile
+  and is disabled for VIEWER; `formatDate`/`formatDateTime` unified with full
+  timestamps in `title`; empty states on a genuinely fresh 0-issue user; and a
+  **forced 500** on Pulse's Recent Activity (route interception) renders the
+  `ErrorState` correctly on both viewports with no infinite-spinner artifact.
+
+**Verdict: ACCEPT** — no regressions on either viewport across all three surfaces.
+
+**Honesty note carried forward from QA:** touch-persistent row actions were
+screenshot-confirmed only for `CommentsPanel` at 393px. `AttachmentRow`,
+`ChecklistItem` and `WorklogRow` use the identical
+`opacity-100 md:opacity-0 md:group-hover:opacity-100` pattern byte-for-byte and
+their CRUD specs pass on `mobile-chrome`, but they were **inferred-consistent, not
+independently screenshotted**. Worth a 30-second confirmation on the next pass.
+
+### Left open
+
+- **Real, pre-existing a11y gap (not a regression of this pass** — confirmed via
+  `git diff bcf667d..HEAD`**):** the drawer's "Edit description" button
+  (`aria-label="Edit description"`) has `focus:outline-none` with no ring or
+  border fallback; real keyboard Tab lands on it with **zero** visible indicator
+  (`boxShadow: none`, `outlineColor: transparent`). Filed for the next pass.
+- **Pulse:** hierarchy re-order (lead with `Assigned to me` over the admin action
+  row) and `Projects`-section `Card`/`CardHeader` parity; a `RecentActivityCard`
+  real-content pass (per-type icons, grouping) was never in scope.
+- **My Work:** sort/filter/pagination, duplicate-issue-across-sections badge, the
+  remainder of the `ink-*` token migration, `StatusPill`'s own chip vocabulary,
+  conditional project badge, mobile metadata density, icon accessible names.
+- **Drawer sidebar (out of this pass's territory):** `LabelPicker`,
+  `ParentSubtasks`, `LinkedIssuesSection`, `MentionComposer` carry a *third and
+  fourth* heading treatment beyond the two this pass unified
+  ("Labels"/"Parent"/"Sub-tasks" sentence-case vs. "LINKED ISSUES" tracked caps).
+- Touch-persistence screenshot confirmation for the three inferred rows above.
