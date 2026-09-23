@@ -16,13 +16,19 @@ have sent the implementation somewhere useless:
    (General / Members / Audit log / Branding). That surface is the one that
    got this right — it is the **model**, not the patient.
 2. It claimed `/developers` hosts an MCP config generator to be re-homed into
-   personal settings. `/developers` is `ApiDocsPage`, the in-product API
-   reference, and it already cross-links both ways with `/me/settings`. There
-   is no MCP config generator. Nothing to move.
-3. It claimed Agent access and Agent context had been promoted to a project
-   "Agents" tab. There is no Agents tab (`components/project/projectViews.ts`
-   is the single source of truth for project views and lists eleven, none of
-   them Agents). Both sections are in project settings today.
+   personal settings, and that Agent access and Agent context had been
+   promoted to a project "Agents" tab. Neither is true **of `main`**:
+   `/developers` is `ApiDocsPage`, the in-product API reference, already
+   cross-linked both ways with `/me/settings`; and
+   `components/project/projectViews.ts`, the single source of truth for
+   project views, lists eleven, none of them Agents.
+
+   Both, however, are true of **PR #103** (`feat/agent-native-discoverability`,
+   open), which adds an MCP config generator leading `/developers` and
+   promotes Agents to a top-level project tab at `/projects/:id/agents`,
+   leaving a one-line pointer in settings. The first draft was describing
+   that branch's world as though it had already landed. The intent was right;
+   the tense was wrong. See **Dependency on PR #103** below.
 
 ## The problem, measured
 
@@ -126,8 +132,31 @@ Authentication; `/admin/sso` redirects to it.
   first-class entry in a shared nav — exactly the target pattern.
 - **`/developers`** stays a top-level API reference. It is documentation,
   not configuration.
-- **Agent access / Agent context** stay in project settings, grouped under
-  Agents rather than scattered between integrations and the danger zone.
+- **Agent access / Agent context** — see **Dependency on PR #103**. They are
+  in project settings on `main` and leave it when that PR lands.
+
+## Dependency on PR #103
+
+PR #103 moves Agent access and Agent context out of project settings onto a
+new top-level **Agents** tab, on the reasoning — which this spec agrees with —
+that they are a daily surface, not configuration. That PR is older than this
+work, already reviewed, and its only red check is one real skip-link
+regression being root-caused separately.
+
+So the **Agents** settings group in the grouping table below exists only for
+as long as `main` still renders those sections in settings:
+
+- **If #103 lands first** (preferred), project settings ships with **five**
+  groups — General, People, Work structure, Templates, Integrations — and no
+  Agents group, because there is nothing left in settings to put in one.
+- **If this work lands first**, it ships the Agents group as described, and
+  #103's merge deletes it along with the sections it held.
+
+Either way the outcome is the same and neither branch is blocked on the other.
+What must not happen is the two landing with *different* answers — Agents
+reachable from a settings group **and** a nav tab, each thinking it owns the
+sections. Whoever merges second reconciles to: Agents is a tab, not a settings
+group.
 
 ## Blast radius
 
