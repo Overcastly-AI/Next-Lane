@@ -168,6 +168,32 @@ dependency-sequenced Pages items keep their numbers):**
   - Options, cheapest first: (a) `@ApiOkResponse({ type: … })` with response classes for the ~8 core shapes covering the most-called reads; (b) generate schemas from the shared interfaces at build time (`ts-json-schema-generator`) and register them with `@ApiExtraModels` — no drift, but a new build step; (c) convert the shared DTOs to classes, which ripples into the web bundle.
   - **Do not hand-write schemas that can drift from the real payload** — a response doc that is confidently wrong is worse than an absent one.
 
+**Queued 2026-09-17 (NLQL fail-loud completeness fix — the thing it
+deliberately did NOT do, stated rather than quietly skipped):**
+
+- [ ] (P2, M) **NLQL cannot express "what is blocking this?"** — `blocked`,
+  `isBlocked`, `linkType`, and `has linked issues` all reject with "Unknown
+  field"/"Expected an operator", so the question costs 1 + N calls: list the
+  sprint, then `list_issue_links` per issue. Measured (MCP-QA pass 4, finding
+  C2): **5 calls / 1,816 tokens for an 8-issue sprint, ~31 calls at 30
+  issues** — one of the most common standup/PM questions and the tracker
+  cannot answer it in one query. **Fix shape (either):** an NLQL
+  `blocked`/`blocking` boolean predicate backed by the existing
+  `BLOCKS`/`BLOCKED_BY` `IssueLink` rows, or `list_issues` gaining an
+  `includeLinks: true` option that hydrates `blockedBy[]`/`blocks[]` inline
+  (~8 tok/row) so the existing query bar covers it without new AST surface.
+  Either makes it 1 call, ~600 tok (**~66% saving at 8 issues, ~94% at 30**).
+  **Not attempted in the 2026-09-17 fail-loud pass** — that pass's brief
+  allowed it "only if item 1 lands cleanly with room to spare," and completing
+  the guard across `status`/`type`/`priority`/`label`/`component` correctly
+  (plus a second, independent `componentId`-always-null evaluator bug found
+  along the way) filled the available scope; a half-built query feature would
+  be worse than a filed one. **Territory:** `packages/shared/src/nlql/**`
+  (AST + evaluator + parser, if the predicate route is chosen) or
+  `apps/api/src/issues/**` (if the `includeLinks` route is chosen) — either
+  way needs matching `@next-lane/mcp` `list_issues` exposure. [MCP-QA pass 4,
+  finding C2]
+
 **Queued 2026-09-10 (CSV round-trip fix — the two things it deliberately did
 NOT do, both stated to the founder rather than quietly skipped):**
 
@@ -898,6 +924,14 @@ _Hardening Night close-out ingest (2026-07-06) — P2s:_
 
 ## Already Done (recent shipments — ticked for reference)
 
+- [x] (P1, S) **NLQL fail-loud guard only ever reached `assignee`/`reporter`/`sprint` — `status`, `type`, `priority`, `label`, `component` silently returned `{items:[],total:0}` on a typo** ✅ 2026-09-17 [MCP-QA pass 4 (token-efficiency pass, `ffa7c33`), finding E1: `status = "In Progres"`, `priority = URGENT`, `label = "backendd"`, `type = TSK`, `component = "nope"` all measured a confident, silently-wrong empty result instead of the 35-token error `assignee`/`sprint` already got]
+  - **One mechanism, three genuinely different resolution families**, not a second fail-loud implementation: `resolveQueryNames` (`packages/shared/src/nlql/validate.ts`) now dispatches every standard field through one `checkOperand`. (1) `assignee`/`reporter`/`sprint`/`component` — dynamic per-project data where the issue's own field IS the raw id, so an id-shaped operand not in the loaded context gets the existing stale-id leniency (`looksLikeOpaqueId`). (2) `status`/`label` — also dynamic, but the evaluator compares by the resolved **name**, never a raw id, so these get NO id-shape leniency (an id-shaped literal would never match anyway — granting leniency would just swap one silent zero for another). (3) `type`/`priority`/`statusCategory` (the last done proactively — same one-line mechanism, same latent bug, not explicitly named in the audit) — fixed, global enums checked case-insensitively against a hardcoded list, no per-project context ever needed. Every error names the offending value AND the valid alternatives (`unknown status "In Progres" — use an exact status name; see list_statuses`; `unknown priority "URGENT" — valid priorities: LOWEST, LOW, MEDIUM, HIGH, HIGHEST`), matching the house error style the audit measured as "genuinely agent-grade" for the assignee/sprint case.
+  - **A second, independent bug found and fixed in the same evaluator:** `componentId` was hardcoded to always return `null` ("No first-class component field on IssueDto yet" — stale; the DTO has carried a real `componentId` since the component feature shipped). Every `component = ...` query silently matched zero issues, valid values included — the exact class of bug this pass exists to kill, just via a dead field mapping instead of a missing guard. Fixed alongside: `component`/`componentId` is now its own `FieldKind` (mirrors `sprint`'s id-or-name resolution) rather than plain `'id'` exact-match.
+  - **`priority = URGENT` handled deliberately, not by accident:** URGENT is not a member of this system's `Priority` enum (LOWEST/LOW/MEDIUM/HIGH/HIGHEST) — it is rejected. A genuinely valid but differently-cased value (`priority = high`) is accepted, matching the evaluator's existing case-insensitive comparison; the check is case-insensitive membership against `Object.values(Priority)`, not a second casing rule.
+  - **Wired through all three server call sites** that evaluate real NLQL (`IssuesService.exportCsv` — the same path the MCP `list_issues` query oracle drives via `fetchNlqlFilteredIssues`; `DashboardsService.evaluateGadget`; `AutomationEngineService`'s rule-condition check) via a new `getReferencedStandardFields` helper (distinguishes `status` from `type`/`priority`/`statusCategory` despite all four sharing the `'enum'` `FieldKind`, so a query with no `status` reference skips the extra `prisma.status.findMany` round trip) and an extended `loadNlqlEvalContext` that now also batch-loads project statuses/labels/components exactly once per evaluation, never per issue.
+  - **Behavior-change audit, as required:** this turns previously-silent zero-result queries into errors. Checked every existing caller: one pre-existing unit test (`validate.test.ts`, "ignores fields other than user/sprint kind entirely") explicitly asserted the old silent-pass-through for `status` and had to be rewritten — it was encoding the bug this pass fixes. Three `dashboards.service.spec.ts` tests filtered by `status = "In Progress"` against fixture data that never populated a project status list; they needed the mock's `status.findMany` seeded with the real status, exactly as `assignee`/`sprint` tests already seed `membership`/`sprint`. No saved filter, board color rule, or seed data depends on the silent-zero behavior (board/saved-filter NLQL is evaluated client-side in the browser, a human-interactive surface with its own visible-empty-state affordance, not the server-trust surface this fix targets).
+  - **Every fix has a guard test verified RED first.** `packages/shared`: 26 new/failing tests against the unfixed code (7 evaluator component tests + 19 validate.ts tests, incl. the new `getReferencedStandardFields` helper) → 246/246 green after. `apps/api` integration wiring: 4 additional regressions surfaced by reverting only the three call sites (valid `status`/`component` queries wrongly 400'd, the component fix didn't reach end-to-end) → 129/129 green after restoring. Full API suite 2212/2212 (102 suites); `pnpm -r lint` clean across api/web/mcp/shared; tenant-isolation + PAT-scope integration suites (`test:isolation`, real Postgres) 501/501.
+  - **Scope discipline:** the same audit flagged a related, larger gap — NLQL cannot express "what's blocking this?" (`blocked`/`isBlocked`/`linkType` all rejected), costing 1+N calls per question. Not attempted here — it needs new AST/evaluator surface (a `blocked` predicate or `list_issues{includeLinks}`), which is real scope beyond "complete the guard," and a half-built query feature is worse than a filed one. Left for a follow-up pass; filed in § Ready below.
 - [x] (P1, M) **MCP token-efficiency pass — the highest-ratio findings from the token-efficiency audit** ✅ 2026-09-17, `apps/mcp` only [mcp-consumer-qa token-efficiency evidence — a realistic 56-call PM session cost 58,449 tokens; ~79% of response tokens were measured waste]
   - **`jsonResult` stopped pretty-printing.** `JSON.stringify(value, null, 2)` → `JSON.stringify(value)` across all 105 call sites — one line, no contract change. Indentation whitespace was ~25% of every response's tokens.
   - **Write tools echo a lean ack by default, full object behind `verbose: true`** (the surface's own existing compact/verbose convention, not a new one) — `create_issue`, `update_issue`, `set_issue_parent`, `move_issue`. Real driven-server measurement (stdio, real API, real client, this session): `create_issue` 542→100 tokens (**-82%**), `move_issue` 498→35 tokens (**-93%**, `{id,key,status}` — a status change doesn't touch title/assignee/priority/type). The old default repeated ids three ways (`statusId` + `status.id` + `status.projectId`), embedded a full user object (`avatarColor`/`emailNotifications`/`createdAt`), and always carried `rank`, `versions:[]`, `checklistProgress:{0,0}`.
