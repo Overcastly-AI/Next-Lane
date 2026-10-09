@@ -77,4 +77,34 @@ test.describe('AppHeader — right-hand control cluster', () => {
     expect(m.kbdHeight).toBeLessThan(20);
     expect(m.kbdHeight).toBeLessThan(m.searchHeight);
   });
+
+  // The header asked for `sm:h-13`, a height the spacing scale does not define,
+  // so Tailwind emitted nothing and (with `sm:py-0`) the header shrank to its
+  // 36px controls: the search trigger sat flush against the top edge and the
+  // bottom border with no padding at all. Geometry again, not class names.
+  test('the search trigger has breathing room inside the header bar', async ({
+    page,
+    request,
+  }, testInfo) => {
+    test.skip(testInfo.project.name === 'mobile-chrome', 'the trigger is icon-only below sm');
+
+    const { project } = await setupIsolatedProject(page, request, {
+      label: 'hdr-pad',
+      projectName: 'Header Padding QA',
+    });
+    await page.goto(`/projects/${project.id}/board`);
+    const search = page.getByRole('button', { name: /open command palette/i });
+    await expect(search).toBeVisible();
+
+    const gap = await page.evaluate(() => {
+      const btn = Array.from(document.querySelectorAll('header button')).find((b) =>
+        /search/i.test(b.textContent || ''),
+      )!;
+      const b = btn.getBoundingClientRect();
+      const h = btn.closest('header')!.getBoundingClientRect();
+      return { top: Math.round(b.top - h.top), bottom: Math.round(h.bottom - b.bottom) };
+    });
+    expect(gap.top, JSON.stringify(gap)).toBeGreaterThanOrEqual(8);
+    expect(gap.bottom, JSON.stringify(gap)).toBeGreaterThanOrEqual(8);
+  });
 });

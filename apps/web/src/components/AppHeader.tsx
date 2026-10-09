@@ -150,7 +150,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
   const navigate = useNavigate();
 
   return (
-    <header className="sticky top-0 z-30 flex flex-wrap items-center gap-x-2 gap-y-1.5 border-b border-ink-200 bg-surface/95 backdrop-blur-sm px-4 py-2 sm:h-13 sm:flex-nowrap sm:gap-3 sm:py-0">
+    <header className="sticky top-0 z-30 flex flex-wrap items-center gap-x-2 gap-y-1.5 border-b border-ink-200 bg-surface/95 backdrop-blur-sm px-4 py-2 sm:h-14 sm:flex-nowrap sm:gap-3 sm:py-0">
       {/* Sidebar drawer toggle — only below the lg breakpoint, where the
           persistent sidebar becomes an overlay drawer. */}
       <button
