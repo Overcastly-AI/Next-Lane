@@ -33,6 +33,7 @@ import { useExportCsv } from '@/api/export';
 import { useLabels, useSprints, useUsers } from '@/api/meta';
 import { useMyRole } from '@/api/workspaces';
 import { useCustomFields } from '@/api/custom-fields';
+import { useComponents } from '@/api/components';
 import {
   useSavedFilters,
   useCreateSavedFilter,
@@ -186,6 +187,7 @@ export function BoardPage() {
   const labelsQuery = useLabels(projectId);
   const sprintsQuery = useSprints(projectId);
   const customFieldsQuery = useCustomFields(projectId);
+  const componentsQuery = useComponents(projectId);
   const savedFiltersQuery = useSavedFilters(projectId);
 
   // Realtime — pass boardId so socket events invalidate the right cache entry.
@@ -497,6 +499,19 @@ export function BoardPage() {
     [sprintsQuery.data],
   );
 
+  const nlqlComponents = useMemo(
+    () => (componentsQuery.data ?? []).map((c) => ({ id: c.id, name: c.name })),
+    [componentsQuery.data],
+  );
+  const nlqlStatuses = useMemo(
+    () => (board?.statuses ?? []).map((s) => ({ id: s.id, name: s.name })),
+    [board?.statuses],
+  );
+  const nlqlLabels = useMemo(
+    () => (labelsQuery.data ?? []).map((l) => ({ id: l.id, name: l.name })),
+    [labelsQuery.data],
+  );
+
   const nlqlValidation = useMemo(() => {
     const q = nlqlQuery.trim();
     if (!q) return null; // empty = no filter, no error
@@ -507,8 +522,22 @@ export function BoardPage() {
     // there is no server round trip to 400 here; instead this reuses the
     // query bar's existing error affordance to give the same "there is no
     // such user" signal immediately, instead of a confident empty board.
-    return resolveQueryNames(q, { users: nlqlUsers, sprints: nlqlSprints });
-  }, [nlqlQuery, customFieldDefs, nlqlUsers, nlqlSprints]);
+    return resolveQueryNames(q, {
+      users: nlqlUsers,
+      sprints: nlqlSprints,
+      statuses: nlqlStatuses,
+      labels: nlqlLabels,
+      components: nlqlComponents,
+    });
+  }, [
+    nlqlQuery,
+    customFieldDefs,
+    nlqlUsers,
+    nlqlSprints,
+    nlqlStatuses,
+    nlqlLabels,
+    nlqlComponents,
+  ]);
 
   // ── Card colors ───────────────────────────────────────────────────────────
 
@@ -523,10 +552,11 @@ export function BoardPage() {
       currentUserId: currentUser?.id,
       users: nlqlUsers,
       sprints: nlqlSprints,
+      components: nlqlComponents,
       customFieldDefs,
       now: new Date(),
     }),
-    [currentUser?.id, nlqlUsers, nlqlSprints, customFieldDefs],
+    [currentUser?.id, nlqlUsers, nlqlSprints, nlqlComponents, customFieldDefs],
   );
 
   // ── Grouped issues ────────────────────────────────────────────────────────
@@ -549,6 +579,7 @@ export function BoardPage() {
           currentUserId: currentUser?.id,
           users: nlqlUsers,
           sprints: nlqlSprints,
+          components: nlqlComponents,
           customFieldDefs,
           now: new Date(),
         });
@@ -584,6 +615,7 @@ export function BoardPage() {
           currentUserId: currentUser?.id,
           users: nlqlUsers,
           sprints: nlqlSprints,
+          components: nlqlComponents,
           customFieldDefs,
           now: new Date(),
         });
@@ -650,6 +682,7 @@ export function BoardPage() {
     customFieldDefs,
     nlqlUsers,
     nlqlSprints,
+    nlqlComponents,
     currentUser?.id,
     activePresets,
   ]);
