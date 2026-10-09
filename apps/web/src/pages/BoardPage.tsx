@@ -908,7 +908,6 @@ export function BoardPage() {
 
   return (
     <CardFieldDefsProvider value={cardFieldDefs}>
-    <BoardSelectionContext.Provider value={selectionValue}>
     <Shell
       projectId={projectId}
       header={
@@ -925,6 +924,10 @@ export function BoardPage() {
         />
       }
     >
+      {/* Inside Shell, not around it: every branch of this component must
+          share one root element shape (see the comment above the loading
+          branch) or ProjectNav remounts when the board data lands. */}
+      <BoardSelectionContext.Provider value={selectionValue}>
       {/*
        * Toolbar — ONE row on desktop, three short rows on a phone.
        *
@@ -1367,8 +1370,8 @@ export function BoardPage() {
           onClear={clearSelection}
         />
       )}
+      </BoardSelectionContext.Provider>
     </Shell>
-    </BoardSelectionContext.Provider>
     </CardFieldDefsProvider>
   );
 }

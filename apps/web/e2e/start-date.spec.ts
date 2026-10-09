@@ -139,8 +139,13 @@ test.describe('Start date', () => {
     await startDateInput.fill('2026-02-01');
     await startDateInput.dispatchEvent('change');
 
+    // A human message, not the raw class-validator text the API returns
+    // ("startDate must be on or before dueDate") — and the rejected value
+    // must not stay in the input looking saved.
     await expect(
-      page.getByText(/startDate must be on or before dueDate/i),
+      page.getByText(/start date must be on or before the due date/i).first(),
     ).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/startDate must be on or before dueDate/)).toHaveCount(0);
+    await expect(page.getByLabel('Start date', { exact: true })).not.toHaveValue('2026-02-01');
   });
 });
