@@ -5,8 +5,12 @@ import { qk } from './keys';
 import { useAuth } from '@/auth/AuthContext';
 
 export function useWorkspaces() {
+  // Gate on auth: public pages (/login, /register, ...) must not fire an authed
+  // request that is guaranteed to 401.
+  const { isAuthenticated } = useAuth();
   return useQuery({
     queryKey: qk.workspaces,
+    enabled: isAuthenticated,
     queryFn: () => request<WorkspaceDto[]>('/workspaces'),
   });
 }

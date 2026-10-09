@@ -19,6 +19,10 @@ function describe(
   userName: (id: string) => string,
 ): { verb: string; from?: string; to?: string } {
   switch (a.field) {
+    case 'created':
+    case 'issue':
+      // Creation entry: no from/to to show, just "created this issue".
+      return { verb: 'created this issue' };
     case 'status':
       return {
         verb: 'changed status',

@@ -177,10 +177,15 @@ export function useWorkspaceContext(): WorkspaceContextValue {
  * chip reflect "the workspace you actually landed on" during navigation.
  */
 export function useSyncActiveWorkspace(workspaceId: string | undefined): void {
-  const { activeWorkspace, setActiveWorkspaceId } = useWorkspaceContext();
+  const { activeWorkspace, workspaces, setActiveWorkspaceId } = useWorkspaceContext();
+  // Only adopt ids the user can actually access. Adopting an unknown id (deleted
+  // / revoked / typo'd deep link) made the heal effect reset it, which re-fired
+  // this effect — an infinite ping-pong. Unknown ids are a no-op; once the
+  // workspace list loads this effect re-runs and syncs if the id is valid.
+  const known = workspaceId ? workspaces.some((w) => w.id === workspaceId) : false;
   useEffect(() => {
-    if (workspaceId && workspaceId !== activeWorkspace?.id) {
+    if (workspaceId && known && workspaceId !== activeWorkspace?.id) {
       setActiveWorkspaceId(workspaceId);
     }
-  }, [workspaceId, activeWorkspace?.id, setActiveWorkspaceId]);
+  }, [workspaceId, known, activeWorkspace?.id, setActiveWorkspaceId]);
 }

@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useRef, useState, type FormEvent } from 'react';
 import {
   useAddComment,
   useComments,
@@ -34,16 +34,22 @@ export function CommentsPanel({
   const commentsQuery = useComments(issueId);
   const addComment = useAddComment(issueId);
   const [body, setBody] = useState('');
+  // Synchronous in-flight guard: `isPending` only flips after a re-render, so
+  // a fast double-click would otherwise fire two POSTs.
+  const submittingRef = useRef(false);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     const text = body.trim();
-    if (!text) return;
+    if (!text || submittingRef.current) return;
+    submittingRef.current = true;
     try {
       await addComment.mutateAsync(text);
       setBody('');
     } catch (err) {
       toast.error(errorMessage(err, 'Could not post comment.'));
+    } finally {
+      submittingRef.current = false;
     }
   }
 
@@ -133,6 +139,7 @@ function CommentItem({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(comment.body);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const savingRef = useRef(false);
 
   function startEdit() {
     setDraft(comment.body);
@@ -147,11 +154,15 @@ function CommentItem({
       setEditing(false);
       return;
     }
+    if (savingRef.current) return;
+    savingRef.current = true;
     try {
       await updateComment.mutateAsync({ id: comment.id, body: text });
       setEditing(false);
     } catch (err) {
       toast.error(errorMessage(err, 'Could not save comment.'));
+    } finally {
+      savingRef.current = false;
     }
   }
 

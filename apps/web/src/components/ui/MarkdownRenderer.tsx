@@ -60,11 +60,15 @@ const PURIFY_CONFIG: DOMPurifyConfig = {
     'blockquote',
     'table', 'thead', 'tbody', 'tr', 'th', 'td',
     'span', 'div',
+    // Only ever kept as a read-only GFM task-list checkbox — see the
+    // afterSanitizeAttributes hook, which drops any other <input>.
+    'input',
   ],
   ALLOWED_ATTR: [
     'href', 'title', 'target', 'rel',
     'src', 'alt', 'width', 'height', 'referrerpolicy',
     'class',
+    'type', 'checked', 'disabled',
   ],
   // Force any remaining on* attributes or javascript: hrefs to be stripped.
   FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover', 'onfocus', 'onblur'],
@@ -107,6 +111,24 @@ DOMPurify.addHook('afterSanitizeAttributes', (node) => {
   if (node.tagName === 'A') {
     const href = node.getAttribute('href');
     if (href && /^nl-image:/i.test(href)) node.removeAttribute('href');
+    return;
+  }
+  if (node.tagName === 'INPUT') {
+    // Task-list checkbox (`- [ ]` / `- [x]`): keep ONLY a disabled checkbox,
+    // nothing else (no name/value/form attrs, never interactive).
+    if (node.getAttribute('type') !== 'checkbox') {
+      node.remove();
+      return;
+    }
+    const checked = node.hasAttribute('checked');
+    for (const attr of Array.from(node.attributes)) node.removeAttribute(attr.name);
+    node.setAttribute('type', 'checkbox');
+    node.setAttribute('disabled', '');
+    node.setAttribute('class', 'mr-1.5 align-middle');
+    if (checked) node.setAttribute('checked', '');
+    node.setAttribute('aria-label', checked ? 'Completed task' : 'Incomplete task');
+    const li = node.parentElement;
+    if (li && li.tagName === 'LI') li.setAttribute('class', 'list-none -ml-5');
     return;
   }
   if (node.tagName !== 'IMG') return;

@@ -81,7 +81,7 @@ export function IssueDetailDrawer({
 
   useOverlay({ open: true, onClose, containerRef: panelRef });
 
-  function patch(field: keyof IssueDto, value: unknown) {
+  function patch(field: keyof IssueDto, value: unknown, onRejected?: () => void) {
     if (!issueQuery.data) return;
     update.mutate(
       {
@@ -90,8 +90,10 @@ export function IssueDetailDrawer({
         patch: { [field]: value } as never,
       },
       {
-        onError: (err) =>
-          toast.error(errorMessage(err, 'Could not save your change.')),
+        onError: (err) => {
+          onRejected?.();
+          toast.error(humanizeSaveError(errorMessage(err, 'Could not save your change.')));
+        },
       },
     );
   }
@@ -328,7 +330,7 @@ function DrawerBody({
                 if (editable && title.trim() && title !== issue.title)
                   onPatch('title', title.trim());
               }}
-              className="w-full rounded border border-transparent px-1 font-display text-lg font-semibold tracking-[-0.02em] text-ink-900 transition-colors duration-[120ms] hover:border-ink-200 focus:border-signal-400 focus:outline-none disabled:cursor-default disabled:hover:border-transparent"
+              className="w-full rounded border border-transparent bg-transparent px-1 font-display text-lg font-semibold tracking-[-0.02em] text-ink-900 transition-colors duration-[120ms] hover:border-ink-200 focus:border-signal-400 focus:outline-none disabled:cursor-default disabled:hover:border-transparent"
             />
 
             <div>
@@ -568,12 +570,14 @@ function DrawerBody({
 
             <StartDateField
               startDate={issue.startDate ?? null}
+              dueDate={issue.dueDate ?? null}
               editable={editable}
               onPatch={onPatch}
             />
 
             <DueDateField
               dueDate={issue.dueDate ?? null}
+              startDate={issue.startDate ?? null}
               statusCategory={issue.status?.category}
               editable={editable}
               onPatch={onPatch}
@@ -871,6 +875,18 @@ function VersionsField({
   );
 }
 
+/** Turn raw class-validator field-name messages into human text. */
+function humanizeSaveError(msg: string): string {
+  return msg
+    .replace(/startDate must be on or before dueDate/gi, 'Start date must be on or before the due date.')
+    .replace(/dueDate must be on or after startDate/gi, 'Due date must be on or after the start date.');
+}
+
+const START_AFTER_DUE = 'Start date must be on or before the due date.';
+const DUE_BEFORE_START = 'Due date must be on or after the start date.';
+
+type DatePatch = (field: keyof IssueDto, value: unknown, onRejected?: () => void) => void;
+
 /**
  * Start date picker sidebar field. Mirrors DueDateField's UX exactly (same
  * input control + clear affordance), minus the overdue-highlight semantics
@@ -878,22 +894,38 @@ function VersionsField({
  */
 function StartDateField({
   startDate,
+  dueDate,
   editable,
   onPatch,
 }: {
   startDate: string | null;
+  dueDate: string | null;
   editable: boolean;
-  onPatch: (field: keyof IssueDto, value: unknown) => void;
+  onPatch: DatePatch;
 }) {
+  const toast = useToast();
+  // Bumping the key remounts DateInput so a rejected value snaps back to the
+  // saved one instead of lingering in the box.
+  const [nonce, setNonce] = useState(0);
+  const revert = () => setNonce((n) => n + 1);
+  function commit(val: string | null) {
+    if (val && dueDate && val > dueDate.slice(0, 10)) {
+      toast.error(START_AFTER_DUE);
+      revert();
+      return;
+    }
+    onPatch('startDate', val, revert);
+  }
   return (
     <Field label="Start date" htmlFor="d-start-date">
       {editable ? (
         <div className="flex items-center gap-1.5">
           <DateInput
+            key={nonce}
             id="d-start-date"
             aria-label="Start date"
             value={startDate}
-            onCommit={(val) => onPatch('startDate', val)}
+            onCommit={commit}
           />
           {startDate && (
             <button
@@ -928,15 +960,28 @@ function StartDateField({
  */
 function DueDateField({
   dueDate,
+  startDate,
   statusCategory,
   editable,
   onPatch,
 }: {
   dueDate: string | null;
+  startDate: string | null;
   statusCategory: string | undefined;
   editable: boolean;
-  onPatch: (field: keyof IssueDto, value: unknown) => void;
+  onPatch: DatePatch;
 }) {
+  const toast = useToast();
+  const [nonce, setNonce] = useState(0);
+  const revert = () => setNonce((n) => n + 1);
+  function commit(val: string | null) {
+    if (val && startDate && val < startDate.slice(0, 10)) {
+      toast.error(DUE_BEFORE_START);
+      revert();
+      return;
+    }
+    onPatch('dueDate', val, revert);
+  }
   const isDone = statusCategory === StatusCategory.DONE;
   const isOverdue =
     !isDone && dueDate !== null && new Date(dueDate) < new Date();
@@ -946,10 +991,11 @@ function DueDateField({
       {editable ? (
         <div className="flex items-center gap-1.5">
           <DateInput
+            key={nonce}
             id="d-due-date"
             aria-label="Due date"
             value={dueDate}
-            onCommit={(val) => onPatch('dueDate', val)}
+            onCommit={commit}
             className={
               isOverdue
                 ? 'border-amber-300 bg-amber-50 text-amber-800 hover:border-amber-400'
@@ -1053,7 +1099,7 @@ function StatusHeaderPicker({
           'transition-colors duration-[120ms] hover:border-signal-300',
           'focus:border-signal-400 focus:outline-none focus:ring-2 focus:ring-signal-200',
           'disabled:cursor-not-allowed disabled:opacity-60',
-          "bg-[url('data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 fill=%22none%22 viewBox=%220 0 24 24%22 stroke=%22%238b95a8%22 stroke-width=%222%22><path stroke-linecap=%22round%22 stroke-linejoin=%22round%22 d=%22M19 9l-7 7-7-7%22/></svg>')] bg-[length:11px] bg-[right_0.5rem_center] bg-no-repeat",
+          "nl-select-chevron",
         )}
       >
         {statuses.map((s) => (

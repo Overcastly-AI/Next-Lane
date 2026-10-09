@@ -247,6 +247,7 @@ function LabelList({
           {creating ? (
             <CreateLabelForm
               projectId={projectId}
+              onCreated={(label) => onToggle(label, true)}
               onDone={() => setCreating(false)}
             />
           ) : (
@@ -386,9 +387,12 @@ function InlineEditLabelRow({
 
 function CreateLabelForm({
   projectId,
+  onCreated,
   onDone,
 }: {
   projectId: string;
+  /** Called with the new label so the caller can attach it to the issue. */
+  onCreated: (label: LabelDto) => void;
   onDone: () => void;
 }) {
   const create = useCreateLabel(projectId);
@@ -402,8 +406,9 @@ function CreateLabelForm({
     create.mutate(
       { name: trimmed, color },
       {
-        onSuccess: () => {
+        onSuccess: (label) => {
           toast.success('Label created.');
+          onCreated(label);
           onDone();
         },
         onError: (err) =>

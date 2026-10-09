@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { setupIsolatedProject } from './helpers';
+import { openFilterPanel } from './board-toolbar';
 
 /** Create a uniquely-titled issue from the board and open its detail drawer. */
 async function createAndOpenIssue(page: Page, title: string): Promise<void> {
@@ -86,7 +87,9 @@ test.describe('Labels management & filtering', () => {
       name: new RegExp(labelName, 'i'),
     });
     await expect(newLabelItem).toBeVisible({ timeout: 10_000 });
-    await newLabelItem.click();
+    // QA #19: a label created from the drawer is attached to the issue
+    // automatically (no second click needed).
+    await expect(newLabelItem).toHaveAttribute('aria-checked', 'true');
 
     const drawer = page.getByRole('dialog').last();
     await expect(drawer.getByText(labelName).first()).toBeVisible({
@@ -103,11 +106,11 @@ test.describe('Labels management & filtering', () => {
     await expect(page.getByText(otherTitle).first()).toBeVisible();
 
     // Apply the label filter for the new label.
-    await page.getByRole('button', { name: /^Labels/ }).click();
-    const filter = page.getByRole('dialog', { name: 'Filter by label' });
+    const panel = await openFilterPanel(page);
+    const filter = panel.getByRole('group', { name: 'Filter by label' });
     await expect(filter).toBeVisible();
     await filter
-      .getByRole('menuitemcheckbox', { name: new RegExp(labelName, 'i') })
+      .getByRole('checkbox', { name: new RegExp(labelName, 'i') })
       .click();
     await page.keyboard.press('Escape'); // close filter popover
 
