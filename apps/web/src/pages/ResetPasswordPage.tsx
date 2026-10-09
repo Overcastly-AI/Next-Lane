@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { resetPassword } from '@/api/auth';
 import { ApiError } from '@/api/client';
-import { AuthShell } from './AuthShell';
+import { AuthShell, AuthError, AUTH_BUTTON, AUTH_INPUT, AUTH_LINK } from './AuthShell';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Field } from '@/components/ui/Field';
@@ -23,14 +23,14 @@ export function ResetPasswordPage() {
       <AuthShell
         title="Invalid reset link"
         footer={
-          <p className="text-sm text-slate-500">
-            <Link to="/forgot-password" className="font-medium text-brand-600 hover:text-brand-700">
+          <p>
+            <Link to="/forgot-password" className={AUTH_LINK}>
               Request a new link
             </Link>
           </p>
         }
       >
-        <p className="text-sm text-slate-600 text-center">
+        <p className="text-sm text-ink-600">
           This reset link is missing its token. Please request a new one.
         </p>
       </AuthShell>
@@ -43,14 +43,14 @@ export function ResetPasswordPage() {
         title="Password updated"
         subtitle="You can now sign in with your new password."
         footer={
-          <p className="text-sm text-slate-500">
-            <Link to="/login" className="font-medium text-brand-600 hover:text-brand-700">
+          <p>
+            <Link to="/login" className={AUTH_LINK}>
               Go to sign in
             </Link>
           </p>
         }
       >
-        <p className="text-sm text-slate-600 text-center">
+        <p className="text-sm text-ink-600">
           Your password has been updated successfully.
         </p>
       </AuthShell>
@@ -88,8 +88,8 @@ export function ResetPasswordPage() {
       title="Choose a new password"
       subtitle="Enter and confirm your new password below."
       footer={
-        <p className="text-sm text-slate-500">
-          <Link to="/login" className="font-medium text-brand-600 hover:text-brand-700">
+        <p>
+          <Link to="/login" className={AUTH_LINK}>
             Back to sign in
           </Link>
         </p>
@@ -104,6 +104,8 @@ export function ResetPasswordPage() {
             required
             autoFocus
             minLength={8}
+            maxLength={200}
+            className={AUTH_INPUT}
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
             placeholder="••••••••"
@@ -115,17 +117,15 @@ export function ResetPasswordPage() {
             type="password"
             autoComplete="new-password"
             required
+            maxLength={200}
+            className={AUTH_INPUT}
             value={confirm}
             onChange={(e) => setConfirm(e.target.value)}
             placeholder="••••••••"
           />
         </Field>
-        {error && (
-          <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
-            {error}
-          </p>
-        )}
-        <Button type="submit" loading={submitting} className="w-full">
+        {error && <AuthError>{error}</AuthError>}
+        <Button type="submit" loading={submitting} className={AUTH_BUTTON}>
           Set new password
         </Button>
       </form>

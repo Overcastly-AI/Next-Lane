@@ -376,7 +376,7 @@ Each item below is redesigned design-skill-led, then ✅ when shipped + verified
 
 **Phase C — Pages**
 - [x] Auth: `LoginPage` · `RegisterPage` · `ForgotPasswordPage` — `slate-*`/`brand-*` → `ink-*`/`signal-*`; password label → `text-xs font-medium text-ink-600`; forgot-password link consistent; email chip in success state uses `<code>` mono; error banners get `role="alert"` + border ✅ 2026-06-29
-- [ ] `AuthShell` · `ResetPasswordPage` (already clean; no changes needed)
+- [x] `AuthShell` · `ResetPasswordPage` — split layout with deep-cobalt brand panel (dispatch-ledger rail-tick signature), unified `Field` labels, 44px touch controls, AA footer ✅ 2026-10-09
 - [x] `PulseDashboardPage` — collapsed the permanently-empty `RecentActivityCard` to a one-line affordance, raw `<select>` → shared `Select` primitive (kept `#pulse-ws-select` id/native semantics for the `workspace-switcher`/`workspace-settings` canonical suites), new opt-in `Button`/`Select` `lg` (40px) size on the admin row for the touch-target floor, `ink-500`→`ink-600` on the "Workspace" label + "PROJECTS" heading (4.47:1 → 6.98:1) ✅ 2026-09-19 (see dated run record below)
 - [x] `DashboardPage` — stale entry; Home is `PulseDashboardPage` (ticked above, plus `ProjectCard` / `CreateProjectModal` redesign ✅ 2026-10-09)
 - [x] `MyWorkPage` (`IssueRow`/`StatusPill`) — fixed-width metadata grid (StatusPill column ragged x=1028.4–1059.8 → constant across all 41 rows), issue-key contrast 2.56:1→4.83:1, subtitle contrast 4.20:1→6.68:1, section count badge routed through shared `Badge`, plus the row button's missing `focus-visible` ring added ✅ 2026-09-19 (see dated run record below; 8 of the audit's 12 findings — sort/filter, dedup badge, rest of the token migration, `StatusPill`'s own chip vocabulary, conditional project badge, mobile metadata, icon a11y names — intentionally out of this pass's sifted scope, filed to BACKLOG)
@@ -393,7 +393,8 @@ Each item below is redesigned design-skill-led, then ✅ when shipped + verified
 - [x] `settings/ApiTokensSection` — full `slate-*` → `ink-*`; scope pill `indigo-*` → `signal-*` with `ring-1 ring-inset`; status badge `rounded-full` → `rounded` + `ring-1 ring-inset` (consistent badge vocabulary); status dot `bg-green-500` → `bg-emerald-500`; checkbox `text-indigo-600 focus:ring-indigo-500` → `text-signal-600 focus-visible:ring-2 focus-visible:ring-signal-200`; empty state upgraded to icon+heading+description (key icon) ✅ 2026-06-29
 - [ ] `settings/WebhookFormModal` · `ShareSection`
 - [x] `ProfileSettingsPage` — already clean; no changes needed ✅
-- [ ] `WorkspaceMembersPage` · `WorkspaceAuditLogPage` · `SharedBoardPage`
+- [x] `WorkspaceMembersPage` — two-line identity, shared Select/Badge, Remove stays in-card at 393px, token cleanup ✅ 2026-10-09
+- [ ] `WorkspaceAuditLogPage` · `SharedBoardPage`
 - [x] `NotificationsPage` — nl-issue-key chip + animated unread dot ✅ 2026-06-29
 
 **Phase D — Cross-cutting components**

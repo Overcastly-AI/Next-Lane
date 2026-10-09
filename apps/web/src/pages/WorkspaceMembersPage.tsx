@@ -8,6 +8,12 @@
  *
  * Non-admin members can view the list but have no mutation affordances.
  *
+ * Row anatomy (every control stays inside the card at 393px — see
+ * e2e/workspace-members-layout.spec.ts):
+ *   desktop  [avatar] name / email ............ [role] [Remove]
+ *   mobile   [avatar] name / email
+ *                     [role] [Remove]
+ *
  * Route: /workspaces/:workspaceId/members
  */
 import { useMemo, useState } from 'react';
@@ -35,14 +41,23 @@ import {
 } from '@/api/workspaces';
 import { useAuth } from '@/auth/AuthContext';
 import { errorMessage } from '@/lib/errorMessage';
+import { cn } from '@/lib/cn';
 
-// ── Role badge styling ────────────────────────────────────────────────────────
+// ── Role badge styling (ink/signal tokens only) ───────────────────────────────
 
-const ROLE_CLASSES: Record<Role, string> = {
-  [Role.ADMIN]: 'bg-purple-100 text-purple-700',
-  [Role.MEMBER]: 'bg-blue-100 text-blue-700',
-  [Role.VIEWER]: 'bg-slate-100 text-slate-600',
+const ROLE_BADGE: Record<Role, string> = {
+  [Role.ADMIN]: 'bg-signal-50 text-signal-700',
+  [Role.MEMBER]: 'bg-ink-100 text-ink-700',
+  [Role.VIEWER]: 'bg-transparent text-ink-600 ring-1 ring-inset ring-ink-200',
 };
+
+function RoleBadge({ role, testId }: { role: Role; testId?: string }) {
+  return (
+    <span data-testid={testId} className="inline-flex">
+      <Badge className={cn('px-2 py-1', ROLE_BADGE[role])}>{role}</Badge>
+    </span>
+  );
+}
 
 // ── Member row ────────────────────────────────────────────────────────────────
 
@@ -61,61 +76,57 @@ function MemberRow({
   onRoleChange: (m: MembershipDto, role: Role) => void;
   roleChangePending: boolean;
 }) {
-  const roleClass = ROLE_CLASSES[membership.role] ?? 'bg-slate-100 text-slate-600';
+  const editable = isAdmin && !isMe;
 
   return (
     <li
-      className="flex items-center gap-3 py-3"
+      className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-2.5 py-3.5 sm:grid-cols-[auto_minmax(0,1fr)_auto]"
       data-testid="member-row"
     >
       <Avatar user={membership.user} size="md" className="shrink-0" />
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-slate-900">
+      <div className="min-w-0">
+        <p className="truncate text-sm font-medium text-ink-900">
           {membership.user.name}
           {isMe && (
-            <span className="ml-1.5 text-xs font-normal text-slate-400">
-              (you)
-            </span>
+            <span className="ml-1.5 text-xs font-normal text-ink-500">(you)</span>
           )}
         </p>
-        <p className="truncate text-xs text-slate-500">{membership.user.email}</p>
+        <p className="truncate text-xs text-ink-500">{membership.user.email}</p>
       </div>
 
-      {/* Role: dropdown for admin (not self), badge for everyone else */}
-      {isAdmin && !isMe ? (
-        <Select
-          value={membership.role}
-          onChange={(e) => onRoleChange(membership, e.target.value as Role)}
-          disabled={roleChangePending}
-          aria-label={`Role for ${membership.user.name}`}
-          data-testid="member-role-select"
-          className="w-28 shrink-0 text-xs"
-        >
-          <option value={Role.ADMIN}>ADMIN</option>
-          <option value={Role.MEMBER}>MEMBER</option>
-          <option value={Role.VIEWER}>VIEWER</option>
-        </Select>
-      ) : (
-        <span
-          className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${roleClass}`}
-          data-testid="member-role-badge"
-        >
-          {membership.role}
-        </span>
-      )}
+      {/* Role: dropdown for admin (not self), badge for everyone else.
+          Remove sits beside it (ADMINs only, hidden for self). */}
+      <div className="col-start-2 flex min-w-0 items-center gap-2 sm:col-start-3">
+        {editable ? (
+          <Select
+            value={membership.role}
+            onChange={(e) => onRoleChange(membership, e.target.value as Role)}
+            disabled={roleChangePending}
+            aria-label={`Role for ${membership.user.name}`}
+            data-testid="member-role-select"
+            className="h-10 w-32 shrink-0 sm:h-9"
+          >
+            <option value={Role.ADMIN}>ADMIN</option>
+            <option value={Role.MEMBER}>MEMBER</option>
+            <option value={Role.VIEWER}>VIEWER</option>
+          </Select>
+        ) : (
+          <RoleBadge role={membership.role} testId="member-role-badge" />
+        )}
 
-      {/* Remove affordance — ADMINs only, hidden for self */}
-      {isAdmin && !isMe && (
-        <Button
-          variant="danger"
-          size="sm"
-          onClick={() => onRemove(membership)}
-          data-testid="remove-member-button"
-          aria-label={`Remove ${membership.user.name} from workspace`}
-        >
-          Remove
-        </Button>
-      )}
+        {editable && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onRemove(membership)}
+            data-testid="remove-member-button"
+            aria-label={`Remove ${membership.user.name} from workspace`}
+            className="h-10 shrink-0 px-3 text-red-700 hover:bg-red-50 hover:text-red-700 focus-visible:ring-red-500 sm:h-9"
+          >
+            Remove
+          </Button>
+        )}
+      </div>
     </li>
   );
 }
@@ -153,11 +164,9 @@ function InviteForm({ workspaceId }: { workspaceId: string }) {
       data-testid="invite-member-form"
       aria-label="Invite a new member"
     >
-      <h2 className="mb-3 text-sm font-semibold text-ink-900">
-        Invite member
-      </h2>
-      <div className="flex flex-wrap items-end gap-2">
-        <div className="min-w-0 flex-1" style={{ minWidth: '180px' }}>
+      <h2 className="mb-3 text-sm font-semibold text-ink-900">Invite member</h2>
+      <div className="grid grid-cols-2 items-end gap-3 sm:grid-cols-[minmax(0,1fr)_9rem_auto]">
+        <div className="col-span-2 sm:col-span-1">
           <Field label="Email address" htmlFor="invite-email">
             <Input
               id="invite-email"
@@ -168,28 +177,29 @@ function InviteForm({ workspaceId }: { workspaceId: string }) {
               placeholder="colleague@example.com"
               required
               autoComplete="off"
+              className="h-10 sm:h-9"
             />
           </Field>
         </div>
-        <div className="w-36 shrink-0">
-          <Field label="Role" htmlFor="invite-role">
-            <Select
-              id="invite-role"
-              data-testid="invite-role-select"
-              value={role}
-              onChange={(e) => setRole(e.target.value as Role)}
-            >
-              <option value={Role.MEMBER}>Member</option>
-              <option value={Role.ADMIN}>Admin</option>
-              <option value={Role.VIEWER}>Viewer</option>
-            </Select>
-          </Field>
-        </div>
+        <Field label="Role" htmlFor="invite-role">
+          <Select
+            id="invite-role"
+            data-testid="invite-role-select"
+            value={role}
+            onChange={(e) => setRole(e.target.value as Role)}
+            className="h-10 sm:h-9"
+          >
+            <option value={Role.MEMBER}>Member</option>
+            <option value={Role.ADMIN}>Admin</option>
+            <option value={Role.VIEWER}>Viewer</option>
+          </Select>
+        </Field>
         <Button
           type="submit"
           loading={addMember.isPending}
           disabled={!email.trim() || addMember.isPending}
           data-testid="invite-member-submit"
+          className="h-10 sm:h-9 disabled:border-ink-200 disabled:bg-ink-100 disabled:text-ink-600 disabled:opacity-100 disabled:shadow-none"
         >
           Invite
         </Button>
@@ -199,6 +209,18 @@ function InviteForm({ workspaceId }: { workspaceId: string }) {
 }
 
 // ── Page ──────────────────────────────────────────────────────────────────────
+
+const ROLE_ORDER: Record<Role, number> = {
+  [Role.ADMIN]: 0,
+  [Role.MEMBER]: 1,
+  [Role.VIEWER]: 2,
+};
+
+const LEGEND: { role: Role; text: string }[] = [
+  { role: Role.ADMIN, text: 'Full control — can manage members and settings.' },
+  { role: Role.MEMBER, text: 'Can create and edit issues.' },
+  { role: Role.VIEWER, text: 'Read-only access.' },
+];
 
 export function WorkspaceMembersPage() {
   const { workspaceId = '' } = useParams<{ workspaceId: string }>();
@@ -221,12 +243,6 @@ export function WorkspaceMembersPage() {
   const [pendingRemove, setPendingRemove] = useState<MembershipDto | null>(null);
 
   // Sort: ADMIN first, then MEMBER, then VIEWER; alpha within each group.
-  const ROLE_ORDER: Record<Role, number> = {
-    [Role.ADMIN]: 0,
-    [Role.MEMBER]: 1,
-    [Role.VIEWER]: 2,
-  };
-
   const members = useMemo(() => {
     if (!membersQuery.data) return [];
     return [...membersQuery.data].sort((a, b) => {
@@ -275,8 +291,8 @@ export function WorkspaceMembersPage() {
         data-testid="workspace-members-page"
       >
         <div className="mb-5">
-          <h1 className="text-lg font-semibold text-slate-900">Members</h1>
-          <p className="mt-0.5 text-sm text-slate-500">
+          <h1 className="font-display text-lg font-semibold text-ink-900">Members</h1>
+          <p className="mt-0.5 text-sm text-ink-600">
             Everyone with access to this workspace.
           </p>
         </div>
@@ -292,22 +308,22 @@ export function WorkspaceMembersPage() {
             onRetry={() => void membersQuery.refetch()}
           />
         ) : (
-          <section className="rounded-xl border border-slate-200 bg-surface p-4 shadow-card sm:p-5">
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-slate-900">
+          <section className="rounded-xl border border-ink-200 bg-surface p-4 shadow-card sm:p-5">
+            <div className="mb-1 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+              <h2 className="text-sm font-semibold text-ink-900">
                 {members.length}{' '}
                 {members.length === 1 ? 'member' : 'members'}
               </h2>
               {!isAdmin && myRole !== null && (
-                <span className="text-xs text-slate-400">
+                <span className="text-xs text-ink-500">
                   Removal is restricted to workspace administrators.
                 </span>
               )}
             </div>
             {members.length === 0 ? (
-              <p className="py-4 text-sm text-slate-400">No members yet.</p>
+              <p className="py-4 text-sm text-ink-500">No members yet.</p>
             ) : (
-              <ul className="divide-y divide-slate-100">
+              <ul className="divide-y divide-ink-100">
                 {members.map((m) => (
                   <MemberRow
                     key={m.id}
@@ -324,25 +340,15 @@ export function WorkspaceMembersPage() {
           </section>
         )}
 
-        {/* Badge legend */}
-        <div className="mt-4 flex flex-wrap gap-3 text-xs text-slate-500">
-          <span className="flex items-center gap-1.5">
-            <span className="inline-flex items-center rounded-full bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-700">
-              ADMIN
-            </span>
-            Full control — can manage members and settings.
-          </span>
-          <span className="flex items-center gap-1.5">
-            <Badge>MEMBER</Badge>
-            Can create and edit issues.
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
-              VIEWER
-            </span>
-            Read-only access.
-          </span>
-        </div>
+        {/* Role legend */}
+        <ul className="mt-5 grid list-none gap-2.5 text-xs text-ink-600 sm:grid-cols-3 sm:gap-4">
+          {LEGEND.map(({ role, text }) => (
+            <li key={role} className="flex items-start gap-2">
+              <RoleBadge role={role} />
+              <span className="pt-1">{text}</span>
+            </li>
+          ))}
+        </ul>
       </div>
 
       <ConfirmDialog
@@ -351,7 +357,7 @@ export function WorkspaceMembersPage() {
         message={
           <>
             Remove{' '}
-            <span className="font-medium text-slate-900">
+            <span className="font-medium text-ink-900">
               {pendingRemove?.user.name}
             </span>{' '}
             ({pendingRemove?.user.email}) from this workspace? They will lose all
