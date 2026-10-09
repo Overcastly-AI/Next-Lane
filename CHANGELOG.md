@@ -16,6 +16,36 @@ staged here by hand (see [`RELEASING.md`](./RELEASING.md))._
 
 ---
 
+## [0.21.0] — 2026-10-09
+
+[Compare with v0.20.0](https://github.com/Overcastly-AI/Next-Lane/compare/v0.20.0...v0.21.0)
+
+### Features
+
+* **web:** board redesign - one-row toolbar with Filter popover, meta-row cards, 40px touch targets (GA [#15](https://github.com/Overcastly-AI/Next-Lane/issues/15) [#20](https://github.com/Overcastly-AI/Next-Lane/issues/20)) ([a759bf3](https://github.com/Overcastly-AI/Next-Lane/commit/a759bf3fc4db96961a08bb85de75fe884f01182e))
+* **web:** elevate Backlog + Triage with shared list shell, header and row ([f097467](https://github.com/Overcastly-AI/Next-Lane/commit/f09746708c8c47f5d0ab6ed0530af909bb4437e8))
+* **web:** global keyboard shortcuts + "?" cheat-sheet, board bulk select ([012d7b2](https://github.com/Overcastly-AI/Next-Lane/commit/012d7b23e9da61d307a50192693893462c6b807e))
+* **web:** real 404, error boundary, PWA/meta basics, About + What's new ([51ada0b](https://github.com/Overcastly-AI/Next-Lane/commit/51ada0bdd493d970f9b23677d21b314f5351cd91))
+* **web:** redesign auth shell (brand panel) + workspace members rows; register limits ([25ae60e](https://github.com/Overcastly-AI/Next-Lane/commit/25ae60e98ae420be080714d137c971c04a8cf4c3))
+* **web:** sample project CTA + dashboard Getting started checklist ([6539e8c](https://github.com/Overcastly-AI/Next-Lane/commit/6539e8cf41b68b88b01ba5d919d35aa15231965d))
+* **web:** sprint-aware project cards, unified Home header, key-deriving New project modal ([d78dff3](https://github.com/Overcastly-AI/Next-Lane/commit/d78dff377020279a0f03fc2b27b6c568e1e6268a))
+
+### Bug Fixes
+
+* **api:** GA bug slice - search prefix match, single assign notification, sprint date range, projects 400, project key format, neutral NLQL errors ([c2c8935](https://github.com/Overcastly-AI/Next-Lane/commit/c2c8935a890d180f73cf8ea5b9971c090d57ebb0))
+* **api:** prefix search must never match less than exact search ([eabbf3c](https://github.com/Overcastly-AI/Next-Lane/commit/eabbf3c7080501e48c5ded0f1c219d6524113a08))
+* **web:** AA contrast for dark label chips + avatar initials; Select chevron renders ([6694944](https://github.com/Overcastly-AI/Next-Lane/commit/6694944cbe50c038f8cc4b7510ca111195c593cc))
+* **web:** board NLQL resolves status/label/component names (GA bug [#1](https://github.com/Overcastly-AI/Next-Lane/issues/1)) ([b105aa3](https://github.com/Overcastly-AI/Next-Lane/commit/b105aa3fd83f8a0549f9a9cfb83e8e578b66eea6))
+* **web:** cn() merges Tailwind classes via tailwind-merge (members row overflow) ([47e97a3](https://github.com/Overcastly-AI/Next-Lane/commit/47e97a3dcff449361d84d1ebeb0a69f667a1cade))
+* **web:** GA bug-fix slice (QA [#4](https://github.com/Overcastly-AI/Next-Lane/issues/4) [#5](https://github.com/Overcastly-AI/Next-Lane/issues/5) [#8](https://github.com/Overcastly-AI/Next-Lane/issues/8) [#10](https://github.com/Overcastly-AI/Next-Lane/issues/10) [#13](https://github.com/Overcastly-AI/Next-Lane/issues/13) [#16](https://github.com/Overcastly-AI/Next-Lane/issues/16) [#17](https://github.com/Overcastly-AI/Next-Lane/issues/17) [#19](https://github.com/Overcastly-AI/Next-Lane/issues/19)) ([7f0d5b9](https://github.com/Overcastly-AI/Next-Lane/commit/7f0d5b9ed1860c223a338816ae79b4d486e01e38))
+* **web:** give the header search bar room — sm:h-13 was never a real height ([cbedb74](https://github.com/Overcastly-AI/Next-Lane/commit/cbedb7470eac8263a8505d29f1dbbeec4a4304f1))
+* **web:** palette Enter opens top hit, plain-text snippets, recently viewed, project key validation ([0018dfd](https://github.com/Overcastly-AI/Next-Lane/commit/0018dfda40e12e0d0630fcf2457f27973bb8f783))
+* **web:** project-nav menus no longer close themselves while the board loads ([17a1511](https://github.com/Overcastly-AI/Next-Lane/commit/17a1511acac1134c6a7fe82b53a4acb44b0c3ade)), closes [#8](https://github.com/Overcastly-AI/Next-Lane/issues/8)
+
+### Performance
+
+* **web:** bundle only the five newest releases for What's new ([db563a5](https://github.com/Overcastly-AI/Next-Lane/commit/db563a5c6fe4482a31ca294e0d9104e12c9c002e))
+
 ## [0.20.0] — 2026-09-23
 
 [Compare with v0.19.0](https://github.com/Overcastly-AI/Next-Lane/compare/v0.19.0...v0.20.0)
