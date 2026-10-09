@@ -13,6 +13,7 @@
  */
 import { test, expect, type APIRequestContext, type Page } from '@playwright/test';
 import { createProject, createWorkspace, login, registerNewUser } from './helpers';
+import { openFilterPanel } from './board-toolbar';
 
 interface Ctx {
   workspaceId: string;
@@ -163,6 +164,9 @@ test.describe('Sidebar — desktop', () => {
 
     // No filter configured yet — the empty-state "+ Default filter" chip
     // opens the same editor as the filled indicator does once set.
+    // The "Default filter" affordance lives in the Filter popover's footer.
+    await expect(page.getByTestId('board-filter-trigger')).toBeVisible({ timeout: 15_000 });
+    await openFilterPanel(page);
     const emptyChip = page.getByTestId('board-filter-chip');
     await expect(emptyChip).toBeVisible({ timeout: 15_000 });
     await emptyChip.click();

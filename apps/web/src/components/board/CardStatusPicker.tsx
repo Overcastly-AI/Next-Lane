@@ -173,7 +173,10 @@ export function CardStatusPicker({
         onClick={handleTriggerClick}
         onKeyDown={handleTriggerKeyDown}
         className={cn(
-          'flex h-4 w-4 shrink-0 items-center justify-center rounded-full ring-1 ring-transparent transition-all duration-[120ms]',
+          /* 16px dot; on phones a ::before widens the HIT area to 40x40
+             without changing the card's visual density. */
+          'relative flex h-4 w-4 shrink-0 items-center justify-center rounded-full ring-1 ring-transparent transition-all duration-[120ms]',
+          "max-sm:before:absolute max-sm:before:-inset-3 max-sm:before:content-['']",
           'focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-400 focus-visible:ring-offset-1',
           ringClass,
         )}
@@ -192,7 +195,7 @@ export function CardStatusPicker({
           aria-label="Change status"
           data-testid="card-status-menu"
           className={cn(
-            'absolute left-0 top-6 z-50 min-w-[10rem] rounded-lg border border-ink-200',
+            'absolute left-0 top-6 z-50 min-w-[10rem] rounded-md border border-ink-200',
             'bg-surface py-1 shadow-dropdown',
           )}
         >
@@ -208,7 +211,7 @@ export function CardStatusPicker({
                   onClick={(e) => handleOptionClick(e, s.id)}
                   onKeyDown={(e) => handleOptionKeyDown(e, s.id)}
                   className={cn(
-                    'flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm',
+                    'flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm max-sm:py-3',
                     'focus:outline-none focus-visible:bg-ink-50',
                     isCurrent
                       ? 'bg-ink-50 font-semibold text-ink-900'

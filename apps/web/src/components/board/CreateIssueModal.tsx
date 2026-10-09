@@ -217,8 +217,8 @@ export function CreateIssueModal({
 
         {/* Custom fields for the selected issue type */}
         {applicableFields.length > 0 && (
-          <div className="space-y-3 border-t border-slate-100 pt-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+          <div className="space-y-3 border-t border-ink-100 pt-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-ink-500">
               Custom fields
             </p>
             {applicableFields.map((field) => (

@@ -14,6 +14,7 @@
  */
 import { test, expect, type APIRequestContext } from '@playwright/test';
 import { setupIsolatedProject, API_URL } from './helpers';
+import { openFilterPanel } from './board-toolbar';
 
 interface IsolatedCtx {
   token: string;
@@ -58,17 +59,22 @@ async function seedIssues(
 // ---------------------------------------------------------------------------
 
 async function openTypeFilter(page: import('@playwright/test').Page) {
-  await page.getByRole('button', { name: /^Type/ }).click();
-  const filter = page.getByRole('dialog', { name: 'Filter by type' });
+  const panel = await openFilterPanel(page);
+  const filter = panel.getByRole('group', { name: 'Filter by type' });
   await expect(filter).toBeVisible();
   return filter;
 }
 
 async function openPriorityFilter(page: import('@playwright/test').Page) {
-  await page.getByRole('button', { name: /^Priority/ }).click();
-  const filter = page.getByRole('dialog', { name: 'Filter by priority' });
+  const panel = await openFilterPanel(page);
+  const filter = panel.getByRole('group', { name: 'Filter by priority' });
   await expect(filter).toBeVisible();
   return filter;
+}
+
+/** The Filter trigger's active-count badge (total across all filter kinds). */
+function filterCount(page: import('@playwright/test').Page) {
+  return page.getByTestId('board-filter-count');
 }
 
 // ---------------------------------------------------------------------------
@@ -76,13 +82,14 @@ async function openPriorityFilter(page: import('@playwright/test').Page) {
 // ---------------------------------------------------------------------------
 
 test.describe('Board type + priority filters – desktop', () => {
-  test('Type and Priority filter buttons are visible in the toolbar', async ({
+  test('Type and Priority filters live in the single Filter popover', async ({
     page,
     request,
   }) => {
     await setupIsolatedProject(page, request, { label: 'filter-visibility' });
-    await expect(page.getByRole('button', { name: /^Type/ })).toBeVisible();
-    await expect(page.getByRole('button', { name: /^Priority/ })).toBeVisible();
+    const filter = await openFilterPanel(page);
+    await expect(filter.getByRole('group', { name: 'Filter by type' })).toBeVisible();
+    await expect(filter.getByRole('group', { name: 'Filter by priority' })).toBeVisible();
   });
 
   test('Type filter hides issues of non-matching types', async ({
@@ -110,7 +117,7 @@ test.describe('Board type + priority filters – desktop', () => {
 
     // Apply Type = Bug.
     const filter = await openTypeFilter(page);
-    await filter.getByRole('menuitemcheckbox', { name: /bug/i }).click();
+    await filter.getByRole('checkbox', { name: /bug/i }).click();
     await page.keyboard.press('Escape');
 
     // Only Bug issue is visible; Task and Story are hidden.
@@ -123,7 +130,7 @@ test.describe('Board type + priority filters – desktop', () => {
     });
 
     // Button should show active state (count badge in label).
-    await expect(page.getByRole('button', { name: /Type \(1\)/i })).toBeVisible();
+    await expect(filterCount(page)).toHaveText('1');
   });
 
   test('Priority filter hides issues of non-matching priorities', async ({
@@ -140,7 +147,7 @@ test.describe('Board type + priority filters – desktop', () => {
 
     // Apply Priority = Medium.
     const filter = await openPriorityFilter(page);
-    await filter.getByRole('menuitemcheckbox', { name: /medium/i }).click();
+    await filter.getByRole('checkbox', { name: /medium/i }).click();
     await page.keyboard.press('Escape');
 
     // Only the TASK (MEDIUM) issue is visible; BUG (HIGH) is hidden.
@@ -150,9 +157,7 @@ test.describe('Board type + priority filters – desktop', () => {
     await expect(page.getByText(bugTitle)).toHaveCount(0, { timeout: 10_000 });
 
     // Button shows active count.
-    await expect(
-      page.getByRole('button', { name: /Priority \(1\)/i }),
-    ).toBeVisible();
+    await expect(filterCount(page)).toHaveText('1');
   });
 
   test('Type + Priority filters combine with AND semantics', async ({
@@ -170,12 +175,12 @@ test.describe('Board type + priority filters – desktop', () => {
 
     // Filter: Type=TASK AND Priority=HIGH → only highTitle (TASK+HIGH) matches.
     const typeFilter = await openTypeFilter(page);
-    await typeFilter.getByRole('menuitemcheckbox', { name: /^task$/i }).click();
+    await typeFilter.getByRole('checkbox', { name: /^task$/i }).click();
     await page.keyboard.press('Escape');
 
     const priorityFilter = await openPriorityFilter(page);
     await priorityFilter
-      .getByRole('menuitemcheckbox', { name: /^high$/i })
+      .getByRole('checkbox', { name: /^high$/i })
       .click();
     await page.keyboard.press('Escape');
 
@@ -204,7 +209,7 @@ test.describe('Board type + priority filters – desktop', () => {
 
     // Apply Type = Bug filter.
     const filter = await openTypeFilter(page);
-    await filter.getByRole('menuitemcheckbox', { name: /bug/i }).click();
+    await filter.getByRole('checkbox', { name: /bug/i }).click();
     await page.keyboard.press('Escape');
 
     // BUG visible, TASK hidden.
@@ -226,8 +231,8 @@ test.describe('Board type + priority filters – desktop', () => {
       timeout: 10_000,
     });
 
-    // Button label is back to plain "Type" (no count).
-    await expect(page.getByRole('button', { name: /^Type$/ })).toBeVisible();
+    // No active filters left, so the count badge is gone.
+    await expect(filterCount(page)).toHaveCount(0);
   });
 
   test('Type filter multi-select allows multiple types to pass through', async ({
@@ -244,8 +249,8 @@ test.describe('Board type + priority filters – desktop', () => {
 
     // Select TASK + STORY → both visible, BUG hidden.
     const filter = await openTypeFilter(page);
-    await filter.getByRole('menuitemcheckbox', { name: /^task$/i }).click();
-    await filter.getByRole('menuitemcheckbox', { name: /^story$/i }).click();
+    await filter.getByRole('checkbox', { name: /^task$/i }).click();
+    await filter.getByRole('checkbox', { name: /^story$/i }).click();
     await page.keyboard.press('Escape');
 
     await expect(page.getByText(taskTitle).first()).toBeVisible({
@@ -257,7 +262,7 @@ test.describe('Board type + priority filters – desktop', () => {
     await expect(page.getByText(bugTitle)).toHaveCount(0, { timeout: 10_000 });
 
     // Count badge shows 2.
-    await expect(page.getByRole('button', { name: /Type \(2\)/i })).toBeVisible();
+    await expect(filterCount(page)).toHaveText('2');
   });
 });
 
@@ -268,37 +273,41 @@ test.describe('Board type + priority filters – desktop', () => {
 test.describe('Board type + priority filters – mobile', () => {
   test.use({ viewport: { width: 375, height: 812 } });
 
-  test('Type and Priority filter buttons are accessible on mobile', async ({
+  test('Filter popover is reachable and fits the viewport on mobile', async ({
     page,
     request,
   }) => {
     await setupIsolatedProject(page, request, { label: 'filter-mobile' });
-    await expect(page.getByRole('button', { name: /^Type/ })).toBeVisible();
-    await expect(page.getByRole('button', { name: /^Priority/ })).toBeVisible();
+    const panel = await openFilterPanel(page);
+    await expect(panel.getByRole('group', { name: 'Filter by type' })).toBeVisible();
+    await expect(panel.getByRole('group', { name: 'Filter by priority' })).toBeVisible();
+    const box = await panel.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.x).toBeGreaterThanOrEqual(0);
+    expect(box!.x + box!.width).toBeLessThanOrEqual(375 + 1);
   });
 
-  test('filter pills do not wrap to multiple rows — toolbar height stays reasonable on mobile', async ({
+  test('toolbar stays compact — Filter trigger and the first card are above the fold', async ({
     page,
     request,
   }) => {
-    await setupIsolatedProject(page, request, { label: 'filter-nowrap' });
+    const ctx = await setupIsolatedProject(page, request, { label: 'filter-nowrap' });
+    await seedIssues(request, { token: ctx.token, projectId: ctx.project.id });
+    await page.reload();
 
-    // Wait for the board toolbar to be rendered
-    const typeBtn = page.getByRole('button', { name: /^Type/ });
-    const priorityBtn = page.getByRole('button', { name: /^Priority/ });
-    await expect(typeBtn).toBeVisible({ timeout: 10_000 });
-    await expect(priorityBtn).toBeVisible({ timeout: 10_000 });
+    const trigger = page.getByTestId('board-filter-trigger');
+    await expect(trigger).toBeVisible({ timeout: 10_000 });
+    const box = await trigger.boundingBox();
+    expect(box, 'Filter trigger should be in viewport').not.toBeNull();
+    // App header + project tabs take ~115px; the toolbar adds at most three
+    // 40px rows. The Filter control sits in row two.
+    expect(box!.y).toBeLessThan(230);
 
-    // Both filter buttons must be in the viewport (not hidden below a fold
-    // caused by the toolbar growing taller than the viewport).
-    const typeBtnBox = await typeBtn.boundingBox();
-    const priorityBtnBox = await priorityBtn.boundingBox();
-    expect(typeBtnBox, 'Type button should be in viewport').not.toBeNull();
-    expect(priorityBtnBox, 'Priority button should be in viewport').not.toBeNull();
-    // On a 375x812 viewport the toolbar should not push below 180px total —
-    // two compact rows (search+assignee / filter pills) at most.
-    expect(typeBtnBox!.y).toBeLessThan(180);
-    expect(priorityBtnBox!.y).toBeLessThan(180);
+    // The first card must be visible without scrolling on a 375x812 phone.
+    const card = page.getByTestId('issue-card').first();
+    await expect(card).toBeVisible({ timeout: 10_000 });
+    const cardBox = await card.boundingBox();
+    expect(cardBox!.y + 40).toBeLessThan(812);
   });
 
   test('Type filter works on mobile viewport', async ({ page, request }) => {
@@ -320,7 +329,7 @@ test.describe('Board type + priority filters – mobile', () => {
 
     // Apply Type = Bug filter.
     const filter = await openTypeFilter(page);
-    await filter.getByRole('menuitemcheckbox', { name: /bug/i }).click();
+    await filter.getByRole('checkbox', { name: /bug/i }).click();
     await page.keyboard.press('Escape');
 
     // Only Bug visible.
@@ -341,7 +350,7 @@ test.describe('Board type + priority filters – mobile', () => {
 
     // Apply Priority = High.
     const filter = await openPriorityFilter(page);
-    await filter.getByRole('menuitemcheckbox', { name: /^high$/i }).click();
+    await filter.getByRole('checkbox', { name: /^high$/i }).click();
     await page.keyboard.press('Escape');
 
     // Only the BUG (HIGH priority) is visible; TASK (MEDIUM) is hidden.

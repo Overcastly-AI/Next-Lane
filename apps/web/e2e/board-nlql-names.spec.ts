@@ -6,6 +6,7 @@
  */
 import { test, expect, type APIRequestContext } from '@playwright/test';
 import { setupIsolatedProject, createLabel, API_URL } from './helpers';
+import { openQueryBar } from './board-toolbar';
 
 const stamp = () => `${Date.now().toString(36)}`;
 
@@ -43,7 +44,7 @@ async function seed(request: APIRequestContext, token: string, projectId: string
 }
 
 async function runQuery(page: import('@playwright/test').Page, q: string) {
-  const input = page.getByTestId('nlql-query-input');
+  const input = await openQueryBar(page);
   await input.fill('');
   await input.click();
   await input.pressSequentially(q, { delay: 15 });

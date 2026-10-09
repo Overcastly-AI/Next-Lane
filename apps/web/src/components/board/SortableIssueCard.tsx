@@ -117,7 +117,7 @@ export function SortableIssueCard({
           }}
           onKeyDown={(e) => e.stopPropagation()}
           className={cn(
-            'absolute right-1.5 top-1.5 z-10 flex h-[18px] w-[18px] items-center justify-center rounded border shadow-card transition-opacity duration-[120ms]',
+            "absolute right-1.5 top-1.5 z-10 flex h-5 w-5 items-center justify-center rounded border shadow-card transition-opacity duration-[120ms] before:absolute before:-inset-2.5 before:content-['']",
             'focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-500',
             selected
               ? 'border-signal-600 bg-signal-600 text-white opacity-100'

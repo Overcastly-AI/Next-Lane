@@ -365,7 +365,8 @@ Each item below is redesigned design-skill-led, then ✅ when shipped + verified
 - [x] `NotificationBell` — focus-visible ring on bell + mark-all + notification items ✅ 2026-06-29
 - [x] `board/BoardColumn` — WIP indicator polish ✅ 2026-06-29
 - [x] `board/IssueCard` — due-date + story-points chip ring-1 ring-inset (consistent badge vocabulary); overdue chip uses amber-50/amber-200 tokens ✅ 2026-06-29
-- [ ] `board/SortableIssueCard` · `board/CardStatusPicker` · `board/PresenceAvatars`
+- [x] `pages/BoardPage` toolbar + `board/IssueCard` · `board/SortableIssueCard` · `board/CardStatusPicker` · `board/BoardColumn` redesigned ✅ 2026-10-09 (one-row toolbar, Filter popover, meta-row card, 40px touch hit areas)
+- [ ] `board/PresenceAvatars`
 - [ ] `board/CreateIssueModal` · `board/ColumnFormModal`
 - [x] `board/BoardWorkflowSelector` — badge ring-inset + ENFORCED chip ✅ 2026-06-29
 - [x] `board/FromTemplateMenu` — system animation applied ✅ 2026-06-29

@@ -7,6 +7,7 @@
 
 import { test, expect } from '@playwright/test';
 import { setupIsolatedProject, createIssue } from './helpers';
+import { openFilterPanel, openQueryBar } from './board-toolbar';
 
 test.describe('Board filter URL persistence (desktop)', () => {
   test.use({ viewport: { width: 1280, height: 900 } });
@@ -19,14 +20,16 @@ test.describe('Board filter URL persistence (desktop)', () => {
     await createIssue(request, ctx.token, ctx.project.id, { title: 'Persist me' });
 
     await page.goto(`/projects/${ctx.project.id}/board`);
-    const input = page.getByTestId('nlql-query-input');
-    await expect(input).toBeVisible({ timeout: 15_000 });
+    // The query bar opens behind the toolbar's "Query" toggle...
+    await expect(page.getByTestId('board-query-toggle')).toBeVisible({ timeout: 15_000 });
+    const input = await openQueryBar(page);
 
     await input.fill('priority = HIGH');
     // URL picks up the query (q param).
     await expect(page).toHaveURL(/[?&]q=/, { timeout: 8_000 });
 
-    // Reload — the query is restored from the URL into the input.
+    // Reload — the query is restored from the URL into the input, and the bar
+    // opens by itself (an applied query is never hidden).
     await page.reload();
     await expect(page.getByTestId('nlql-query-input')).toHaveValue(
       'priority = HIGH',
@@ -42,17 +45,22 @@ test.describe('Board filter URL persistence (desktop)', () => {
     await createIssue(request, ctx.token, ctx.project.id, { title: 'x' });
 
     await page.goto(`/projects/${ctx.project.id}/board`);
+    await expect(page.getByTestId('board-filter-trigger')).toBeVisible({ timeout: 15_000 });
+    await openFilterPanel(page);
     const chip = page.getByTestId('quick-filter-high-priority');
-    await expect(chip).toBeVisible({ timeout: 15_000 });
+    await expect(chip).toBeVisible();
 
     await chip.click();
     await expect(chip).toHaveAttribute('aria-pressed', 'true');
     await expect(page).toHaveURL(/[?&]presets=/, { timeout: 8_000 });
 
     await page.reload();
+    // The trigger carries the active count; the chip inside keeps its state.
+    await expect(page.getByTestId('board-filter-count')).toHaveText('1', { timeout: 15_000 });
+    await openFilterPanel(page);
     await expect(
       page.getByTestId('quick-filter-high-priority'),
-    ).toHaveAttribute('aria-pressed', 'true', { timeout: 15_000 });
+    ).toHaveAttribute('aria-pressed', 'true');
   });
 
   test('a shared URL with filters opens pre-filtered', async ({

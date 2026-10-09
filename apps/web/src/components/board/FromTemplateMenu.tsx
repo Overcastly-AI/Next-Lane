@@ -9,6 +9,7 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { IssueType } from '@next-lane/shared';
+import { DropdownPanel } from '@/components/ui/DropdownPanel';
 import { useIssueTemplates, useCreateIssueFromTemplate } from '@/api/issue-templates';
 import { IssueTypeIcon } from '@/components/issue/issueMeta';
 import { useToast } from '@/components/ui/Toast';
@@ -29,6 +30,7 @@ export function FromTemplateMenu({
 
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   const templates = templatesQuery.data ?? [];
 
@@ -36,10 +38,8 @@ export function FromTemplateMenu({
   useEffect(() => {
     if (!open) return;
     function onDown(e: MouseEvent) {
-      if (
-        containerRef.current &&
-        !containerRef.current.contains(e.target as Node)
-      ) {
+      const t = e.target as Node;
+      if (!containerRef.current?.contains(t) && !panelRef.current?.contains(t)) {
         setOpen(false);
       }
     }
@@ -86,7 +86,7 @@ export function FromTemplateMenu({
         disabled={createFromTemplate.isPending}
         onClick={() => setOpen((v) => !v)}
         className={cn(
-          'inline-flex h-9 items-center gap-1.5 rounded-md border border-ink-200 bg-surface px-3.5 text-sm font-semibold text-ink-700 shadow-xs transition-all duration-[120ms]',
+          'inline-flex h-9 items-center gap-1.5 whitespace-nowrap rounded-md border border-ink-200 bg-surface px-3 text-sm font-medium text-ink-700 shadow-xs max-sm:h-10 transition-all duration-[120ms]',
           'hover:bg-ink-50 hover:border-ink-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-500',
           createFromTemplate.isPending && 'cursor-wait opacity-60',
         )}
@@ -109,16 +109,19 @@ export function FromTemplateMenu({
         </svg>
       </button>
 
-      {open && (
-        <div
-          role="menu"
-          aria-label="Issue templates"
-          className={cn(
-            'absolute right-0 z-50 mt-1.5 min-w-[200px] max-w-[280px] overflow-hidden rounded-lg border border-ink-200 bg-surface shadow-dropdown',
-            'motion-safe:animate-nl-fade-in',
-          )}
-        >
-          <p className="border-b border-ink-100 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-ink-400">
+      <DropdownPanel
+        open={open}
+        anchorRef={containerRef}
+        panelRef={panelRef}
+        align="end"
+        role="menu"
+        aria-label="Issue templates"
+        className={cn(
+          'z-50 min-w-[200px] max-w-[280px] overflow-hidden rounded-xl border border-ink-200 bg-surface shadow-dropdown',
+          'motion-safe:animate-nl-fade-in',
+        )}
+      >
+          <p className="border-b border-ink-100 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-ink-500">
             Templates
           </p>
           <ul className="py-1">
@@ -129,7 +132,7 @@ export function FromTemplateMenu({
                   role="menuitem"
                   data-testid="new-from-template-option"
                   onClick={() => handleSelect(tpl.id, tpl.name)}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-ink-700 transition-colors hover:bg-ink-50 focus:bg-ink-50 focus:outline-none"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-ink-700 max-sm:py-3 transition-colors hover:bg-ink-50 focus:bg-ink-50 focus:outline-none"
                 >
                   <IssueTypeIcon
                     type={tpl.issueType as IssueType}
@@ -140,8 +143,7 @@ export function FromTemplateMenu({
               </li>
             ))}
           </ul>
-        </div>
-      )}
+      </DropdownPanel>
     </div>
   );
 }

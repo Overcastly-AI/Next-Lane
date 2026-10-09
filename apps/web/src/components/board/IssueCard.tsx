@@ -1,5 +1,6 @@
 import { forwardRef, type HTMLAttributes } from 'react';
 import {
+  IssueType,
   StatusCategory,
   type IssueDto,
   type StatusDto,
@@ -106,6 +107,11 @@ export const IssueCard = forwardRef<HTMLDivElement, IssueCardProps>(
         f.text !== null,
       );
 
+    const hasBlocked = issue.blockedByCount != null && issue.blockedByCount > 0;
+    const hasPr =
+      !!issue.prLinkSummary &&
+      (issue.prLinkSummary.open > 0 || issue.prLinkSummary.merged > 0);
+
     return (
       <div
         ref={ref}
@@ -145,9 +151,15 @@ export const IssueCard = forwardRef<HTMLDivElement, IssueCardProps>(
             {issue.title}
           </p>
 
-          {/* Labels */}
+          {/* Labels — one line only. Whatever wraps past the first row is
+              clipped (full list stays in the tooltip) so a heavily-labelled
+              issue never grows taller than its neighbours. */}
           {issue.labels && issue.labels.length > 0 && (
-            <div className="mb-2 flex flex-wrap gap-1">
+            <div
+              data-testid="card-labels"
+              title={issue.labels.map((l) => l.name).join(', ')}
+              className="mb-2 flex h-[18px] flex-wrap gap-1 overflow-hidden"
+            >
               {issue.labels.map((l) => (
                 <Badge key={l.id} color={l.color}>
                   {l.name}
@@ -166,38 +178,37 @@ export const IssueCard = forwardRef<HTMLDivElement, IssueCardProps>(
                   title={`${def.name}: ${text}`}
                   className="inline-flex max-w-full items-center gap-1 rounded-sm bg-ink-100 px-1.5 py-0.5 text-[10px] font-medium text-ink-600 ring-1 ring-inset ring-ink-200"
                 >
-                  <span className="text-ink-400">{def.name}:</span>
+                  <span className="text-ink-500">{def.name}:</span>
                   <span className="truncate text-ink-700">{text}</span>
                 </span>
               ))}
             </div>
           )}
 
-          {/* Blocked badge — this issue has unresolved blockers */}
-          {issue.blockedByCount != null && issue.blockedByCount > 0 && (
-            <div className="mb-2">
-              <span
-                data-testid="issue-blocked-badge"
-                aria-label={`Blocked by ${issue.blockedByCount} ${issue.blockedByCount === 1 ? 'issue' : 'issues'}`}
-                title={`Blocked by ${issue.blockedByCount} ${issue.blockedByCount === 1 ? 'issue' : 'issues'}`}
-                className="inline-flex items-center gap-1 rounded-sm bg-red-50 px-1.5 py-0.5 text-[10px] font-semibold text-red-700 ring-1 ring-inset ring-red-200"
-              >
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
-                  <circle cx="12" cy="12" r="9" />
-                  <path strokeLinecap="round" d="M5.6 5.6l12.8 12.8" />
-                </svg>
-                Blocked{issue.blockedByCount > 1 ? ` · ${issue.blockedByCount}` : ''}
-              </span>
-            </div>
-          )}
+          {/* Flags — blocked / PR / due share ONE wrapping row instead of
+              one stacked row each. Only rendered when something applies. */}
+          {(hasBlocked || hasPr || issue.dueDate) && (
+            <div className="mb-2 flex flex-wrap items-center gap-1">
+              {hasBlocked && (
+                <span
+                  data-testid="issue-blocked-badge"
+                  aria-label={`Blocked by ${issue.blockedByCount} ${issue.blockedByCount === 1 ? 'issue' : 'issues'}`}
+                  title={`Blocked by ${issue.blockedByCount} ${issue.blockedByCount === 1 ? 'issue' : 'issues'}`}
+                  className="inline-flex items-center gap-1 rounded-sm bg-red-50 px-1.5 py-0.5 text-[10px] font-semibold text-red-700 ring-1 ring-inset ring-red-200"
+                >
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
+                    <circle cx="12" cy="12" r="9" />
+                    <path strokeLinecap="round" d="M5.6 5.6l12.8 12.8" />
+                  </svg>
+                  Blocked{(issue.blockedByCount ?? 0) > 1 ? ` · ${issue.blockedByCount}` : ''}
+                </span>
+              )}
 
-          {/* Linked PR/MR badge — mirrors the blocked-issue badge pattern above.
-              Merged takes visual priority over open (purple > emerald) since
-              "merged, transition pending" is the more actionable state. */}
-          {issue.prLinkSummary &&
-            (issue.prLinkSummary.open > 0 || issue.prLinkSummary.merged > 0) && (
-              <div className="mb-2">
-                {(() => {
+              {/* Linked PR/MR badge. Merged takes visual priority over open
+                  (purple > emerald): "merged, transition pending" is the more
+                  actionable state. */}
+              {hasPr &&
+                (() => {
                   const { open, merged } = issue.prLinkSummary!;
                   const total = open + merged;
                   const isMerged = merged > 0;
@@ -215,13 +226,7 @@ export const IssueCard = forwardRef<HTMLDivElement, IssueCardProps>(
                           : 'bg-emerald-50 text-emerald-700 ring-emerald-200',
                       )}
                     >
-                      <svg
-                        width="10"
-                        height="10"
-                        viewBox="0 0 16 16"
-                        fill="currentColor"
-                        aria-hidden="true"
-                      >
+                      <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
                         <path d="M1.5 3.25a2.25 2.25 0 1 1 3 2.122v5.256a2.251 2.251 0 1 1-1.5 0V5.372A2.25 2.25 0 0 1 1.5 3.25Zm5.677-.177L9.573.677A.25.25 0 0 1 10 .854V2.5h1A2.5 2.5 0 0 1 13.5 5v5.628a2.251 2.251 0 1 1-1.5 0V5a1 1 0 0 0-1-1h-1v1.646a.25.25 0 0 1-.427.177L7.177 3.427a.25.25 0 0 1 0-.354ZM3.75 2.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm0 9.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm8.25.75a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Z" />
                       </svg>
                       {isMerged ? 'Merged' : 'PR'}
@@ -229,58 +234,40 @@ export const IssueCard = forwardRef<HTMLDivElement, IssueCardProps>(
                     </span>
                   );
                 })()}
-              </div>
-            )}
 
-          {/* Due date chip */}
-          {issue.dueDate && (
-            <div className="mb-2">
-              <span
-                aria-label={`Due ${formatDueDate(issue.dueDate)}${isOverdue(issue) ? ' (overdue)' : ''}`}
-                className={cn(
-                  'inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-[10px] font-semibold ring-1 ring-inset',
-                  isOverdue(issue)
-                    ? 'bg-amber-50 text-amber-700 ring-amber-200'
-                    : 'bg-ink-100 text-ink-500 ring-ink-200',
-                )}
-              >
-                <svg
-                  width="10"
-                  height="10"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  aria-hidden="true"
+              {issue.dueDate && (
+                <span
+                  aria-label={`Due ${formatDueDate(issue.dueDate)}${isOverdue(issue) ? ' (overdue)' : ''}`}
+                  className={cn(
+                    'inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-[10px] font-semibold ring-1 ring-inset',
+                    isOverdue(issue)
+                      ? 'bg-amber-50 text-amber-700 ring-amber-200'
+                      : 'bg-ink-100 text-ink-600 ring-ink-200',
+                  )}
                 >
-                  <rect x="3" y="4" width="18" height="18" rx="2" />
-                  <path strokeLinecap="round" d="M16 2v4M8 2v4M3 10h18" />
-                </svg>
-                {formatDueDate(issue.dueDate)}
-                {isOverdue(issue) && (
-                  <span className="sr-only"> (overdue)</span>
-                )}
-              </span>
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                    <rect x="3" y="4" width="18" height="18" rx="2" />
+                    <path strokeLinecap="round" d="M16 2v4M8 2v4M3 10h18" />
+                  </svg>
+                  {formatDueDate(issue.dueDate)}
+                  {isOverdue(issue) && <span className="sr-only"> (overdue)</span>}
+                </span>
+              )}
             </div>
           )}
 
-          {/* Footer row */}
-          <div className="flex items-center justify-between">
-            {/*
-             * Two groups, not four evenly-spaced glyphs.
-             *
-             * This row previously read as `● ✓ NOVA-13 ▮▮▮` — a status dot, a
-             * type icon, the key chip and a priority meter, all at the same
-             * gap and in four different visual languages, repeated twenty-odd
-             * times per screen. The wider gap now separates the one thing you
-             * can CLICK (the status picker) from the three that merely
-             * describe the issue, and the type glyph drops to ink-300 so the
-             * only colour left in the cluster is the key and a priority that
-             * is actually high. Same elements, same order, same hooks — just
-             * a rhythm.
-             */}
-            <div className="flex items-center gap-2.5">
-              {/* Inline status picker */}
+          {/*
+           * Meta row — the ONE line under the title.
+           *
+           * Left (identity): status dot (the only clickable thing), the issue
+           * key in the nl-issue-key chip, priority bars. A type glyph is shown
+           * only when it is NOT the default Task — it used to repeat a
+           * near-identical blue tick on every card. Right (load): story
+           * points, comment count, assignee. Every optional element is simply
+           * absent when empty, so a bare card reads "key · priority … avatar".
+           */}
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-2 max-sm:gap-3">
               {statuses && statuses.length > 0 && onStatusChange && (
                 <CardStatusPicker
                   currentStatus={currentStatus}
@@ -289,16 +276,15 @@ export const IssueCard = forwardRef<HTMLDivElement, IssueCardProps>(
                   editable={editable}
                 />
               )}
-              <span className="flex items-center gap-1">
-                <IssueTypeIcon type={issue.type} className="h-3.5 w-3.5 text-ink-300" />
-                {/* Issue key — DISPATCH data signature: cobalt mono chip */}
-                <span className="nl-issue-key">
-                  {issue.key}
-                </span>
+              <span className="flex min-w-0 items-center gap-1.5">
+                {issue.type !== IssueType.TASK && (
+                  <IssueTypeIcon type={issue.type} className="h-3.5 w-3.5" />
+                )}
+                <span className="nl-issue-key">{issue.key}</span>
                 <PriorityIcon priority={issue.priority} className="h-3.5 w-3.5" />
               </span>
             </div>
-            <div className="flex items-center gap-1.5">
+            <div className="flex shrink-0 items-center gap-1.5">
               {issue.storyPoints != null && (
                 <span
                   title={`${issue.storyPoints} story points`}
@@ -307,23 +293,17 @@ export const IssueCard = forwardRef<HTMLDivElement, IssueCardProps>(
                   {issue.storyPoints}
                 </span>
               )}
-              {typeof issue.commentCount === 'number' &&
-                issue.commentCount > 0 && (
-                  <span className="flex items-center gap-0.5 text-[11px] text-ink-400">
-                    <svg
-                      width="11"
-                      height="11"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      aria-hidden="true"
-                    >
-                      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                    </svg>
-                    {issue.commentCount}
-                  </span>
-                )}
+              {typeof issue.commentCount === 'number' && issue.commentCount > 0 && (
+                <span
+                  title={`${issue.commentCount} ${issue.commentCount === 1 ? 'comment' : 'comments'}`}
+                  className="flex items-center gap-0.5 text-[11px] text-ink-500"
+                >
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                  </svg>
+                  {issue.commentCount}
+                </span>
+              )}
               <Avatar user={issue.assignee} size="sm" />
             </div>
           </div>

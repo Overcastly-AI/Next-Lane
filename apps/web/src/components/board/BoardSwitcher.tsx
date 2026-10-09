@@ -40,7 +40,7 @@ function BoardTypeBadge({ type }: { type: BoardType }) {
       className={cn(
         'inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
         isKanban
-          ? 'bg-brand-50 text-brand-700'
+          ? 'bg-signal-50 text-signal-700'
           : 'bg-violet-50 text-violet-700',
       )}
     >
@@ -123,7 +123,7 @@ function CreateBoardModal({
         <div className="space-y-1.5">
           <label
             htmlFor="board-create-name"
-            className="block text-xs font-semibold text-slate-600"
+            className="block text-xs font-semibold text-ink-600"
           >
             Name
           </label>
@@ -140,7 +140,7 @@ function CreateBoardModal({
         <div className="space-y-1.5">
           <label
             htmlFor="board-type-select"
-            className="block text-xs font-semibold text-slate-600"
+            className="block text-xs font-semibold text-ink-600"
           >
             Type
           </label>
@@ -366,7 +366,7 @@ function BoardSettingsModal({
         }
       >
         {/* Tab bar */}
-        <div className="mb-4 flex gap-1 border-b border-slate-100 pb-0">
+        <div className="mb-4 flex gap-1 border-b border-ink-100 pb-0">
           {tabs.map((tab) => (
             <button
               key={tab.id}
@@ -375,10 +375,10 @@ function BoardSettingsModal({
               onClick={() => setActiveTab(tab.id)}
               className={cn(
                 'rounded-t px-3 py-1.5 text-xs font-semibold transition-colors',
-                'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300',
+                'focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-300',
                 activeTab === tab.id
-                  ? 'border-b-2 border-brand-600 text-brand-700'
-                  : 'text-slate-500 hover:text-slate-700',
+                  ? 'border-b-2 border-signal-600 text-signal-700'
+                  : 'text-ink-500 hover:text-ink-700',
               )}
               aria-selected={activeTab === tab.id}
               role="tab"
@@ -394,7 +394,7 @@ function BoardSettingsModal({
             <div className="space-y-1.5">
               <label
                 htmlFor="board-settings-name"
-                className="block text-xs font-semibold text-slate-600"
+                className="block text-xs font-semibold text-ink-600"
               >
                 Name
               </label>
@@ -409,7 +409,7 @@ function BoardSettingsModal({
             <div className="space-y-1.5">
               <label
                 htmlFor="board-settings-type"
-                className="block text-xs font-semibold text-slate-600"
+                className="block text-xs font-semibold text-ink-600"
               >
                 Type
               </label>
@@ -426,9 +426,9 @@ function BoardSettingsModal({
               </Select>
             </div>
             <div className="space-y-1.5" ref={filterFieldRef}>
-              <p className="block text-xs font-semibold text-slate-600" aria-hidden="true">
+              <p className="block text-xs font-semibold text-ink-600" aria-hidden="true">
                 Default filter{' '}
-                <span className="font-normal text-slate-400">(NLQL — always applied to this board)</span>
+                <span className="font-normal text-ink-400">(NLQL — always applied to this board)</span>
               </p>
               <NlqlInput
                 value={filterQuery}
@@ -445,7 +445,7 @@ function BoardSettingsModal({
                   {filterError}
                 </p>
               ) : (
-                <p className="text-[11px] text-slate-400">
+                <p className="text-[11px] text-ink-400">
                   Only issues matching this query appear on the board (your other
                   filters still apply on top). Leave empty to show everything.
                 </p>
@@ -454,10 +454,10 @@ function BoardSettingsModal({
             <div className="space-y-1.5">
               <label
                 htmlFor="board-default-groupby"
-                className="block text-xs font-semibold text-slate-600"
+                className="block text-xs font-semibold text-ink-600"
               >
                 Default grouping{' '}
-                <span className="font-normal text-slate-400">
+                <span className="font-normal text-ink-400">
                   (swimlanes applied when a link doesn&apos;t override it)
                 </span>
               </label>
@@ -483,13 +483,13 @@ function BoardSettingsModal({
                   </optgroup>
                 )}
               </Select>
-              <p className="text-[11px] text-slate-400">
+              <p className="text-[11px] text-ink-400">
                 New visits to this board open grouped into these sections. A
                 shared link with its own <code>?group=</code> always wins.
               </p>
             </div>
             {board.isDefault && (
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-ink-400">
                 This is the default board and cannot be deleted.
               </p>
             )}
@@ -628,10 +628,10 @@ export function BoardSwitcher({
           aria-label={selected ? `Board: ${selected.name}` : 'Select board'}
           onClick={() => setOpen((v) => !v)}
           className={cn(
-            'inline-flex h-8 items-center gap-2 rounded-lg border border-slate-200 bg-surface px-2.5 text-sm font-semibold text-slate-800',
-            'transition-colors hover:bg-slate-50 hover:border-slate-300',
-            'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200',
-            open && 'border-brand-300 bg-brand-50',
+            'inline-flex h-8 items-center gap-2 rounded-lg border border-ink-200 bg-surface px-2.5 text-sm font-semibold text-ink-800',
+            'transition-colors hover:bg-ink-50 hover:border-ink-300',
+            'focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-200',
+            open && 'border-signal-300 bg-signal-50',
           )}
         >
           {/* Board icon */}
@@ -643,7 +643,7 @@ export function BoardSwitcher({
             stroke="currentColor"
             strokeWidth="2"
             aria-hidden="true"
-            className="text-brand-500"
+            className="text-signal-500"
           >
             <rect x="3" y="3" width="5" height="18" rx="1" />
             <rect x="11" y="3" width="5" height="12" rx="1" />
@@ -655,7 +655,7 @@ export function BoardSwitcher({
               <BoardTypeBadge type={selected.type} />
             </>
           ) : (
-            <span className="text-slate-400">Select board</span>
+            <span className="text-ink-400">Select board</span>
           )}
           {/* Chevron */}
           <svg
@@ -666,7 +666,7 @@ export function BoardSwitcher({
             stroke="currentColor"
             strokeWidth="2.5"
             aria-hidden="true"
-            className={cn('text-slate-400 transition-transform', open && 'rotate-180')}
+            className={cn('text-ink-400 transition-transform', open && 'rotate-180')}
           >
             <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
           </svg>
@@ -678,7 +678,7 @@ export function BoardSwitcher({
             role="listbox"
             aria-label="Board list"
             className={cn(
-              'absolute left-0 top-full z-30 mt-1 min-w-[220px] rounded-xl border border-slate-200',
+              'absolute left-0 top-full z-30 mt-1 min-w-[220px] rounded-xl border border-ink-200',
               'bg-surface p-1.5 shadow-dropdown',
             )}
           >
@@ -692,8 +692,8 @@ export function BoardSwitcher({
                       className={cn(
                         'group flex items-center gap-2 rounded-lg px-2.5 py-2 cursor-pointer',
                         isActive
-                          ? 'bg-brand-50 text-brand-800'
-                          : 'text-slate-700 hover:bg-slate-50',
+                          ? 'bg-signal-50 text-signal-800'
+                          : 'text-ink-700 hover:bg-ink-50',
                       )}
                     >
                       <button
@@ -712,7 +712,7 @@ export function BoardSwitcher({
                         <span
                           className={cn(
                             'flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full',
-                            isActive ? 'bg-brand-600' : 'bg-transparent',
+                            isActive ? 'bg-signal-600' : 'bg-transparent',
                           )}
                         >
                           {isActive && (
@@ -731,7 +731,7 @@ export function BoardSwitcher({
                         </span>
                         <span className="min-w-0 truncate">{board.name}</span>
                         {board.isDefault && (
-                          <span className="ml-auto text-[10px] font-medium text-slate-400">
+                          <span className="ml-auto text-[10px] font-medium text-ink-400">
                             default
                           </span>
                         )}
@@ -746,9 +746,9 @@ export function BoardSwitcher({
                           // Always visible (was opacity-0 until hover, which made
                           // it undiscoverable and unreachable on touch devices —
                           // hiding Board settings, incl. the default filter).
-                          'flex-shrink-0 rounded p-1 text-slate-400 transition-colors',
-                          'hover:bg-slate-200 hover:text-slate-600',
-                          'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300',
+                          'flex-shrink-0 rounded p-1 text-ink-400 transition-colors',
+                          'hover:bg-ink-200 hover:text-ink-600',
+                          'focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-300',
                         )}
                         onClick={(e) => {
                           e.stopPropagation();
@@ -778,12 +778,12 @@ export function BoardSwitcher({
             </ul>
 
             {/* Divider + New board action */}
-            <div className="mt-1 border-t border-slate-100 pt-1">
+            <div className="mt-1 border-t border-ink-100 pt-1">
               <button
                 type="button"
                 className={cn(
-                  'flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-slate-600',
-                  'hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300',
+                  'flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-ink-600',
+                  'hover:bg-ink-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-300',
                 )}
                 onClick={() => {
                   setOpen(false);

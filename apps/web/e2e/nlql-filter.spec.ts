@@ -12,6 +12,13 @@
  */
 import { test, expect, type APIRequestContext } from '@playwright/test';
 import { setupIsolatedProject, API_URL } from './helpers';
+import { openQueryBar } from './board-toolbar';
+
+/** The saved-filter menu lives in the query bar; make sure it is open. */
+async function savedFilterSelect(page: import('@playwright/test').Page) {
+  await openQueryBar(page);
+  return page.getByTestId('saved-filter-select');
+}
 
 interface IsolatedCtx {
   token: string;
@@ -70,7 +77,7 @@ test.describe('NLQL filter – desktop', () => {
     });
 
     // Type a valid NLQL query.
-    const queryInput = page.getByTestId('nlql-query-input');
+    const queryInput = (await openQueryBar(page));
     await queryInput.click();
     // Type character by character to simulate real user input.
     await queryInput.pressSequentially('priority = HIGH', { delay: 30 });
@@ -106,7 +113,7 @@ test.describe('NLQL filter – desktop', () => {
     });
 
     // Type an incomplete/invalid query.
-    const queryInput = page.getByTestId('nlql-query-input');
+    const queryInput = (await openQueryBar(page));
     await queryInput.click();
     await queryInput.pressSequentially('priority = ', { delay: 30 });
 
@@ -140,7 +147,7 @@ test.describe('NLQL filter – desktop', () => {
     });
 
     // Type a valid query.
-    const queryInput = page.getByTestId('nlql-query-input');
+    const queryInput = (await openQueryBar(page));
     await queryInput.click();
     await queryInput.pressSequentially('priority = HIGH', { delay: 30 });
 
@@ -179,7 +186,7 @@ test.describe('NLQL filter – desktop', () => {
     });
 
     // Open the saved filter dropdown and select the saved filter.
-    const filterSelect = page.getByTestId('saved-filter-select');
+    const filterSelect = (await savedFilterSelect(page));
     await filterSelect.click();
     await page
       .getByRole('menu', { name: /saved filters menu/i })
@@ -227,7 +234,7 @@ test.describe('NLQL filter – desktop', () => {
     });
 
     // Open the saved filters dropdown.
-    await page.getByTestId('saved-filter-select').click();
+    await (await savedFilterSelect(page)).click();
     const menu = page.getByRole('menu', { name: /saved filters menu/i });
     await expect(menu).toBeVisible({ timeout: 5_000 });
 
@@ -266,7 +273,7 @@ test.describe('NLQL filter – desktop', () => {
     });
 
     // Open the dropdown.
-    await page.getByTestId('saved-filter-select').click();
+    await (await savedFilterSelect(page)).click();
     const menu = page.getByRole('menu', { name: /saved filters menu/i });
     await expect(menu.getByText(filterName)).toBeVisible({ timeout: 5_000 });
 
@@ -282,7 +289,7 @@ test.describe('NLQL filter – desktop', () => {
 
     // After deletion, confirm dialog closes and filter is gone from dropdown.
     await expect(confirmDialog).toHaveCount(0, { timeout: 5_000 });
-    await page.getByTestId('saved-filter-select').click();
+    await (await savedFilterSelect(page)).click();
     const menu2 = page.getByRole('menu', { name: /saved filters menu/i });
     await expect(menu2.getByText(filterName)).toHaveCount(0, { timeout: 5_000 });
   });
@@ -300,7 +307,7 @@ test.describe('NLQL filter – mobile', () => {
     request,
   }) => {
     await setupIsolatedProject(page, request, { label: 'nlql-mobile-vis' });
-    const queryInput = page.getByTestId('nlql-query-input');
+    const queryInput = (await openQueryBar(page));
     await expect(queryInput).toBeVisible({ timeout: 10_000 });
   });
 
@@ -320,7 +327,7 @@ test.describe('NLQL filter – mobile', () => {
       timeout: 10_000,
     });
 
-    const queryInput = page.getByTestId('nlql-query-input');
+    const queryInput = (await openQueryBar(page));
     await queryInput.click();
     await queryInput.pressSequentially('priority = HIGH', { delay: 30 });
 
@@ -336,7 +343,7 @@ test.describe('NLQL filter – mobile', () => {
       label: 'nlql-mobile-err',
     });
 
-    const queryInput = page.getByTestId('nlql-query-input');
+    const queryInput = (await openQueryBar(page));
     await queryInput.click();
     await queryInput.pressSequentially('priority = ', { delay: 30 });
 

@@ -12,6 +12,7 @@
 
 import { test, expect, type APIRequestContext } from '@playwright/test';
 import { setupIsolatedProject, API_URL } from './helpers';
+import { openQueryBar } from './board-toolbar';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -59,7 +60,7 @@ test.describe('NLQL autocomplete — desktop', () => {
       label: 'nlql-ac-field',
     });
 
-    const input = page.getByTestId('nlql-query-input');
+    const input = (await openQueryBar(page));
     await expect(input).toBeVisible({ timeout: 15_000 });
 
     await input.click();
@@ -81,7 +82,7 @@ test.describe('NLQL autocomplete — desktop', () => {
       label: 'nlql-ac-accept',
     });
 
-    const input = page.getByTestId('nlql-query-input');
+    const input = (await openQueryBar(page));
     await expect(input).toBeVisible({ timeout: 15_000 });
 
     await input.click();
@@ -121,7 +122,7 @@ test.describe('NLQL autocomplete — desktop', () => {
     await expect(page.getByText(highTitle).first()).toBeVisible({ timeout: 12_000 });
     await expect(page.getByText(lowTitle).first()).toBeVisible({ timeout: 5_000 });
 
-    const input = page.getByTestId('nlql-query-input');
+    const input = (await openQueryBar(page));
 
     // Step 1: type "priority" as a field
     await input.click();
@@ -148,7 +149,7 @@ test.describe('NLQL autocomplete — desktop', () => {
   test('Escape closes the dropdown', async ({ page, request }) => {
     await setupIsolatedProject(page, request, { label: 'nlql-ac-esc' });
 
-    const input = page.getByTestId('nlql-query-input');
+    const input = (await openQueryBar(page));
     await expect(input).toBeVisible({ timeout: 15_000 });
 
     await input.click();
@@ -170,7 +171,7 @@ test.describe('NLQL autocomplete — desktop', () => {
   }) => {
     await setupIsolatedProject(page, request, { label: 'nlql-ac-url' });
 
-    const input = page.getByTestId('nlql-query-input');
+    const input = (await openQueryBar(page));
     await expect(input).toBeVisible({ timeout: 15_000 });
 
     // Type a full valid query manually (no autocomplete)
@@ -179,7 +180,7 @@ test.describe('NLQL autocomplete — desktop', () => {
 
     // Reload — query restores from URL
     await page.reload();
-    await expect(page.getByTestId('nlql-query-input')).toHaveValue(
+    await expect((await openQueryBar(page))).toHaveValue(
       'priority = HIGH',
       { timeout: 15_000 },
     );
@@ -191,7 +192,7 @@ test.describe('NLQL autocomplete — desktop', () => {
   }) => {
     await setupIsolatedProject(page, request, { label: 'nlql-ac-a11y' });
 
-    const input = page.getByTestId('nlql-query-input');
+    const input = (await openQueryBar(page));
     await expect(input).toBeVisible({ timeout: 15_000 });
 
     // The input should have role=combobox
@@ -219,7 +220,7 @@ test.describe('NLQL autocomplete — desktop', () => {
   }) => {
     await setupIsolatedProject(page, request, { label: 'nlql-ac-orderby' });
 
-    const input = page.getByTestId('nlql-query-input');
+    const input = (await openQueryBar(page));
     await expect(input).toBeVisible({ timeout: 15_000 });
 
     await input.click();
@@ -247,7 +248,7 @@ test.describe('NLQL autocomplete — mobile', () => {
   }) => {
     await setupIsolatedProject(page, request, { label: 'nlql-ac-mobile' });
 
-    const input = page.getByTestId('nlql-query-input');
+    const input = (await openQueryBar(page));
     await expect(input).toBeVisible({ timeout: 15_000 });
 
     await input.click();
@@ -269,7 +270,7 @@ test.describe('NLQL autocomplete — mobile', () => {
   }) => {
     await setupIsolatedProject(page, request, { label: 'nlql-ac-mobile-tab' });
 
-    const input = page.getByTestId('nlql-query-input');
+    const input = (await openQueryBar(page));
     await expect(input).toBeVisible({ timeout: 15_000 });
 
     await input.click();

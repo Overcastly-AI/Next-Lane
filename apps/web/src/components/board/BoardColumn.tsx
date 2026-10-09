@@ -189,7 +189,9 @@ export function BoardColumn({
           <button
             onClick={() => onAdd(status.id)}
             aria-label={`Add issue to ${status.name}`}
-            className="rounded p-1 text-ink-400 transition-colors duration-[120ms] hover:bg-ink-200 hover:text-ink-700"
+            title={`Add issue to ${status.name}`}
+            /* 28px button + ::before = 40px hit area, same visual weight. */
+            className="relative flex h-7 w-7 items-center justify-center rounded-md text-ink-500 transition-colors duration-[120ms] before:absolute before:-inset-1.5 before:content-[''] hover:bg-ink-200 hover:text-ink-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-500"
           >
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
               <path strokeLinecap="round" d="M12 5v14M5 12h14" />
@@ -203,7 +205,7 @@ export function BoardColumn({
         ref={setNodeRef}
         className={cn(
           'nl-scroll flex min-h-[60px] flex-1 flex-col gap-2 overflow-y-auto px-2 pb-2',
-          isOver && 'rounded-lg bg-signal-50/70 ring-1 ring-inset ring-signal-300',
+          isOver && 'rounded-md bg-signal-50/70 ring-1 ring-inset ring-signal-300',
         )}
       >
         <SortableContext
@@ -231,19 +233,33 @@ export function BoardColumn({
           })}
         </SortableContext>
 
-        {issues.length === 0 && editable && (
-          <button
-            onClick={() => onAdd(status.id)}
-            aria-label={`Add issue to ${status.name}`}
-            className="rounded-lg border border-dashed border-ink-300 py-6 text-xs font-medium text-ink-400 transition-all duration-[120ms] hover:border-signal-300 hover:bg-signal-50/40 hover:text-signal-600"
+        {issues.length === 0 && (
+          /*
+           * Empty lane: a quiet drop hint, not a tall void. Dashed outline =
+           * "a card can land here"; the lane itself still fills the board
+           * height so a drop anywhere in it works (the droppable is the whole
+           * zone, not just this hint).
+           */
+          <div
+            data-testid="column-empty"
+            className={cn(
+              'flex flex-col items-center justify-center gap-1 rounded-md border border-dashed px-3 py-5 text-center transition-colors duration-[120ms]',
+              isOver ? 'border-signal-400 bg-signal-50' : 'border-ink-300',
+            )}
           >
-            + Add issue
-          </button>
-        )}
-        {issues.length === 0 && !editable && (
-          <p className="py-6 text-center text-xs text-ink-300">
-            No issues
-          </p>
+            <p className="text-xs text-ink-500">
+              {editable ? 'Drop a card here' : 'No issues'}
+            </p>
+            {editable && (
+              <button
+                onClick={() => onAdd(status.id)}
+                aria-label={`Add issue to ${status.name}`}
+                className="rounded-md px-2 py-1.5 text-xs font-medium text-signal-700 transition-colors duration-[120ms] hover:bg-signal-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-500 max-sm:py-3"
+              >
+                + Add issue
+              </button>
+            )}
+          </div>
         )}
       </div>
     </div>

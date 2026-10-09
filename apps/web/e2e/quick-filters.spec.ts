@@ -12,6 +12,13 @@
  */
 import { test, expect, type APIRequestContext } from '@playwright/test';
 import { setupIsolatedProject, API_URL } from './helpers';
+import { openFilterPanel } from './board-toolbar';
+
+/** Quick-filter chips live in the Filter popover; open it, return the chip. */
+async function qf(page: import('@playwright/test').Page, key: string) {
+  await openFilterPanel(page);
+  return page.getByTestId(`quick-filter-${key}`);
+}
 
 interface IsoCtx {
   token: string;
@@ -42,16 +49,16 @@ test.describe('Quick-filter presets – desktop', () => {
   test('chip buttons are visible in the toolbar', async ({ page, request }) => {
     await setupIsolatedProject(page, request, { label: 'qf-visible' });
     await expect(
-      page.getByTestId('quick-filter-my-issues'),
+      (await qf(page, 'my-issues')),
     ).toBeVisible({ timeout: 10_000 });
     await expect(
-      page.getByTestId('quick-filter-high-priority'),
+      (await qf(page, 'high-priority')),
     ).toBeVisible({ timeout: 10_000 });
     await expect(
-      page.getByTestId('quick-filter-unresolved'),
+      (await qf(page, 'unresolved')),
     ).toBeVisible({ timeout: 10_000 });
     await expect(
-      page.getByTestId('quick-filter-recent'),
+      (await qf(page, 'recent')),
     ).toBeVisible({ timeout: 10_000 });
   });
 
@@ -99,7 +106,7 @@ test.describe('Quick-filter presets – desktop', () => {
     });
 
     // Activate "High priority" preset.
-    const chip = page.getByTestId('quick-filter-high-priority');
+    const chip = (await qf(page, 'high-priority'));
     await chip.click();
     await expect(chip).toHaveAttribute('aria-pressed', 'true');
 
@@ -156,7 +163,7 @@ test.describe('Quick-filter presets – desktop', () => {
     });
 
     // Activate "My issues".
-    const chip = page.getByTestId('quick-filter-my-issues');
+    const chip = (await qf(page, 'my-issues'));
     await chip.click();
     await expect(chip).toHaveAttribute('aria-pressed', 'true');
 
@@ -220,7 +227,7 @@ test.describe('Quick-filter presets – desktop', () => {
     });
 
     // Activate "Unresolved".
-    const chip = page.getByTestId('quick-filter-unresolved');
+    const chip = (await qf(page, 'unresolved'));
     await chip.click();
     await expect(chip).toHaveAttribute('aria-pressed', 'true');
 
@@ -274,8 +281,8 @@ test.describe('Quick-filter presets – desktop', () => {
     });
 
     // Both "My issues" and "High priority" presets active → only myHighTitle.
-    await page.getByTestId('quick-filter-my-issues').click();
-    await page.getByTestId('quick-filter-high-priority').click();
+    await (await qf(page, 'my-issues')).click();
+    await (await qf(page, 'high-priority')).click();
 
     await expect(page.getByText(myHighTitle).first()).toBeVisible({
       timeout: 10_000,
@@ -299,10 +306,10 @@ test.describe('Quick-filter presets – mobile', () => {
   test('chips are accessible on mobile viewport', async ({ page, request }) => {
     await setupIsolatedProject(page, request, { label: 'qf-mobile' });
     await expect(
-      page.getByTestId('quick-filter-my-issues'),
+      (await qf(page, 'my-issues')),
     ).toBeVisible({ timeout: 10_000 });
     await expect(
-      page.getByTestId('quick-filter-high-priority'),
+      (await qf(page, 'high-priority')),
     ).toBeVisible({ timeout: 10_000 });
   });
 
@@ -328,7 +335,7 @@ test.describe('Quick-filter presets – mobile', () => {
       timeout: 15_000,
     });
 
-    const chip = page.getByTestId('quick-filter-high-priority');
+    const chip = (await qf(page, 'high-priority'));
     await chip.click();
     await expect(chip).toHaveAttribute('aria-pressed', 'true');
 
@@ -338,40 +345,30 @@ test.describe('Quick-filter presets – mobile', () => {
     await expect(page.getByText(medTitle)).toHaveCount(0, { timeout: 10_000 });
   });
 
-  // ── Regression coverage for Pass 12's P2: chip row silently overflowed ──
+  // ── Regression coverage for Pass 12's P2: chips clipped past the right edge ──
   //
-  // Was `overflow-x: visible` (not `auto`), so "Recently updated" (more than
-  // half its own width) sat past the 393px viewport edge with zero scroll
-  // cue and no working scroll gesture. The row must now be a real
-  // horizontally-scrollable container: `overflow-x: auto`, and scrolling it
-  // must actually bring the clipped chip fully into view.
-  test('chip row is horizontally scrollable and "Recently updated" is fully reachable at 393px', async ({
+  // The chips used to sit in a row that overflowed the 393px viewport with no
+  // scroll cue ("Recently updated" cut to "Rec…"). They now live in the Filter
+  // popover, which is viewport-clamped: every chip must be fully on-screen.
+  test('"Recently updated" is fully inside the viewport at 393px', async ({
     page,
     request,
   }) => {
     await setupIsolatedProject(page, request, { label: 'qf-scroll' });
 
-    const row = page.getByRole('group', { name: 'Quick filters' });
+    const panel = await openFilterPanel(page);
+    const row = panel.getByRole('group', { name: 'Quick filters' });
     await expect(row).toBeVisible({ timeout: 10_000 });
 
-    const overflowX = await row.evaluate((el) => getComputedStyle(el).overflowX);
-    expect(overflowX).toBe('auto');
-
-    const recentChip = page.getByTestId('quick-filter-recent');
-    await expect(recentChip).toBeVisible({ timeout: 10_000 });
-
-    // Scroll the row all the way right and confirm the chip is now fully
-    // inside the viewport (not clipped/cropped as "Rec…").
-    await row.evaluate((el) => {
-      el.scrollLeft = el.scrollWidth;
-    });
-    const box = await recentChip.boundingBox();
     const viewport = page.viewportSize()!;
-    expect(box).not.toBeNull();
-    expect(box!.x).toBeGreaterThanOrEqual(0);
-    expect(box!.x + box!.width).toBeLessThanOrEqual(viewport.width + 1);
-
-    await page.screenshot({ path: '/tmp/nav-shots/mobile-chips-scroll.png' });
+    for (const key of ['my-issues', 'high-priority', 'unresolved', 'recent']) {
+      const chip = page.getByTestId(`quick-filter-${key}`);
+      await expect(chip).toBeVisible();
+      const box = await chip.boundingBox();
+      expect(box, key).not.toBeNull();
+      expect(box!.x, key).toBeGreaterThanOrEqual(0);
+      expect(box!.x + box!.width, key).toBeLessThanOrEqual(viewport.width + 1);
+    }
   });
 
   // ── Regression coverage for Pass 12's P3: "Group by" chip wraps to 2 lines ──

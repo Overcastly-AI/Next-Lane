@@ -11,6 +11,7 @@
  */
 
 import { test, expect, type APIRequestContext } from '@playwright/test';
+import { openFilterPanel } from './board-toolbar';
 import {
   setupIsolatedProject,
   createIssue,
@@ -444,7 +445,7 @@ test.describe('Board swimlanes (mobile)', () => {
     await page.screenshot({ path: '/tmp/nav-shots/mobile-groupby-fixed.png' });
   });
 
-  test('Priority filter dropdown (shares the same absolute-panel pattern) also paints real pixels at 393px', async ({
+  test('Filter popover (shares the same absolute-panel pattern) also paints real pixels at 393px', async ({
     page,
     request,
   }) => {
@@ -455,11 +456,7 @@ test.describe('Board swimlanes (mobile)', () => {
     await page.goto(`/projects/${ctx.project.id}/board`);
     await expect(page.getByText(/to do/i).first()).toBeVisible({ timeout: 15_000 });
 
-    const priorityBtn = page.getByRole('button', { name: /^priority$/i });
-    await priorityBtn.scrollIntoViewIfNeeded();
-    await priorityBtn.click();
-
-    const menu = page.getByRole('dialog', { name: 'Filter by priority' });
+    const menu = await openFilterPanel(page);
     await expect(menu).toBeVisible({ timeout: 5_000 });
 
     const box = await menu.boundingBox();

@@ -88,10 +88,10 @@ function ColorPicker({ value, onChange, 'data-testid': testId }: ColorPickerProp
             style={{ backgroundColor: c.hex }}
             className={cn(
               'h-6 w-6 rounded-full border-2 transition-all duration-100',
-              'focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-brand-300',
+              'focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-signal-300',
               'hover:scale-110 active:scale-95',
               value.toLowerCase() === c.hex.toLowerCase()
-                ? 'border-slate-800 ring-2 ring-slate-400 ring-offset-1'
+                ? 'border-ink-800 ring-2 ring-ink-400 ring-offset-1'
                 : 'border-surface shadow-xs',
             )}
           />
@@ -101,7 +101,7 @@ function ColorPicker({ value, onChange, 'data-testid': testId }: ColorPickerProp
       {/* Free hex input */}
       <div className="flex items-center gap-2">
         <div
-          className="h-6 w-6 shrink-0 rounded border border-slate-300"
+          className="h-6 w-6 shrink-0 rounded border border-ink-300"
           style={{ backgroundColor: isValidHex(hex) ? hex : undefined }}
           aria-hidden="true"
         />
@@ -173,12 +173,12 @@ function RuleRowEditor({
     <div
       data-testid="color-rule-row"
       data-rule-id={rule.id}
-      className="rounded-lg border border-slate-200 bg-surface p-3 shadow-xs"
+      className="rounded-lg border border-ink-200 bg-surface p-3 shadow-xs"
     >
       {/* Header row: rule number + reorder + delete */}
       <div className="mb-2 flex items-center justify-between gap-2">
         <span
-          className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[10px] font-bold text-slate-500"
+          className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-ink-100 text-[10px] font-bold text-ink-500"
           aria-label={`Rule ${index + 1} (first match wins)`}
         >
           {index + 1}
@@ -192,9 +192,9 @@ function RuleRowEditor({
             disabled={index === 0}
             onClick={onMoveUp}
             className={cn(
-              'rounded p-1 text-slate-400 transition-colors',
-              'hover:bg-slate-100 hover:text-slate-600',
-              'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300',
+              'rounded p-1 text-ink-400 transition-colors',
+              'hover:bg-ink-100 hover:text-ink-600',
+              'focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-300',
               'disabled:cursor-not-allowed disabled:opacity-30',
             )}
           >
@@ -209,9 +209,9 @@ function RuleRowEditor({
             disabled={index === total - 1}
             onClick={onMoveDown}
             className={cn(
-              'rounded p-1 text-slate-400 transition-colors',
-              'hover:bg-slate-100 hover:text-slate-600',
-              'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300',
+              'rounded p-1 text-ink-400 transition-colors',
+              'hover:bg-ink-100 hover:text-ink-600',
+              'focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-300',
               'disabled:cursor-not-allowed disabled:opacity-30',
             )}
           >
@@ -225,7 +225,7 @@ function RuleRowEditor({
             aria-label={`Delete rule ${index + 1}`}
             onClick={onDelete}
             className={cn(
-              'rounded p-1 text-slate-400 transition-colors',
+              'rounded p-1 text-ink-400 transition-colors',
               'hover:bg-red-50 hover:text-red-600',
               'focus:outline-none focus-visible:ring-2 focus-visible:ring-red-300',
             )}
@@ -239,7 +239,7 @@ function RuleRowEditor({
 
       {/* NLQL query */}
       <div className="mb-2 space-y-1">
-        <p className="block text-xs font-semibold text-slate-500" aria-hidden="true">
+        <p className="block text-xs font-semibold text-ink-500" aria-hidden="true">
           Condition (NLQL)
         </p>
         <NlqlInput
@@ -264,14 +264,14 @@ function RuleRowEditor({
       {/* Color picker */}
       <div className="mb-2 space-y-1">
         <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold text-slate-500">Color</span>
+          <span className="text-xs font-semibold text-ink-500">Color</span>
           <span
-            className="inline-flex h-4 w-4 rounded-full border border-slate-300"
+            className="inline-flex h-4 w-4 rounded-full border border-ink-300"
             style={{ backgroundColor: rule.color }}
             aria-hidden="true"
           />
           {presetLabel && (
-            <span className="text-[11px] text-slate-400">{presetLabel}</span>
+            <span className="text-[11px] text-ink-400">{presetLabel}</span>
           )}
         </div>
         <ColorPicker
@@ -283,8 +283,8 @@ function RuleRowEditor({
 
       {/* Optional label */}
       <div className="space-y-1">
-        <label htmlFor={labelId} className="block text-xs font-semibold text-slate-500">
-          Label <span className="font-normal text-slate-400">(optional — shown in legend)</span>
+        <label htmlFor={labelId} className="block text-xs font-semibold text-ink-500">
+          Label <span className="font-normal text-ink-400">(optional — shown in legend)</span>
         </label>
         <Input
           id={labelId}
@@ -424,7 +424,7 @@ export function CardColorsManager({
     <div className="space-y-3">
       {/* Header */}
       <div>
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-ink-500">
           Rules are evaluated top-to-bottom — the first match wins. Drag or use
           the arrows to reorder.
         </p>
@@ -432,8 +432,8 @@ export function CardColorsManager({
 
       {/* Rule list */}
       {rows.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-slate-200 py-6 text-center">
-          <p className="text-xs text-slate-400">No color rules yet. Add one below.</p>
+        <div className="rounded-lg border border-dashed border-ink-200 py-6 text-center">
+          <p className="text-xs text-ink-400">No color rules yet. Add one below.</p>
         </div>
       ) : (
         <div className="space-y-2">
@@ -462,10 +462,10 @@ export function CardColorsManager({
           data-testid="color-rule-add"
           onClick={addRule}
           className={cn(
-            'inline-flex items-center gap-1.5 rounded-lg border border-dashed border-brand-300 px-3 py-1.5',
-            'text-xs font-semibold text-brand-600 transition-colors',
-            'hover:border-brand-400 hover:bg-brand-50',
-            'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300',
+            'inline-flex items-center gap-1.5 rounded-lg border border-dashed border-signal-300 px-3 py-1.5',
+            'text-xs font-semibold text-signal-600 transition-colors',
+            'hover:border-signal-400 hover:bg-signal-50',
+            'focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-300',
           )}
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">

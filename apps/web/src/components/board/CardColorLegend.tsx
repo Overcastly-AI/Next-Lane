@@ -24,7 +24,7 @@ export function CardColorLegend({ rules }: CardColorLegendProps) {
       {labeled.map((rule) => (
         <span
           key={rule.id}
-          className="inline-flex items-center gap-1.5 text-xs text-slate-600"
+          className="inline-flex items-center gap-1.5 text-xs text-ink-600"
           title={rule.query}
         >
           <span

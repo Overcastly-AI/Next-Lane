@@ -67,11 +67,11 @@ export function BoardWorkflowSelector({
           disabled={assignWorkflow.isPending}
           aria-label="Board workflow"
           className={cn(
-            'h-7 appearance-none rounded-md border border-slate-200 bg-surface pl-2 pr-7 text-xs font-medium text-slate-700',
-            'transition-colors hover:border-slate-300',
+            'h-9 appearance-none rounded-md border border-ink-200 bg-surface pl-2.5 pr-7 text-sm font-medium text-ink-700 shadow-xs max-sm:h-10',
+            'transition-colors hover:border-ink-300',
             'focus:border-signal-400 focus:outline-none focus:ring-2 focus:ring-signal-200',
             assignWorkflow.isPending && 'opacity-50 cursor-not-allowed',
-            "bg-[url('data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 fill=%22none%22 viewBox=%220 0 24 24%22 stroke=%22%238b95a8%22 stroke-width=%222%22><path stroke-linecap=%22round%22 stroke-linejoin=%22round%22 d=%22M19 9l-7 7-7-7%22/></svg>')] bg-[length:12px] bg-[right_0.35rem_center] bg-no-repeat",
+            'nl-select-chevron',
           )}
         >
           <option value="">No workflow</option>
