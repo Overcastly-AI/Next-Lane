@@ -866,7 +866,11 @@ export function buildTsQuery(query: string): Prisma.Sql {
     return Prisma.sql`websearch_to_tsquery('english', ${query})`;
   }
   const expr = words.map((w, i) => (i === words.length - 1 ? `${w}:*` : w)).join(' & ');
-  return Prisma.sql`to_tsquery('english', ${expr})`;
+  // OR'd with the exact websearch form so the prefix expansion can only WIDEN
+  // the match. Splitting on non-alphanumerics is lossy where Postgres's own
+  // parser is not — it indexes `ref-123-456` as 'ref' '-123' '-456' (signed
+  // integers), which `ref & 123 & 456:*` never matches.
+  return Prisma.sql`(websearch_to_tsquery('english', ${query}) || to_tsquery('english', ${expr}))`;
 }
 
 /** Clamp a caller-supplied page size into [1, SEARCH_MAX_LIMIT]. */

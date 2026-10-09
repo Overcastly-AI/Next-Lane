@@ -1172,15 +1172,26 @@ describe('buildTsQuery (prefix matching, GA bug #3)', () => {
   it('prefix-matches the last word and ANDs the rest', () => {
     const q = buildTsQuery('login bu');
     expect(q.sql).toContain('to_tsquery');
-    expect(q.values).toEqual(['login & bu:*']);
+    expect(q.values).toEqual(['login bu', 'login & bu:*']);
   });
 
   it('prefix-matches a single partial word', () => {
-    expect(buildTsQuery('Alph').values).toEqual(['Alph:*']);
+    expect(buildTsQuery('Alph').values).toEqual(['Alph', 'Alph:*']);
   });
 
   it('strips tsquery operators so input cannot inject syntax', () => {
-    expect(buildTsQuery("a' | !b:* & (c)").values).toEqual(['a & b & c:*']);
+    // The raw text only ever reaches websearch_to_tsquery, which is user-safe;
+    // to_tsquery receives the sanitised form.
+    expect(buildTsQuery("a' | !b:* & (c)").values).toEqual(["a' | !b:* & (c)", 'a & b & c:*']);
+  });
+
+  it('never matches less than the exact websearch form (hyphenated ids)', () => {
+    // Postgres indexes `ftstest-123-456` as 'ftstest' '-123' '-456'; the
+    // sanitised prefix form alone ('ftstest & 123 & 456:*') misses it, so the
+    // exact form is OR'd in.
+    const frag = buildTsQuery('ftstest-123-456');
+    expect(frag.sql).toContain("websearch_to_tsquery('english', ?) || to_tsquery");
+    expect(frag.values).toEqual(['ftstest-123-456', 'ftstest & 123 & 456:*']);
   });
 
   it('keeps websearch semantics for quotes, OR and negation', () => {
