@@ -23,7 +23,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { NavLink, useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import {
   PRIORITIES,
   Priority,
@@ -41,22 +41,15 @@ import { useToggleIssueLabel } from '@/api/labels';
 import { canEdit } from '@/lib/permissions';
 import { errorMessage } from '@/lib/errorMessage';
 import { cn } from '@/lib/cn';
-import { AppHeader } from '@/components/AppHeader';
-import { ProjectBreadcrumb } from '@/components/project/ProjectBreadcrumb';
+import { ProjectPageShell as Shell, PageBody } from '@/components/list/ProjectPageShell';
+import { PageHeader } from '@/components/list/PageHeader';
+import { IssueListRow } from '@/components/list/IssueListRow';
 import { Avatar } from '@/components/ui/Avatar';
 import { Badge } from '@/components/ui/Badge';
 import { ErrorState, LoadingState, EmptyState } from '@/components/ui/States';
 import { IssueDetailDrawer } from '@/components/issue/IssueDetailDrawer';
-import {
-  IssueTypeIcon,
-  PriorityIcon,
-  titleCase,
-} from '@/components/issue/issueMeta';
-import {
-  BulkActionBar,
-  BulkSelectCheckbox,
-  BulkSelectAll,
-} from '@/components/issue/BulkActionBar';
+import { PriorityIcon, titleCase } from '@/components/issue/issueMeta';
+import { BulkActionBar, BulkSelectAll } from '@/components/issue/BulkActionBar';
 import { useToast } from '@/components/ui/Toast';
 
 // ---------------------------------------------------------------------------
@@ -386,206 +379,195 @@ export function TriagePage() {
 
   const statusById = new Map(statuses.map((s) => [s.id, s]));
 
+  const countLabel = `${filteredIssues.length} ${filteredIssues.length === 1 ? 'issue' : 'issues'}`;
+
   return (
     <Shell projectId={projectId} projectName={boardQuery.data?.project.name}>
-      {/* ----------------------------------------------------------------- */}
-      {/* Header toolbar                                                       */}
-      {/* ----------------------------------------------------------------- */}
-      <div className="sticky top-0 z-10 flex flex-wrap items-center gap-3 border-b border-slate-200 bg-surface px-4 py-3 sm:px-6">
-        <div className="flex min-w-0 flex-1 items-center gap-3">
-          {filteredIssues.length > 0 && (
-            <BulkSelectAll
-              total={filteredIssues.length}
-              selectedCount={
-                filteredIssues.filter((i) => selectedIds.has(i.id)).length
-              }
-              onChange={(selectAll) => {
-                setSelectedIds(() => {
-                  if (!selectAll) return new Set<string>();
-                  return new Set(filteredIssues.map((i) => i.id));
-                });
-              }}
-            />
-          )}
-          <h1 className="text-base font-semibold text-slate-900">
-            Triage
-            <span className="ml-2 text-sm font-normal text-slate-400">
-              {filteredIssues.length}{' '}
-              {filteredIssues.length === 1 ? 'issue' : 'issues'}
-            </span>
-          </h1>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <label htmlFor="triage-filter" className="sr-only">
-            Filter issues
-          </label>
-          <div className="relative">
-            <svg
-              className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              aria-hidden="true"
-            >
-              <circle cx="11" cy="11" r="7" />
-              <path strokeLinecap="round" d="M21 21l-4.3-4.3" />
-            </svg>
-            <input
-              id="triage-filter"
-              ref={filterInputRef}
-              type="search"
-              value={filterText}
-              onChange={(e) => {
-                setFilterText(e.target.value);
-                setSelectedIndex(0);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Escape') {
-                  e.stopPropagation();
-                  setFilterText('');
-                  filterInputRef.current?.blur();
-                }
-              }}
-              placeholder="Filter… (f)"
-              aria-label="Filter issues by title or key"
-              className="rounded-lg border border-slate-300 py-1.5 pl-8 pr-3 text-sm placeholder:text-slate-400 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-200"
-            />
-          </div>
-          {!editable && (
-            <span
-              data-testid="readonly-hint"
-              className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-500"
-              title="View-only access"
-            >
-              View only
-            </span>
-          )}
-          <button
-            type="button"
-            onClick={() => setShowHelp((v) => !v)}
-            aria-label="Show keyboard shortcuts (?)"
-            title="Keyboard shortcuts (?)"
-            className="rounded-md border border-slate-200 bg-surface px-2 py-1 text-xs font-medium text-slate-500 hover:bg-slate-50"
-          >
-            ?
-          </button>
-        </div>
-      </div>
-
-      {/* ----------------------------------------------------------------- */}
-      {/* Help overlay                                                         */}
-      {/* ----------------------------------------------------------------- */}
-      {showHelp && (
-        <ShortcutHelp editable={editable} onClose={() => setShowHelp(false)} />
-      )}
-
-      {/* ----------------------------------------------------------------- */}
-      {/* Issue list                                                           */}
-      {/* ----------------------------------------------------------------- */}
-      <div className="relative min-h-0 flex-1 overflow-y-auto">
-        {filteredIssues.length === 0 ? (
-          <div className="p-6">
-            <EmptyState
-              title={
-                filterText
-                  ? 'No issues match your filter'
-                  : 'No issues in this project'
-              }
-              description={
-                filterText
-                  ? 'Try a different search term.'
-                  : 'Create issues on the board or backlog to start triaging.'
-              }
-            />
-          </div>
-        ) : (
-          <ol
-            ref={listRef}
-            role="listbox"
-            aria-label="Issues for triage"
-            aria-activedescendant={
-              selectedIssue
-                ? `triage-issue-${selectedIssue.id}`
-                : undefined
-            }
-            className="divide-y divide-slate-100"
-            // eslint-disable-next-line jsx-a11y/no-noninteractive-element-to-interactive-role
-            tabIndex={0}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && selectedIssue) {
-                e.preventDefault();
-                setOpenIssueId(selectedIssue.id);
-              }
-            }}
-          >
-            {filteredIssues.map((issue, idx) => {
-              const isSelected = idx === selectedIndex;
-              const assignee =
-                users.find((u) => u.id === issue.assigneeId) ?? null;
-              const status = statusById.get(issue.statusId);
-              return (
-                <TriageRow
-                  key={issue.id}
-                  issue={issue}
-                  idx={idx}
-                  isSelected={isSelected}
-                  isChecked={selectedIds.has(issue.id)}
-                  assignee={assignee}
-                  status={status}
-                  onSelect={() => {
-                    setSelectedIndex(idx);
-                    setActivePicker(null);
+      <PageBody>
+        <PageHeader
+          title="Triage"
+          count={countLabel}
+          description="Work through issues from the keyboard."
+          actions={
+            <>
+              <label htmlFor="triage-filter" className="sr-only">
+                Filter issues
+              </label>
+              <div className="relative flex items-center">
+                <svg
+                  className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -tranink-y-1/2 text-ink-400"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  aria-hidden="true"
+                >
+                  <circle cx="11" cy="11" r="7" />
+                  <path strokeLinecap="round" d="M21 21l-4.3-4.3" />
+                </svg>
+                <input
+                  id="triage-filter"
+                  ref={filterInputRef}
+                  type="search"
+                  value={filterText}
+                  onChange={(e) => {
+                    setFilterText(e.target.value);
+                    setSelectedIndex(0);
                   }}
-                  onToggleCheck={(checked) => toggleSelect(issue.id, checked)}
-                  onOpen={() => setOpenIssueId(issue.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Escape') {
+                      e.stopPropagation();
+                      setFilterText('');
+                      filterInputRef.current?.blur();
+                    }
+                  }}
+                  placeholder="Filter… (f)"
+                  aria-label="Filter issues by title or key"
+                  className="block h-9 w-48 rounded border border-ink-200 bg-surface pl-8 pr-3 text-sm text-ink-900 transition-all duration-[120ms] placeholder:text-ink-400 hover:border-ink-300 focus:border-signal-500 focus:outline-none focus:ring-2 focus:ring-signal-200 sm:w-56"
                 />
-              );
-            })}
-          </ol>
+              </div>
+              {!editable && (
+                <span
+                  data-testid="readonly-hint"
+                  className="inline-flex items-center gap-1 rounded-md bg-ink-100 px-2 py-1 text-xs font-medium text-ink-600"
+                  title="View-only access"
+                >
+                  View only
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={() => setShowHelp((v) => !v)}
+                aria-label="Show keyboard shortcuts (?)"
+                title="Keyboard shortcuts (?)"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-ink-200 bg-surface text-sm font-semibold text-ink-600 shadow-xs transition-colors duration-[120ms] hover:border-ink-300 hover:bg-ink-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-500"
+              >
+                ?
+              </button>
+            </>
+          }
+        />
+
+        {showHelp && (
+          <ShortcutHelp editable={editable} onClose={() => setShowHelp(false)} />
         )}
 
-        {/* Inline picker (assign / priority / status / label) */}
-        {activePicker && selectedIssue && (
-          <InlinePicker
-            picker={activePicker}
-            issue={selectedIssue}
-            users={users}
-            statuses={statuses}
-            labels={labels}
-            onAssign={handleAssign}
-            onPriority={handlePriority}
-            onStatus={handleStatus}
-            onLabelToggle={handleLabelToggle}
-            onClose={() => setActivePicker(null)}
-            selectedIndex={selectedIndex}
-            listRef={listRef}
-          />
-        )}
-      </div>
+        <section className="rounded-xl border border-ink-200 bg-surface shadow-card">
+          {filteredIssues.length > 0 && (
+            <header className="flex items-center gap-3 border-b border-ink-100 px-2 py-2 sm:px-3">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center sm:w-6">
+                <BulkSelectAll
+                  total={filteredIssues.length}
+                  selectedCount={
+                    filteredIssues.filter((i) => selectedIds.has(i.id)).length
+                  }
+                  onChange={(selectAll) => {
+                    setSelectedIds(() => {
+                      if (!selectAll) return new Set<string>();
+                      return new Set(filteredIssues.map((i) => i.id));
+                    });
+                  }}
+                />
+              </span>
+              <span className="text-xs font-medium text-ink-500">
+                {selectedIds.size > 0
+                  ? `${selectedIds.size} selected`
+                  : 'Select all'}
+              </span>
+            </header>
+          )}
 
-      {/* ----------------------------------------------------------------- */}
-      {/* Footer keyboard legend (compact, desktop only)                      */}
-      {/* ----------------------------------------------------------------- */}
-      <footer
-        className="hidden border-t border-slate-100 bg-surface px-4 py-2 sm:flex sm:flex-wrap sm:items-center sm:gap-4"
-        aria-label="Keyboard shortcut legend"
-      >
-        <KbdHint keys="j/k" label="Navigate" />
-        <KbdHint keys="Enter" label="Open" />
-        {editable && (
-          <>
-            <KbdHint keys="a" label="Assign" />
-            <KbdHint keys="p" label="Priority" />
-            <KbdHint keys="s" label="Status" />
-            <KbdHint keys="l" label="Labels" />
-          </>
-        )}
-        <KbdHint keys="f" label="Filter" />
-        <KbdHint keys="?" label="Help" />
-        <KbdHint keys="Esc" label="Exit" />
-      </footer>
+          <div className="relative p-1 sm:p-2">
+            {filteredIssues.length === 0 ? (
+              <EmptyState
+                title={
+                  filterText
+                    ? 'No issues match your filter'
+                    : 'No issues in this project'
+                }
+                description={
+                  filterText
+                    ? 'Try a different search term.'
+                    : 'Create issues on the board or backlog to start triaging.'
+                }
+              />
+            ) : (
+              <ol
+                ref={listRef}
+                role="listbox"
+                aria-label="Issues for triage"
+                aria-activedescendant={
+                  selectedIssue ? `triage-issue-${selectedIssue.id}` : undefined
+                }
+                className="divide-y divide-ink-100 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-500"
+                // eslint-disable-next-line jsx-a11y/no-noninteractive-element-to-interactive-role
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && selectedIssue) {
+                    e.preventDefault();
+                    setOpenIssueId(selectedIssue.id);
+                  }
+                }}
+              >
+                {filteredIssues.map((issue, idx) => (
+                  <TriageRow
+                    key={issue.id}
+                    issue={issue}
+                    idx={idx}
+                    isSelected={idx === selectedIndex}
+                    isChecked={selectedIds.has(issue.id)}
+                    assignee={users.find((u) => u.id === issue.assigneeId) ?? null}
+                    status={statusById.get(issue.statusId)}
+                    onSelect={() => {
+                      setSelectedIndex(idx);
+                      setActivePicker(null);
+                    }}
+                    onToggleCheck={(checked) => toggleSelect(issue.id, checked)}
+                    onOpen={() => setOpenIssueId(issue.id)}
+                  />
+                ))}
+              </ol>
+            )}
+
+            {/* Inline picker (assign / priority / status / label) */}
+            {activePicker && selectedIssue && (
+              <InlinePicker
+                picker={activePicker}
+                issue={selectedIssue}
+                users={users}
+                statuses={statuses}
+                labels={labels}
+                onAssign={handleAssign}
+                onPriority={handlePriority}
+                onStatus={handleStatus}
+                onLabelToggle={handleLabelToggle}
+                onClose={() => setActivePicker(null)}
+                selectedIndex={selectedIndex}
+                listRef={listRef}
+              />
+            )}
+          </div>
+
+          <footer
+            className="hidden flex-wrap items-center gap-4 border-t border-ink-100 px-4 py-2 sm:flex"
+            aria-label="Keyboard shortcut legend"
+          >
+            <KbdHint keys="j/k" label="Navigate" />
+            <KbdHint keys="Enter" label="Open" />
+            {editable && (
+              <>
+                <KbdHint keys="a" label="Assign" />
+                <KbdHint keys="p" label="Priority" />
+                <KbdHint keys="s" label="Status" />
+                <KbdHint keys="l" label="Labels" />
+              </>
+            )}
+            <KbdHint keys="f" label="Filter" />
+            <KbdHint keys="?" label="Help" />
+            <KbdHint keys="Esc" label="Exit" />
+          </footer>
+        </section>
+      </PageBody>
 
       {/* Issue detail drawer */}
       {openIssueId && (
@@ -642,99 +624,40 @@ function TriageRow({
   onOpen: () => void;
 }) {
   return (
-    <li
-      id={`triage-issue-${issue.id}`}
-      data-idx={idx}
-      role="option"
-      aria-selected={isSelected}
-      data-testid="triage-row"
-      data-issue-key={issue.key}
-      onClick={onSelect}
-      onDoubleClick={onOpen}
-      className={cn(
-        'flex cursor-pointer items-center gap-3 px-4 py-2.5 transition-colors sm:px-6',
-        isChecked
-          ? 'bg-signal-50'
-          : isSelected
-          ? 'bg-brand-50 ring-inset ring-1 ring-brand-200'
-          : 'hover:bg-slate-50',
-      )}
-    >
-      {/* Bulk select checkbox — stops propagation so row selection isn't triggered */}
-      <BulkSelectCheckbox
-        issueId={issue.id}
-        checked={isChecked}
-        onChange={onToggleCheck}
-      />
-      {/* Selection indicator dot (hidden when checkbox is shown) */}
-      <span
-        className={cn(
-          'hidden h-1.5 w-1.5 shrink-0 rounded-full sm:block',
-          isSelected && !isChecked ? 'bg-brand-600' : 'bg-transparent',
-        )}
-        aria-hidden="true"
-      />
-      {/* Type icon */}
-      <IssueTypeIcon type={issue.type} className="h-4 w-4 shrink-0" />
-      {/* Key */}
-      <span className="w-16 shrink-0 font-mono text-[11px] text-slate-400">
-        {issue.key}
-      </span>
-      {/* Title */}
-      <span className="min-w-0 flex-1 truncate text-sm text-slate-900">
-        {issue.title}
-      </span>
-      {/* Status badge (desktop) */}
-      {status && (
-        <span className="hidden shrink-0 sm:block">
-          <Badge>{status.name}</Badge>
-        </span>
-      )}
-      {/* Priority icon (desktop) */}
-      <PriorityIcon
-        priority={issue.priority}
-        className="hidden h-4 w-4 shrink-0 sm:inline-flex"
-      />
-      {/* Labels (desktop, first 2) */}
-      {(issue.labels?.length ?? 0) > 0 && (
-        <span className="hidden max-w-[120px] shrink-0 items-center gap-1 overflow-hidden sm:flex">
-          {issue.labels!.slice(0, 2).map((l) => (
-            <Badge key={l.id} color={l.color}>
-              {l.name}
-            </Badge>
-          ))}
-          {issue.labels!.length > 2 && (
-            <span className="text-[10px] text-slate-400">
-              +{issue.labels!.length - 2}
-            </span>
-          )}
-        </span>
-      )}
-      {/* Assignee avatar */}
-      <Avatar user={assignee} size="sm" />
-      {/* Open button (mobile tap target) */}
-      <button
-        type="button"
-        aria-label={`Open ${issue.key}`}
-        onClick={(e) => {
-          e.stopPropagation();
-          onOpen();
-        }}
-        className="shrink-0 rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 sm:hidden"
-      >
-        <svg
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          aria-hidden="true"
+    <IssueListRow
+      issue={issue}
+      assignee={assignee}
+      status={status}
+      checked={isChecked}
+      active={isSelected}
+      onToggleCheck={onToggleCheck}
+      liProps={{
+        id: `triage-issue-${issue.id}`,
+        role: 'option',
+        'aria-selected': isSelected,
+        'data-idx': idx,
+        'data-testid': 'triage-row',
+        'data-issue-key': issue.key,
+        onClick: onSelect,
+        onDoubleClick: onOpen,
+        className: 'cursor-pointer',
+      }}
+      trailing={
+        <button
+          type="button"
+          aria-label={`Open ${issue.key}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpen();
+          }}
+          className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-ink-500 hover:bg-ink-100 hover:text-ink-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-500 sm:hidden"
         >
-          <path strokeLinecap="round" strokeLinejoin="round" d="M9 18l6-6-6-6" />
-        </svg>
-      </button>
-    </li>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 18l6-6-6-6" />
+          </svg>
+        </button>
+      }
+    />
   );
 }
 
@@ -775,7 +698,7 @@ function InlinePicker({
   const rowEl = listRef.current?.querySelector<HTMLElement>(
     `[data-idx="${selectedIndex}"]`,
   );
-  const listRect = listRef.current?.getBoundingClientRect();
+  const listRect = listRef.current?.parentElement?.getBoundingClientRect();
   const rowRect = rowEl?.getBoundingClientRect();
   const topOffset =
     rowRect && listRect ? rowRect.bottom - listRect.top : 40;
@@ -799,7 +722,7 @@ function InlinePicker({
       role="dialog"
       aria-label={`Picker: ${picker}`}
       data-testid={`triage-picker-${picker}`}
-      className="absolute right-4 z-20 max-h-72 min-w-48 overflow-y-auto rounded-xl border border-slate-200 bg-surface p-1 shadow-xl outline-none sm:right-6"
+      className="absolute right-2 z-20 max-h-72 min-w-48 overflow-y-auto rounded-xl border border-ink-200 bg-surface p-1 shadow-xl outline-none sm:right-3"
       style={{ top: topOffset + 4 }}
       onKeyDown={(e) => {
         if (e.key === 'Escape') {
@@ -813,7 +736,7 @@ function InlinePicker({
           <PickerHeader label="Assign to" />
           <button
             type="button"
-            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm text-ink-700 hover:bg-ink-50"
             onClick={() => onAssign(null)}
           >
             <Avatar user={null} size="sm" />
@@ -824,9 +747,9 @@ function InlinePicker({
               key={u.id}
               type="button"
               className={cn(
-                'flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm text-slate-700 hover:bg-slate-50',
+                'flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm text-ink-700 hover:bg-ink-50',
                 issue.assigneeId === u.id &&
-                  'bg-brand-50 font-medium text-brand-700',
+                  'bg-signal-50 font-medium text-signal-700',
               )}
               onClick={() => onAssign(u.id)}
             >
@@ -845,9 +768,9 @@ function InlinePicker({
               key={p}
               type="button"
               className={cn(
-                'flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm text-slate-700 hover:bg-slate-50',
+                'flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm text-ink-700 hover:bg-ink-50',
                 issue.priority === p &&
-                  'bg-brand-50 font-medium text-brand-700',
+                  'bg-signal-50 font-medium text-signal-700',
               )}
               onClick={() => onPriority(p)}
             >
@@ -866,9 +789,9 @@ function InlinePicker({
               key={s.id}
               type="button"
               className={cn(
-                'flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm text-slate-700 hover:bg-slate-50',
+                'flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm text-ink-700 hover:bg-ink-50',
                 issue.statusId === s.id &&
-                  'bg-brand-50 font-medium text-brand-700',
+                  'bg-signal-50 font-medium text-signal-700',
               )}
               onClick={() => onStatus(s.id)}
             >
@@ -890,7 +813,7 @@ function InlinePicker({
         <>
           <PickerHeader label="Toggle labels" />
           {labels.length === 0 ? (
-            <p className="px-2.5 py-2 text-xs text-slate-400">
+            <p className="px-2.5 py-2 text-xs text-ink-400">
               No labels in this project yet.
             </p>
           ) : (
@@ -903,15 +826,15 @@ function InlinePicker({
                   type="button"
                   role="menuitemcheckbox"
                   aria-checked={checked}
-                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm hover:bg-slate-50"
+                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm hover:bg-ink-50"
                   onClick={() => onLabelToggle(label)}
                 >
                   <span
                     className={cn(
                       'flex h-4 w-4 shrink-0 items-center justify-center rounded border',
                       checked
-                        ? 'border-brand-600 bg-brand-600 text-white'
-                        : 'border-slate-300',
+                        ? 'border-signal-600 bg-signal-600 text-white'
+                        : 'border-ink-300',
                     )}
                   >
                     {checked && (
@@ -937,10 +860,10 @@ function InlinePicker({
               );
             })
           )}
-          <div className="mt-1 border-t border-slate-100 pt-1">
+          <div className="mt-1 border-t border-ink-100 pt-1">
             <button
               type="button"
-              className="w-full rounded-lg px-2.5 py-1.5 text-left text-xs text-slate-500 hover:bg-slate-50"
+              className="w-full rounded-lg px-2.5 py-1.5 text-left text-xs text-ink-500 hover:bg-ink-50"
               onClick={onClose}
             >
               Done
@@ -985,20 +908,20 @@ function ShortcutHelp({
       data-testid="triage-help-overlay"
     >
       <div
-        className="absolute inset-0 bg-slate-900/30"
+        className="absolute inset-0 bg-ink-900/30"
         onClick={onClose}
         aria-hidden="true"
       />
       <div className="relative z-50 w-full max-w-sm rounded-xl bg-surface p-5 shadow-2xl">
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-slate-900">
+          <h2 className="text-sm font-semibold text-ink-900">
             Triage keyboard shortcuts
           </h2>
           <button
             type="button"
             onClick={onClose}
             aria-label="Close shortcuts help"
-            className="rounded p-1 text-slate-400 hover:bg-slate-100"
+            className="rounded p-1 text-ink-400 hover:bg-ink-100"
           >
             <svg
               width="16"
@@ -1021,11 +944,11 @@ function ShortcutHelp({
                 className="flex items-center justify-between gap-4"
               >
                 <dt>
-                  <kbd className="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-sans text-[11px] text-slate-600">
+                  <kbd className="rounded border border-ink-200 bg-ink-50 px-1.5 py-0.5 font-sans text-[11px] text-ink-600">
                     {s.key}
                   </kbd>
                 </dt>
-                <dd className="text-sm text-slate-600">{s.label}</dd>
+                <dd className="text-sm text-ink-600">{s.label}</dd>
               </div>
             ),
           )}
@@ -1041,7 +964,7 @@ function ShortcutHelp({
 
 function PickerHeader({ label }: { label: string }) {
   return (
-    <p className="mb-1 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+    <p className="mb-1 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-ink-400">
       {label}
     </p>
   );
@@ -1049,66 +972,11 @@ function PickerHeader({ label }: { label: string }) {
 
 function KbdHint({ keys, label }: { keys: string; label: string }) {
   return (
-    <span className="flex items-center gap-1 text-[11px] text-slate-400">
-      <kbd className="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-sans text-[10px] text-slate-500">
+    <span className="flex items-center gap-1 text-[11px] text-ink-400">
+      <kbd className="rounded border border-ink-200 bg-ink-50 px-1.5 py-0.5 font-sans text-[10px] text-ink-500">
         {keys}
       </kbd>
       {label}
     </span>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Shell + nav
-// ---------------------------------------------------------------------------
-
-function Shell({
-  children,
-  projectId,
-  projectName,
-}: {
-  children: React.ReactNode;
-  projectId: string;
-  projectName?: string;
-}) {
-  return (
-    <div className="flex h-screen flex-col overflow-hidden">
-      <AppHeader>
-        <ProjectBreadcrumb primary={projectName} />
-      </AppHeader>
-      {projectId && <TriagePageNav projectId={projectId} />}
-      <main className="flex min-h-0 flex-1 flex-col bg-surface">{children}</main>
-    </div>
-  );
-}
-
-function TriagePageNav({ projectId }: { projectId: string }) {
-  const tabs = [
-    { to: `/projects/${projectId}/board`, label: 'Board' },
-    { to: `/projects/${projectId}/backlog`, label: 'Backlog' },
-    { to: `/projects/${projectId}/triage`, label: 'Triage' },
-    { to: `/projects/${projectId}/reports`, label: 'Reports' },
-    { to: `/projects/${projectId}/roadmap`, label: 'Roadmap' },
-    { to: `/projects/${projectId}/settings`, label: 'Settings' },
-  ];
-  return (
-    <nav className="flex items-center gap-1 border-b border-slate-200 bg-surface px-4">
-      {tabs.map((tab) => (
-        <NavLink
-          key={tab.to}
-          to={tab.to}
-          className={({ isActive }) =>
-            cn(
-              'relative -mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors',
-              isActive
-                ? 'border-brand-600 text-brand-700'
-                : 'border-transparent text-slate-500 hover:text-slate-800',
-            )
-          }
-        >
-          {tab.label}
-        </NavLink>
-      ))}
-    </nav>
   );
 }

@@ -26,24 +26,21 @@ import {
 import { useMyRole } from '@/api/workspaces';
 import { canEdit } from '@/lib/permissions';
 import { endDateStatus, formatDateRange } from '@/lib/sprintDates';
-import { AppHeader } from '@/components/AppHeader';
-import { ProjectBreadcrumb } from '@/components/project/ProjectBreadcrumb';
-import { ProjectNav } from '@/components/project/ProjectNav';
+import { ProjectPageShell as Shell, PageBody } from '@/components/list/ProjectPageShell';
+import { PageHeader } from '@/components/list/PageHeader';
+import { IssueListRow } from '@/components/list/IssueListRow';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
-import { Avatar } from '@/components/ui/Avatar';
 import { Modal } from '@/components/ui/Modal';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Field } from '@/components/ui/Field';
 import { Input } from '@/components/ui/Input';
 import { Textarea } from '@/components/ui/Textarea';
-import { ErrorState, LoadingState, EmptyState } from '@/components/ui/States';
+import { ErrorState, LoadingState } from '@/components/ui/States';
 import { useToast } from '@/components/ui/Toast';
-import { IssueTypeIcon, PriorityIcon } from '@/components/issue/issueMeta';
 import { IssueDetailDrawer } from '@/components/issue/IssueDetailDrawer';
 import {
   BulkActionBar,
-  BulkSelectCheckbox,
   BulkSelectAll,
 } from '@/components/issue/BulkActionBar';
 import { useExportCsv } from '@/api/export';
@@ -252,6 +249,10 @@ export function BacklogPage() {
     );
   }
 
+  const totalCount = Array.from(issuesBySprint.values()).reduce(
+    (n, arr) => n + arr.length,
+    0,
+  );
   const sprintOptions = planningSprints.map((s) => ({
     id: s.id,
     name: s.name,
@@ -259,15 +260,13 @@ export function BacklogPage() {
 
   return (
     <Shell projectId={projectId} projectName={board?.project.name}>
-      <div className="mx-auto flex w-full max-w-4xl flex-col gap-5 p-4 sm:p-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-lg font-semibold text-slate-900">Backlog</h1>
-            <p className="text-sm text-slate-500">
-              Plan sprints and order your backlog.
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
+      <PageBody>
+        <PageHeader
+          title="Backlog"
+          count={`${totalCount} ${totalCount === 1 ? 'issue' : 'issues'}`}
+          description="Plan sprints and order your backlog."
+          actions={
+            <>
             {/* Export is a read operation — available to viewers too. */}
             <Button
               variant="secondary"
@@ -333,7 +332,7 @@ export function BacklogPage() {
             ) : (
               <span
                 data-testid="readonly-hint"
-                className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-500"
+                className="inline-flex items-center gap-1 rounded-md bg-ink-100 px-2 py-1 text-xs font-medium text-ink-600"
                 title="You have view-only access to this workspace."
               >
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
@@ -343,8 +342,9 @@ export function BacklogPage() {
                 View only
               </span>
             )}
-          </div>
-        </div>
+            </>
+          }
+        />
 
         {planningSprints.map((sprint) => {
           const sprintIssues = issuesBySprint.get(sprint.id) ?? [];
@@ -406,12 +406,9 @@ export function BacklogPage() {
           }
         >
           {(issuesBySprint.get(BACKLOG) ?? []).length === 0 ? (
-            <EmptyState
-              title="Backlog is empty"
-              description="Issues with no sprint will appear here."
-            />
+            <EmptyRow>Nothing unplanned — issues with no sprint appear here.</EmptyRow>
           ) : (
-            <ul className="divide-y divide-slate-100">
+            <ul className="divide-y divide-ink-100">
               {(issuesBySprint.get(BACKLOG) ?? []).map((issue) => (
                 <IssueRow
                   key={issue.id}
@@ -437,11 +434,12 @@ export function BacklogPage() {
             />
           )}
         </Section>
-      </div>
+      </PageBody>
 
       {createOpen && (
         <CreateSprintModal
           projectId={projectId}
+          defaultName={nextSprintName(sprintsQuery.data ?? [])}
           onClose={() => setCreateOpen(false)}
         />
       )}
@@ -566,7 +564,7 @@ function SprintSection({
           {dateRange && (
             <span
               data-testid="sprint-dates"
-              className="text-xs font-normal text-slate-500"
+              className="text-xs font-normal text-ink-600"
             >
               {dateRange}
             </span>
@@ -585,7 +583,7 @@ function SprintSection({
             </span>
           )}
           {sprint.goal && (
-            <span className="text-xs font-normal text-slate-500">
+            <span className="text-xs font-normal text-ink-600">
               · {sprint.goal}
             </span>
           )}
@@ -648,12 +646,9 @@ function SprintSection({
         </p>
       )}
       {issues.length === 0 ? (
-        <EmptyState
-          title="No issues in this sprint yet"
-          description="Move issues here from the backlog below."
-        />
+        <EmptyRow>No issues in this sprint yet — move some here from the backlog.</EmptyRow>
       ) : (
-        <ul className="divide-y divide-slate-100">
+        <ul className="divide-y divide-ink-100">
           {issues.map((issue) => (
             <IssueRow
               key={issue.id}
@@ -702,19 +697,27 @@ function Section({
   return (
     <section
       data-testid={testId}
-      className="rounded-xl border border-slate-200 bg-surface shadow-card"
+      className="rounded-xl border border-ink-200 bg-surface shadow-card"
     >
-      <header className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-4 py-3">
+      <header className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-ink-100 px-3 py-2.5 sm:px-4">
         {selectAll && <div className="shrink-0">{selectAll}</div>}
-        <h2 className="text-sm font-semibold text-slate-900">{title}</h2>
-        <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-500">
+        <h2 className="min-w-0 text-sm font-semibold text-ink-900">{title}</h2>
+        <Badge>
           {count} {count === 1 ? 'issue' : 'issues'}
-        </span>
-        {meta && <span className="text-xs text-slate-400">{meta}</span>}
+        </Badge>
+        {meta && <span className="text-xs text-ink-500">{meta}</span>}
         {actions && <div className="ml-auto">{actions}</div>}
       </header>
-      <div className="p-2 sm:p-3">{children}</div>
+      <div className="p-1 sm:p-2">{children}</div>
     </section>
+  );
+}
+
+function EmptyRow({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="px-3 py-2.5 text-sm text-ink-500" data-testid="section-empty">
+      {children}
+    </p>
   );
 }
 
@@ -743,57 +746,24 @@ function IssueRow({
 }) {
   const assignee = users.find((u) => u.id === issue.assigneeId) ?? null;
   return (
-    <li
-      data-testid="backlog-issue"
-      data-issue-key={issue.key}
-      className={cn(
-        'flex items-center gap-3 px-2 py-2 transition-colors duration-[120ms]',
-        selected ? 'bg-signal-50' : 'hover:bg-slate-50',
-      )}
-    >
-      <BulkSelectCheckbox
-        issueId={issue.id}
-        checked={selected}
-        onChange={onToggleSelect}
-      />
-      <IssueTypeIcon type={issue.type} className="h-4 w-4" />
-      <button
-        type="button"
-        onClick={onOpen}
-        data-nav-item=""
-        className="min-w-0 flex-1 rounded text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-500 focus-visible:ring-offset-2"
-      >
-        <span className="flex items-center gap-2">
-          <span className="shrink-0 text-xs font-medium text-slate-400">
-            {issue.key}
-          </span>
-          <span className="truncate text-sm text-slate-900">{issue.title}</span>
-        </span>
-      </button>
-      {status && (
-        <Badge className="hidden sm:inline-flex">{status.name}</Badge>
-      )}
-      {issue.storyPoints != null && (
-        <span
-          title="Story points"
-          className="hidden h-5 min-w-5 items-center justify-center rounded-full bg-brand-100 px-1.5 text-xs font-semibold text-brand-700 sm:inline-flex"
-        >
-          {issue.storyPoints}
-        </span>
-      )}
-      <PriorityIcon
-        priority={issue.priority}
-        className="hidden h-4 w-4 sm:inline-flex"
-      />
-      <Avatar user={assignee} size="sm" />
-      {editable && (
-        <MoveMenu
-          currentSprintId={currentSprintId}
-          sprintOptions={sprintOptions}
-          onMove={onMove}
-        />
-      )}
-    </li>
+    <IssueListRow
+      issue={issue}
+      assignee={assignee}
+      status={status}
+      checked={selected}
+      onToggleCheck={onToggleSelect}
+      onOpenTitle={onOpen}
+      liProps={{ 'data-testid': 'backlog-issue', 'data-issue-key': issue.key }}
+      trailing={
+        editable ? (
+          <MoveMenu
+            currentSprintId={currentSprintId}
+            sprintOptions={sprintOptions}
+            onMove={onMove}
+          />
+        ) : undefined
+      }
+    />
   );
 }
 
@@ -830,9 +800,9 @@ function GhostRow({
   }
 
   return (
-    <div className="flex items-center gap-3 px-2 py-2">
-      <span className="h-4 w-4 shrink-0 text-slate-300" aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <div className="flex min-h-[44px] items-center gap-2 px-2 sm:gap-3 sm:px-3">
+      <span className="flex h-10 w-8 shrink-0 items-center justify-center text-ink-300 sm:w-6" aria-hidden="true">
+        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v14M5 12h14" />
         </svg>
       </span>
@@ -850,7 +820,7 @@ function GhostRow({
         }}
         placeholder={placeholder}
         className={cn(
-          'min-w-0 flex-1 bg-transparent text-sm text-slate-900 placeholder:text-slate-400',
+          'min-w-0 flex-1 bg-transparent text-sm text-ink-900 placeholder:text-ink-400',
           'focus:outline-none disabled:opacity-50',
         )}
       />
@@ -869,14 +839,19 @@ function MoveMenu({
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!open) return;
+    ref.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
     function onDown(e: MouseEvent) {
       if (!ref.current?.contains(e.target as Node)) setOpen(false);
     }
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') setOpen(false);
+      if (e.key === 'Escape') {
+        setOpen(false);
+        btnRef.current?.focus();
+      }
     }
     document.addEventListener('mousedown', onDown);
     document.addEventListener('keydown', onKey);
@@ -898,27 +873,34 @@ function MoveMenu({
   return (
     <div ref={ref} className="relative shrink-0">
       <button
+        ref={btnRef}
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
+        aria-label="Move to…"
+        title="Move to sprint or backlog"
         onClick={() => setOpen((v) => !v)}
         disabled={targets.length === 0}
         className={cn(
-          'inline-flex h-8 items-center gap-1 rounded-md border border-slate-300 bg-surface px-2 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50',
-          'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300',
-          'disabled:cursor-not-allowed disabled:opacity-50',
+          'inline-flex h-10 w-10 items-center justify-center rounded-md text-ink-500 transition-colors duration-[120ms] hover:bg-ink-100 hover:text-ink-800 sm:h-8 sm:w-8',
+          'focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-500',
+          'aria-expanded:bg-ink-100 aria-expanded:text-ink-800',
+          'disabled:cursor-not-allowed disabled:opacity-40',
         )}
       >
-        Move to
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M13 6l6 6-6 6" />
         </svg>
       </button>
       {open && targets.length > 0 && (
         <div
           role="menu"
-          className="absolute right-0 z-20 mt-1 w-44 rounded-lg border border-slate-200 bg-surface py-1 shadow-cardHover"
+          aria-label="Move to"
+          className="absolute right-0 z-20 mt-1 w-48 rounded-lg border border-ink-200 bg-surface py-1 shadow-dropdown"
         >
+          <p className="px-3 pb-1 pt-1.5 text-[11px] font-semibold uppercase tracking-wide text-ink-400">
+            Move to
+          </p>
           {targets.map((t) => (
             <button
               key={t.id ?? '__backlog__'}
@@ -928,7 +910,7 @@ function MoveMenu({
                 setOpen(false);
                 onMove(t.id);
               }}
-              className="block w-full truncate px-3 py-1.5 text-left text-sm text-slate-700 hover:bg-slate-50 focus:bg-slate-50 focus:outline-none"
+              className="block min-h-10 w-full truncate px-3 py-2 text-left text-sm text-ink-700 hover:bg-ink-50 focus:bg-ink-50 focus:outline-none sm:min-h-9"
             >
               {t.name}
             </button>
@@ -939,16 +921,33 @@ function MoveMenu({
   );
 }
 
+/** "Sprint N" where N follows the highest existing "Sprint <n>" (or the sprint count). */
+function nextSprintName(sprints: SprintDto[]): string {
+  let max = 0;
+  for (const sp of sprints) {
+    const m = /^Sprint (\d+)$/i.exec(sp.name.trim());
+    if (m) max = Math.max(max, Number(m[1]));
+  }
+  return `Sprint ${max > 0 ? max + 1 : sprints.length + 1}`;
+}
+
 function CreateSprintModal({
   projectId,
+  defaultName,
   onClose,
 }: {
   projectId: string;
+  defaultName: string;
   onClose: () => void;
 }) {
   const create = useCreateSprint(projectId);
   const toast = useToast();
-  const [name, setName] = useState('');
+  const [name, setName] = useState(defaultName);
+  const nameRef = useRef<HTMLInputElement>(null);
+  // Preselect the suggested name so typing replaces it (and Enter accepts it).
+  useEffect(() => {
+    nameRef.current?.select();
+  }, []);
   const [goal, setGoal] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -998,6 +997,7 @@ function CreateSprintModal({
         <Field label="Name" htmlFor="sprint-name">
           <Input
             id="sprint-name"
+            ref={nameRef}
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Sprint 1"
@@ -1069,25 +1069,5 @@ function DeleteSprintDialog({
       }}
       onCancel={onClose}
     />
-  );
-}
-
-function Shell({
-  children,
-  projectId,
-  projectName,
-}: {
-  children: React.ReactNode;
-  projectId: string;
-  projectName?: string;
-}) {
-  return (
-    <div className="flex h-screen flex-col overflow-x-clip">
-      <AppHeader>
-        <ProjectBreadcrumb primary={projectName} />
-      </AppHeader>
-      <ProjectNav projectId={projectId} />
-      <main className="flex-1 overflow-y-auto bg-slate-50">{children}</main>
-    </div>
   );
 }
