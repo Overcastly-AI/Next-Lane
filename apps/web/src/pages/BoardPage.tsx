@@ -28,7 +28,7 @@ import {
   type SavedFilterDto,
 } from '@next-lane/shared';
 import { useBoards, useBoardDefault, useBoardView } from '@/api/boards';
-import { useMoveIssue } from '@/api/issues';
+import { useMoveIssue, useBulkUpdateIssues } from '@/api/issues';
 import { useExportCsv } from '@/api/export';
 import { useLabels, useSprints, useUsers } from '@/api/meta';
 import { useMyRole } from '@/api/workspaces';
@@ -59,6 +59,12 @@ import { ProjectNav } from '@/components/project/ProjectNav';
 import { BoardColumn } from '@/components/board/BoardColumn';
 import { IssueCard } from '@/components/board/IssueCard';
 import { CardFieldDefsProvider } from '@/components/board/CardFieldDefsContext';
+import {
+  BoardSelectionContext,
+  type BoardSelectionValue,
+} from '@/components/board/BoardSelection';
+import { BulkActionBar } from '@/components/issue/BulkActionBar';
+import { isDialogOpen, isTypingTarget } from '@/lib/useGlobalShortcuts';
 import { NlqlInput } from '@/components/board/NlqlInput';
 import {
   BoardSwimlanesView,
@@ -194,6 +200,89 @@ export function BoardPage() {
 
   // Move-issue mutation keyed to the selected board's cache entry.
   const moveIssue = useMoveIssue(projectId, selectedBoardId ?? undefined);
+
+  // ── Bulk select ──────────────────────────────────────────────────────────
+  const bulkUpdate = useBulkUpdateIssues();
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [selectMode, setSelectMode] = useState(false);
+
+  const toggleSelected = useCallback((id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+  const clearSelection = useCallback(() => setSelectedIds(new Set()), []);
+
+  // Realtime / refetch: keep only the ids that still exist on the board.
+  // Skipped while there is no board payload so a transient loading state never
+  // wipes a live selection.
+  const boardIssueIds = board?.issues;
+  useEffect(() => {
+    if (!boardIssueIds) return;
+    setSelectedIds((prev) => {
+      if (prev.size === 0) return prev;
+      const live = new Set(boardIssueIds.map((i) => i.id));
+      const next = new Set([...prev].filter((id) => live.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [boardIssueIds]);
+
+  // Leaving the board / switching boards starts with a clean slate.
+  useEffect(() => {
+    setSelectedIds(new Set());
+    setSelectMode(false);
+  }, [projectId, selectedBoardId]);
+
+  // Escape clears the selection — but never steals Escape from a dialog, the
+  // issue drawer, or a field the user is typing in.
+  const hasSelectionState = selectMode || selectedIds.size > 0;
+  useEffect(() => {
+    if (!hasSelectionState) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      if (isTypingTarget(e.target) || isDialogOpen()) return;
+      setSelectedIds(new Set());
+      setSelectMode(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [hasSelectionState]);
+
+  const selectionValue = useMemo<BoardSelectionValue>(
+    () => ({ selectMode, selectedIds, toggle: toggleSelected }),
+    [selectMode, selectedIds, toggleSelected],
+  );
+
+  const planningSprints = useMemo(
+    () =>
+      (sprintsQuery.data ?? []).filter((s) => s.state !== SprintState.COMPLETED),
+    [sprintsQuery.data],
+  );
+
+  function handleBulkApply(
+    changes: Parameters<typeof bulkUpdate.mutate>[0]['changes'],
+  ) {
+    bulkUpdate.mutate(
+      { projectId, ids: Array.from(selectedIds), changes },
+      {
+        onSuccess: (result) => {
+          toast.success(
+            `Updated ${result.updated} ${result.updated === 1 ? 'issue' : 'issues'}.`,
+          );
+          if (result.failed.length > 0) {
+            toast.error(
+              `${result.failed.length} ${result.failed.length === 1 ? 'issue' : 'issues'} could not be updated.`,
+            );
+          }
+          setSelectedIds(new Set());
+        },
+        onError: (err) => toast.error(errorMessage(err, 'Bulk update failed.')),
+      },
+    );
+  }
 
   const activeSprint = useMemo<SprintDto | null>(
     () =>
@@ -780,6 +869,7 @@ export function BoardPage() {
 
   return (
     <CardFieldDefsProvider value={cardFieldDefs}>
+    <BoardSelectionContext.Provider value={selectionValue}>
     <Shell
       projectId={projectId}
       header={
@@ -870,6 +960,7 @@ export function BoardPage() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search cards…"
+              data-shortcut-search=""
               className="w-44 pl-8 sm:w-56"
             />
           </div>
@@ -1005,6 +1096,23 @@ export function BoardPage() {
                 <polyline strokeLinecap="round" strokeLinejoin="round" points="7 14 12 9 17 14" />
                 <line x1="12" y1="9" x2="12" y2="21" strokeLinecap="round" />
               </svg>
+            </Button>
+          )}
+          {editable && (
+            <Button
+              variant={selectMode ? 'secondary' : 'ghost'}
+              size="md"
+              data-testid="board-select-toggle"
+              aria-pressed={selectMode}
+              title="Select cards for bulk edit (Shift-click also works)"
+              onClick={() => setSelectMode((v) => !v)}
+              className={cn(selectMode && 'border-signal-300 bg-signal-50 text-signal-700')}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true" className="mr-1.5">
+                <rect x="3.5" y="3.5" width="17" height="17" rx="3" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8 12.5l3 3 5-6" />
+              </svg>
+              {selectMode ? 'Done' : 'Select'}
             </Button>
           )}
           {editable && (
@@ -1177,7 +1285,11 @@ export function BoardPage() {
            */}
           <div
             data-testid="board-scroll-container"
-            className="nl-scroll flex flex-1 overflow-x-auto px-4 pb-4 pt-3 gap-0"
+            className={cn(
+              'nl-scroll flex flex-1 overflow-x-auto px-4 pb-4 pt-3 gap-0',
+              /* Keep the last cards reachable above the fixed bulk bar. */
+              selectedIds.size > 0 && 'pb-52 sm:pb-24',
+            )}
           >
             {statuses.map((status, idx) => (
               <div key={status.id} className="flex items-stretch gap-0">
@@ -1236,7 +1348,21 @@ export function BoardPage() {
           onClose={() => setImportOpen(false)}
         />
       )}
+      {editable && (
+        <BulkActionBar
+          selectedCount={selectedIds.size}
+          statuses={statuses}
+          users={users}
+          labels={labelsQuery.data ?? []}
+          sprints={planningSprints}
+          showSprint
+          isPending={bulkUpdate.isPending}
+          onApply={handleBulkApply}
+          onClear={clearSelection}
+        />
+      )}
     </Shell>
+    </BoardSelectionContext.Provider>
     </CardFieldDefsProvider>
   );
 }

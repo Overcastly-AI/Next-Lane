@@ -877,6 +877,8 @@ See `docs/BACKLOG.md` § Future for the filed (not-yet-Ready) epic entry.
 
 ### Current focus
 
+**Status (2026-10-09, GA release polish — keyboard & bulk): global shortcuts + "?" cheat-sheet and board bulk select shipped.** `c`, `g`+`b/l/d/r`, `/`, `j`/`k`/`Enter` and the help overlay; Shift/Cmd/Ctrl-click, hover checkbox and a mobile "Select" toggle feed the existing bulk action bar on the board (flat + swimlanes). See `docs/BACKLOG.md` § Already Done.
+
 **Status (2026-10-09, GA release polish — first-run): sample project + Getting started checklist shipped.** The empty dashboard offers "Explore with a sample project" (one click seeds a populated, clearly-labelled board with sprint, epic, labels and wiki pages), and the dashboard carries a dismissible 5-step Getting started checklist. See BACKLOG § Already Done.
 
 **Status (2026-10-09, GA release polish — web chrome): real 404, ErrorBoundary, PWA/meta, About + What's new shipped.** Unknown routes render a branded not-found page rather than redirecting home; render crashes show a recoverable screen; manifest/icons/OG/theme-color added without touching the CSP; the user menu gains "What's new" (bundled CHANGELOG, latest 5 releases, once-per-version dot) and "About Next Lane". See `docs/BACKLOG.md` § Already Done.

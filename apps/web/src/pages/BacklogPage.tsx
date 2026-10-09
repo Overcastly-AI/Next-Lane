@@ -760,7 +760,8 @@ function IssueRow({
       <button
         type="button"
         onClick={onOpen}
-        className="min-w-0 flex-1 text-left"
+        data-nav-item=""
+        className="min-w-0 flex-1 rounded text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-500 focus-visible:ring-offset-2"
       >
         <span className="flex items-center gap-2">
           <span className="shrink-0 text-xs font-medium text-slate-400">

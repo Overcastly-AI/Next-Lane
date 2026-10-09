@@ -34,6 +34,7 @@ import { Avatar } from '@/components/ui/Avatar';
 import { BoardColumn } from './BoardColumn';
 import { IssueCard } from './IssueCard';
 import { cn } from '@/lib/cn';
+import { useBoardSelection } from './BoardSelection';
 import { EditableSafeKeyboardSensor } from '@/lib/dndSensors';
 
 // ---------------------------------------------------------------------------
@@ -635,8 +636,17 @@ export function BoardSwimlanesView({
     afterId: string | null,
   ) => boolean;
 }) {
+  // Keep the last lane reachable above the fixed bulk-action bar.
+  const selecting = (useBoardSelection()?.selectedIds.size ?? 0) > 0;
   return (
-    <div className="flex flex-1 flex-col overflow-y-auto" role="table" aria-label="Board swimlanes">
+    <div
+      className={cn(
+        'flex flex-1 flex-col overflow-y-auto',
+        selecting && 'pb-52 sm:pb-24',
+      )}
+      role="table"
+      aria-label="Board swimlanes"
+    >
       {lanes.map((lane) => {
         // Build a per-lane issuesByStatus map so each lane's DndContext is
         // isolated to only the issues in that lane.

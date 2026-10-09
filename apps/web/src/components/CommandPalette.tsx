@@ -168,6 +168,18 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
         icon: <GlyphChart />,
         onSelect: () => go(`/projects/${proj}/reports`),
       },
+      {
+        id: 'qa-shortcuts',
+        group: 'Actions',
+        label: 'Keyboard shortcuts',
+        text: 'Keyboard shortcuts help cheat-sheet',
+        hint: '?',
+        icon: <GlyphList />,
+        onSelect: () => {
+          onClose();
+          window.dispatchEvent(new Event('nl:show-shortcuts'));
+        },
+      },
     ];
   }, [projectId]);
 
