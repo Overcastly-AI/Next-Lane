@@ -1,6 +1,14 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { fileURLToPath, URL } from 'node:url';
+import { existsSync, readFileSync } from 'node:fs';
+
+/** Read a repo-root file; the Docker build context may not include it. */
+function readRoot(name: string): string | null {
+  const p = fileURLToPath(new URL(`../../${name}`, import.meta.url));
+  return existsSync(p) ? readFileSync(p, 'utf8') : null;
+}
+
 
 export default defineConfig(() => {
   // Default to 5173 (the port the Docker images expose/map). An explicit
@@ -8,7 +16,14 @@ export default defineConfig(() => {
   const port = Number(process.env.VITE_PORT ?? 5173);
   /** Where the dev proxy forwards API traffic. Same default as the app's own. */
   const apiTarget = process.env.VITE_API_PROXY_TARGET ?? 'http://localhost:4000';
+  const rootPkg = readRoot('package.json');
+  const appVersion = rootPkg ? (JSON.parse(rootPkg) as { version?: string }).version ?? '0.0.0' : '0.0.0';
   return {
+    // Version + release notes baked in at build time (About / What's new).
+    define: {
+      __APP_VERSION__: JSON.stringify(appVersion),
+      __APP_CHANGELOG__: JSON.stringify(readRoot('CHANGELOG.md') ?? ''),
+    },
     plugins: [react()],
     resolve: {
       alias: {

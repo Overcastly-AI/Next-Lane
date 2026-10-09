@@ -21,6 +21,7 @@ COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
 COPY packages/shared/package.json packages/shared/
 COPY apps/web/package.json apps/web/
 RUN pnpm install --frozen-lockfile
+COPY CHANGELOG.md ./
 COPY packages/shared packages/shared
 COPY apps/web apps/web
 # VITE_API_URL is no longer used to bake the URL into the bundle.

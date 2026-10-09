@@ -12,6 +12,7 @@ import { useWorkspaceContext } from '@/contexts/WorkspaceContext';
 import { useSwitchWorkspace } from '@/lib/useSwitchWorkspace';
 import { useSidebarContext } from '@/contexts/SidebarContext';
 import { getApiUrl } from '@/api/config';
+import { AboutModal, WhatsNewModal, useWhatsNewDot } from './WhatsNewModal';
 
 // ── Workspace logo (existing helper) ─────────────────────────────────────────
 
@@ -147,6 +148,9 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
   const { open: openPalette } = useCommandPalette();
   const { openMobile } = useSidebarContext();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [whatsNewOpen, setWhatsNewOpen] = useState(false);
+  const [aboutOpen, setAboutOpen] = useState(false);
+  const { hasNew, markSeen } = useWhatsNewDot();
   const navigate = useNavigate();
 
   return (
@@ -272,6 +276,13 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
           data-testid="user-menu-button"
         >
           <Avatar user={user} size="md" />
+          {hasNew && (
+            <span
+              data-testid="whats-new-dot"
+              aria-hidden="true"
+              className="absolute right-0 top-0 h-2.5 w-2.5 rounded-full border-2 border-surface bg-signal-600"
+            />
+          )}
         </button>
         {menuOpen && (
           <>
@@ -365,6 +376,37 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
                   Instance settings
                 </button>
               )}
+              {/* What's new + About: product-level info, kept below the account
+                  actions. The dot clears once What's new has been opened for
+                  the current version. */}
+              <div className="mt-1 border-t border-ink-100 pt-1">
+                <button
+                  data-testid="user-menu-whats-new"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    markSeen();
+                    setWhatsNewOpen(true);
+                  }}
+                  className="flex w-full items-center justify-between px-3 py-2 text-left text-sm text-ink-700 transition-colors duration-[120ms] hover:bg-ink-50 hover:text-ink-900 focus-visible:outline-none focus-visible:bg-ink-50"
+                >
+                  What&apos;s new
+                  {hasNew && (
+                    <span className="rounded-full bg-signal-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-signal-700">
+                      New
+                    </span>
+                  )}
+                </button>
+                <button
+                  data-testid="user-menu-about"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    setAboutOpen(true);
+                  }}
+                  className="w-full px-3 py-2 text-left text-sm text-ink-700 transition-colors duration-[120ms] hover:bg-ink-50 hover:text-ink-900 focus-visible:outline-none focus-visible:bg-ink-50"
+                >
+                  About Next Lane
+                </button>
+              </div>
               <button
                 onClick={logout}
                 className="w-full px-3 py-2 text-left text-sm text-ink-700 transition-colors duration-[120ms] hover:bg-ink-50 hover:text-ink-900 focus-visible:outline-none focus-visible:bg-ink-50"
@@ -375,6 +417,8 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
           </>
         )}
       </div>
+      <WhatsNewModal open={whatsNewOpen} onClose={() => setWhatsNewOpen(false)} />
+      <AboutModal open={aboutOpen} onClose={() => setAboutOpen(false)} />
     </header>
   );
 }

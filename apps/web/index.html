@@ -3,8 +3,27 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Next Lane</title>
+    <meta
+      name="description"
+      content="Next Lane is a free, open-source, self-hosted issue and project tracker with boards, backlogs, roadmaps and an AI-agent-native API."
+    />
+    <!-- Browser chrome colour follows the OS scheme; both values are the app canvas (--nl-ink-50). -->
+    <meta name="theme-color" content="#f4f6f9" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#161a23" media="(prefers-color-scheme: dark)" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Next Lane" />
+    <meta property="og:title" content="Next Lane — issue and project tracking you own" />
+    <meta
+      property="og:description"
+      content="Free, open-source, self-hosted issue and project tracker with boards, roadmaps and a first-class API and MCP server for AI agents."
+    />
+    <meta property="og:image" content="/icon-512.png" />
+    <meta name="twitter:card" content="summary" />
     <!--
       Runtime configuration: injected by the container entrypoint at startup.
       Sets window.__NL_CONFIG__ = { apiUrl: "..." } so ONE built image works

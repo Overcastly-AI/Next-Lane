@@ -54,6 +54,8 @@ import { AdminSsoSettingsPage } from '@/pages/AdminSsoSettingsPage';
 import { PagesPage } from '@/pages/PagesPage';
 import { AgentsPage } from '@/pages/AgentsPage';
 import { WorkspaceDocsPage } from '@/pages/WorkspaceDocsPage';
+import { NotFoundPage } from '@/pages/NotFoundPage';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -152,6 +154,7 @@ function AppShellFrame({ children }: { children: ReactNode }) {
 
 export default function App() {
   return (
+    <ErrorBoundary>
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <AuthProvider>
@@ -313,7 +316,7 @@ export default function App() {
               <Route path="docs/:pageId" element={<WorkspaceDocsPage />} />
             </Route>
 
-            <Route path="*" element={<Navigate to="/" replace />} />
+            <Route path="*" element={<NotFoundPage />} />
           </Routes>
           </AppShellFrame>
           </CommandPaletteProvider>
@@ -325,5 +328,6 @@ export default function App() {
         </AuthProvider>
       </BrowserRouter>
     </QueryClientProvider>
+    </ErrorBoundary>
   );
 }
