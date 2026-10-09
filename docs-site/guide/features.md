@@ -34,6 +34,14 @@ Multiple boards per project, each independently configured.
   `priority = HIGHEST AND status != Done` red.
 - **Query bar** — filter the board live with an NLQL expression (with
   autocomplete and inline validation); filter state persists in the URL.
+- **Filter popover** — one **Filter** button in the toolbar opens every
+  narrowing control in one place: type, priority, label, assignee, and quick
+  filters (*My issues*, *High priority*, *Unresolved*, *Recently updated*).
+  The button shows a count of active filters.
+- **Bulk select** — Shift-, Cmd-, or Ctrl-click cards, hover a card's
+  checkbox, or turn on **Select cards** on touch screens to select several
+  issues and act on them from the bulk action bar. Escape clears the
+  selection, and it survives realtime refreshes of the board.
 - **Live presence** — avatars show who else is viewing the board right now
   (Socket.io, real time).
 - **Card chips** — selected custom-field values can be pinned as chips
@@ -244,9 +252,9 @@ the same Share panel.
   filter with NLQL.
 - **Triage view** (`/projects/:id/triage`) — keyboard-first inbox processing:
   `j`/`k` to move, `s` status, `p` priority, `a` assign, `l` label.
-- **Bulk edit** — multi-select issues with checkboxes in Backlog or Triage,
-  then update status, assignee, priority, sprint, type, or labels for all of
-  them from the sticky action bar.
+- **Bulk edit** — multi-select issues with checkboxes on the Board, in Backlog,
+  or in Triage, then update status, assignee, priority, sprint, type, or labels
+  for all of them from the sticky action bar.
 
 ![Backlog view](/screenshots/backlog-desktop.png)
 
@@ -255,7 +263,8 @@ the same Share panel.
 ## Sprints and agile rituals
 
 - **Sprints** — create, start, and complete sprints with goals and date
-  ranges; one active sprint per project, enforced transactionally.
+  ranges (an end date before the start date is rejected); one active sprint
+  per project, enforced transactionally.
 - **Planning poker** (`/projects/:id/poker`) — real-time estimation sessions:
   participants vote privately from a Fibonacci deck
   (0–89, `?`, ☕), the facilitator reveals all votes at once, and the agreed
@@ -307,8 +316,19 @@ the same Share panel.
 ## Search and navigation
 
 - **Full-text search** across issue titles, descriptions, and comments
-  (Postgres `tsvector` + GIN indexes), cross-project.
+  (Postgres `tsvector` + GIN indexes), cross-project. The last word of a
+  query also matches as a prefix, so `auth` finds `authentication`; exact
+  matches still count.
 - **Command palette** — Cmd/Ctrl + K to jump to any issue, project, or board.
+- **Keyboard shortcuts** — press `?` for the cheat-sheet. `c` creates an
+  issue, `g` then `b`, `l`, `d`, or `r` goes to Board, Backlog, Dashboards, or
+  Roadmap, `/` focuses search, and `j` / `k` move between board cards and
+  backlog rows. Shortcuts pause while you type or a dialog is open; Triage has
+  its own keys.
+- **Installable** — the app ships a web app manifest, so browsers can install
+  it as a standalone window. It does not work offline.
+- **What's new and About** — the user menu opens the release notes for the
+  five most recent versions and an About dialog with the running version.
 - **Persistent sidebar** — workspace switcher, projects with per-project
   views (Board / Backlog / Roadmap / Reports), and your personal section
   (My Work / My Board / Insights / Notifications). Collapsible to an icon
@@ -607,6 +627,6 @@ Agents get the full set too: `list_page_templates`, `get_page_template`,
 
 ### AI agents (MCP)
 
-The flagship integration — 130 tools over the Model Context Protocol, with
+The flagship integration — 132 tools over the Model Context Protocol, with
 per-project agent memory. See the dedicated
 [AI Agents & MCP](./agents-mcp) chapter.

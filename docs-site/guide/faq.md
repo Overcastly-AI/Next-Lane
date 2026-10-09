@@ -150,7 +150,7 @@ to read-only for tokens in **Project settings → Agent access**.
 **Can AI agents use Next Lane?**
 
 Yes — this is a flagship capability. The official MCP server
-(`@next-lane/mcp`, 130 tools) lets Claude Code, Claude Desktop, and any MCP
+(`@next-lane/mcp`, 132 tools) lets Claude Code, Claude Desktop, and any MCP
 host read and write issues, boards, workflows, pages, dashboards, and more,
 with persistent per-project agent memory. See [AI Agents & MCP](./agents-mcp).
 

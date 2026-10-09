@@ -280,12 +280,12 @@ The full capability matrix:
 
 | Area | Capabilities |
 |------|-------------|
-| **Boards** | Multiple boards per project · Kanban **and** Scrum board types · drag-and-drop with fractional ranking · custom statuses/columns · live presence indicators · conditional card colors |
+| **Boards** | Multiple boards per project · Kanban **and** Scrum board types · drag-and-drop with fractional ranking · custom statuses/columns · live presence indicators · conditional card colors · filter popover · multi-select bulk edit |
 | **Issues** | Task / Bug / Story / Epic / Sub-task · parent/child hierarchy · labels · story points · start/due dates · **custom fields** (typed) · markdown descriptions & comments · file attachments · **issue links** (BLOCKS, RELATES_TO, DUPLICATES…) · watchers |
-| **Agile** | Backlog view · sprints (create / start / complete, goals, dates) · keyboard **triage mode** (j/k/s/p/a/l) |
+| **Agile** | Backlog view · sprints (create / start / complete, goals, dates) · keyboard **triage mode** (j/k/s/p/a/l) · global keyboard shortcuts (`?` cheat-sheet) |
 | **NLQL** | **NLQL query language** — `assignee = me() AND priority in (High, Highest)` — with **autocomplete**, powering search, saved filters, automations, **and** dashboards · saved filters shared across a project · boards pinned to a saved filter |
 | **Reports & Analytics** | Configurable **NLQL-native** dashboards (STAT/TABLE/BREAKDOWN/BURNDOWN widgets) · burndown · velocity · cumulative-flow diagram (CFD) · roadmap / Gantt-style timeline view · personal analytics · team pulse analytics |
-| **Find** | **Full-text search** (Postgres `tsvector`) · ⌘K command palette · cross-project search · multi-field filtering |
+| **Find** | **Full-text search** (Postgres `tsvector`, last word matches as a prefix) · ⌘K command palette · cross-project search · multi-field filtering |
 | **Collaboration** | Comments & activity history · realtime updates (Socket.io) · in-app notifications & @mentions · "My Work" + Team Pulse dashboards |
 | **Auth & SSO** | Email/password (JWT) · **SSO/OIDC** with an **in-app admin configuration screen** (`/admin/sso`, secrets encrypted at rest, no redeploy to change) — works with Okta/Auth0/Keycloak/Authentik/Google · personal API tokens (PATs) |
 | **Workflows (SDLC)** | **Configurable workflows** — per-project enforcement **and reusable named workflows assigned per board** · transition graph with **visual node/edge editor** · gates (require assignee/description/field/link/no-open-blockers) · seed from templates (simple / kanban / scrum / bug-triage) |
@@ -296,8 +296,8 @@ The full capability matrix:
 | **Rituals** | **Planning poker** (real-time estimation via Socket.io) · **async standups** (per-member responses + team digest) |
 | **Organize** | **Components** (with default assignee) · **versions / releases** (M:N, lifecycle) · **issue templates** (create-from-template) |
 | **Personal** | **Personal boards** (private Kanban) · personal analytics · shared board links |
-| **Bulk & import/export** | **Bulk edit** (multi-select in Backlog + Triage) · **CSV export** · **CSV import** from Jira, GitHub, or Linear exports (dry-run preview) |
-| **Navigation & UI** | **Persistent sidebar** (desktop fixed/collapsible, mobile drawer) with workspace switcher and per-project views (Board/Backlog/Roadmap/Reports) · **light / dark mode** with system preference awareness and toggle in sidebar/header |
+| **Bulk & import/export** | **Bulk edit** (multi-select on Board, Backlog + Triage) · **CSV export** · **CSV import** from Jira, GitHub, or Linear exports (dry-run preview) |
+| **Navigation & UI** | **Persistent sidebar** (desktop fixed/collapsible, mobile drawer) with workspace switcher and per-project views (Board/Backlog/Roadmap/Reports) · **light / dark mode** with system preference awareness and toggle in sidebar/header · installable (web app manifest) · What's new / About in the user menu |
 | **Workspace** | **Branding** — custom name, accent color, logo · workspace audit log |
 | **Admin & security** | Roles & permissions (Admin / Member / Viewer) · **per-project role overrides** (elevate or restrict a member on one project) · password reset over SMTP · HMAC-signed outbound webhooks (with SSRF guard) · 102-endpoint tenant-isolation regression matrix |
 | **Integrations** | **GitHub**, **GitLab**, and **Gitea** two-way issue ↔ PR/MR/commit/branch linking, HMAC/token-verified webhooks, self-hosted URLs support |

@@ -83,9 +83,17 @@ After logging in, verify the following work:
 ## 5. Create your own workspace
 
 1. Click **Create workspace** (top-left switcher or `/register` to add a user).
-2. Create a project inside the workspace.
+2. Create a project inside the workspace. The project key must be 2–10
+   letters and digits, starting with a letter (for example `NL` or `WEB2`).
 3. Add statuses, boards, and labels under **Project Settings**.
 4. Invite teammates via **Workspace Members**.
+
+Prefer to look around first? When a workspace has no projects, the dashboard
+offers **Explore with a sample project**. It creates a clearly labelled
+`Sample: Website Relaunch` project with an epic, about a dozen issues, an
+active sprint, and two wiki pages. You can archive it from Project Settings
+when you are done. Once a workspace has a project, the dashboard shows a
+**Getting started** checklist.
 
 ---
 
