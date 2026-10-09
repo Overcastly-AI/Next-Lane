@@ -8,6 +8,19 @@ import { useCreateProject } from '@/api/projects';
 import { ApiError } from '@/api/client';
 import { useToast } from '@/components/ui/Toast';
 
+/**
+ * Derive a project key from a name: initials for multi-word names
+ * ("Mobile App" -> MA), the first four letters for a single word
+ * ("Mobile" -> MOBI). Letters only; capped at 5.
+ */
+export function deriveProjectKey(name: string): string {
+  const words = name.match(/[A-Za-z]+/g) ?? [];
+  if (words.length === 0) return '';
+  const raw =
+    words.length === 1 ? words[0].slice(0, 4) : words.map((w) => w[0]).join('');
+  return raw.slice(0, 5).toUpperCase();
+}
+
 export function CreateProjectModal({
   open,
   onClose,
@@ -42,12 +55,7 @@ export function CreateProjectModal({
   function onNameChange(value: string) {
     setName(value);
     if (!keyTouched) {
-      setKey(
-        value
-          .replace(/[^a-zA-Z]/g, '')
-          .slice(0, 5)
-          .toUpperCase(),
-      );
+      setKey(deriveProjectKey(value));
     }
   }
 
@@ -106,7 +114,11 @@ export function CreateProjectModal({
         <Field
           label="Key"
           htmlFor="project-key"
-          hint="Short prefix used in issue keys, e.g. MOB-12."
+          hint={
+            keyTouched
+              ? 'Short prefix used in issue keys. Edited by hand.'
+              : 'Short prefix used in issue keys. Follows the name until you edit it.'
+          }
         >
           <Input
             id="project-key"
@@ -120,6 +132,25 @@ export function CreateProjectModal({
             maxLength={10}
           />
         </Field>
+        <div
+          data-testid="project-identity-preview"
+          className="flex items-center gap-3 rounded-lg border border-ink-200 bg-ink-50 px-3 py-2.5"
+        >
+          <span
+            aria-hidden="true"
+            className="rounded border border-signal-100 bg-signal-50 px-2 py-0.5 font-mono text-xs font-semibold tracking-wide text-signal-700"
+          >
+            {key || '···'}
+          </span>
+          <span className="min-w-0 text-sm">
+            <span className="block truncate font-semibold text-ink-900">
+              {name.trim() || 'Your project'}
+            </span>
+            <span className="block font-mono text-xs text-ink-600">
+              Issues will be {key || 'KEY'}-1, {key || 'KEY'}-2, …
+            </span>
+          </span>
+        </div>
         {error && (
           <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
             {error}

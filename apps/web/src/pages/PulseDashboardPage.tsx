@@ -11,8 +11,8 @@
  * First-run: if the user has no projects the OnboardingPanel is shown instead
  * (preserving the existing onboarding flow).
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Role,
   SprintState,
@@ -21,30 +21,30 @@ import {
   type NotificationDto,
   type ProjectDto,
   type SprintDto,
-} from '@next-lane/shared';
-import { AppHeader } from '@/components/AppHeader';
-import { Badge } from '@/components/ui/Badge';
-import { Button } from '@/components/ui/Button';
-import { Select } from '@/components/ui/Select';
-import { Avatar } from '@/components/ui/Avatar';
-import { EmptyState, ErrorState, LoadingState } from '@/components/ui/States';
-import { IssueTypeIcon } from '@/components/issue/issueMeta';
-import { ProjectCard } from '@/components/project/ProjectCard';
-import { OnboardingPanel } from '@/components/project/OnboardingPanel';
-import { GettingStartedCard } from '@/components/project/GettingStartedCard';
-import { isSampleProject } from '@/lib/sampleProject';
-import { CreateProjectModal } from '@/components/project/CreateProjectModal';
-import { CreateWorkspaceModal } from '@/components/workspace/CreateWorkspaceModal';
-import { useWorkspaces, useCreateWorkspace, useMyRole } from '@/api/workspaces';
-import { useWorkspaceContext } from '@/contexts/WorkspaceContext';
-import { useProjects } from '@/api/projects';
-import { useMyWork } from '@/api/me';
-import { useNotifications } from '@/api/notifications';
-import { useSprints } from '@/api/meta';
-import { useBoard } from '@/api/issues';
-import { endDateStatus } from '@/lib/sprintDates';
-import { relativeTime } from '@/lib/relativeTime';
-import { cn } from '@/lib/cn';
+} from "@next-lane/shared";
+import { AppHeader } from "@/components/AppHeader";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { Select } from "@/components/ui/Select";
+import { Avatar } from "@/components/ui/Avatar";
+import { EmptyState, ErrorState, LoadingState } from "@/components/ui/States";
+import { IssueTypeIcon } from "@/components/issue/issueMeta";
+import { ProjectCard, NewProjectTile } from "@/components/project/ProjectCard";
+import { OnboardingPanel } from "@/components/project/OnboardingPanel";
+import { GettingStartedCard } from "@/components/project/GettingStartedCard";
+import { isSampleProject } from "@/lib/sampleProject";
+import { CreateProjectModal } from "@/components/project/CreateProjectModal";
+import { CreateWorkspaceModal } from "@/components/workspace/CreateWorkspaceModal";
+import { useWorkspaces, useCreateWorkspace, useMyRole } from "@/api/workspaces";
+import { useWorkspaceContext } from "@/contexts/WorkspaceContext";
+import { useProjects } from "@/api/projects";
+import { useMyWork } from "@/api/me";
+import { useNotifications } from "@/api/notifications";
+import { useSprints } from "@/api/meta";
+import { useBoard } from "@/api/issues";
+import { endDateStatus } from "@/lib/sprintDates";
+import { relativeTime } from "@/lib/relativeTime";
+import { cn } from "@/lib/cn";
 
 // ---------------------------------------------------------------------------
 // Page
@@ -57,10 +57,7 @@ export function PulseDashboardPage() {
 
   // Single source of truth for the active workspace — shared with the header
   // chip and persisted across reloads. No separate local selection state.
-  const {
-    activeWorkspace,
-    setActiveWorkspaceId,
-  } = useWorkspaceContext();
+  const { activeWorkspace, setActiveWorkspaceId } = useWorkspaceContext();
   const selectedWs = activeWorkspace?.id ?? null;
   const [creatingDefault, setCreatingDefault] = useState(false);
   const [projectModalOpen, setProjectModalOpen] = useState(false);
@@ -79,7 +76,7 @@ export function PulseDashboardPage() {
     ) {
       setCreatingDefault(true);
       createWorkspace
-        .mutateAsync({ name: 'My Workspace' })
+        .mutateAsync({ name: "My Workspace" })
         .catch(() => undefined)
         .finally(() => setCreatingDefault(false));
     }
@@ -123,21 +120,25 @@ export function PulseDashboardPage() {
 
   return (
     <Shell>
-      {/* Workspace selector header */}
-      <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+      {/* One coherent page header: workspace identity on the left, actions on
+          the right. Every control is 40px tall (Button/Select `lg`). */}
+      <div
+        data-testid="dashboard-header"
+        className="mb-6 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between"
+      >
         <div className="space-y-1">
           <label
             htmlFor="pulse-ws-select"
-            className="block text-xs font-medium text-ink-600"
+            className="block text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-600"
           >
             Workspace
           </label>
           <div className="flex items-center gap-2">
-            <div className="w-52">
+            <div className="min-w-0 flex-1 sm:w-60 sm:flex-none">
               <Select
                 id="pulse-ws-select"
                 uiSize="lg"
-                value={selectedWs ?? ''}
+                value={selectedWs ?? ""}
                 onChange={(e) => setActiveWorkspaceId(e.target.value)}
               >
                 {workspaces?.map((w) => (
@@ -150,19 +151,22 @@ export function PulseDashboardPage() {
             <Button
               variant="secondary"
               size="lg"
+              className="shrink-0"
               onClick={() => setWorkspaceModalOpen(true)}
             >
               + Workspace
             </Button>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 [&>button]:flex-1 sm:[&>button]:flex-none">
           {isAdmin && activeWorkspace && (
             <>
               <Button
                 variant="secondary"
                 size="lg"
-                onClick={() => navigate(`/workspaces/${activeWorkspace.id}/members`)}
+                onClick={() =>
+                  navigate(`/workspaces/${activeWorkspace.id}/members`)
+                }
                 data-testid="members-nav-link"
               >
                 Members
@@ -170,14 +174,20 @@ export function PulseDashboardPage() {
               <Button
                 variant="secondary"
                 size="lg"
-                onClick={() => navigate(`/workspaces/${activeWorkspace.id}/audit-log`)}
+                onClick={() =>
+                  navigate(`/workspaces/${activeWorkspace.id}/audit-log`)
+                }
                 data-testid="audit-log-nav-link"
               >
                 Audit log
               </Button>
             </>
           )}
-          <Button size="lg" onClick={() => setProjectModalOpen(true)}>
+          <Button
+            size="lg"
+            className="whitespace-nowrap max-sm:basis-full"
+            onClick={() => setProjectModalOpen(true)}
+          >
             + New Project
           </Button>
         </div>
@@ -205,7 +215,10 @@ export function PulseDashboardPage() {
       {projectsQuery.isSuccess && projects.length > 0 && (
         <div data-testid="pulse-dashboard" className="space-y-8">
           {activeWorkspace && (
-            <GettingStartedCard workspaceId={activeWorkspace.id} projects={projects} />
+            <GettingStartedCard
+              workspaceId={activeWorkspace.id}
+              projects={projects}
+            />
           )}
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             <SprintSnapshotCard projects={projects} />
@@ -239,6 +252,7 @@ export function PulseDashboardPage() {
                   onClick={() => navigate(`/projects/${p.id}/board`)}
                 />
               ))}
+              <NewProjectTile onClick={() => setProjectModalOpen(true)} />
             </div>
           </section>
         </div>
@@ -290,7 +304,7 @@ function Card({
   return (
     <div
       className={cn(
-        'overflow-hidden rounded-xl border border-ink-200 bg-surface shadow-card',
+        "overflow-hidden rounded-xl border border-ink-200 bg-surface shadow-card",
         className,
       )}
     >
@@ -313,7 +327,7 @@ function CardHeader({
       <div className="flex items-center gap-2">
         <h2 className="text-sm font-semibold text-ink-800">{title}</h2>
         {count !== undefined && (
-          <span className="rounded-full bg-ink-100 px-2 py-0.5 text-xs font-medium text-ink-500">
+          <span className="rounded-full bg-ink-100 px-2 py-0.5 text-xs font-medium text-ink-700">
             {count}
           </span>
         )}
@@ -359,7 +373,7 @@ function SprintSnapshotCard({ projects }: { projects: ProjectDto[] }) {
           <SprintProjectRow key={p.id} project={p} onSettled={handleLoaded} />
         ))}
         {allSettled && counts.active === 0 && (
-          <div className="px-4 py-6 text-center text-sm text-ink-400">
+          <div className="px-4 py-6 text-center text-sm text-ink-600">
             No active sprints — start one in a project&apos;s Backlog.
           </div>
         )}
@@ -406,8 +420,8 @@ function SprintProjectRow({
     );
     const doneCount = sprintIssues.filter(
       (i) =>
-        boardQuery.data!.statuses.find((s) => s.id === i.statusId)
-          ?.category === StatusCategory.DONE,
+        boardQuery.data!.statuses.find((s) => s.id === i.statusId)?.category ===
+        StatusCategory.DONE,
     ).length;
     return { done: doneCount, total: sprintIssues.length };
   }, [activeSprint, boardQuery.data]);
@@ -426,11 +440,11 @@ function SprintProjectRow({
 
   const end = endDateStatus(activeSprint.endDate);
   const toneClass =
-    end?.tone === 'overdue'
-      ? 'border-red-200 bg-red-50 text-red-700'
-      : end?.tone === 'soon'
-        ? 'border-amber-200 bg-amber-50 text-amber-700'
-        : 'border-green-200 bg-green-50 text-green-700';
+    end?.tone === "overdue"
+      ? "border-red-200 bg-red-50 text-red-700"
+      : end?.tone === "soon"
+        ? "border-amber-200 bg-amber-50 text-amber-700"
+        : "border-green-200 bg-green-50 text-green-700";
 
   const pct = total > 0 ? Math.round((done / total) * 100) : 0;
 
@@ -446,7 +460,7 @@ function SprintProjectRow({
         {end && (
           <span
             className={cn(
-              'inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium',
+              "inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium",
               toneClass,
             )}
             title={`${activeSprint.name} · ${end.label}`}
@@ -472,8 +486,8 @@ function SprintProjectRow({
       >
         <div
           className={cn(
-            'h-full rounded-full transition-all',
-            pct === 100 ? 'bg-green-500' : 'bg-brand-500',
+            "h-full rounded-full transition-all",
+            pct === 100 ? "bg-green-500" : "bg-brand-500",
           )}
           style={{ width: `${pct}%` }}
         />
@@ -487,9 +501,9 @@ function SprintProjectRow({
 // ---------------------------------------------------------------------------
 
 const CATEGORY_PILL: Record<StatusCategory, string> = {
-  [StatusCategory.TODO]: 'bg-ink-100 text-ink-600',
-  [StatusCategory.IN_PROGRESS]: 'bg-blue-100 text-blue-700',
-  [StatusCategory.DONE]: 'bg-green-100 text-green-700',
+  [StatusCategory.TODO]: "bg-ink-100 text-ink-600",
+  [StatusCategory.IN_PROGRESS]: "bg-blue-100 text-blue-700",
+  [StatusCategory.DONE]: "bg-green-100 text-green-700",
 };
 
 function MyIssuesCard({
@@ -510,7 +524,7 @@ function MyIssuesCard({
         action={
           <a
             href="/my-work"
-            className="text-xs font-medium text-brand-600 hover:text-brand-700"
+            className="-my-2 -mr-2 inline-flex min-h-10 items-center rounded px-2 text-xs font-medium text-signal-700 hover:text-signal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-400"
           >
             View all
           </a>
@@ -544,7 +558,7 @@ function MyIssuesCard({
                     className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-ink-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-400"
                   >
                     <IssueTypeIcon type={issue.type} />
-                    <span className="shrink-0 font-mono text-[11px] text-ink-400">
+                    <span className="shrink-0 font-mono text-[11px] text-ink-600">
                       {issue.key}
                     </span>
                     <span className="min-w-0 flex-1 truncate text-sm text-ink-800">
@@ -552,7 +566,7 @@ function MyIssuesCard({
                     </span>
                     <span
                       className={cn(
-                        'shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium leading-none',
+                        "shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium leading-none",
                         CATEGORY_PILL[issue.statusCategory],
                       )}
                     >
@@ -563,10 +577,10 @@ function MyIssuesCard({
               ))}
             </ul>
             {overflow > 0 && (
-              <div className="border-t border-ink-100 px-4 py-2 text-center">
+              <div className="border-t border-ink-100 px-4 py-1 text-center">
                 <a
                   href="/my-work"
-                  className="text-xs font-medium text-brand-600 hover:text-brand-700"
+                  className="-my-1 inline-flex min-h-10 items-center rounded px-3 text-xs font-medium text-signal-700 hover:text-signal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-400"
                 >
                   +{overflow} more — view all
                 </a>
@@ -627,11 +641,15 @@ function RecentActivityCard({
                 strokeLinejoin="round"
                 d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"
               />
-              <path strokeLinecap="round" strokeLinejoin="round" d="M13.7 21a2 2 0 0 1-3.4 0" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M13.7 21a2 2 0 0 1-3.4 0"
+              />
             </svg>
             <span>
-              No recent activity — assignments, comments and mentions will
-              show up here.
+              No recent activity — assignments, comments and mentions will show
+              up here.
             </span>
           </div>
         )}
@@ -644,11 +662,11 @@ function RecentActivityCard({
                   onClick={() => onOpenIssue(n)}
                   disabled={!n.issueId}
                   className={cn(
-                    'flex w-full items-start gap-3 px-4 py-3 text-left transition-colors',
+                    "flex w-full items-start gap-3 px-4 py-3 text-left transition-colors",
                     n.issueId
-                      ? 'hover:bg-ink-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-400'
-                      : 'cursor-default',
-                    !n.read && 'bg-brand-50/50',
+                      ? "hover:bg-ink-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-400"
+                      : "cursor-default",
+                    !n.read && "bg-brand-50/50",
                   )}
                 >
                   <Avatar
