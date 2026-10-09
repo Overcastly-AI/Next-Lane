@@ -341,6 +341,7 @@ export class SearchService {
     { limit, offset }: { limit: number; offset: number },
     projectId?: string,
   ): Promise<Paged<SearchPageDto>> {
+    const tsq = buildTsQuery(query);
     let rows: FtsPageRow[];
     if (projectId) {
       rows = await this.prisma.$queryRaw<FtsPageRow[]>`
@@ -348,17 +349,17 @@ export class SearchService {
           pg.id, pg.title, pg."workspaceId", pg."projectId", pg.archived,
           p.key AS "projectKey",
           ts_headline('english', coalesce(pg.content, ''),
-                      websearch_to_tsquery('english', ${query}),
+                      ${tsq},
                       ${HEADLINE_OPTIONS}) AS snippet,
           h.total
         FROM (
           SELECT pg2.id,
-                 ts_rank(pg2."searchVector", websearch_to_tsquery('english', ${query})) AS rank,
+                 ts_rank(pg2."searchVector", ${tsq}) AS rank,
                  COUNT(*) OVER() AS total
           FROM "Page" pg2
           WHERE pg2."workspaceId" = ANY(${workspaceIds}::text[])
             AND pg2."projectId"   = ${projectId}
-            AND pg2."searchVector" @@ websearch_to_tsquery('english', ${query})
+            AND pg2."searchVector" @@ ${tsq}
           ORDER BY rank DESC, pg2.id
           LIMIT ${limit} OFFSET ${offset}
         ) h
@@ -372,16 +373,16 @@ export class SearchService {
           pg.id, pg.title, pg."workspaceId", pg."projectId", pg.archived,
           p.key AS "projectKey",
           ts_headline('english', coalesce(pg.content, ''),
-                      websearch_to_tsquery('english', ${query}),
+                      ${tsq},
                       ${HEADLINE_OPTIONS}) AS snippet,
           h.total
         FROM (
           SELECT pg2.id,
-                 ts_rank(pg2."searchVector", websearch_to_tsquery('english', ${query})) AS rank,
+                 ts_rank(pg2."searchVector", ${tsq}) AS rank,
                  COUNT(*) OVER() AS total
           FROM "Page" pg2
           WHERE pg2."workspaceId" = ANY(${workspaceIds}::text[])
-            AND pg2."searchVector" @@ websearch_to_tsquery('english', ${query})
+            AND pg2."searchVector" @@ ${tsq}
           ORDER BY rank DESC, pg2.id
           LIMIT ${limit} OFFSET ${offset}
         ) h
@@ -483,6 +484,7 @@ export class SearchService {
     { limit, offset }: { limit: number; offset: number },
     projectId?: string,
   ): Promise<Paged<SearchIssueDto>> {
+    const tsq = buildTsQuery(query);
     // Build the optional project-scoping predicate. We include it inline only
     // when projectId is defined, otherwise we omit the clause entirely.
     // Both branches use parameterized values — no string interpolation of
@@ -502,18 +504,18 @@ export class SearchService {
           s.name           AS "statusName",
           s.category       AS "statusCategory",
           ts_headline('english', coalesce(i.description, ''),
-                      websearch_to_tsquery('english', ${query}),
+                      ${tsq},
                       ${HEADLINE_OPTIONS}) AS snippet,
           h.total
         FROM (
           SELECT i2.id,
-                 ts_rank(i2."searchVector", websearch_to_tsquery('english', ${query})) AS rank,
+                 ts_rank(i2."searchVector", ${tsq}) AS rank,
                  COUNT(*) OVER() AS total
           FROM "Issue" i2
           JOIN "Project" p2 ON p2.id = i2."projectId"
           WHERE p2."workspaceId" = ANY(${workspaceIds}::text[])
             AND i2."projectId"   = ${projectId}
-            AND i2."searchVector" @@ websearch_to_tsquery('english', ${query})
+            AND i2."searchVector" @@ ${tsq}
           ORDER BY rank DESC, i2.id
           LIMIT ${limit} OFFSET ${offset}
         ) h
@@ -535,17 +537,17 @@ export class SearchService {
           s.name           AS "statusName",
           s.category       AS "statusCategory",
           ts_headline('english', coalesce(i.description, ''),
-                      websearch_to_tsquery('english', ${query}),
+                      ${tsq},
                       ${HEADLINE_OPTIONS}) AS snippet,
           h.total
         FROM (
           SELECT i2.id,
-                 ts_rank(i2."searchVector", websearch_to_tsquery('english', ${query})) AS rank,
+                 ts_rank(i2."searchVector", ${tsq}) AS rank,
                  COUNT(*) OVER() AS total
           FROM "Issue" i2
           JOIN "Project" p2 ON p2.id = i2."projectId"
           WHERE p2."workspaceId" = ANY(${workspaceIds}::text[])
-            AND i2."searchVector" @@ websearch_to_tsquery('english', ${query})
+            AND i2."searchVector" @@ ${tsq}
           ORDER BY rank DESC, i2.id
           LIMIT ${limit} OFFSET ${offset}
         ) h
@@ -665,6 +667,7 @@ export class SearchService {
     { limit, offset }: { limit: number; offset: number },
     projectId?: string,
   ): Promise<Paged<SearchCommentDto>> {
+    const tsq = buildTsQuery(query);
     let rows: FtsCommentRow[];
     if (projectId) {
       rows = await this.prisma.$queryRaw<FtsCommentRow[]>`
@@ -678,19 +681,19 @@ export class SearchService {
           p.key      AS "projectKey",
           u.name     AS "authorName",
           ts_headline('english', coalesce(c.body, ''),
-                      websearch_to_tsquery('english', ${query}),
+                      ${tsq},
                       ${HEADLINE_OPTIONS}) AS snippet,
           h.total
         FROM (
           SELECT c2.id,
-                 ts_rank(c2."searchVector", websearch_to_tsquery('english', ${query})) AS rank,
+                 ts_rank(c2."searchVector", ${tsq}) AS rank,
                  COUNT(*) OVER() AS total
           FROM "Comment" c2
           JOIN "Issue"   i2 ON i2.id = c2."issueId"
           JOIN "Project" p2 ON p2.id = i2."projectId"
           WHERE p2."workspaceId" = ANY(${workspaceIds}::text[])
             AND i2."projectId"   = ${projectId}
-            AND c2."searchVector" @@ websearch_to_tsquery('english', ${query})
+            AND c2."searchVector" @@ ${tsq}
           ORDER BY rank DESC, c2.id
           LIMIT ${limit} OFFSET ${offset}
         ) h
@@ -712,18 +715,18 @@ export class SearchService {
           p.key      AS "projectKey",
           u.name     AS "authorName",
           ts_headline('english', coalesce(c.body, ''),
-                      websearch_to_tsquery('english', ${query}),
+                      ${tsq},
                       ${HEADLINE_OPTIONS}) AS snippet,
           h.total
         FROM (
           SELECT c2.id,
-                 ts_rank(c2."searchVector", websearch_to_tsquery('english', ${query})) AS rank,
+                 ts_rank(c2."searchVector", ${tsq}) AS rank,
                  COUNT(*) OVER() AS total
           FROM "Comment" c2
           JOIN "Issue"   i2 ON i2.id = c2."issueId"
           JOIN "Project" p2 ON p2.id = i2."projectId"
           WHERE p2."workspaceId" = ANY(${workspaceIds}::text[])
-            AND c2."searchVector" @@ websearch_to_tsquery('english', ${query})
+            AND c2."searchVector" @@ ${tsq}
           ORDER BY rank DESC, c2.id
           LIMIT ${limit} OFFSET ${offset}
         ) h
@@ -843,6 +846,27 @@ export class SearchService {
       total,
     };
   }
+}
+
+/**
+ * Build the tsquery SQL fragment for a user query. Plain typing ("Alph",
+ * "login bu") becomes an AND of every word with a PREFIX match (`:*`) on the
+ * last one, so search-as-you-type matches partial words. Words are reduced to
+ * letters/digits before being handed to `to_tsquery`, so no tsquery operator
+ * can be injected; the result is still a bound parameter. Queries that use
+ * websearch syntax (quoted phrases, `OR`, `-negation`) keep full
+ * `websearch_to_tsquery` semantics.
+ */
+export function buildTsQuery(query: string): Prisma.Sql {
+  if (/["]|(^|\s)-\S|(^|\s)or(\s|$)/i.test(query)) {
+    return Prisma.sql`websearch_to_tsquery('english', ${query})`;
+  }
+  const words = query.match(/[\p{L}\p{N}]+/gu) ?? [];
+  if (words.length === 0) {
+    return Prisma.sql`websearch_to_tsquery('english', ${query})`;
+  }
+  const expr = words.map((w, i) => (i === words.length - 1 ? `${w}:*` : w)).join(' & ');
+  return Prisma.sql`to_tsquery('english', ${expr})`;
 }
 
 /** Clamp a caller-supplied page size into [1, SEARCH_MAX_LIMIT]. */

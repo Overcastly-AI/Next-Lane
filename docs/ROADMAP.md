@@ -877,6 +877,8 @@ See `docs/BACKLOG.md` § Future for the filed (not-yet-Ready) epic entry.
 
 ### Current focus
 
+**Status (2026-10-09, GA release polish - API bug fixes): QA bugs #1 (message), #3, #6, #7, #9, #14 fixed.** Search prefix-matches partial words (issues/pages/comments), assigning sends one notification, sprints reject end-before-start, `GET /projects` without `workspaceId` is a 400, project keys must start with a letter (2-10 chars), and NLQL errors no longer leak MCP tool names to web users (MCP appends the hint). See BACKLOG § Already Done.
+
 **Status (2026-10-09, GA release polish — keyboard & bulk): global shortcuts + "?" cheat-sheet and board bulk select shipped.** `c`, `g`+`b/l/d/r`, `/`, `j`/`k`/`Enter` and the help overlay; Shift/Cmd/Ctrl-click, hover checkbox and a mobile "Select" toggle feed the existing bulk action bar on the board (flat + swimlanes). See `docs/BACKLOG.md` § Already Done.
 
 **Status (2026-10-09, GA release polish — first-run): sample project + Getting started checklist shipped.** The empty dashboard offers "Explore with a sample project" (one click seeds a populated, clearly-labelled board with sprint, epic, labels and wiki pages), and the dashboard carries a dismissible 5-step Getting started checklist. See BACKLOG § Already Done.

@@ -1266,10 +1266,11 @@ export class IssuesService {
       WebhookEventTypes.IssueUpdated,
       dtoOut,
     );
-    if (
-      dto.assigneeId != null &&
-      dto.assigneeId !== existing.assigneeId
-    ) {
+    const newAssigneeId: string | null =
+      dto.assigneeId != null && dto.assigneeId !== existing.assigneeId
+        ? dto.assigneeId
+        : null;
+    if (dto.assigneeId && newAssigneeId) {
       // Post-commit side effect: never let a notification failure surface as
       // a failed update (the write is already durable).
       await this.notifyAssignment(userId, dto.assigneeId, dtoOut).catch(
@@ -1296,6 +1297,9 @@ export class IssuesService {
             title: issue.title,
           },
           changedFields,
+          // The new assignee already gets a dedicated "assigned to you"
+          // notification; don't also tell them "updated (assignee)".
+          excludeUserIds: newAssigneeId ? [newAssigneeId] : undefined,
         })
         .catch(() => {
           // Notification failure must not break the update response.

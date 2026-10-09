@@ -1220,7 +1220,7 @@ describe('tool registry', () => {
     const { client } = clientWith(400, {
       statusCode: 400,
       message:
-        'Invalid NLQL query: unknown user "Alex Rivera" — use an exact display name, an id, or me(); see list_users',
+        'Invalid NLQL query: unknown user "Alex Rivera" — use an exact display name, an id, or me()',
       error: 'Bad Request',
     });
     await expect(

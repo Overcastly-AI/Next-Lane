@@ -396,28 +396,28 @@ function checkOperand(
     case 'user': {
       if (userResolves(literal, data.users)) return null;
       if (looksLikeOpaqueId(literal)) return null;
-      return `unknown user "${literal}" — use an exact display name, an id, or me(); see list_users`;
+      return `unknown user "${literal}" — use an exact display name, an id, or me()`;
     }
     case 'sprint': {
       if (sprintResolves(literal, data.sprints)) return null;
       if (looksLikeOpaqueId(literal)) return null;
-      return `unknown sprint "${literal}" — use an exact sprint name or an id; see list_sprints`;
+      return `unknown sprint "${literal}" — use an exact sprint name or an id`;
     }
     case 'component': {
       if (componentResolves(literal, data.components)) return null;
       if (looksLikeOpaqueId(literal)) return null;
-      return `unknown component "${literal}" — use an exact component name or an id; see list_components`;
+      return `unknown component "${literal}" — use an exact component name or an id`;
     }
     case 'array': {
       // `labels` is the only 'array'-kind standard field today.
       if (labelResolves(literal, data.labels)) return null;
-      return `unknown label "${literal}" — use an exact label name; see list_labels`;
+      return `unknown label "${literal}" — use an exact label name`;
     }
     case 'enum': {
       switch (meta.field) {
         case 'status':
           if (statusResolves(literal, data.statuses)) return null;
-          return `unknown status "${literal}" — use an exact status name; see list_statuses`;
+          return `unknown status "${literal}" — use an exact status name`;
         case 'type':
           if (fixedEnumResolves(literal, ISSUE_TYPE_VALUES)) return null;
           return `unknown type "${literal}" — valid types: ${ISSUE_TYPE_VALUES.join(', ')}`;

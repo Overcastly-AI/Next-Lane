@@ -354,6 +354,8 @@ export class NotificationsService {
     actorName: string;
     issue: IssueSnapshot & { title: string };
     changedFields: string[];
+    /** Users who already got a more specific notification (e.g. the new assignee). */
+    excludeUserIds?: string[];
   }): Promise<void> {
     const watchers = await this.prisma.watcher.findMany({
       where: { issueId: params.issue.id },
@@ -363,7 +365,9 @@ export class NotificationsService {
     // Exclude the actor themselves.
     const recipients = watchers
       .map((w) => w.userId)
-      .filter((uid) => uid !== params.actorId);
+      .filter(
+        (uid) => uid !== params.actorId && !params.excludeUserIds?.includes(uid),
+      );
 
     if (recipients.length === 0) return;
 

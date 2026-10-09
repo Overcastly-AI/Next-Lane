@@ -1364,6 +1364,19 @@ describe('IssuesService.update watcher fan-out', () => {
     );
   });
 
+  it('excludes the new assignee from WATCHED_UPDATED (one notification, not two)', async () => {
+    mocks.prisma.issue.findUnique.mockResolvedValue(makeExistingIssue());
+    mocks.tx.issue.update.mockResolvedValue(makeUpdatedIssueRow());
+
+    await service.update(ACTOR, ISSUE_ID, { assigneeId: 'user-new' });
+    await Promise.resolve();
+
+    expect(notificationsService.notifyAssigned).toHaveBeenCalledTimes(1);
+    expect(notificationsService.notifyWatchersUpdated).toHaveBeenCalledWith(
+      expect.objectContaining({ excludeUserIds: ['user-new'] }),
+    );
+  });
+
   it('fans out WATCHED_UPDATED when priority changes', async () => {
     mocks.prisma.issue.findUnique.mockResolvedValue(makeExistingIssue({ priority: Priority.LOW }));
     mocks.tx.issue.update.mockResolvedValue(makeUpdatedIssueRow());

@@ -5,7 +5,7 @@ import {
   splitSearchHighlight,
   stripSearchHighlight,
 } from '@next-lane/shared';
-import { SearchService, buildIlikeSnippet, parseIssueKey } from './search.service';
+import { SearchService, buildIlikeSnippet, buildTsQuery, parseIssueKey } from './search.service';
 import type { PrismaService } from '../prisma/prisma.service';
 
 /**
@@ -1076,8 +1076,14 @@ describe('SearchService full-text search path', () => {
       const [strings, ...params] = call as [string[], ...unknown[]];
       // The query text NEVER appears in the static SQL fragments...
       expect(strings.join('?')).not.toContain('DROP TABLE');
-      // ...it arrives as a bound parameter instead.
-      expect(params).toContain(nasty);
+      // ...it arrives as a bound parameter (inside the tsquery fragment) instead.
+      const sqlFrags = params.filter((x) => x instanceof Object && 'strings' in (x as object));
+      expect(sqlFrags.length).toBeGreaterThan(0);
+      for (const f of sqlFrags) {
+        const frag = f as { strings: string[]; values: unknown[] };
+        expect(frag.strings.join('?')).not.toContain('DROP TABLE');
+        expect(frag.values).toContain(nasty);
+      }
     }
   });
 
@@ -1159,5 +1165,33 @@ describe('SearchService full-text search path', () => {
     expect(typeof result.paging.issues.total).toBe('number');
     // Would throw "Do not know how to serialize a BigInt" if we passed it through.
     expect(() => JSON.stringify(result)).not.toThrow();
+  });
+});
+
+describe('buildTsQuery (prefix matching, GA bug #3)', () => {
+  it('prefix-matches the last word and ANDs the rest', () => {
+    const q = buildTsQuery('login bu');
+    expect(q.sql).toContain('to_tsquery');
+    expect(q.values).toEqual(['login & bu:*']);
+  });
+
+  it('prefix-matches a single partial word', () => {
+    expect(buildTsQuery('Alph').values).toEqual(['Alph:*']);
+  });
+
+  it('strips tsquery operators so input cannot inject syntax', () => {
+    expect(buildTsQuery("a' | !b:* & (c)").values).toEqual(['a & b & c:*']);
+  });
+
+  it('keeps websearch semantics for quotes, OR and negation', () => {
+    for (const q of ['"exact phrase"', 'foo OR bar', 'foo -bar']) {
+      const frag = buildTsQuery(q);
+      expect(frag.sql).toContain('websearch_to_tsquery');
+      expect(frag.values).toEqual([q]);
+    }
+  });
+
+  it('falls back to websearch when no word characters remain', () => {
+    expect(buildTsQuery('!!!').sql).toContain('websearch_to_tsquery');
   });
 });

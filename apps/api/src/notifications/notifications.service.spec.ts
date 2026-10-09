@@ -379,6 +379,28 @@ describe('NotificationsService', () => {
       )).toBe(true);
     });
 
+    it('skips excludeUserIds (new assignee already got an "assigned" notification)', async () => {
+      prisma.watcher.findMany.mockResolvedValue([
+        { userId: 'u-watcher-1' },
+        { userId: 'u-assignee' },
+      ]);
+      prisma.notification.createMany.mockResolvedValue({ count: 1 });
+      prisma.notification.findMany.mockResolvedValue([
+        makeNotificationRow('u-watcher-1', 'n-w1'),
+      ]);
+
+      await service.notifyWatchersUpdated({
+        actorId: 'u-actor',
+        actorName: 'Actor',
+        issue: ISSUE_WITH_TITLE,
+        changedFields: ['assignee'],
+        excludeUserIds: ['u-assignee'],
+      });
+
+      const data = prisma.notification.createMany.mock.calls[0][0].data;
+      expect(data.map((d: { userId: string }) => d.userId)).toEqual(['u-watcher-1']);
+    });
+
     it('emits a realtime event per recipient via their user:<id> room', async () => {
       prisma.watcher.findMany.mockResolvedValue([
         { userId: 'u-watcher-1' },

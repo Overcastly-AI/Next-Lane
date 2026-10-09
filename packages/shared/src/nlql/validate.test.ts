@@ -143,7 +143,7 @@ describe('resolveQueryNames (MCP-QA pass 1, finding 1 residual)', () => {
     const r = resolveQueryNames('assignee = "Alex Rivera"', { users: [ALICE, BOB] });
     expect(r.ok).toBe(false);
     expect(r.error?.message).toBe(
-      'unknown user "Alex Rivera" — use an exact display name, an id, or me(); see list_users',
+      'unknown user "Alex Rivera" — use an exact display name, an id, or me()',
     );
     expect(typeof r.error?.position).toBe('number');
   });
@@ -200,7 +200,7 @@ describe('resolveQueryNames (MCP-QA pass 1, finding 1 residual)', () => {
     const r = resolveQueryNames('sprint = "Nonexistent Sprint"', { sprints: [SPRINT_JULY_B] });
     expect(r.ok).toBe(false);
     expect(r.error?.message).toBe(
-      'unknown sprint "Nonexistent Sprint" — use an exact sprint name or an id; see list_sprints',
+      'unknown sprint "Nonexistent Sprint" — use an exact sprint name or an id',
     );
   });
 
@@ -284,7 +284,7 @@ describe('resolveQueryNames — status/type/priority/label/component (MCP-QA pas
     const r = resolveQueryNames('status = "In Progres"', { statuses: [STATUS_IN_PROGRESS] });
     expect(r.ok).toBe(false);
     expect(r.error?.message).toBe(
-      'unknown status "In Progres" — use an exact status name; see list_statuses',
+      'unknown status "In Progres" — use an exact status name',
     );
   });
 
@@ -323,7 +323,7 @@ describe('resolveQueryNames — status/type/priority/label/component (MCP-QA pas
     const r = resolveQueryNames('label = "backendd"', { labels: [LABEL_BACKEND] });
     expect(r.ok).toBe(false);
     expect(r.error?.message).toBe(
-      'unknown label "backendd" — use an exact label name; see list_labels',
+      'unknown label "backendd" — use an exact label name',
     );
   });
 
@@ -345,7 +345,7 @@ describe('resolveQueryNames — status/type/priority/label/component (MCP-QA pas
     const r = resolveQueryNames('component = "nope"', { components: [COMPONENT_API] });
     expect(r.ok).toBe(false);
     expect(r.error?.message).toBe(
-      'unknown component "nope" — use an exact component name or an id; see list_components',
+      'unknown component "nope" — use an exact component name or an id',
     );
   });
 

@@ -67,6 +67,7 @@ export class SprintsService {
     dto: CreateSprintDto,
   ): Promise<SprintDto> {
     await assertProjectRole(this.prisma, userId, projectId, Role.MEMBER);
+    assertDateRange(dto.startDate, dto.endDate);
     const sprint = await this.prisma.sprint.create({
       data: {
         projectId,
@@ -91,6 +92,12 @@ export class SprintsService {
       userId,
       existing.projectId,
       Role.MEMBER,
+    );
+
+    // Partial updates are validated against the stored value of the other date.
+    assertDateRange(
+      dto.startDate ?? existing.startDate,
+      dto.endDate ?? existing.endDate,
     );
 
     const startingSprint =
@@ -213,5 +220,16 @@ export class SprintsService {
     await assertProjectRole(this.prisma, userId, existing.projectId, Role.ADMIN);
     await this.prisma.sprint.delete({ where: { id } });
     return { id };
+  }
+}
+
+/** Reject a sprint whose end date falls before its start date (equal is fine). */
+function assertDateRange(
+  start: string | Date | null | undefined,
+  end: string | Date | null | undefined,
+): void {
+  if (!start || !end) return;
+  if (new Date(end).getTime() < new Date(start).getTime()) {
+    throw new BadRequestException('Sprint end date must be on or after the start date');
   }
 }

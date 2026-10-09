@@ -761,7 +761,7 @@ describe('DashboardsService', () => {
       const bad = result.gadgets.find((g) => g.gadgetId === 'g-bad');
       const good = result.gadgets.find((g) => g.gadgetId === 'g-good');
       expect(bad?.error).toBe(
-        'unknown user "Nobody By This Name" — use an exact display name, an id, or me(); see list_users',
+        'unknown user "Nobody By This Name" — use an exact display name, an id, or me()',
       );
       expect(bad?.data).toBeUndefined();
       expect(good?.error).toBeUndefined();
@@ -778,7 +778,7 @@ describe('DashboardsService', () => {
       const result = await service.getDashboardData('user-1', DASHBOARD_ID);
 
       expect(result.gadgets[0].error).toBe(
-        'unknown sprint "Nonexistent Sprint" — use an exact sprint name or an id; see list_sprints',
+        'unknown sprint "Nonexistent Sprint" — use an exact sprint name or an id',
       );
     });
 

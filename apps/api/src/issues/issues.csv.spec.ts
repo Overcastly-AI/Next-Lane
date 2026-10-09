@@ -730,7 +730,7 @@ describe('IssuesService.exportCsv — unresolved user/sprint name → 400', () =
     ).rejects.toMatchObject({
       status: 400,
       message: expect.stringContaining(
-        'unknown user "Nobody By This Name" — use an exact display name, an id, or me(); see list_users',
+        'unknown user "Nobody By This Name" — use an exact display name, an id, or me()',
       ),
     });
   });
@@ -745,7 +745,7 @@ describe('IssuesService.exportCsv — unresolved user/sprint name → 400', () =
     ).rejects.toMatchObject({
       status: 400,
       message: expect.stringContaining(
-        'unknown sprint "Nonexistent Sprint" — use an exact sprint name or an id; see list_sprints',
+        'unknown sprint "Nonexistent Sprint" — use an exact sprint name or an id',
       ),
     });
   });
@@ -814,7 +814,7 @@ describe('IssuesService.exportCsv — unresolved status/type/priority/label/comp
     ).rejects.toMatchObject({
       status: 400,
       message: expect.stringContaining(
-        'unknown status "In Progres" — use an exact status name; see list_statuses',
+        'unknown status "In Progres" — use an exact status name',
       ),
     });
   });
@@ -859,7 +859,7 @@ describe('IssuesService.exportCsv — unresolved status/type/priority/label/comp
     ).rejects.toMatchObject({
       status: 400,
       message: expect.stringContaining(
-        'unknown label "backendd" — use an exact label name; see list_labels',
+        'unknown label "backendd" — use an exact label name',
       ),
     });
   });
@@ -876,7 +876,7 @@ describe('IssuesService.exportCsv — unresolved status/type/priority/label/comp
     ).rejects.toMatchObject({
       status: 400,
       message: expect.stringContaining(
-        'unknown component "nope" — use an exact component name or an id; see list_components',
+        'unknown component "nope" — use an exact component name or an id',
       ),
     });
   });

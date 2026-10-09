@@ -13,6 +13,7 @@ import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { zodToJsonSchema } from 'zod-to-json-schema';
+import { ApiError } from '../client.js';
 import type { NextLaneClient } from '../client.js';
 
 /**
@@ -698,6 +699,27 @@ function parseCsv(text: string): string[][] {
   return rows;
 }
 
+/** Which MCP tool lists the valid values for an unresolved NLQL reference. */
+const NLQL_UNRESOLVED_TOOL_HINT: Record<string, string> = {
+  user: 'list_users',
+  sprint: 'list_sprints',
+  component: 'list_components',
+  label: 'list_labels',
+  status: 'list_statuses',
+};
+
+/**
+ * The API's NLQL "unknown <thing> ..." messages are deliberately neutral (web
+ * users see them in the filter bar). Agents get the follow-up tool name
+ * appended here, on the MCP surface only.
+ */
+export function withNlqlToolHint(err: unknown): unknown {
+  if (!(err instanceof ApiError) || err.status !== 400) return err;
+  const m = /Invalid NLQL query: unknown (user|sprint|component|label|status) "/.exec(err.message);
+  if (!m || err.message.includes('see list_')) return err;
+  return new ApiError(`${err.message}; see ${NLQL_UNRESOLVED_TOOL_HINT[m[1]]}`, err.status);
+}
+
 /**
  * Resolve an NLQL `query` against a project into full (hydrated) issue
  * objects, in the CSV's own order (issue number ascending). Throws the API's
@@ -708,7 +730,12 @@ async function fetchNlqlFilteredIssues(
   projectId: string,
   query: string,
 ): Promise<ApiItem[]> {
-  const csv = await client.get<string>(`/projects/${projectId}/issues.csv`, { q: query });
+  let csv: string;
+  try {
+    csv = await client.get<string>(`/projects/${projectId}/issues.csv`, { q: query });
+  } catch (err) {
+    throw withNlqlToolHint(err);
+  }
   const rows = parseCsv(String(csv));
   if (rows.length <= 1) return [];
   const header = rows[0];

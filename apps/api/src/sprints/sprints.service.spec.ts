@@ -165,3 +165,55 @@ describe('SprintsService lifecycle (update)', () => {
     expect(realtime.emitToProject).not.toHaveBeenCalled();
   });
 });
+
+describe('SprintsService date range (GA bug #7)', () => {
+  let prisma: MockPrisma & { sprint: { findUnique: jest.Mock; create: jest.Mock } };
+  let service: SprintsService;
+
+  beforeEach(() => {
+    prisma = makePrisma() as typeof prisma;
+    prisma.sprint.create = jest.fn().mockResolvedValue({ ...sprintRow(SprintState.PLANNED), createdAt: new Date() });
+    service = new SprintsService(
+      prisma,
+      { emitToProject: jest.fn() } as unknown as RealtimeService,
+      webhooksMock,
+    );
+    jest.spyOn(membership, 'assertProjectRole').mockResolvedValue({} as never);
+  });
+
+  afterEach(() => jest.restoreAllMocks());
+
+  it('rejects create with endDate before startDate', async () => {
+    await expect(
+      service.create('u', PROJECT_ID, { name: 'S', startDate: '2026-12-31', endDate: '2026-01-01' }),
+    ).rejects.toThrow('Sprint end date must be on or after the start date');
+    expect(prisma.sprint.create).not.toHaveBeenCalled();
+  });
+
+  it('allows same-day and ordered ranges on create', async () => {
+    await service.create('u', PROJECT_ID, { name: 'S', startDate: '2026-01-01', endDate: '2026-01-01' });
+    expect(prisma.sprint.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a partial update that moves endDate before the stored startDate', async () => {
+    prisma.sprint.findUnique.mockResolvedValue({
+      ...sprintRow(SprintState.PLANNED),
+      startDate: new Date('2026-06-10'),
+      endDate: new Date('2026-06-20'),
+    });
+    await expect(
+      service.update('u', SPRINT_ID, { endDate: '2026-06-01' }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('rejects a partial update that moves startDate after the stored endDate', async () => {
+    prisma.sprint.findUnique.mockResolvedValue({
+      ...sprintRow(SprintState.PLANNED),
+      startDate: new Date('2026-06-10'),
+      endDate: new Date('2026-06-20'),
+    });
+    await expect(
+      service.update('u', SPRINT_ID, { startDate: '2026-07-01' }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+});

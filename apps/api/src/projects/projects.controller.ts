@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -34,8 +35,11 @@ export class ProjectsController {
   @RequireScope('projects:read')
   findAll(
     @CurrentUser() user: AuthUser,
-    @Query('workspaceId') workspaceId: string,
+    @Query('workspaceId') workspaceId?: string,
   ) {
+    if (!workspaceId) {
+      throw new BadRequestException('workspaceId query parameter is required');
+    }
     return this.projects.findAll(user.id, workspaceId);
   }
 

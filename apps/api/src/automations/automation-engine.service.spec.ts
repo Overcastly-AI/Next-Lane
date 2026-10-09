@@ -508,7 +508,7 @@ describe('AutomationEngineService', () => {
       expect(row.matched).toBe(false);
       expect(row.status).toBe(AutomationRunStatus.FAILED);
       expect(String(row.error)).toContain(
-        'unknown user "Nobody By This Name" — use an exact display name, an id, or me(); see list_users',
+        'unknown user "Nobody By This Name" — use an exact display name, an id, or me()',
       );
     });
 
@@ -524,7 +524,7 @@ describe('AutomationEngineService', () => {
       const row = firstRunRow(prisma);
       expect(row.status).toBe(AutomationRunStatus.FAILED);
       expect(String(row.error)).toContain(
-        'unknown sprint "Nonexistent Sprint" — use an exact sprint name or an id; see list_sprints',
+        'unknown sprint "Nonexistent Sprint" — use an exact sprint name or an id',
       );
     });
 
@@ -594,7 +594,7 @@ describe('AutomationEngineService', () => {
       expect(row.matched).toBe(false);
       expect(row.status).toBe(AutomationRunStatus.FAILED);
       expect(String(row.error)).toContain(
-        'unknown status "In Progres" — use an exact status name; see list_statuses',
+        'unknown status "In Progres" — use an exact status name',
       );
     });
 
