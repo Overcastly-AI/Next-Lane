@@ -1,5 +1,17 @@
+import { useRef, useState } from 'react';
 import type React from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
+import type { ProjectDto } from '@next-lane/shared';
 import { Button } from '@/components/ui/Button';
+import { useToast } from '@/components/ui/Toast';
+import { request } from '@/api/client';
+import { qk } from '@/api/keys';
+import {
+  createSampleProject,
+  SampleSeedError,
+  type SampleProgress,
+} from '@/lib/sampleProject';
 
 /**
  * Onboarding welcome panel shown on the Dashboard when the user has no projects.
@@ -18,9 +30,58 @@ import { Button } from '@/components/ui/Button';
  */
 export function OnboardingPanel({
   onCreate,
+  workspaceId,
+  existingProjectKeys = [],
+  sampleProject,
 }: {
   onCreate: () => void;
+  /** Enables the "Explore with a sample project" CTA. */
+  workspaceId?: string;
+  existingProjectKeys?: readonly string[];
+  /** A sample project that already exists: offer to open it instead of duplicating. */
+  sampleProject?: ProjectDto | null;
 }) {
+  const navigate = useNavigate();
+  const qc = useQueryClient();
+  const toast = useToast();
+  const running = useRef(false);
+  const [progress, setProgress] = useState<SampleProgress | null>(null);
+
+  async function startSample() {
+    if (!workspaceId || running.current) return;
+    running.current = true;
+    setProgress({ done: 0, total: 1, label: 'Creating project' });
+    try {
+      const project = await createSampleProject(
+        request,
+        workspaceId,
+        existingProjectKeys,
+        setProgress,
+      );
+      void qc.invalidateQueries({ queryKey: qk.projects(workspaceId) });
+      toast.success('Sample project ready. Have a look around.');
+      navigate(`/projects/${project.id}/board`);
+    } catch (err) {
+      void qc.invalidateQueries({ queryKey: qk.projects(workspaceId) });
+      const partial = err instanceof SampleSeedError ? err.project : null;
+      const reason = err instanceof Error && err.message ? ` (${err.message})` : '';
+      if (partial) {
+        toast.error(
+          `The sample project was only partly created${reason}. You can open it or archive it in project settings.`,
+        );
+        navigate(`/projects/${partial.id}/board`);
+      } else {
+        toast.error(`Could not create the sample project${reason}. Try again.`);
+      }
+    } finally {
+      running.current = false;
+      setProgress(null);
+    }
+  }
+
+  const busy = progress !== null;
+  const pct = progress ? Math.round((progress.done / progress.total) * 100) : 0;
+
   return (
     <div
       data-testid="onboarding-panel"
@@ -59,6 +120,49 @@ export function OnboardingPanel({
         >
           Create your first project
         </Button>
+        {workspaceId && (
+          sampleProject ? (
+            <Button
+              variant="secondary"
+              data-testid="onboarding-open-sample"
+              onClick={() => navigate(`/projects/${sampleProject.id}/board`)}
+              className="mt-3 w-full sm:ml-3 sm:mt-0 sm:w-auto"
+            >
+              Open sample project
+            </Button>
+          ) : (
+            <Button
+              variant="secondary"
+              data-testid="onboarding-sample-project"
+              onClick={() => void startSample()}
+              disabled={busy}
+              loading={busy}
+              className="mt-3 w-full sm:ml-3 sm:mt-0 sm:w-auto"
+            >
+              Explore with a sample project
+            </Button>
+          )
+        )}
+        {busy && progress && (
+          <div className="mx-auto mt-5 max-w-xs text-left" data-testid="onboarding-sample-progress">
+            <div
+              role="progressbar"
+              aria-label="Creating sample project"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={pct}
+              className="h-1.5 overflow-hidden rounded-full bg-ink-100"
+            >
+              <div
+                className="h-full rounded-full bg-signal-600 transition-[width] motion-reduce:transition-none"
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+            <p role="status" aria-live="polite" className="mt-2 text-xs text-ink-600">
+              {progress.label}… {pct}%
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Feature highlights */}

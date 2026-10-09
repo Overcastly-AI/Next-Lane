@@ -31,6 +31,8 @@ import { EmptyState, ErrorState, LoadingState } from '@/components/ui/States';
 import { IssueTypeIcon } from '@/components/issue/issueMeta';
 import { ProjectCard } from '@/components/project/ProjectCard';
 import { OnboardingPanel } from '@/components/project/OnboardingPanel';
+import { GettingStartedCard } from '@/components/project/GettingStartedCard';
+import { isSampleProject } from '@/lib/sampleProject';
 import { CreateProjectModal } from '@/components/project/CreateProjectModal';
 import { CreateWorkspaceModal } from '@/components/workspace/CreateWorkspaceModal';
 import { useWorkspaces, useCreateWorkspace, useMyRole } from '@/api/workspaces';
@@ -191,12 +193,20 @@ export function PulseDashboardPage() {
 
       {/* First-run: no projects → onboarding */}
       {projectsQuery.isSuccess && projects.length === 0 && (
-        <OnboardingPanel onCreate={() => setProjectModalOpen(true)} />
+        <OnboardingPanel
+          onCreate={() => setProjectModalOpen(true)}
+          workspaceId={activeWorkspace?.id}
+          existingProjectKeys={projects.map((p) => p.key)}
+          sampleProject={projects.find(isSampleProject) ?? null}
+        />
       )}
 
       {/* Pulse view: only once there are projects */}
       {projectsQuery.isSuccess && projects.length > 0 && (
         <div data-testid="pulse-dashboard" className="space-y-8">
+          {activeWorkspace && (
+            <GettingStartedCard workspaceId={activeWorkspace.id} projects={projects} />
+          )}
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             <SprintSnapshotCard projects={projects} />
             <MyIssuesCard
