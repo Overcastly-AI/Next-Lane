@@ -610,6 +610,107 @@ h1, h2, h3, h4, h5, h6,
   letter-spacing: 0.01em;
 }
 
+/* ── User-colored chip (labels) ───────────────────────────────────────────
+ * The label's own hex arrives as --nl-chip. Light: 13% tint + the hue
+ * darkened to 60% (what Badge always did). Dark: the same tint reads as a
+ * dark wash, so the text lightens toward white instead of darkening toward
+ * black — a darkened hue on the dark canvas measured 1.8:1; a 35%-hue /
+ * 65%-white mix clears AA for every input colour. */
+.nl-color-chip {
+  background-color: color-mix(in srgb, var(--nl-chip) 13%, transparent);
+  color: color-mix(in srgb, var(--nl-chip) 60%, black);
+}
+.dark .nl-color-chip {
+  background-color: color-mix(in srgb, var(--nl-chip) 22%, transparent);
+  color: color-mix(in srgb, var(--nl-chip) 35%, white);
+}
+
+/* ── Select chevron ────────────────────────────────────────────────────────
+ * Native selects use appearance-none, so the chevron is a background image.
+ * It used to be an arbitrary Tailwind class holding an inline SVG — but the
+ * SVG contained spaces, which Tailwind's class extractor splits on, so the
+ * rule was never generated and every Select rendered without an affordance.
+ * Stroke colours are >= 3:1 against their field in each theme. */
+.nl-select-chevron {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b7280' stroke-width='2'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.5rem center;
+  background-size: 14px;
+}
+.dark .nl-select-chevron {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23a3abbd' stroke-width='2'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E");
+}
+
+/* ── Auth brand panel (AuthShell, desktop) ─────────────────────────────────
+ * Deliberately theme-independent: a fixed deep-cobalt field with its own
+ * light-on-dark text, so the first impression is identical in light and dark.
+ * Signature: a "dispatch ledger" — issue keys on a vertical lane rail, each row
+ * ticked in the cobalt rail-tick used by the sidebar's active item; the row in
+ * motion pulses once, then holds. Hairline lane grid behind it = the lanes
+ * of the logo mark. All text >= 7:1 on the field. */
+.nl-auth-brand {
+  position: relative;
+  overflow: hidden;
+  background-color: #0b1747;
+  background-image: repeating-linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.05) 0 1px,
+    transparent 1px 25%
+  );
+  color: #e8eeff;
+}
+.nl-auth-brand__muted { color: #b4c2ee; }
+.nl-auth-ledger {
+  position: relative;
+  margin-left: 0.375rem;
+  border-left: 1px solid rgba(180, 194, 238, 0.28);
+}
+.nl-auth-row {
+  position: relative;
+  display: flex;
+  align-items: baseline;
+  gap: 0.875rem;
+  padding: 0.7rem 0 0.7rem 1.25rem;
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 0.8125rem;
+  color: #b4c2ee;
+}
+.nl-auth-row::before {
+  content: '';
+  position: absolute;
+  left: -2px;
+  top: 0.55rem;
+  bottom: 0.55rem;
+  width: 3px;
+  border-radius: 2px;
+  background: rgba(180, 194, 238, 0.32);
+}
+.nl-auth-row[data-state='done']::before { background: #7fb1ff; }
+.nl-auth-row[data-state='active'] { color: #ffffff; }
+.nl-auth-row[data-state='active']::before { background: #ffffff; width: 4px; left: -2.5px; }
+.nl-auth-row__key { flex: none; font-weight: 500; }
+.nl-auth-row__state {
+  margin-left: auto;
+  flex: none;
+  font-size: 0.6875rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .nl-auth-row[data-state='active']::before {
+    animation: nl-auth-tick 2.4s ease-out 0.4s 1 both;
+  }
+  .nl-auth-ledger .nl-auth-row { animation: nl-fade-in 420ms ease both; }
+  .nl-auth-ledger .nl-auth-row:nth-child(2) { animation-delay: 90ms; }
+  .nl-auth-ledger .nl-auth-row:nth-child(3) { animation-delay: 180ms; }
+  .nl-auth-ledger .nl-auth-row:nth-child(4) { animation-delay: 270ms; }
+}
+@keyframes nl-auth-tick {
+  0%   { transform: scaleY(0.2); }
+  40%  { transform: scaleY(1.15); }
+  100% { transform: scaleY(1); }
+}
+
 /* ── Drawer slide-in ──────────────────────────────────────────────────────── */
 .nl-drawer-animate {
   animation: nl-drawer-in var(--nl-duration-slow) var(--nl-ease) both;

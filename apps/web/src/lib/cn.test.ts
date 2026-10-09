@@ -45,5 +45,8 @@ describe('cn', () => {
       "bg-[url('data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 fill=%22none%22 viewBox=%220 0 24 24%22>')] bg-[length:14px] bg-no-repeat";
     expect(cn('bg-surface', chevron)).toBe(`bg-surface ${chevron}`);
     expect(cn('bg-ink-50 bg-surface', chevron)).toBe(`bg-surface ${chevron}`);
+    // The real Select chevron string, including the keyword background-position.
+    const select = `${chevron} bg-[right_0.5rem_center]`;
+    expect(cn('bg-surface text-ink-900', select)).toBe(`bg-surface text-ink-900 ${select}`);
   });
 });

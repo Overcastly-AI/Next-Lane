@@ -12,9 +12,16 @@ import { extendTailwindMerge } from 'tailwind-merge';
  * color validator accepts any value, and our palette keys never collide with
  * size/shadow keys.
  */
+// `bg-[right_0.5rem_center]` is a valid background-position arbitrary value but
+// has no `position:` type hint, so tailwind-merge files it under bg *color* and
+// it would then evict `bg-surface`. Recognise keyword-led position values.
+const isKeywordPosition = (value: string) =>
+  /^\[(?:right|left|center|top|bottom)[_\]]/.test(value);
+
 const twMerge = extendTailwindMerge({
   extend: {
     classGroups: {
+      'bg-position': [{ bg: [isKeywordPosition] }],
       'font-size': [{ text: ['2xs'] }],
       shadow: [{ shadow: ['card', 'cardHover', 'modal', 'dropdown', 'signal'] }],
       animate: [
