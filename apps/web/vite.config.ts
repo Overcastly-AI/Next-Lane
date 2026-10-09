@@ -9,6 +9,17 @@ function readRoot(name: string): string | null {
   return existsSync(p) ? readFileSync(p, 'utf8') : null;
 }
 
+/**
+ * Only the newest `count` release sections — What's new shows five, and the
+ * full CHANGELOG (~90 KB and growing every release) would otherwise be inlined
+ * into the main bundle verbatim.
+ */
+function latestReleases(changelog: string, count: number): string {
+  const starts = [...changelog.matchAll(/^## \[/gm)].map((m) => m.index ?? 0);
+  if (starts.length <= count) return changelog;
+  return changelog.slice(0, starts[count]);
+}
+
 
 export default defineConfig(() => {
   // Default to 5173 (the port the Docker images expose/map). An explicit
@@ -22,7 +33,7 @@ export default defineConfig(() => {
     // Version + release notes baked in at build time (About / What's new).
     define: {
       __APP_VERSION__: JSON.stringify(appVersion),
-      __APP_CHANGELOG__: JSON.stringify(readRoot('CHANGELOG.md') ?? ''),
+      __APP_CHANGELOG__: JSON.stringify(latestReleases(readRoot('CHANGELOG.md') ?? '', 5)),
     },
     plugins: [react()],
     resolve: {
