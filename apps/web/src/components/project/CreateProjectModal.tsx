@@ -21,6 +21,21 @@ export function deriveProjectKey(name: string): string {
   return raw.slice(0, 5).toUpperCase();
 }
 
+/**
+ * Mirror of the API's key rule: starts with a letter, 2-10 letters/digits.
+ * Returns a human message, or null when valid (or still empty — emptiness is
+ * handled by the disabled submit, not by shouting at an untouched field).
+ */
+export function projectKeyError(key: string): string | null {
+  const k = key.trim();
+  if (!k) return null;
+  if (!/^[A-Za-z]/.test(k)) return 'Key must start with a letter.';
+  if (k.length < 2) return 'Key must be at least 2 characters.';
+  if (k.length > 10) return 'Key must be at most 10 characters.';
+  if (!/^[A-Za-z0-9]+$/.test(k)) return 'Key can only contain letters and numbers.';
+  return null;
+}
+
 export function CreateProjectModal({
   open,
   onClose,
@@ -59,8 +74,12 @@ export function CreateProjectModal({
     }
   }
 
+  const keyError = projectKeyError(key);
+  const keyInvalid = !key.trim() || keyError !== null;
+
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
+    if (keyInvalid) return;
     setError(null);
     try {
       const project = await create.mutateAsync({
@@ -93,7 +112,7 @@ export function CreateProjectModal({
             type="submit"
             form="create-project-form"
             loading={create.isPending}
-            disabled={!name.trim() || !key.trim()}
+            disabled={!name.trim() || keyInvalid}
           >
             Create project
           </Button>
@@ -114,6 +133,7 @@ export function CreateProjectModal({
         <Field
           label="Key"
           htmlFor="project-key"
+          error={keyError ?? undefined}
           hint={
             keyTouched
               ? 'Short prefix used in issue keys. Edited by hand.'
@@ -122,6 +142,7 @@ export function CreateProjectModal({
         >
           <Input
             id="project-key"
+            aria-invalid={keyError ? true : undefined}
             required
             value={key}
             onChange={(e) => {

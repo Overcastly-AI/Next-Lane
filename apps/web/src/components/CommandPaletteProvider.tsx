@@ -7,6 +7,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import { useLocation } from 'react-router-dom';
 import { CommandPalette } from './CommandPalette';
 import { ShortcutsHelpModal } from './ShortcutsHelpModal';
 import { useGlobalShortcuts } from '@/lib/useGlobalShortcuts';
@@ -14,6 +15,9 @@ import { useGlobalShortcuts } from '@/lib/useGlobalShortcuts';
 /** Window event the palette's "Keyboard shortcuts" command dispatches. */
 export const SHOW_SHORTCUTS_EVENT = 'nl:show-shortcuts';
 import { useAuth } from '@/auth/AuthContext';
+import { useIssue } from '@/api/issues';
+import { useWorkspaceContext } from '@/contexts/WorkspaceContext';
+import { recordRecentIssue } from '@/lib/recentIssues';
 
 interface CommandPaletteContextValue {
   open: () => void;
@@ -35,6 +39,28 @@ export function CommandPaletteProvider({ children }: { children: ReactNode }) {
   const { isAuthenticated } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+
+  // Record "recently viewed" issues by observing the `?issue=` URL param, so
+  // every surface that opens the drawer (board, backlog, deep links, palette)
+  // is covered without each one having to report in.
+  const { search } = useLocation();
+  const { activeWorkspace } = useWorkspaceContext();
+  const viewedIssueId = isAuthenticated
+    ? (new URLSearchParams(search).get('issue') ?? undefined)
+    : undefined;
+  const viewedIssue = useIssue(viewedIssueId);
+  const viewed = viewedIssue.data;
+  const workspaceId = activeWorkspace?.id;
+  useEffect(() => {
+    if (!viewed || viewed.id !== viewedIssueId || !workspaceId) return;
+    recordRecentIssue(workspaceId, {
+      id: viewed.id,
+      key: viewed.key,
+      title: viewed.title,
+      projectId: viewed.projectId,
+      type: viewed.type,
+    });
+  }, [viewed, viewedIssueId, workspaceId]);
 
   const open = useCallback(() => setIsOpen(true), []);
   const close = useCallback(() => setIsOpen(false), []);

@@ -18,6 +18,8 @@ import { useDebouncedValue } from '@/lib/useDebouncedValue';
 import { pageRefPath } from '@/lib/pageRoute';
 import { Spinner } from '@/components/ui/States';
 import { cn } from '@/lib/cn';
+import { useWorkspaceContext } from '@/contexts/WorkspaceContext';
+import { getRecentIssues, type RecentIssue } from '@/lib/recentIssues';
 
 /**
  * A single selectable row in the palette. `onSelect` runs when the user presses
@@ -39,6 +41,8 @@ interface PaletteItem {
    */
   subtitle?: ReactNode;
   hint?: string;
+  /** Extra match terms for filtering actions by the query. */
+  keywords?: string;
   icon: ReactNode;
   onSelect: () => void;
 }
@@ -52,6 +56,23 @@ interface PaletteItem {
  * interpreted as markup. Returns null when there is no snippet (e.g. an issue
  * with no description), so no empty line is reserved.
  */
+/**
+ * Strip markdown / wiki-link syntax from a snippet segment so the palette
+ * shows prose, not `**bold**` or `[[Page]]`. Output is only ever rendered as
+ * React text nodes, so nothing here needs (or does) HTML escaping.
+ */
+export function stripMarkdown(text: string): string {
+  return text
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/\[\[([^\]|]*)\|?([^\]]*)\]\]/g, (_m, a: string, b: string) => b || a)
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/\[\[|\]\]/g, '')
+    .replace(/^\s{0,3}(#{1,6}|>|[-*+]|\d+\.)\s+/gm, '')
+    .replace(/(\*\*|__|~~|`+)/g, '')
+    .replace(/(^|\s)[*_]+|[*_]+(?=\s|$)/g, '$1')
+    .replace(/\s+/g, ' ');
+}
+
 function Snippet({ snippet }: { snippet: string | null }) {
   if (!snippet) return null;
   return (
@@ -59,10 +80,10 @@ function Snippet({ snippet }: { snippet: string | null }) {
       {splitSearchHighlight(snippet).map((seg, i) =>
         seg.highlight ? (
           <mark key={i} className="bg-transparent font-medium text-ink-600">
-            {seg.text}
+            {stripMarkdown(seg.text)}
           </mark>
         ) : (
-          <span key={i}>{seg.text}</span>
+          <span key={i}>{stripMarkdown(seg.text)}</span>
         ),
       )}
     </span>
@@ -91,6 +112,12 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
   const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
   const debounced = useDebouncedValue(query, 200);
+  const { activeWorkspace } = useWorkspaceContext();
+  const workspaceId = activeWorkspace?.id;
+  const [recents, setRecents] = useState<RecentIssue[]>([]);
+  // Enter pressed before the debounced search settled: open the top hit as
+  // soon as it lands instead of whatever happened to be listed meanwhile.
+  const [pendingEnter, setPendingEnter] = useState(false);
   const searchQuery = useSearch(open ? debounced : '');
 
   // Reset state whenever the palette opens.
@@ -98,9 +125,12 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
     if (open) {
       setQuery('');
       setActiveIndex(0);
+      setPendingEnter(false);
+      setRecents(getRecentIssues(workspaceId));
       // Focus the input on the next frame so the portal is mounted.
       requestAnimationFrame(() => inputRef.current?.focus());
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   // Body scroll lock + focus restore while open.
@@ -131,6 +161,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
         group: 'Actions',
         label: 'Create issue',
         text: 'Create issue',
+        keywords: 'new add ticket',
         hint: 'C',
         icon: <GlyphPlus />,
         onSelect: () => go(`/projects/${proj}/board?new=1`),
@@ -156,6 +187,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
         group: 'Actions',
         label: 'Triage issues',
         text: 'Triage issues',
+        keywords: 'inbox',
         hint: 'T',
         icon: <GlyphTriage />,
         onSelect: () => go(`/projects/${proj}/triage`),
@@ -172,7 +204,8 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
         id: 'qa-shortcuts',
         group: 'Actions',
         label: 'Keyboard shortcuts',
-        text: 'Keyboard shortcuts help cheat-sheet',
+        text: 'Keyboard shortcuts',
+        keywords: 'help cheat-sheet keys hotkeys',
         hint: '?',
         icon: <GlyphList />,
         onSelect: () => {
@@ -256,11 +289,68 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
     }));
   }, [results]);
 
-  // Flattened, ordered item list — Actions first, then search groups.
-  const items = useMemo<PaletteItem[]>(
-    () => [...quickActions, ...projectItems, ...issueItems, ...pageItems],
-    [quickActions, projectItems, issueItems, pageItems],
+  const trimmedQuery = query.trim().toLowerCase();
+
+  const recentItems = useMemo<PaletteItem[]>(
+    () =>
+      recents.map((r) => ({
+        id: `recent-${r.id}`,
+        group: 'Recently viewed',
+        label: (
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="shrink-0 font-mono text-xs text-ink-400">{r.key}</span>
+            <span className="truncate">{r.title}</span>
+          </span>
+        ),
+        text: `${r.key} ${r.title}`,
+        icon: <TypeDot type={r.type} />,
+        onSelect: () => go(`/projects/${r.projectId}/board?issue=${r.id}`),
+      })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [recents],
   );
+
+  // With a query: actions are filtered by it (label + keywords) and listed
+  // AFTER search hits so Enter opens the best hit — unless the query is the
+  // start of an action's name ("create", "keyb"), where the command wins.
+  const { actionsFirst, actionsAfter } = useMemo(() => {
+    if (!trimmedQuery) {
+      return { actionsFirst: [...quickActions, ...recentItems], actionsAfter: [] as PaletteItem[] };
+    }
+    const tokens = trimmedQuery.split(/\s+/);
+    const matching = quickActions.filter((a) => {
+      const hay = `${a.text} ${a.keywords ?? ''}`.toLowerCase();
+      return tokens.every((t) => hay.includes(t));
+    });
+    const strong = matching.filter(
+      (a) => trimmedQuery.length >= 2 && a.text.toLowerCase().startsWith(trimmedQuery),
+    );
+    return {
+      actionsFirst: strong,
+      actionsAfter: matching.filter((a) => !strong.includes(a)),
+    };
+  }, [quickActions, recentItems, trimmedQuery]);
+
+  // Flattened, ordered item list.
+  const items = useMemo<PaletteItem[]>(
+    () => [
+      ...actionsFirst,
+      ...(trimmedQuery ? [...projectItems, ...issueItems, ...pageItems] : []),
+      ...actionsAfter,
+    ],
+    [actionsFirst, actionsAfter, projectItems, issueItems, pageItems, trimmedQuery],
+  );
+
+  const settled =
+    debounced.trim() === query.trim() &&
+    !searchQuery.isFetching &&
+    !searchQuery.isPlaceholderData;
+  useEffect(() => {
+    if (!pendingEnter || !settled) return;
+    setPendingEnter(false);
+    items[0]?.onSelect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingEnter, settled]);
 
   // Keep the active index in range as the item list changes.
   useEffect(() => {
@@ -297,6 +387,10 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
     }
     if (e.key === 'Enter') {
       e.preventDefault();
+      if (trimmedQuery && !settled && !(actionsFirst.length > 0)) {
+        setPendingEnter(true);
+        return;
+      }
       items[activeIndex]?.onSelect();
     }
   };
@@ -320,7 +414,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
       ? issueItems.length === 0 &&
         pageItems.length === 0 &&
         projectItems.length === 0 &&
-        quickActions.length === 0
+        actionsFirst.length + actionsAfter.length === 0
       : false;
 
   return createPortal(
@@ -421,7 +515,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
             </li>
           ))}
 
-          {!hasQuery && quickActions.length === 0 && (
+          {!hasQuery && items.length === 0 && (
             <li
               role="presentation"
               className="px-4 py-10 text-center text-sm text-ink-400"
@@ -430,7 +524,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
             </li>
           )}
 
-          {hasQuery && searchQuery.isFetching && items.length === 0 && (
+          {(hasQuery || pendingEnter) && searchQuery.isFetching && items.length === 0 && (
             <li
               role="presentation"
               className="flex items-center justify-center gap-2 px-4 py-10 text-sm text-ink-400"
