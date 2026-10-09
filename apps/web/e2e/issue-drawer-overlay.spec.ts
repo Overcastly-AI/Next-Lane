@@ -80,27 +80,35 @@ test.describe('Issue drawer overlay', () => {
     const labelBadge = drawer.getByText('bug', { exact: true }).last();
     await expect(labelBadge).toBeVisible();
 
-    const { color, background } = await labelBadge.evaluate((el) => {
+    // Resolve both colours to 8-bit RGBA by painting them: the chip now uses
+    // color-mix(), which getComputedStyle reports as `color(srgb …)` floats
+    // rather than rgb() integers, so string-parsing would test the format.
+    const { text, bg } = await labelBadge.evaluate((el) => {
       const cs = getComputedStyle(el);
-      return { color: cs.color, background: cs.backgroundColor };
+      const ctx = document.createElement('canvas').getContext('2d')!;
+      const px = (c: string) => {
+        ctx.clearRect(0, 0, 1, 1);
+        ctx.fillStyle = c;
+        ctx.fillRect(0, 0, 1, 1);
+        return Array.from(ctx.getImageData(0, 0, 1, 1).data);
+      };
+      return { text: px(cs.color), bg: px(cs.backgroundColor) };
     });
-
-    const parse = (v: string): number[] =>
-      (v.match(/[\d.]+/g) ?? []).map(Number);
-    const [tr, tg, tb] = parse(color);
+    const [tr, tg, tb] = text;
 
     // Badge darkens the raw label color (#ef4444) for the text instead of using
-    // it verbatim — this is the contrast fix. Each channel is scaled down (~0.65),
+    // it verbatim — this is the contrast fix. Each channel is scaled down,
     // so the text is strictly darker than the raw label color on every channel.
     expect(tr).toBeLessThan(0xef);
     expect(tg).toBeLessThan(0x44);
     expect(tb).toBeLessThan(0x44);
     // And it is NOT the old illegible "raw color as text" chip.
-    expect(color).not.toBe('rgb(239, 68, 68)');
+    expect(text).not.toEqual([0xef, 0x44, 0x44, 255]);
 
-    // Background is a translucent tint (rgba w/ alpha < 1), distinct from the text.
-    expect(background).toMatch(/rgba\(.*0\.\d+\)/);
-    expect(background).not.toBe(color);
+    // Background is a translucent tint (alpha < 1), distinct from the text.
+    expect(bg[3]).toBeGreaterThan(0);
+    expect(bg[3]).toBeLessThan(255);
+    expect(bg).not.toEqual(text);
   });
 
   test('opening the drawer locks body scroll; closing restores it', async ({
