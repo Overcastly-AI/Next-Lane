@@ -192,4 +192,18 @@ describe('AllExceptionsFilter', () => {
       expect(errorSpy.mock.calls[0].length).toBe(2);
     });
   });
+
+  describe('body-parser errors', () => {
+    it('maps entity.too.large to 413, not 500', () => {
+      const { host, captured } = makeHost();
+      const err = Object.assign(new Error('request entity too large'), {
+        status: 413,
+        type: 'entity.too.large',
+        expose: true,
+      });
+      new AllExceptionsFilter().catch(err, host);
+      expect(captured.statusCode).toBe(413);
+      expect(captured.body?.message).toBe('Request body is too large.');
+    });
+  });
 });

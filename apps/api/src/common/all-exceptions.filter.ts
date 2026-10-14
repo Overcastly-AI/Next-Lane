@@ -88,6 +88,29 @@ export class AllExceptionsFilter implements ExceptionFilter {
       }
     }
 
+    // 2b) Body-parser failures (payload too large, malformed JSON) arrive as
+    //     plain errors carrying an exposable 4xx `status`; they are client
+    //     errors, not server faults.
+    const parsed = exception as { status?: unknown; type?: unknown; expose?: unknown };
+    if (
+      parsed &&
+      typeof parsed === 'object' &&
+      typeof parsed.status === 'number' &&
+      parsed.status >= 400 &&
+      parsed.status < 500 &&
+      parsed.expose === true
+    ) {
+      const status = parsed.status;
+      return {
+        statusCode: status,
+        message:
+          status === HttpStatus.PAYLOAD_TOO_LARGE
+            ? 'Request body is too large.'
+            : 'Malformed request body.',
+        error: this.statusName(status),
+      };
+    }
+
     // 3) Everything else: 500, suppress internals (always to the client; and
     //    suppress server logs of full stack in production-style verbosity).
     this.logUnexpected(exception, request);

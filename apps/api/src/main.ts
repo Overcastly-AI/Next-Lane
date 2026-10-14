@@ -1,5 +1,6 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { Logger } from 'nestjs-pino';
@@ -13,7 +14,7 @@ async function bootstrap() {
   // Fail fast on misconfigured secrets before doing any work or binding a port.
   assertAuthConfig();
 
-  const app = await NestFactory.create(AppModule, {
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     // Buffer Nest's own startup logs so they are flushed through pino after
     // the logger is initialised (rather than falling through to the default
     // console logger during bootstrap).
@@ -26,6 +27,13 @@ async function bootstrap() {
     // any other route; `req.body` is still populated as before.
     rawBody: true,
   });
+
+  // Body size: Express' default 100 KB JSON limit sat BELOW the advertised
+  // content caps (pages: 256 KiB of text, which JSON-escaping can inflate), so
+  // a legitimate large page was refused. 2 MB leaves headroom over the largest
+  // DTO cap; oversize requests are answered 413 by AllExceptionsFilter.
+  app.useBodyParser('json', { limit: '2mb' });
+  app.useBodyParser('urlencoded', { limit: '2mb', extended: true });
 
   // Route all of Nest's internal logger calls through the pino logger so every
   // log line (framework + application) shares the same structured format.
