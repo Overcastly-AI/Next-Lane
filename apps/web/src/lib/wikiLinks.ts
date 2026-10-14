@@ -93,9 +93,9 @@ export function transformWikiLinksForRender(
 }
 
 /**
- * Given a textarea's full value + caret position, determine whether the
+ * Given the text before the caret, determine whether the
  * caret sits inside an in-progress `[[query` wiki-link trigger (mirrors
- * `MentionComposer`'s `detectMention`, triggered by `[[` instead of `@`).
+ * the `@` trigger, but for `[[`).
  *
  * Returns `{ query, startIndex }` when active (`startIndex` = index of the
  * first `[` of the `[[`), or `null` when not. Bails once the query contains

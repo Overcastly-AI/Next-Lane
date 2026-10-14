@@ -7,9 +7,9 @@
 import type { AnyExtension } from '@tiptap/core';
 import { Marked } from 'marked';
 import StarterKit from '@tiptap/starter-kit';
-import { FidelityBulletList, FidelityOrderedList, FidelityHardBreak, FidelityLink, FidelityMarkdown, FidelityParagraph } from './fidelity';
+import { FidelityTable, FidelityBulletList, FidelityOrderedList, FidelityHardBreak, FidelityLink, FidelityMarkdown, FidelityParagraph } from './fidelity';
 import { TaskList, TaskItem } from '@tiptap/extension-list';
-import { Table, TableRow, TableCell, TableHeader } from '@tiptap/extension-table';
+import { TableRow, TableCell, TableHeader } from '@tiptap/extension-table';
 import { EditorImage } from './ImageNode';
 import { WikiLink } from './WikiLinkNode';
 import { Mention } from './MentionNode';
@@ -38,7 +38,7 @@ export function createMarkdownExtensions(): AnyExtension[] {
     }),
     TaskList,
     TaskItem.configure({ nested: true }),
-    Table,
+    FidelityTable,
     TableRow,
     TableHeader,
     TableCell,

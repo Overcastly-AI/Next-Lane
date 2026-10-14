@@ -18,6 +18,7 @@ import HardBreak from '@tiptap/extension-hard-break';
 import Link from '@tiptap/extension-link';
 import Paragraph from '@tiptap/extension-paragraph';
 import { BulletList, OrderedList } from '@tiptap/extension-list';
+import { Table } from '@tiptap/extension-table';
 
 /** Private-use delimiters around markdown that must bypass the text escaper. */
 const VERBATIM_OPEN = '\uE002';
@@ -170,6 +171,21 @@ export const FidelityParagraph = Paragraph.extend({
     if (content.length === 0) return '';
     return neutraliseBlockStarts(h.renderChildren(content));
   },
+});
+
+type RenderFn = (
+  node: Parameters<NonNullable<typeof Paragraph.config.renderMarkdown>>[0],
+  h: Parameters<NonNullable<typeof Paragraph.config.renderMarkdown>>[1],
+  ctx?: Parameters<NonNullable<typeof Paragraph.config.renderMarkdown>>[2],
+) => string;
+
+/** The stock table renderer pads itself with blank lines; blocks are already
+ *  separated by exactly one, so the padding would stack up. */
+export const FidelityTable = Table.extend({
+  renderMarkdown: (node, h, ctx) =>
+    ((Table.config.renderMarkdown as RenderFn)(node, h, ctx) ?? '')
+      .replace(/^\n+/, '')
+      .replace(/\n+$/, ''),
 });
 
 /** `breaks: true` everywhere: a bare newline IS the line break. */

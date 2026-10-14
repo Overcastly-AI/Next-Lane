@@ -29,7 +29,7 @@ import type { PagesScope } from '@/api/keys';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Field } from '@/components/ui/Field';
-import { Textarea } from '@/components/ui/Textarea';
+import { RichMarkdownEditor } from '@/components/ui/RichMarkdownEditor';
 import { Modal } from '@/components/ui/Modal';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Badge } from '@/components/ui/Badge';
@@ -256,13 +256,12 @@ export function PageTemplatesSection({ scope, canManage }: PageTemplatesSectionP
             </Field>
 
             <Field label="Content" htmlFor="pt-content">
-              <Textarea
-                id="pt-content"
-                rows={14}
-                className="font-mono text-xs"
+              <RichMarkdownEditor
                 value={draft.content}
-                onChange={(e) => setDraft({ ...draft, content: e.target.value })}
-                placeholder={'# {{title}}\n\n## Notes\n'}
+                onChange={(content) => setDraft({ ...draft, content })}
+                minHeight="16rem"
+                aria-label="Content"
+                placeholder="Start with a heading, e.g. # {{title}}"
                 data-testid="page-template-content"
               />
             </Field>

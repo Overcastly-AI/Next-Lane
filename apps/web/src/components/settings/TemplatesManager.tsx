@@ -28,7 +28,7 @@ import { ApiError } from '@/api/client';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Field } from '@/components/ui/Field';
-import { Textarea } from '@/components/ui/Textarea';
+import { RichMarkdownEditor } from '@/components/ui/RichMarkdownEditor';
 import { Modal } from '@/components/ui/Modal';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Badge } from '@/components/ui/Badge';
@@ -352,13 +352,14 @@ function TemplateFormFields({
       </Field>
 
       <Field label="Description template (optional)" htmlFor={`${formId}-desc`}>
-        <Textarea
-          id={`${formId}-desc`}
-          rows={4}
+        <RichMarkdownEditor
           value={descriptionTemplate}
-          onChange={(e) => onDescriptionTemplateChange(e.target.value)}
+          onChange={onDescriptionTemplateChange}
+          minHeight="7rem"
+          aria-label="Description template (optional)"
           placeholder="Pre-fill the issue description"
           maxLength={10000}
+          data-testid="template-description-input"
         />
       </Field>
 

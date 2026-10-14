@@ -11,11 +11,13 @@
 import { Outlet, useParams } from 'react-router-dom';
 import { useProject } from '@/api/projects';
 import { useSyncActiveWorkspace } from '@/contexts/WorkspaceContext';
+import { usePreloadRichMarkdownEditor } from '@/components/ui/RichMarkdownEditor';
 
 /** Wraps every `/workspaces/:workspaceId/*` route. */
 export function WorkspaceScopedLayout() {
   const { workspaceId } = useParams<{ workspaceId: string }>();
   useSyncActiveWorkspace(workspaceId);
+  usePreloadRichMarkdownEditor();
   return <Outlet />;
 }
 
@@ -29,5 +31,6 @@ export function ProjectScopedLayout() {
   const { projectId } = useParams<{ projectId: string }>();
   const projectQuery = useProject(projectId);
   useSyncActiveWorkspace(projectQuery.data?.workspaceId);
+  usePreloadRichMarkdownEditor();
   return <Outlet />;
 }

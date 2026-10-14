@@ -22,8 +22,12 @@ export interface RichMarkdownEditorProps {
   onFiles?: (files: File[]) => void;
   /** Return true to mark the key handled (the editor then ignores it). */
   onKeyDown?: (event: KeyboardEvent) => boolean | void;
-  /** Focus left the whole editor (surface, toolbar and Markdown toggle). */
-  onBlurOut?: () => void;
+  /**
+   * Focus left the whole editor (surface, toolbar and Markdown toggle).
+   * Receives the markdown the field holds right now — prefer it to any
+   * closed-over state, which can be a keystroke behind.
+   */
+  onBlurOut?: (markdown: string) => void;
   autoFocus?: boolean;
   disabled?: boolean;
   /** Hard cap on the markdown length, like a textarea's maxLength. */

@@ -22,6 +22,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { flushSync } from 'react-dom';
 import { useEditor, EditorContent } from '@tiptap/react';
 import { Placeholder } from '@tiptap/extensions';
 import type { Editor } from '@tiptap/core';
@@ -98,6 +99,7 @@ export const RichMarkdownEditorImpl = forwardRef<RichMarkdownEditorHandle, RichM
     const lastEmitted = useRef(value);
     // How the current document looked when loaded (see rule 2 above).
     const baseline = useRef<{ original: string; normalized: string } | null>(null);
+    const initialValue = useRef(value);
 
     // ── autocomplete bridge ──────────────────────────────────────────────
     const pickerRef = useRef<PickerState | null>(null);
@@ -186,16 +188,6 @@ export const RichMarkdownEditorImpl = forwardRef<RichMarkdownEditorHandle, RichM
             variant === 'canvas' ? 'min-h-[50vh]' : 'min-h-[4.5rem]',
           ),
         },
-        handleKeyDown: (_view, event) => {
-          // An open picker owns arrows/Enter/Tab/Esc (its plugin handles them).
-          if (pickerRef.current) return false;
-          if ((event.metaKey || event.ctrlKey) && !event.shiftKey && event.key.toLowerCase() === 'k') {
-            event.preventDefault();
-            openLinkBar.current();
-            return true;
-          }
-          return onKeyDownRef.current?.(event) === true;
-        },
         handlePaste: (view, event) => {
           const files = Array.from(event.clipboardData?.files ?? []);
           if (files.length > 0 && onFilesRef.current) {
@@ -227,6 +219,19 @@ export const RichMarkdownEditorImpl = forwardRef<RichMarkdownEditorHandle, RichM
           return false;
         },
         handleDOMEvents: {
+          // A DOM-level hook rather than `handleKeyDown`: on Android Chrome
+          // ProseMirror re-synthesises Enter as a modifier-less key event, so
+          // Cmd/Ctrl+Enter would never reach a `handleKeyDown` there.
+          keydown: (_view, event) => {
+            // An open picker owns arrows/Enter/Tab/Esc (its plugin handles them).
+            if (pickerRef.current) return false;
+            if ((event.metaKey || event.ctrlKey) && !event.shiftKey && event.key.toLowerCase() === 'k') {
+              event.preventDefault();
+              openLinkBar.current();
+              return true;
+            }
+            return onKeyDownRef.current?.(event) === true;
+          },
           dragover: (_view, event) => {
             if (!onFilesRef.current) return false;
             if (!Array.from(event.dataTransfer?.types ?? []).includes('Files')) return false;
@@ -245,6 +250,10 @@ export const RichMarkdownEditorImpl = forwardRef<RichMarkdownEditorHandle, RichM
       },
       onUpdate: ({ editor: e }) => {
         const md = editorToMarkdown(e);
+        // The editor can adjust a freshly loaded document before `onCreate`
+        // (e.g. appending the trailing paragraph after a final table). That is
+        // load-time normalisation, not an edit: treat it as the baseline.
+        if (!baseline.current) baseline.current = { original: initialValue.current, normalized: md };
         const max = maxLengthRef.current;
         if (max !== undefined && md.length > max) {
           // Like a textarea's maxLength: refuse the keystroke.
@@ -255,7 +264,11 @@ export const RichMarkdownEditorImpl = forwardRef<RichMarkdownEditorHandle, RichM
         const next = b && md === b.normalized ? b.original : md;
         if (next === lastEmitted.current) return;
         lastEmitted.current = next;
-        onChangeRef.current(next);
+        // ProseMirror calls us outside React's event system, where updates are
+        // batched asynchronously. Flush so the parent's state (and any handler
+        // closing over it — blur-to-save, Cmd+Enter) is never a keystroke
+        // behind, exactly like a controlled textarea.
+        flushSync(() => onChangeRef.current(next));
       },
     });
     const editorRef = useRef<Editor | null>(null);
@@ -276,7 +289,13 @@ export const RichMarkdownEditorImpl = forwardRef<RichMarkdownEditorHandle, RichM
 
     // ARIA combobox state for the open picker, set on the contenteditable.
     useEffect(() => {
-      const dom = editor?.view.dom;
+      // `editor.view` throws until the view is mounted (first render in a modal).
+      let dom: HTMLElement | null = null;
+      try {
+        dom = editor?.view.dom ?? null;
+      } catch {
+        dom = null;
+      }
       if (!dom) return;
       if (picker) {
         dom.setAttribute('aria-autocomplete', 'list');
@@ -423,7 +442,7 @@ export const RichMarkdownEditorImpl = forwardRef<RichMarkdownEditorHandle, RichM
         const next = e.relatedTarget as Node | null;
         if (next && wrapperRef.current?.contains(next)) return;
         setDropActive(false);
-        onBlurOut?.();
+        onBlurOut?.(lastEmitted.current);
       },
       [onBlurOut],
     );
@@ -439,7 +458,7 @@ export const RichMarkdownEditorImpl = forwardRef<RichMarkdownEditorHandle, RichM
         data-drop-active={dropActive ? '' : undefined}
         onBlur={handleBlur}
         className={cn(
-          'nl-editor relative flex min-h-0 flex-col',
+          'nl-editor relative flex min-h-0 w-full min-w-0 max-w-full flex-col',
           variant === 'inline' &&
             'rounded border border-ink-200 bg-surface transition-colors duration-[120ms] hover:border-ink-300 focus-within:border-signal-500 focus-within:ring-2 focus-within:ring-signal-200',
           variant === 'canvas' && 'flex-1',

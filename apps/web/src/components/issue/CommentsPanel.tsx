@@ -13,7 +13,7 @@ import { useToast } from '@/components/ui/Toast';
 import { errorMessage } from '@/lib/errorMessage';
 import { useAuth } from '@/auth/AuthContext';
 import { MarkdownRenderer } from '@/components/ui/MarkdownRenderer';
-import { MentionComposer } from './MentionComposer';
+import { RichMarkdownEditor } from '@/components/ui/RichMarkdownEditor';
 import { SectionHeading } from './SectionHeading';
 import { formatDate, formatDateTime } from '@/lib/formatDate';
 import type { CommentDto, UserDto } from '@next-lane/shared';
@@ -38,8 +38,8 @@ export function CommentsPanel({
   // a fast double-click would otherwise fire two POSTs.
   const submittingRef = useRef(false);
 
-  async function onSubmit(e: FormEvent) {
-    e.preventDefault();
+  async function onSubmit(e?: FormEvent) {
+    e?.preventDefault();
     const text = body.trim();
     if (!text || submittingRef.current) return;
     submittingRef.current = true;
@@ -60,17 +60,21 @@ export function CommentsPanel({
       {editable && (
       <form onSubmit={onSubmit} className="flex gap-2">
         <Avatar user={user} size="md" className="mt-0.5" />
-        <div className="flex-1 space-y-2">
-          <MentionComposer
-            rows={2}
+        <div className="min-w-0 flex-1 space-y-2">
+          <RichMarkdownEditor
             value={body}
             onChange={setBody}
             users={users}
+            toolbar="compact"
+            minHeight="3.5rem"
+            aria-label="Add a comment"
             placeholder="Add a comment… (type @ to mention)"
             data-testid="comment-composer"
             onKeyDown={(e) => {
               if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-                void onSubmit(e as unknown as FormEvent);
+                e.preventDefault();
+                void onSubmit();
+                return true;
               }
             }}
           />
@@ -146,8 +150,8 @@ function CommentItem({
     setEditing(true);
   }
 
-  async function saveEdit(e: FormEvent) {
-    e.preventDefault();
+  async function saveEdit(e?: FormEvent) {
+    e?.preventDefault();
     const text = draft.trim();
     if (!text) return;
     if (text === comment.body) {
@@ -212,17 +216,29 @@ function CommentItem({
 
         {editing ? (
           <form onSubmit={saveEdit} className="mt-1 space-y-2">
-            <MentionComposer
-              rows={2}
+            <RichMarkdownEditor
               value={draft}
               onChange={setDraft}
               users={users}
+              toolbar="compact"
+              minHeight="3.5rem"
+              autoFocus
               aria-label="Edit comment"
+              data-testid="comment-edit-composer"
               onKeyDown={(e) => {
                 if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-                  void saveEdit(e as unknown as FormEvent);
+                  e.preventDefault();
+                  void saveEdit();
+                  return true;
                 }
-                if (e.key === 'Escape') setEditing(false);
+                if (e.key === 'Escape') {
+                  // Cancel the edit only — not the drawer behind it.
+                  e.preventDefault();
+                  e.stopPropagation();
+                  e.stopImmediatePropagation();
+                  setEditing(false);
+                  return true;
+                }
               }}
             />
             <div className="flex gap-2">

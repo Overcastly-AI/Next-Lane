@@ -23,13 +23,12 @@ import { AppHeader } from '@/components/AppHeader';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
-import { Textarea } from '@/components/ui/Textarea';
+import { RichMarkdownEditor } from '@/components/ui/RichMarkdownEditor';
 import { Modal } from '@/components/ui/Modal';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { ErrorState, LoadingState } from '@/components/ui/States';
 import { useToast } from '@/components/ui/Toast';
 import { ColorSwatchPicker } from '@/components/ui/ColorSwatchPicker';
-import { MarkdownRenderer } from '@/components/ui/MarkdownRenderer';
 import { errorMessage } from '@/lib/errorMessage';
 import { EditableSafeKeyboardSensor } from '@/lib/dndSensors';
 import { cn } from '@/lib/cn';
@@ -1062,7 +1061,6 @@ function EditCardModal({
   const [notes, setNotes] = useState(card.notes ?? '');
   const [color, setColor] = useState<string | null>(card.color);
   const [dueDate, setDueDate] = useState(toDateInputValue(card.dueDate));
-  const [previewNotes, setPreviewNotes] = useState(false);
   const updateCard = useUpdatePersonalCard();
   const toast = useToast();
 
@@ -1074,7 +1072,6 @@ function EditCardModal({
     setNotes(card.notes ?? '');
     setColor(card.color);
     setDueDate(toDateInputValue(card.dueDate));
-    setPreviewNotes(false);
   }
 
   async function handleSave() {
@@ -1181,36 +1178,20 @@ function EditCardModal({
 
         <div>
           <div className="mb-1 flex items-center justify-between">
-            <label
-              htmlFor="edit-card-notes"
-              className="block text-xs font-medium text-ink-700"
-            >
+            <span className="block text-xs font-medium text-ink-700">
               Notes{' '}
               <span className="font-normal text-ink-400">(markdown)</span>
-            </label>
-            {notes.trim() && (
-              <button
-                type="button"
-                onClick={() => setPreviewNotes((v) => !v)}
-                className="text-[11px] font-medium text-signal-600 hover:text-signal-700"
-              >
-                {previewNotes ? 'Edit' : 'Preview'}
-              </button>
-            )}
+            </span>
           </div>
-          {previewNotes ? (
-            <div className="min-h-[76px] rounded-lg border border-ink-200 bg-ink-50/40 px-3 py-2">
-              <MarkdownRenderer content={notes} />
-            </div>
-          ) : (
-            <Textarea
-              id="edit-card-notes"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Optional notes — **markdown** supported…"
-              rows={4}
-            />
-          )}
+          <RichMarkdownEditor
+            value={notes}
+            onChange={setNotes}
+            toolbar="compact"
+            minHeight="5rem"
+            aria-label="Notes"
+            placeholder="Optional notes — markdown supported…"
+            data-testid="personal-card-notes"
+          />
         </div>
       </div>
     </Modal>

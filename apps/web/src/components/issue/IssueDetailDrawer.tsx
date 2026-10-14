@@ -18,7 +18,7 @@ import { useComponents } from '@/api/components';
 import { useVersions, useSetIssueVersions } from '@/api/versions';
 import { Button } from '@/components/ui/Button';
 import { Select } from '@/components/ui/Select';
-import { Textarea } from '@/components/ui/Textarea';
+import { RichMarkdownEditor } from '@/components/ui/RichMarkdownEditor';
 import { Field } from '@/components/ui/Field';
 import { DateInput } from '@/components/ui/DateInput';
 import { useOverlay } from '@/lib/useOverlay';
@@ -350,35 +350,36 @@ function DrawerBody({
 
               {editable && descriptionEditing ? (
                 <div>
-                  <Textarea
-                    rows={6}
+                  <RichMarkdownEditor
                     value={description}
+                    onChange={setDescription}
                     placeholder="Add a description… (Markdown supported)"
+                    aria-label="Description"
+                    data-testid="description-editor"
                     autoFocus
-                    onChange={(e) => setDescription(e.target.value)}
-                    onBlur={() => {
+                    minHeight="9rem"
+                    onBlurOut={(latest) => {
                       if (descriptionCancelled.current) {
                         descriptionCancelled.current = false;
                         return;
                       }
                       setDescriptionEditing(false);
-                      if (description !== (issue.description ?? ''))
-                        onPatch('description', description || null);
+                      if (latest !== (issue.description ?? ''))
+                        onPatch('description', latest || null);
                     }}
                     onKeyDown={(e) => {
-                      if (e.key === 'Escape') {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        e.nativeEvent.stopImmediatePropagation();
-                        descriptionCancelled.current = true;
-                        setDescription(issue.description ?? '');
-                        setDescriptionEditing(false);
-                      }
+                      if (e.key !== 'Escape') return;
+                      e.preventDefault();
+                      e.stopPropagation();
+                      e.stopImmediatePropagation();
+                      descriptionCancelled.current = true;
+                      setDescription(issue.description ?? '');
+                      setDescriptionEditing(false);
+                      return true;
                     }}
-                    data-testid="description-editor"
                   />
                   <p className="mt-1 text-[11px] text-ink-400">
-                    Markdown supported — blur or press Esc to exit
+                    Saves when you click away — Esc discards your changes
                   </p>
                 </div>
               ) : description ? (

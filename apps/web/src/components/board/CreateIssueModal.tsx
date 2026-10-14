@@ -11,7 +11,7 @@ import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
-import { Textarea } from '@/components/ui/Textarea';
+import { RichMarkdownEditor } from '@/components/ui/RichMarkdownEditor';
 import { Field } from '@/components/ui/Field';
 import { useCreateIssue } from '@/api/issues';
 import { ApiError } from '@/api/client';
@@ -87,6 +87,7 @@ export function CreateIssueModal({
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
+    if (create.isPending) return;
     setError(null);
     try {
       // Build the custom fields payload: only include fields with non-null values.
@@ -151,12 +152,20 @@ export function CreateIssueModal({
           />
         </Field>
         <Field label="Description" htmlFor="issue-desc">
-          <Textarea
-            id="issue-desc"
-            rows={3}
+          <RichMarkdownEditor
             value={description}
-            onChange={(e) => setDescription(e.target.value)}
+            onChange={setDescription}
+            minHeight="5.5rem"
+            aria-label="Description"
             placeholder="Add more detail…"
+            data-testid="create-issue-description"
+            onKeyDown={(e) => {
+              if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                e.preventDefault();
+                (document.getElementById('create-issue-form') as HTMLFormElement | null)?.requestSubmit();
+                return true;
+              }
+            }}
           />
         </Field>
         <div className="grid grid-cols-2 gap-3">

@@ -2,7 +2,7 @@
  * PageEditor — read/edit surface for a single page's title + markdown body.
  *
  * Read mode renders via `PageContent` (wiki-link-aware markdown). Edit mode
- * swaps in a title `Input` + `WikiLinkTextarea` with Save/Cancel actions —
+ * swaps in a title `Input` + `RichMarkdownEditor` with Save/Cancel actions —
  * an explicit mode toggle (not click-to-edit like the issue description)
  * because a page is a longer-form document worth a deliberate "I'm editing
  * this now" state, with its own toolbar (unresolved-link count, Save/Cancel).
@@ -20,7 +20,7 @@ import type { PageDto } from '@next-lane/shared';
 import {
   PAGE_IMAGE_MAX_BYTES,
   PAGE_IMAGE_MIME_TYPES,
-  pageImageMarkdown,
+  PAGE_IMAGE_SCHEME,
 } from '@next-lane/shared';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -30,7 +30,7 @@ import { errorMessage } from '@/lib/errorMessage';
 import { countUnresolvedWikiLinks, type FlatPageOption } from '@/lib/wikiLinks';
 import { useUnsavedChangesGuard } from '@/lib/unsavedChangesGuard';
 import { PageContent } from './PageContent';
-import { WikiLinkTextarea, type WikiLinkTextareaHandle } from './WikiLinkTextarea';
+import { RichMarkdownEditor, type RichMarkdownEditorHandle } from '@/components/ui/RichMarkdownEditor';
 
 export interface PageEditorProps {
   page: PageDto;
@@ -125,7 +125,7 @@ export function PageEditor({
   // `![alt](nl-image:<id>)` reference only once the bytes are stored. If the
   // upload fails the placeholder is removed again, so a saved page can never
   // reference an image that doesn't exist.
-  const editorRef = useRef<WikiLinkTextareaHandle>(null);
+  const editorRef = useRef<RichMarkdownEditorHandle>(null);
   const { mutateAsync: uploadFile } = useUploadPageImage(page.id);
   const placeholderSeq = useRef(0);
   const [uploading, setUploading] = useState(0);
@@ -136,8 +136,8 @@ export function PageEditor({
       if (accepted.length < files.length) {
         toast.error('Only PNG, JPEG, GIF and WebP images can be added to a page.');
       }
-      // Sequential, not parallel: each insert reads the live textarea value,
-      // and concurrent inserts would race over the same caret position.
+      // Sequential, not parallel: each insert lands at the live caret, and
+      // concurrent inserts would race over the same position.
       for (const file of accepted) {
         if (file.size > PAGE_IMAGE_MAX_BYTES) {
           toast.error(
@@ -146,17 +146,19 @@ export function PageEditor({
           continue;
         }
         placeholderSeq.current += 1;
-        const placeholder = `![Uploading ${file.name}…](uploading-${placeholderSeq.current})`;
-        editorRef.current?.insertAtCaret(`${placeholder}\n`);
+        const placeholderSrc = `uploading-${placeholderSeq.current}`;
+        editorRef.current?.insertImage({ src: placeholderSrc, alt: `Uploading ${file.name}…` });
         setUploading((n) => n + 1);
         try {
           const image = await uploadFile(file);
-          const markdown = pageImageMarkdown(image);
-          // Function replacement: a filename containing `$&` would otherwise
-          // be interpreted as a replacement pattern.
-          setContent((c) => c.replace(placeholder, () => markdown));
+          // Same alt/src `pageImageMarkdown` writes, applied to the live
+          // document so the writer's caret and selection are left alone.
+          editorRef.current?.replaceImage(placeholderSrc, {
+            src: `${PAGE_IMAGE_SCHEME}${image.id}`,
+            alt: image.filename.replace(/[[\]]/g, ''),
+          });
         } catch (err) {
-          setContent((c) => c.replace(`${placeholder}\n`, () => ''));
+          editorRef.current?.replaceImage(placeholderSrc, null);
           toast.error(errorMessage(err, `Could not upload ${file.name}.`));
         } finally {
           setUploading((n) => n - 1);
@@ -285,21 +287,22 @@ export function PageEditor({
       </div>
 
       {editing ? (
-        /* Full-page editing canvas: the textarea fills every pixel down to
-           the bottom of the pane (it scrolls internally), borderless inside
-           the same centered column — writing on the page, not in a box. */
+        /* Full-page editing canvas: the editor fills every pixel down to the
+           bottom of the pane (it scrolls internally), borderless inside the
+           same centered column — writing on the page, not in a box. */
         <div className="flex min-h-0 flex-1 flex-col px-4 py-4 sm:px-8">
           <div className="mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col">
-            <WikiLinkTextarea
+            <RichMarkdownEditor
               ref={editorRef}
+              variant="canvas"
+              autoFocus
               value={content}
               onChange={setContent}
               onFiles={handleFiles}
               pages={pageOptions}
               aria-label="Page content (Markdown, use [[ to link another page)"
-              placeholder="Write in Markdown… type [[ to link another page. Paste or drop an image to add it."
+              placeholder="Write… type [[ to link another page. Paste or drop an image to add it."
               data-testid="page-content-editor"
-              className="min-h-[50vh] flex-1 resize-none border-none bg-transparent px-0 shadow-none focus:ring-0"
             />
           </div>
         </div>

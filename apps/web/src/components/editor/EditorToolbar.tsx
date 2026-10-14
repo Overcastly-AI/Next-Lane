@@ -170,14 +170,14 @@ export function EditorToolbar({
 
   let index = -1;
   return (
-    <div className="flex items-stretch border-b border-ink-100 bg-ink-50/60" data-testid={testId}>
+    <div className="flex min-w-0 items-stretch border-b border-ink-100 bg-ink-50/60" data-testid={testId}>
       <div
         ref={stripRef}
         role="toolbar"
         aria-label="Formatting"
         aria-orientation="horizontal"
         onKeyDown={onKeyDown}
-        className="nl-tabstrip flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto px-1.5 py-1"
+        className="nl-tabstrip flex w-0 min-w-0 flex-1 items-center gap-0.5 overflow-x-auto px-1.5 py-1"
       >
         {rich &&
           groups.map((group, gi) => (

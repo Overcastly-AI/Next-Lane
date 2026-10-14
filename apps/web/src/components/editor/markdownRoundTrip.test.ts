@@ -122,6 +122,8 @@ const CORPUS: Case[] = [
   { name: 'html comment block', md: '<!-- note -->\n\ntext', exact: true },
   { name: 'lone br', md: '<br>', exact: true },
   { name: 'entity-encoded angle', md: 'literal &lt;b&gt; tags' },
+  { name: 'table between paragraphs', md: 'before\n\n| a   | b   |\n| --- | --- |\n| 1   | 2   |\n\nafter', exact: true },
+  { name: 'raw <br> in a table cell', md: '| a   | b   |\n| --- | --- |\n| x<br>y | 2   |', },
   { name: 'chips in table cells', md: '| Page            | Owner   |\n| --------------- | ------- |\n| [[Auth Design]] | @a@x.io |', exact: true },
   { name: 'chips in headings and tasks', md: '## About [[Auth Design|auth]]\n\n- [ ] ask @a@x.io about [[Design]]', exact: true },
   { name: 'link text with brackets and underscores', md: '[my_file_name [v2]](https://x.test/a_b)' },
@@ -208,6 +210,53 @@ describe('text authored in the editor (not parsed from markdown)', () => {
       expect(text).toBe(typed);
     });
   }
+});
+
+describe('hard break inside a table cell', () => {
+  it('cannot split the row', () => {
+    const editor = new Editor({
+      extensions: createMarkdownExtensions(),
+      content: {
+        type: 'doc',
+        content: [
+          {
+            type: 'table',
+            content: [
+              {
+                type: 'tableRow',
+                content: [
+                  { type: 'tableHeader', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'h' }] }] },
+                ],
+              },
+              {
+                type: 'tableRow',
+                content: [
+                  {
+                    type: 'tableCell',
+                    content: [
+                      {
+                        type: 'paragraph',
+                        content: [
+                          { type: 'text', text: 'one' },
+                          { type: 'hardBreak' },
+                          { type: 'text', text: 'two' },
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    });
+    const md = editorToMarkdown(editor);
+    editor.destroy();
+    const lines = md.split('\n');
+    expect(lines).toHaveLength(3); // header, delimiter, ONE body row
+    expect(rt(md)).toBe(md);
+  });
 });
 
 describe('blank paragraphs', () => {
