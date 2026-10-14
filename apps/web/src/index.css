@@ -948,3 +948,175 @@ h1, h2, h3, h4, h5, h6,
   content: "+";
   @apply ml-0.5 text-[0.7em] font-bold text-ink-400;
 }
+
+/* ── Rich markdown editor (Tiptap / ProseMirror) ──────────────────────────
+   The editing surface wears `.markdown-body` (above) so what you write is laid
+   out exactly like what readers see; this block adds only what an EDITABLE
+   document needs. ProseMirror's own required CSS lives here — in the bundle —
+   rather than being injected at runtime (`injectCSS: false`), so it works
+   under a strict `style-src` too.
+
+   Signature: the chips. A [[wiki-link]] reads as a cobalt pill bracketed by
+   mono `[[ ]]` glyphs — the same "mono data signature" the issue-key chip
+   uses — and an @mention as a quiet ink pill, so linked things are visibly
+   *things* while you type, and still map 1:1 to the markdown they save as. */
+.nl-editor-content {
+  position: relative;
+  word-wrap: break-word;
+  white-space: pre-wrap;
+  white-space: break-spaces;
+  font-variant-ligatures: none;
+  caret-color: var(--nl-signal-600);
+}
+.nl-editor-content pre { white-space: pre-wrap; }
+.nl-editor-content [contenteditable='false'] { white-space: normal; }
+.nl-editor-content img.ProseMirror-separator {
+  display: inline !important;
+  border: none !important;
+  margin: 0 !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+.nl-editor-content .ProseMirror-gapcursor {
+  display: none;
+  pointer-events: none;
+  position: absolute;
+  margin: 0;
+}
+.nl-editor-content .ProseMirror-gapcursor::after {
+  content: '';
+  display: block;
+  position: absolute;
+  top: -2px;
+  width: 20px;
+  border-top: 1px solid var(--nl-ink-900);
+  animation: nl-editor-caret 1.1s steps(2, start) infinite;
+}
+.ProseMirror-focused .ProseMirror-gapcursor { display: block; }
+@keyframes nl-editor-caret { to { visibility: hidden; } }
+@media (prefers-reduced-motion: reduce) {
+  .nl-editor-content .ProseMirror-gapcursor::after { animation: none; }
+}
+.ProseMirror-hideselection *::selection { background: transparent; }
+.ProseMirror-hideselection * { caret-color: transparent; }
+
+/* The frame (or the page canvas) carries the focus treatment; the global
+   `:focus-visible` ring would draw a second box around the writing surface. */
+.nl-editor-content:focus-visible,
+.nl-editor textarea:focus-visible {
+  outline: none;
+  border-radius: 0;
+}
+
+/* Placeholder (the Placeholder extension tags the empty first block). */
+.nl-editor-content p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+  color: var(--nl-ink-400);
+}
+
+/* Chips */
+.nl-editor-content .nl-wikilink,
+.nl-editor-content .nl-mention {
+  display: inline;
+  cursor: default;
+  user-select: all;
+  border-radius: 3px;
+  padding: 0 0.25em;
+  line-height: 1.5;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+.nl-editor-content .nl-wikilink {
+  background: color-mix(in srgb, var(--nl-signal-50) 80%, transparent);
+  color: var(--nl-signal-700);
+  font-weight: 500;
+  box-shadow: inset 0 0 0 1px var(--nl-signal-200);
+}
+.nl-editor-content .nl-wikilink::before,
+.nl-editor-content .nl-wikilink::after {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 0.8em;
+  font-weight: 500;
+  color: var(--nl-signal-400);
+}
+.nl-editor-content .nl-wikilink::before { content: '[['; margin-right: 0.15em; }
+.nl-editor-content .nl-wikilink::after { content: ']]'; margin-left: 0.15em; }
+.nl-editor-content .nl-mention {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 0.85em;
+  background: var(--nl-ink-100);
+  color: var(--nl-ink-800);
+}
+.nl-editor-content .ProseMirror-selectednode.nl-wikilink,
+.nl-editor-content .ProseMirror-selectednode.nl-mention,
+.nl-editor-content .ProseMirror-selectednode.nl-raw-html {
+  outline: 2px solid var(--nl-signal-400);
+  outline-offset: 1px;
+}
+
+/* Raw HTML kept verbatim — inert, never live. */
+.nl-editor-content .nl-raw-html {
+  cursor: default;
+  user-select: all;
+  color: var(--nl-ink-500);
+}
+.nl-editor-content pre.nl-raw-html-block {
+  cursor: default;
+  user-select: all;
+  border: 1px dashed var(--nl-ink-300);
+  background: transparent;
+}
+.nl-editor-content pre.nl-raw-html-block code { color: var(--nl-ink-500); }
+
+/* Task lists */
+.nl-editor-content ul[data-type='taskList'] { list-style: none; padding-left: 0.25rem; }
+.nl-editor-content ul[data-type='taskList'] li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-left: 0;
+}
+.nl-editor-content ul[data-type='taskList'] li > label {
+  flex: 0 0 auto;
+  margin-top: 0.2em;
+  user-select: none;
+}
+.nl-editor-content ul[data-type='taskList'] li > label input {
+  width: 1rem;
+  height: 1rem;
+  accent-color: var(--nl-signal-600);
+  cursor: pointer;
+}
+.nl-editor-content ul[data-type='taskList'] li > div { flex: 1 1 auto; min-width: 0; }
+.nl-editor-content ul[data-type='taskList'] li[data-checked='true'] > div {
+  color: var(--nl-ink-400);
+  text-decoration: line-through;
+}
+.nl-editor-content li > p { margin-bottom: 0.25rem; }
+
+/* Tables */
+.nl-editor-content table { table-layout: fixed; overflow: hidden; }
+.nl-editor-content th,
+.nl-editor-content td { position: relative; vertical-align: top; min-width: 3rem; }
+.nl-editor-content th > p,
+.nl-editor-content td > p { margin: 0; }
+.nl-editor-content .selectedCell::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--nl-signal-500) 14%, transparent);
+  pointer-events: none;
+}
+
+/* Quote / code inside the editor keep read-mode look; make code blocks scroll. */
+.nl-editor-content pre { overflow-x: auto; }
+.nl-editor-content blockquote { font-style: normal; }
+
+/* Selection that is readable in both themes. */
+.nl-editor-content ::selection { background: color-mix(in srgb, var(--nl-signal-500) 28%, transparent); }
+
+/* Images in the editor are selectable atoms. */
+.nl-editor-content img.ProseMirror-selectednode { outline: 2px solid var(--nl-signal-400); outline-offset: 2px; }
