@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { setupIsolatedProject } from './helpers';
+import { fillEditorMarkdown } from './editor';
 
 /**
  * wikilink-picker-position.spec.ts
@@ -50,7 +51,10 @@ test.describe('Pages — wiki-link picker follows the caret', () => {
       lines.push(`Runbook step ${i}: check the service is healthy.`);
     }
     const body = lines.join('\n');
-    await editor.pressSequentially(body, { delay: 0 });
+    // Loaded through the Markdown view: 4,000 individual keystrokes would only
+    // measure Playwright's key rate. What matters here is the tall document.
+    await fillEditorMarkdown(page, 'page-content-editor', body);
+    await editor.click();
 
     // Move the caret to the very start of the document (line 1) — far above
     // the textarea's bottom edge, and (after scrolling to top) near the TOP
@@ -60,16 +64,21 @@ test.describe('Pages — wiki-link picker follows the caret', () => {
     // Get the caret's viewport position right before triggering the picker,
     // via the browser's own selection/range geometry (independent of our
     // implementation) so this is a true regression guard, not a tautology.
-    const caretBox = await editor.evaluate((el: HTMLTextAreaElement) => {
-      // Use a temporary mirror measurement independent of the app's helper:
-      // a single-line textarea caret at position 0 is simply the textarea's
-      // own padding-box top-left corner.
-      const rect = el.getBoundingClientRect();
-      const style = window.getComputedStyle(el);
+    const caretBox = await editor.evaluate((el) => {
+      // The geometry of the document's FIRST CHARACTER, straight from the
+      // browser's Range API — the caret sits right before it. Independent of
+      // the app's own positioning code.
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      const first = walker.nextNode() as Text;
+      const range = document.createRange();
+      range.setStart(first, 0);
+      range.setEnd(first, 1);
+      const rect = range.getBoundingClientRect();
+      const frame = el.closest('[data-testid="page-content-editor-frame"]') as HTMLElement;
       return {
-        top: rect.top + parseFloat(style.borderTopWidth) + parseFloat(style.paddingTop),
-        left: rect.left + parseFloat(style.borderLeftWidth) + parseFloat(style.paddingLeft),
-        textareaBottom: rect.bottom,
+        top: rect.top,
+        left: rect.left,
+        textareaBottom: frame.getBoundingClientRect().bottom,
         viewportHeight: window.innerHeight,
       };
     });
@@ -143,11 +152,13 @@ test.describe('Pages — wiki-link picker follows the caret', () => {
     for (let i = 1; i <= 80; i++) {
       lines.push(`Runbook step ${i}: check the service is healthy.`);
     }
-    await editor.pressSequentially(lines.join('\n'), { delay: 0 });
+    await fillEditorMarkdown(page, 'page-content-editor', lines.join('\n'));
 
-    // Caret already sits at the very end (last line) after typing — that's
-    // deep in the lower part of the viewport once the tall textarea has
-    // scrolled to follow typing, so this exercises the flip-above path.
+    // Put the caret at the very end (last line): that is deep in the lower
+    // part of the viewport once the tall editor has scrolled to follow it, so
+    // this exercises the flip-above path.
+    await editor.click();
+    await page.keyboard.press('Control+End');
     await editor.pressSequentially('\n[[Target', { delay: 15 });
 
     const picker = page.getByTestId('wikilink-picker');

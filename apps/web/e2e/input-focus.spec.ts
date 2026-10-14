@@ -46,7 +46,7 @@ test.describe('Input focus retention (per-keystroke)', () => {
     await box.click();
     const text = 'Typing a multi word comment';
     await box.pressSequentially(text, { delay: 25 });
-    await expect(box).toHaveValue(text);
+    await expect(box).toHaveText(text);
     await expect(box).toBeFocused();
   });
 });

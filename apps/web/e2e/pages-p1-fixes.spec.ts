@@ -88,7 +88,7 @@ test.describe('Pages — unsaved-changes guard', () => {
     await dialog.getByRole('button', { name: 'Keep editing' }).click();
     await expect(dialog).toBeHidden();
     await expect(page.getByTestId('page-title-input')).toHaveValue('Draft Doc');
-    await expect(editor).toHaveValue('Unsaved paragraph.');
+    await expect(editor).toHaveText('Unsaved paragraph.');
 
     // Try again, this time confirm the discard — navigation proceeds and the
     // unsaved paragraph is gone (never persisted).

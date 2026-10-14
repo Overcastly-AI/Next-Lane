@@ -13,6 +13,7 @@
  */
 
 import { test, expect } from '@playwright/test';
+import { editorMarkdown } from './editor';
 import {
   setupIsolatedProject,
   createIssue,
@@ -83,8 +84,9 @@ test.describe('markdown rendering', () => {
     await rendered.click();
     const editor = page.getByTestId('description-editor');
     await expect(editor).toBeVisible({ timeout: 5000 });
-    // Editor should contain the raw markdown
-    await expect(editor).toHaveValue(mdContent);
+    // Opening the editor must not change a byte of the stored markdown: the
+    // Markdown view holds exactly what the API sent.
+    expect(await editorMarkdown(page, 'description-editor')).toBe(mdContent);
 
     // Press Escape to cancel edit without saving
     await editor.press('Escape');
@@ -464,7 +466,11 @@ test.describe('markdown rendering', () => {
 
     // Type using pressSequentially (per-keystroke, as a real user would)
     await composer.pressSequentially('**bold** and _italic_');
-    await expect(composer).toHaveValue('**bold** and _italic_');
+    // The typed markdown becomes formatting as you type (input rules)…
+    await expect(composer.locator('strong')).toHaveText('bold');
+    await expect(composer.locator('em')).toHaveText('italic');
+    // …and is stored as markdown.
+    expect(await editorMarkdown(page, 'comment-composer')).toBe('**bold** and *italic*');
 
     // Submit
     await page.keyboard.press('Control+Enter');

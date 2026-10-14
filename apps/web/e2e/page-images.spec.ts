@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { editorMarkdown } from './editor';
 import {
   API_URL,
   registerNewUser,
@@ -72,9 +73,9 @@ test.describe('Page images', () => {
     }, Array.from(PNG_1PX));
 
     // The placeholder is rewritten to a real reference once the bytes land.
-    await expect(editor).toHaveValue(/!\[screenshot\.png\]\(nl-image:[A-Za-z0-9_-]+\)/, {
-      timeout: 15_000,
-    });
+    await expect
+      .poll(() => editorMarkdown(page, 'page-content-editor'), { timeout: 15_000 })
+      .toMatch(/!\[screenshot\.png\]\(nl-image:[A-Za-z0-9_-]+\)/);
     await expect(page.getByTestId('page-image-uploading')).toHaveCount(0);
 
     await page.getByTestId('page-save').click();
@@ -162,6 +163,6 @@ test.describe('Page images', () => {
 
     await expect(page.getByText(/Only PNG, JPEG, GIF and WebP/i)).toBeVisible();
     // Nothing was inserted into the body.
-    await expect(editor).toHaveValue('Body.');
+    expect(await editorMarkdown(page, 'page-content-editor')).toBe('Body.');
   });
 });

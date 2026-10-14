@@ -160,11 +160,11 @@ test.describe('Personal board — desktop', () => {
     await titleInput.pressSequentially('two words here', { delay: 20 });
     await expect(titleInput).toHaveValue('two words here');
 
-    // Notes: same, in the textarea.
+    // Notes: same, in the (rich) editor.
     const notesInput = modal.getByLabel(/notes/i);
     await notesInput.click();
     await notesInput.pressSequentially('note with spaces', { delay: 20 });
-    await expect(notesInput).toHaveValue('note with spaces');
+    await expect(notesInput).toHaveText('note with spaces');
 
     await modal.getByRole('button', { name: /save/i }).click();
     await expect(

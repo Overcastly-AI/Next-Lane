@@ -24,6 +24,8 @@ import * as http from 'node:http';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { API_URL, createIssue, createProject, createWorkspace, registerNewUser } from './helpers';
+import { editorMarkdown, editorSurface, typeInEditor } from './editor';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DIST_DIR = path.resolve(__dirname, '..', 'dist');
@@ -47,10 +49,50 @@ const MIME_TYPES: Record<string, string> = {
   '.woff2': 'font/woff2',
 };
 
-function startStaticServer(): Promise<{ server: http.Server; port: number }> {
+/**
+ * `proxyApi` mirrors nginx's same-origin mode (apps/web/docker-entrypoint.sh):
+ * `/api/*` is forwarded to the API so the built SPA is fully usable under the
+ * strict `connect-src 'self'` above.
+ */
+function startStaticServer(proxyApi = false): Promise<{ server: http.Server; port: number }> {
   return new Promise((resolve, reject) => {
     const server = http.createServer((req, res) => {
       const urlPath = decodeURIComponent((req.url ?? '/').split('?')[0]);
+      if (proxyApi && urlPath === '/config.js') {
+        // What docker-entrypoint.sh writes in same-origin mode: API on this origin.
+        res.setHeader('Content-Type', 'text/javascript; charset=utf-8');
+        res.writeHead(200);
+        res.end('window.__NL_CONFIG__ = { apiUrl: "" };');
+        return;
+      }
+      if (proxyApi && (urlPath.startsWith('/api/') || urlPath === '/health')) {
+        const target = new URL(API_URL);
+        // The test origin is a random port the API's CORS allow-list has never
+        // heard of; nginx would forward a same-origin request untouched, so drop
+        // the browser's Origin here instead of widening the API's allow-list.
+        const { origin: _origin, referer: _referer, ...forwarded } = req.headers;
+        void _origin;
+        void _referer;
+        const upstream = http.request(
+          {
+            host: target.hostname,
+            port: target.port,
+            method: req.method,
+            path: req.url,
+            headers: { ...forwarded, host: target.host },
+          },
+          (up) => {
+            res.writeHead(up.statusCode ?? 502, up.headers);
+            up.pipe(res);
+          },
+        );
+        upstream.on('error', () => {
+          res.writeHead(502);
+          res.end('bad gateway');
+        });
+        req.pipe(upstream);
+        return;
+      }
       let filePath = path.join(DIST_DIR, urlPath);
       // Basic path-traversal guard — this server only ever serves DIST_DIR.
       if (!filePath.startsWith(DIST_DIR)) {
@@ -118,6 +160,55 @@ test.describe('CSP artifact fidelity — theme bootstrap under real nginx-equiva
       const isDark = await page.evaluate(() => document.documentElement.classList.contains('dark'));
       expect(isDark).toBe(true);
 
+      await context.close();
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  test('the rich editor works under the production CSP (lazy chunk, no inline <style>, no violations)', async ({
+    browser,
+    request,
+  }) => {
+    const { server, port } = await startStaticServer(true);
+    try {
+      const user = await registerNewUser(request, 'csp-editor');
+      const ws = await createWorkspace(request, user.token);
+      const project = await createProject(request, user.token, ws, { name: 'CSP editor' });
+      const issue = await createIssue(request, user.token, project.id, { title: 'CSP editor issue' });
+
+      const context = await browser.newContext();
+      await context.addInitScript(() => {
+        (window as unknown as { __cspViolations: unknown[] }).__cspViolations = [];
+        document.addEventListener('securitypolicyviolation', (e) => {
+          (window as unknown as { __cspViolations: unknown[] }).__cspViolations.push({
+            directive: e.violatedDirective,
+            blockedURI: e.blockedURI,
+          });
+        });
+      });
+      const page = await context.newPage();
+      const origin = `http://127.0.0.1:${port}`;
+      await page.goto(`${origin}/login`, { waitUntil: 'load' });
+      await page.getByLabel(/email/i).fill(user.email);
+      await page.getByLabel(/password/i).fill(user.password);
+      await page.getByRole('button', { name: /(log ?in|sign ?in)/i }).click();
+      await expect(page).not.toHaveURL(/\/login/, { timeout: 15_000 });
+
+      await page.goto(`${origin}/projects/${project.id}/board?issue=${issue.id}`);
+      await expect(page.getByTestId('comment-composer')).toBeVisible({ timeout: 20_000 });
+      await typeInEditor(page, 'comment-composer', '**bold** `code` [[Page]] ');
+      await expect(editorSurface(page, 'comment-composer').locator('strong')).toHaveText('bold');
+      await expect(editorSurface(page, 'comment-composer').locator('code')).toHaveText('code');
+      expect(await editorMarkdown(page, 'comment-composer')).toBe('**bold** `code` [[Page]]');
+
+      // The editor's CSS comes from the bundle: nothing is injected at runtime.
+      expect(await page.locator('style[data-tiptap-style]').count()).toBe(0);
+
+      const violations = await page.evaluate(
+        () => (window as unknown as { __cspViolations: Array<{ directive: string; blockedURI: string }> }).__cspViolations,
+      );
+      expect(violations, `CSP violations while using the editor: ${JSON.stringify(violations)}`).toEqual([]);
       await context.close();
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));

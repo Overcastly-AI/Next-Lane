@@ -15,6 +15,7 @@
  * Tests run on desktop AND mobile viewports via playwright.config.ts projects.
  */
 import { test, expect } from '@playwright/test';
+import { editorMarkdown } from './editor';
 import {
   registerNewUser,
   createWorkspace,
@@ -99,8 +100,7 @@ test.describe('@mention autocomplete in comment composer', () => {
     await expect(picker).not.toBeVisible();
 
     // Textarea should contain `@<userB.email>`
-    await expect(composer).toHaveValue(
-      new RegExp(`@${userB.email.replace(/[.+]/g, '\\$&')}`),
+    await expect(composer).toHaveText(new RegExp(`@${userB.email.replace(/[.+]/g, '\\$&')}`),
     );
   });
 
@@ -125,8 +125,7 @@ test.describe('@mention autocomplete in comment composer', () => {
     // Tab should insert
     await composer.press('Tab');
     await expect(picker).not.toBeVisible();
-    await expect(composer).toHaveValue(
-      new RegExp(`@${userB.email.replace(/[.+]/g, '\\$&')}`),
+    await expect(composer).toHaveText(new RegExp(`@${userB.email.replace(/[.+]/g, '\\$&')}`),
     );
   });
 
@@ -149,8 +148,9 @@ test.describe('@mention autocomplete in comment composer', () => {
 
     await composer.press('Escape');
     await expect(picker).not.toBeVisible();
-    // textarea still has the raw typed text (@prefix), not a resolved email
-    const val = await composer.inputValue();
+    // the editor still has the raw typed text (@prefix), not a resolved email
+    const val = await editorMarkdown(page, 'comment-composer');
+    expect(val).toContain(`@${bFilterPrefix}`);
     expect(val).not.toMatch(new RegExp(`@${userB.email.replace(/[.+]/g, '\\$&')}`));
   });
 
@@ -209,10 +209,9 @@ test.describe('@mention autocomplete in comment composer', () => {
     await userBRow.click();
 
     await expect(picker).not.toBeVisible();
-    await expect(composer).toHaveValue(
-      new RegExp(`@${userB.email.replace(/[.+]/g, '\\$&')}`),
+    await expect(composer).toHaveText(new RegExp(`@${userB.email.replace(/[.+]/g, '\\$&')}`),
     );
-    // Focus must stay on the textarea after click-insert
+    // Focus must stay in the editor after click-insert
     await expect(composer).toBeFocused();
   });
 
@@ -256,10 +255,9 @@ test.describe('@mention autocomplete in comment composer', () => {
     await composer.press('Enter');
     await expect(picker).not.toBeVisible();
 
-    // Confirm the email token is in the textarea
-    await expect(composer).toHaveValue(
-      new RegExp(`@${userB.email.replace(/[.+]/g, '\\$&')}`),
-    );
+    // Confirm the email token is what will be stored (the exact form the API parses)
+    await expect(composer).toHaveText(new RegExp(`@${userB.email.replace(/[.+]/g, '\\$&')}`));
+    expect(await editorMarkdown(page, 'comment-composer')).toBe(`Hey @${userB.email}`);
 
     // Append a message body after the mention and submit
     await composer.pressSequentially(' please review', { delay: 20 });
@@ -268,7 +266,7 @@ test.describe('@mention autocomplete in comment composer', () => {
     await page.getByRole('button', { name: /^comment$/i }).click();
 
     // Composer clears after submit
-    await expect(composer).toHaveValue('');
+    await expect(composer).toHaveText('');
 
     // --- B logs in and sees the MENTIONED notification ---
     await login(page, { email: userB.email, password: userB.password });
@@ -282,7 +280,7 @@ test.describe('@mention autocomplete in comment composer', () => {
     await expect(panel.getByText(/mentioned you/i)).toBeVisible();
   });
 
-  test('focus is retained in textarea while picker is open (no focus-loss regression)', async ({
+  test('focus is retained in the editor while picker is open (no focus-loss regression)', async ({
     page,
     request,
   }) => {
@@ -299,7 +297,7 @@ test.describe('@mention autocomplete in comment composer', () => {
     const picker = page.getByTestId('mention-picker');
     await expect(picker).toBeVisible({ timeout: 5_000 });
 
-    // Keep typing — textarea must remain focused throughout
+    // Keep typing — editor must remain focused throughout
     for (const ch of bFilterPrefix) {
       await composer.pressSequentially(ch, { delay: 30 });
       await expect(composer).toBeFocused();

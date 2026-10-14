@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { editorMarkdown } from './editor';
 import { API_URL, setupIsolatedProject } from './helpers';
 
 /**
@@ -68,11 +69,13 @@ test.describe('Pages adversarial QA', () => {
     await option.click();
     await expect(page.getByTestId('wikilink-picker')).toHaveCount(0);
 
-    // No focus loss: the textarea should still be focused and further
+    // No focus loss: the editor should still be focused and further
     // keystrokes should land in it, appending after the inserted link.
     await expect(editor).toBeFocused();
     await editor.pressSequentially(' HERE', { delay: 12 });
-    await expect(editor).toHaveValue('See the [[Architecture]] HEREdoc for more info.');
+    expect(await editorMarkdown(page, 'page-content-editor')).toBe(
+      'See the [[Architecture]] HEREdoc for more info.',
+    );
 
     await page.getByTestId('page-save').click();
     await expect(page.getByTestId('page-save')).toHaveCount(0);
