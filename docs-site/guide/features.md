@@ -511,9 +511,15 @@ slide-over drawer opened from the document header. Opening a page
 auto-expands the tree down to it, so you're never looking at a page with its
 own location collapsed out of view.
 
-**The markdown editor.** Click **Edit** to switch a page into an editable
-title + body. The body is a plain-markdown textarea (mermaid diagrams render
-too, same pipeline as issue descriptions) with one addition: typing `[[`
+**The editor.** Click **Edit** to switch a page into an editable
+title + body. The body is a rich-text editor — the same one used for issue
+descriptions and comments — with a toolbar, markdown shortcuts as you type
+(`## ` for a heading, `- [ ] ` for a checklist, ```` ``` ```` for a code
+block), tables, and a **Markdown** toggle that shows the raw source. What is
+stored is still plain markdown, so search, backlinks, the MCP tools and
+anything you script against the API see exactly the text you'd expect, and
+opening a page without changing it never creates a new version (mermaid
+diagrams render too, same pipeline as issue descriptions). Typing `[[`
 opens a per-keystroke autocomplete dropdown of matching page titles —
 arrow keys to move, Enter/Tab to accept, Escape to dismiss, exactly like the
 `@mention` composer elsewhere in the app. `[[Existing Page]]` resolves to a

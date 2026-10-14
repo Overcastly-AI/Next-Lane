@@ -18,7 +18,7 @@ teams find it — that's the only ask.**
 [![CI](https://github.com/Overcastly-AI/Next-Lane/actions/workflows/ci.yml/badge.svg)](https://github.com/Overcastly-AI/Next-Lane/actions/workflows/ci.yml)
 [![E2E](https://github.com/Overcastly-AI/Next-Lane/actions/workflows/e2e.yml/badge.svg)](https://github.com/Overcastly-AI/Next-Lane/actions/workflows/e2e.yml)
 [![MCP server](https://img.shields.io/badge/MCP-132%20tools-8A2BE2.svg)](./apps/mcp/README.md)
-[![Unit tests](https://img.shields.io/badge/unit%20tests-2755-brightgreen.svg)](./docs/ROADMAP.md)
+[![Unit tests](https://img.shields.io/badge/unit%20tests-3234-brightgreen.svg)](./docs/ROADMAP.md)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6.svg?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Docker](https://img.shields.io/badge/Docker-compose%20up-2496ED.svg?logo=docker&logoColor=white)](#-quickstart)
 [![Install](https://img.shields.io/badge/install-Compose%20%C2%B7%20Helm%20%C2%B7%20npx-4C1D95.svg)](#-install)
@@ -290,7 +290,7 @@ The full capability matrix:
 | **Auth & SSO** | Email/password (JWT) · **SSO/OIDC** with an **in-app admin configuration screen** (`/admin/sso`, secrets encrypted at rest, no redeploy to change) — works with Okta/Auth0/Keycloak/Authentik/Google · personal API tokens (PATs) |
 | **Workflows (SDLC)** | **Configurable workflows** — per-project enforcement **and reusable named workflows assigned per board** · transition graph with **visual node/edge editor** · gates (require assignee/description/field/link/no-open-blockers) · seed from templates (simple / kanban / scrum / bug-triage) |
 | **Agent-native (MCP)** | **MCP server** (`apps/mcp`) — 132 read/write tools (64 read, 68 write) over PAT auth, server-side NLQL evaluation, `get_epic_overview`, agent-traversable Pages knowledge graph, and **persistent per-project agent memory**. See [above](#-agent-native-your-coding-agent-can-run-the-tracker) |
-| **Pages (knowledge base)** | Project-scoped wiki: nestable page tree · markdown editor with `[[wiki-link]]` autocomplete (resolved + "create-it" unresolved links) · append-only **version history** with restore · **backlinks** ("what links here") · Obsidian-style **force-directed knowledge graph** view · graph/backlinks/links traversable over MCP for agent-native document authoring |
+| **Pages (knowledge base)** | Project-scoped wiki: nestable page tree · rich-text editor (toolbar, tables, checklists, Markdown source toggle — stored as plain markdown) with `[[wiki-link]]` autocomplete (resolved + "create-it" unresolved links) · append-only **version history** with restore · **backlinks** ("what links here") · Obsidian-style **force-directed knowledge graph** view · graph/backlinks/links traversable over MCP for agent-native document authoring |
 | **Estimation & tracking** | Story points · **original estimate + work logs** (time spent vs estimate rollup) · **checklists** (sub-items + progress) · **WIP limits** per column |
 | **Automation** | **Glass Box engine** — trigger → condition → action rules · NLQL-based conditions · unlimited runs · full **run log** (audit trail per execution) |
 | **Rituals** | **Planning poker** (real-time estimation via Socket.io) · **async standups** (per-member responses + team digest) |
@@ -301,7 +301,7 @@ The full capability matrix:
 | **Workspace** | **Branding** — custom name, accent color, logo · workspace audit log |
 | **Admin & security** | Roles & permissions (Admin / Member / Viewer) · **per-project role overrides** (elevate or restrict a member on one project) · password reset over SMTP · HMAC-signed outbound webhooks (with SSRF guard) · 102-endpoint tenant-isolation regression matrix |
 | **Integrations** | **GitHub**, **GitLab**, and **Gitea** two-way issue ↔ PR/MR/commit/branch linking, HMAC/token-verified webhooks, self-hosted URLs support |
-| **Ops & deploy** | One-command Docker Compose · **Helm chart + Kustomize** for Kubernetes · GHCR multi-arch image builds · structured JSON logs · health/readiness probes · CI (typecheck + build + **2755 unit tests**) + full Playwright **e2e suite, desktop and mobile** |
+| **Ops & deploy** | One-command Docker Compose · **Helm chart + Kustomize** for Kubernetes · GHCR multi-arch image builds · structured JSON logs · health/readiness probes · CI (typecheck + build + **3234 unit tests**) + full Playwright **e2e suite, desktop and mobile** |
 
 ## 🚀 Quickstart
 
@@ -495,7 +495,7 @@ Deeper dives: [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) ·
 ```
 Next-Lane/
 ├── apps/
-│   ├── api/        # NestJS backend (REST + WebSocket, 2238 unit tests)
+│   ├── api/        # NestJS backend (REST + WebSocket, 2239 unit tests)
 │   ├── web/        # React + Vite frontend
 │   └── mcp/        # MCP server (stdio, 132 tools with persistent agent memory) for AI agents
 ├── packages/
