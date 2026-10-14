@@ -15,7 +15,21 @@ import { WikiLink } from './WikiLinkNode';
 import { Mention } from './MentionNode';
 import { RawHtmlBlock, RawHtmlInline } from './RawHtmlNode';
 
-export function createMarkdownExtensions(): AnyExtension[] {
+export interface MarkdownExtensionOptions {
+  /** `[[Page]]` chips. Only meaningful where the server links pages (wiki pages). */
+  wikiLinks?: boolean;
+  /** `@email` chips. Only meaningful where the server notifies (comments). */
+  mentions?: boolean;
+}
+
+/**
+ * Chips are opt-in per surface so the editor never implies a behaviour the
+ * server does not have: in an issue description `[[x]]` is just text to every
+ * reader, so there it stays text (stored byte-for-byte either way).
+ */
+export function createMarkdownExtensions(
+  { wikiLinks = true, mentions = true }: MarkdownExtensionOptions = {},
+): AnyExtension[] {
   return [
     StarterKit.configure({
       // No markdown spelling exists for underline.
@@ -43,8 +57,8 @@ export function createMarkdownExtensions(): AnyExtension[] {
     TableHeader,
     TableCell,
     EditorImage.configure({ inline: true, allowBase64: false }),
-    WikiLink,
-    Mention,
+    ...(wikiLinks ? [WikiLink] : []),
+    ...(mentions ? [Mention] : []),
     RawHtmlInline,
     RawHtmlBlock,
     // marked is configured with `breaks: true` in MarkdownRenderer, so a single

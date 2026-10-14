@@ -1113,10 +1113,24 @@ h1, h2, h3, h4, h5, h6,
 
 /* Quote / code inside the editor keep read-mode look; make code blocks scroll. */
 .nl-editor-content pre { overflow-x: auto; }
-.nl-editor-content blockquote { font-style: normal; }
 
 /* Selection that is readable in both themes. */
 .nl-editor-content ::selection { background: color-mix(in srgb, var(--nl-signal-500) 28%, transparent); }
 
 /* Images in the editor are selectable atoms. */
 .nl-editor-content img.ProseMirror-selectednode { outline: 2px solid var(--nl-signal-400); outline-offset: 2px; }
+
+/* Toolbar overflow hint: when the strip scrolls (phones), the clipped edge
+   fades out so it reads as "more this way" rather than as a cut-off button. */
+.nl-editor-strip[data-fade-end='true'] {
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+}
+.nl-editor-strip[data-fade-start='true'] {
+  -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 28px), transparent);
+  mask-image: linear-gradient(to left, #000 calc(100% - 28px), transparent);
+}
+.nl-editor-strip[data-fade-start='true'][data-fade-end='true'] {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 28px, #000 calc(100% - 28px), transparent);
+  mask-image: linear-gradient(to right, transparent, #000 28px, #000 calc(100% - 28px), transparent);
+}

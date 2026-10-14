@@ -10,7 +10,7 @@
  * a blur dismisses the on-screen keyboard) and the toolbar itself is a single
  * roving-tabindex stop with arrow-key navigation (`role="toolbar"`).
  */
-import { useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import type { Editor } from '@tiptap/core';
 import { useEditorState } from '@tiptap/react';
 import { cn } from '@/lib/cn';
@@ -122,7 +122,7 @@ export function EditorToolbar({
       { id: 'codeblock', label: 'Code block', shortcut: '```', icon: <CodeBlockIcon />, active: state.codeBlock, onRun: () => run().toggleCodeBlock().run() },
     ],
     [
-      { id: 'link', label: 'Link', shortcut: `${MOD}K`, icon: <LinkIcon />, active: state.link, onRun: onLink },
+      { id: 'link', label: 'Link', shortcut: `${MOD}K on a selection`, icon: <LinkIcon />, active: state.link, onRun: onLink },
       ...(variant === 'full'
         ? [
             {
@@ -144,6 +144,24 @@ export function EditorToolbar({
   const flat = groups.flat();
   const [roving, setRoving] = useState(0);
   const stripRef = useRef<HTMLDivElement>(null);
+
+  // Which edges of the strip have more to scroll to (drives the fade hint).
+  const [fade, setFade] = useState({ start: false, end: false });
+  const measureFade = useCallback(() => {
+    const el = stripRef.current;
+    if (!el) return;
+    const start = el.scrollLeft > 2;
+    const end = el.scrollLeft + el.clientWidth < el.scrollWidth - 2;
+    setFade((f) => (f.start === start && f.end === end ? f : { start, end }));
+  }, []);
+  useEffect(() => {
+    measureFade();
+    const el = stripRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(measureFade);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [measureFade, mode, variant, state.table]);
 
   function onKeyDown(e: KeyboardEvent<HTMLDivElement>) {
     const buttons = Array.from(
@@ -177,7 +195,10 @@ export function EditorToolbar({
         aria-label="Formatting"
         aria-orientation="horizontal"
         onKeyDown={onKeyDown}
-        className="nl-tabstrip flex w-0 min-w-0 flex-1 items-center gap-0.5 overflow-x-auto px-1.5 py-1"
+        onScroll={measureFade}
+        data-fade-start={fade.start}
+        data-fade-end={fade.end}
+        className="nl-tabstrip nl-editor-strip flex w-0 min-w-0 flex-1 items-center gap-0.5 overflow-x-auto px-1.5 py-1"
       >
         {rich &&
           groups.map((group, gi) => (

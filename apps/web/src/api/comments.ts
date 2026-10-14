@@ -20,8 +20,14 @@ export function useAddComment(issueId: string) {
         body: { body },
       }),
     onSuccess: (comment) => {
+      // The realtime event for this very comment can land (and refetch) before
+      // this response does; appending blindly then shows it twice.
       qc.setQueryData<CommentDto[]>(qk.comments(issueId), (prev) =>
-        prev ? [...prev, comment] : [comment],
+        !prev
+          ? [comment]
+          : prev.some((c) => c.id === comment.id)
+            ? prev
+            : [...prev, comment],
       );
     },
   });

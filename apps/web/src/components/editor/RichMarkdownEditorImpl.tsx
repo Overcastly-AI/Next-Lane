@@ -70,7 +70,14 @@ export const RichMarkdownEditorImpl = forwardRef<RichMarkdownEditorHandle, RichM
     const ariaLabel = props['aria-label'];
     const testId = props['data-testid'];
 
-    const [mode, setMode] = useState<'rich' | 'markdown'>(initialMode);
+    const [mode, setModeState] = useState<'rich' | 'markdown'>(initialMode);
+    // The imperative handle (image upload callbacks resolve at arbitrary
+    // times) must see the mode as it is NOW, not as of the last render.
+    const modeRef = useRef(mode);
+    const setMode = useCallback((m: 'rich' | 'markdown') => {
+      modeRef.current = m;
+      setModeState(m);
+    }, []);
     const [dropActive, setDropActive] = useState(false);
     const [linkOpen, setLinkOpen] = useState(false);
     const [picker, setPicker] = useState<PickerState | null>(null);
@@ -153,7 +160,7 @@ export const RichMarkdownEditorImpl = forwardRef<RichMarkdownEditorHandle, RichM
 
     const extensions = useMemo(
       () => [
-        ...createMarkdownExtensions(),
+        ...createMarkdownExtensions({ wikiLinks: pages !== undefined, mentions: users !== undefined }),
         Placeholder.configure({ placeholder: placeholder ?? '', showOnlyWhenEditable: true }),
         createSuggestionExtension(dataRefs, bridge),
       ],
@@ -222,13 +229,34 @@ export const RichMarkdownEditorImpl = forwardRef<RichMarkdownEditorHandle, RichM
           // A DOM-level hook rather than `handleKeyDown`: on Android Chrome
           // ProseMirror re-synthesises Enter as a modifier-less key event, so
           // Cmd/Ctrl+Enter would never reach a `handleKeyDown` there.
-          keydown: (_view, event) => {
+          keydown: (view, event) => {
             // An open picker owns arrows/Enter/Tab/Esc (its plugin handles them).
             if (pickerRef.current) return false;
+            // ⌘/Ctrl+K on a selection (or inside a link) edits the link — the
+            // convention in every rich editor. With nothing selected it falls
+            // through to the app's global search palette, which owns ⌘K.
             if ((event.metaKey || event.ctrlKey) && !event.shiftKey && event.key.toLowerCase() === 'k') {
-              event.preventDefault();
-              openLinkBar.current();
-              return true;
+              const e = editorRef.current;
+              // ProseMirror syncs the DOM selection asynchronously, so right
+              // after Shift+Arrow its own state can still say "empty": ask the
+              // DOM too.
+              const sel = window.getSelection();
+              const inside = !!sel && view.dom.contains(sel.anchorNode);
+              const domSelected = inside && !sel.isCollapsed;
+              const domInLink = inside && !!sel.anchorNode?.parentElement?.closest('a[href]');
+              if (e && (!e.state.selection.empty || domSelected || domInLink || e.isActive('link'))) {
+                event.preventDefault();
+                event.stopPropagation();
+                // Make ProseMirror adopt the DOM selection NOW: focus is about to
+                // move to the link field, after which it would never sync it.
+                try {
+                  (view as unknown as { domObserver: { flush(): void } }).domObserver.flush();
+                } catch {
+                  /* internal API moved: the selection is then as of the last sync */
+                }
+                openLinkBar.current();
+                return true;
+              }
             }
             return onKeyDownRef.current?.(event) === true;
           },
@@ -287,6 +315,23 @@ export const RichMarkdownEditorImpl = forwardRef<RichMarkdownEditorHandle, RichM
       editor?.setEditable(!disabled);
     }, [editor, disabled]);
 
+    // Autofocus, retried: the `autofocus` editor option fires once at creation,
+    // which can be before the view is attached (lazy chunk, modal mount) or be
+    // undone by the control that opened us unmounting. A few animation frames
+    // of "focus until it sticks" make "click Edit → caret is there" reliable.
+    useEffect(() => {
+      if (!editor || !autoFocus || initialMode !== 'rich') return;
+      let tries = 0;
+      let raf = 0;
+      const attempt = () => {
+        if (editor.isDestroyed) return;
+        editor.commands.focus('end');
+        if (!editor.isFocused && tries++ < 8) raf = requestAnimationFrame(attempt);
+      };
+      raf = requestAnimationFrame(attempt);
+      return () => cancelAnimationFrame(raf);
+    }, [editor, autoFocus, initialMode]);
+
     // ARIA combobox state for the open picker, set on the contenteditable.
     useEffect(() => {
       // `editor.view` throws until the view is mounted (first render in a modal).
@@ -313,9 +358,12 @@ export const RichMarkdownEditorImpl = forwardRef<RichMarkdownEditorHandle, RichM
 
     // ── link bar ─────────────────────────────────────────────────────────
     const [linkValue, setLinkValue] = useState('');
+    // Whether the caret/selection is on an existing link (for "Update"/"Remove").
+    const [linkHas, setLinkHas] = useState(false);
     openLinkBar.current = () => {
       if (!editor || mode !== 'rich') return;
       setLinkValue((editor.getAttributes('link').href as string | undefined) ?? '');
+      setLinkHas(editor.isActive('link'));
       setLinkOpen(true);
     };
     useEffect(() => {
@@ -331,7 +379,7 @@ export const RichMarkdownEditorImpl = forwardRef<RichMarkdownEditorHandle, RichM
         return;
       }
       const { empty } = editor.state.selection;
-      if (empty && !editor.isActive('link')) {
+      if (empty && !linkHas) {
         editor
           .chain()
           .focus()
@@ -344,16 +392,18 @@ export const RichMarkdownEditorImpl = forwardRef<RichMarkdownEditorHandle, RichM
 
     // ── mode switch ──────────────────────────────────────────────────────
     function toggleMode() {
-      if (mode === 'rich') {
+      if (modeRef.current === 'rich') {
         setMode('markdown');
         requestAnimationFrame(() => textareaRef.current?.focus());
       } else {
+        // Flip first: from here on an in-flight image upload edits the live
+        // document, which is rebuilt from the latest markdown just below.
+        setMode('rich');
         if (editor) {
           const md = lastEmitted.current;
           editor.commands.setContent(md, { contentType: 'markdown', emitUpdate: false });
           baseline.current = { original: md, normalized: editorToMarkdown(editor) };
         }
-        setMode('rich');
         requestAnimationFrame(() => editor?.commands.focus('end'));
       }
     }
@@ -370,11 +420,11 @@ export const RichMarkdownEditorImpl = forwardRef<RichMarkdownEditorHandle, RichM
       ref,
       () => ({
         focus() {
-          if (mode === 'markdown') textareaRef.current?.focus();
+          if (modeRef.current === 'markdown') textareaRef.current?.focus();
           else editorRef.current?.commands.focus('end');
         },
         insertMarkdown(md) {
-          if (mode === 'markdown') {
+          if (modeRef.current === 'markdown') {
             const el = textareaRef.current;
             const cur = lastEmitted.current;
             const start = el?.selectionStart ?? cur.length;
@@ -387,7 +437,7 @@ export const RichMarkdownEditorImpl = forwardRef<RichMarkdownEditorHandle, RichM
           }
         },
         insertImage({ src, alt }) {
-          if (mode === 'markdown') {
+          if (modeRef.current === 'markdown') {
             const el = textareaRef.current;
             const cur = lastEmitted.current;
             const start = el?.selectionStart ?? cur.length;
@@ -405,11 +455,13 @@ export const RichMarkdownEditorImpl = forwardRef<RichMarkdownEditorHandle, RichM
           }
         },
         replaceImage(src, next) {
-          if (mode === 'markdown') {
+          if (modeRef.current === 'markdown') {
             const cur = lastEmitted.current;
             const esc = src.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            const re = new RegExp(`!\\[[^\\]]*\\]\\(${esc}\\)\\n?`);
-            const out = cur.replace(re, () => (next ? `![${next.alt}](${next.src})\n` : ''));
+            const re = new RegExp(`!\\[[^\\]]*\\]\\(${esc}\\)(\\n?)`);
+            // Keep whatever line ending the placeholder had (none at the very
+            // end of the text); drop the line with it when removing.
+            const out = cur.replace(re, (_m, nl: string) => (next ? `![${next.alt}](${next.src})${nl}` : ''));
             lastEmitted.current = out;
             onChangeRef.current(out);
             return;
@@ -433,7 +485,7 @@ export const RichMarkdownEditorImpl = forwardRef<RichMarkdownEditorHandle, RichM
           e.view.dispatch(tr);
         },
       }),
-      [mode],
+      [],
     );
 
     // Focus left the whole editor (surface + toolbar + link bar + toggle)?
@@ -482,12 +534,12 @@ export const RichMarkdownEditorImpl = forwardRef<RichMarkdownEditorHandle, RichM
         )}
 
         {linkOpen && mode === 'rich' && (
-          <form
+          // A div, not a <form>: this editor often lives inside a <form>
+          // (comments, create-issue), and a nested one would submit it.
+          <div
             data-testid="editor-link-bar"
-            onSubmit={(e) => {
-              e.preventDefault();
-              applyLink();
-            }}
+            role="group"
+            aria-label="Link"
             className="flex flex-wrap items-center gap-2 border-b border-ink-100 bg-surface px-2 py-1.5"
           >
             <label className="sr-only" htmlFor={`${testId ?? 'editor'}-link-url`}>
@@ -500,7 +552,11 @@ export const RichMarkdownEditorImpl = forwardRef<RichMarkdownEditorHandle, RichM
               value={linkValue}
               onChange={(e) => setLinkValue(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Escape') {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  applyLink();
+                } else if (e.key === 'Escape') {
                   e.preventDefault();
                   e.stopPropagation();
                   e.nativeEvent.stopImmediatePropagation();
@@ -514,13 +570,14 @@ export const RichMarkdownEditorImpl = forwardRef<RichMarkdownEditorHandle, RichM
               className="h-10 min-w-0 flex-1 rounded border border-ink-200 bg-surface px-2 text-base text-ink-900 placeholder:text-ink-400 focus:border-signal-500 focus:outline-none focus:ring-2 focus:ring-signal-200 sm:h-8 sm:text-sm"
             />
             <button
-              type="submit"
+              type="button"
               data-testid="editor-link-apply"
+              onClick={applyLink}
               className="h-10 rounded bg-signal-600 px-3 text-xs font-semibold text-white hover:bg-signal-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-300 sm:h-8"
             >
-              {editor?.isActive('link') ? 'Update' : 'Add link'}
+              {linkHas ? 'Update' : 'Add link'}
             </button>
-            {editor?.isActive('link') && (
+            {linkHas && (
               <button
                 type="button"
                 data-testid="editor-link-remove"
@@ -533,7 +590,7 @@ export const RichMarkdownEditorImpl = forwardRef<RichMarkdownEditorHandle, RichM
                 Remove
               </button>
             )}
-          </form>
+          </div>
         )}
 
         <div

@@ -280,6 +280,29 @@ describe('blank paragraphs', () => {
   });
 });
 
+describe('surfaces without chips keep chip syntax as plain text', () => {
+  // Issue descriptions: no [[wiki]] semantics, no mention notifications.
+  const plain = createMarkdownExtensions({ wikiLinks: false, mentions: false });
+  const roundTrip = (md: string) => {
+    const editor = new Editor({ extensions: plain, content: md, contentType: 'markdown' });
+    const out = editorToMarkdown(editor);
+    editor.destroy();
+    return out;
+  };
+  for (const md of [
+    'See [[Page Title]] and [[Page|alias]] now',
+    'cc @first_last@x.io and @a.b+t@sub.example.co',
+    '**[[Bold]]** and *@a@x.io*',
+    '- [[One]]\n- @b@x.io',
+  ]) {
+    it(JSON.stringify(md), () => {
+      expect(roundTrip(md)).toBe(md);
+      expect(parseWikiLinks(roundTrip(md))).toEqual(parseWikiLinks(md));
+      expect(mentions(roundTrip(md))).toEqual(mentions(md));
+    });
+  }
+});
+
 describe('empty input', () => {
   it('stays empty', () => {
     expect(rt('')).toBe('');
