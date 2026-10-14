@@ -13,17 +13,21 @@
  * `preloadRichMarkdownEditor()` warms it when the app is idle so the editor is
  * usually instant.
  */
-import { forwardRef, lazy, Suspense, useEffect } from 'react';
+import { forwardRef, lazy, Suspense, useEffect, useState } from 'react';
 import { cn } from '@/lib/cn';
+import { bootBuffer } from '@/components/editor/bootBuffer';
 import type { RichMarkdownEditorHandle, RichMarkdownEditorProps } from '@/components/editor/types';
 
 export type { RichMarkdownEditorHandle, RichMarkdownEditorProps } from '@/components/editor/types';
 
+type ImplType = typeof import('@/components/editor/RichMarkdownEditorImpl').RichMarkdownEditorImpl;
+let LoadedImpl: ImplType | null = null;
 const loadImpl = () =>
-  import('@/components/editor/RichMarkdownEditorImpl').then((m) => ({
-    default: m.RichMarkdownEditorImpl,
-  }));
-const Impl = lazy(loadImpl);
+  import('@/components/editor/RichMarkdownEditorImpl').then((m) => {
+    LoadedImpl = m.RichMarkdownEditorImpl;
+    return { default: m.RichMarkdownEditorImpl };
+  });
+const LazyImpl = lazy(loadImpl);
 
 /** Start fetching the editor chunk (call when the app is idle). */
 export function preloadRichMarkdownEditor(): void {
@@ -47,17 +51,29 @@ export function usePreloadRichMarkdownEditor(): void {
 function EditorSkeleton({
   variant = 'inline',
   minHeight,
+  autoFocus,
   'aria-label': ariaLabel,
-}: Pick<RichMarkdownEditorProps, 'variant' | 'minHeight' | 'aria-label'>) {
+}: Pick<RichMarkdownEditorProps, 'variant' | 'minHeight' | 'aria-label' | 'autoFocus'>) {
   return (
     <div
       role="status"
       aria-label={`Loading editor: ${ariaLabel}`}
       className={cn(
-        'nl-editor flex flex-col',
+        'nl-editor relative flex flex-col',
         variant === 'inline' ? 'rounded border border-ink-200 bg-surface' : 'flex-1',
       )}
     >
+      {autoFocus && (
+        // Catches keystrokes typed before the editor chunk arrives; the editor
+        // replays them on mount (see bootBuffer).
+        <textarea
+          autoFocus
+          aria-label={ariaLabel}
+          data-testid="editor-boot-input"
+          className="absolute h-0 w-0 opacity-0"
+          onChange={(e) => bootBuffer.push(e.target.value)}
+        />
+      )}
       <div className="h-10 border-b border-ink-100 bg-ink-50/60 sm:h-[34px]" />
       <div
         className="animate-pulse space-y-2 px-3 py-3 motion-reduce:animate-none"
@@ -72,17 +88,26 @@ function EditorSkeleton({
 
 export const RichMarkdownEditor = forwardRef<RichMarkdownEditorHandle, RichMarkdownEditorProps>(
   function RichMarkdownEditor(props, ref) {
+    // Once the chunk has loaded, render the editor directly: going through
+    // React.lazy would suspend for a tick on every mount and open a gap in
+    // which a fast typist's first characters hit nothing.
+    // The branch is chosen ONCE per mount: switching later (the chunk finishing
+    // to load while the user types) would change the element type and re-mount
+    // the editor mid-sentence.
+    const [Loaded] = useState(() => LoadedImpl);
+    if (Loaded) return <Loaded ref={ref} {...props} />;
     return (
       <Suspense
         fallback={
           <EditorSkeleton
             variant={props.variant}
             minHeight={props.minHeight}
+            autoFocus={props.autoFocus}
             aria-label={props['aria-label']}
           />
         }
       >
-        <Impl ref={ref} {...props} />
+        <LazyImpl ref={ref} {...props} />
       </Suspense>
     );
   },

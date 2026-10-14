@@ -94,7 +94,9 @@ export function useOverlay({ open, onClose, containerRef }: UseOverlayOptions): 
     document.body.style.overflow = 'hidden';
 
     // Move focus into the overlay so Esc / Tab work immediately.
-    if (container) {
+    // …unless something inside already took focus (an `autoFocus` field), in
+    // which case stealing it would defeat that field's intent.
+    if (container && !container.contains(document.activeElement)) {
       const firstFocusable = container.querySelector<HTMLElement>(FOCUSABLE_SELECTOR);
       (firstFocusable ?? container).focus();
     }

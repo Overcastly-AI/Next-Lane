@@ -15,7 +15,29 @@ import { resolvePageImage } from '@/lib/pageImages';
 const SAFE_SRC = /^(https?:\/\/|data:image\/)/i;
 const UPLOADING = /^uploading-\d+$/;
 
+const SAFE_PASTE_SRC = /^(https?:\/\/|data:image\/(png|jpe?g|gif|webp);|nl-image:[A-Za-z0-9_-]{1,64}$|\/)/i;
+
 export const EditorImage = Image.extend({
+  // Pasted/dropped HTML: never adopt an <img> whose src scheme the renderer
+  // would refuse anyway (javascript:, vbscript:, file:…).
+  parseHTML() {
+    return [
+      {
+        tag: 'img[src]',
+        getAttrs: (dom) => (SAFE_PASTE_SRC.test((dom as HTMLElement).getAttribute('src') ?? '') ? null : false),
+      },
+    ];
+  },
+  // Any DOM built from the document (clipboard, getHTML) must not carry an
+  // `nl-image:` src: the browser would fetch it as an unknown URL scheme.
+  renderHTML({ node, HTMLAttributes }) {
+    const src = String(node.attrs.src ?? '');
+    const id = parsePageImageSrc(src);
+    const { src: _s, ...rest } = HTMLAttributes as Record<string, unknown>;
+    void _s;
+    return ['img', id ? { ...rest, 'data-nl-image': id } : { ...rest, src: SAFE_SRC.test(src) ? src : undefined }];
+  },
+
   addNodeView() {
     return ({ node: initial }) => {
       let node = initial;

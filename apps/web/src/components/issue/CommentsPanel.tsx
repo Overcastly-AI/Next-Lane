@@ -67,6 +67,8 @@ export function CommentsPanel({
             users={users}
             toolbar="compact"
             minHeight="3.5rem"
+            maxHeight="16rem"
+            escapeKeepsDraft
             aria-label="Add a comment"
             placeholder="Add a comment… (type @ to mention)"
             data-testid="comment-composer"
@@ -222,6 +224,7 @@ function CommentItem({
               users={users}
               toolbar="compact"
               minHeight="3.5rem"
+              maxHeight="16rem"
               autoFocus
               aria-label="Edit comment"
               data-testid="comment-edit-composer"

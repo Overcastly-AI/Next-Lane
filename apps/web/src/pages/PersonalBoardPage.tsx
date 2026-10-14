@@ -1188,6 +1188,8 @@ function EditCardModal({
             onChange={setNotes}
             toolbar="compact"
             minHeight="5rem"
+            maxHeight="40vh"
+            escapeKeepsDraft
             aria-label="Notes"
             placeholder="Optional notes — markdown supported…"
             data-testid="personal-card-notes"

@@ -261,6 +261,25 @@ export function EditorToolbar({
         )}
       </div>
 
+      {fade.end && rich && (
+        // Overflow cue you can tap: the strip scrolls (phones), and the tools
+        // past the edge — lists, quote, link, table, image — would otherwise be
+        // invisible.
+        <button
+          type="button"
+          data-testid="editor-tools-more"
+          tabIndex={-1}
+          aria-label="More formatting tools"
+          title="More tools"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => stripRef.current?.scrollBy({ left: stripRef.current.clientWidth * 0.7, behavior: 'smooth' })}
+          className="inline-flex h-10 w-8 shrink-0 items-center justify-center self-center text-signal-700 hover:bg-ink-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-400 sm:h-8"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="m9 6 6 6-6 6" />
+          </svg>
+        </button>
+      )}
       <div className="flex shrink-0 items-center border-l border-ink-100 px-1.5">
         <button
           type="button"

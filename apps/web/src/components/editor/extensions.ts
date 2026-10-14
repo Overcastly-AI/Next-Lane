@@ -13,6 +13,8 @@ import { TableRow, TableCell, TableHeader } from '@tiptap/extension-table';
 import { EditorImage } from './ImageNode';
 import { WikiLink } from './WikiLinkNode';
 import { Mention } from './MentionNode';
+import { TaskInBullet } from './TaskInBullet';
+import { EdgeParagraphs } from './EdgeParagraphs';
 import { RawHtmlBlock, RawHtmlInline } from './RawHtmlNode';
 
 export interface MarkdownExtensionOptions {
@@ -59,6 +61,8 @@ export function createMarkdownExtensions(
     EditorImage.configure({ inline: true, allowBase64: false }),
     ...(wikiLinks ? [WikiLink] : []),
     ...(mentions ? [Mention] : []),
+    EdgeParagraphs,
+    TaskInBullet,
     RawHtmlInline,
     RawHtmlBlock,
     // marked is configured with `breaks: true` in MarkdownRenderer, so a single

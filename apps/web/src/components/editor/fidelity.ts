@@ -19,6 +19,7 @@ import Link from '@tiptap/extension-link';
 import Paragraph from '@tiptap/extension-paragraph';
 import { BulletList, OrderedList } from '@tiptap/extension-list';
 import { Table } from '@tiptap/extension-table';
+import { ATOM_BLOCK_TYPES } from './EdgeParagraphs';
 
 /** Private-use delimiters around markdown that must bypass the text escaper. */
 const VERBATIM_OPEN = '\uE002';
@@ -164,6 +165,17 @@ function neutraliseBlockStarts(rendered: string): string {
 const URL_AUTOLINK = /^https?:\/\/\S+$/i;
 
 export const FidelityParagraph = Paragraph.extend({
+  // The stock parser hoists a paragraph holding only an image to a bare
+  // top-level image, which is invalid for our INLINE image node (the content
+  // match throws, and neighbouring images merge on the first edit). Always
+  // keep it a paragraph.
+  parseMarkdown: (token, helpers) => {
+    const tokens = token.tokens ?? [];
+    if (tokens.length === 1 && tokens[0].type === 'image') {
+      return helpers.createNode('paragraph', undefined, helpers.parseInline(tokens));
+    }
+    return (Paragraph.config.parseMarkdown as ParseFn)(token, helpers);
+  },
   renderMarkdown: (node, h) => {
     const content = Array.isArray(node?.content) ? node.content : [];
     // Blank paragraphs vanish: markdown can't express them without `&nbsp;`
@@ -373,6 +385,20 @@ proto.encodeTextForMarkdown = function (this: ManagerInternals, text, node, pare
     (parentNode?.type != null && this.codeTypes.has(parentNode.type)) ||
     (node.marks ?? []).some((m) => this.codeTypes.has(typeof m === 'string' ? m : m.type));
   return insideCode ? text : escapeMarkdownText(text);
+};
+
+// Initial/loaded documents get their edge paragraphs at PARSE time (synchronous
+// — the editor's own `create` hook fires a tick later, which is long enough for
+// autofocus to select an atom block). See EdgeParagraphs for later edits.
+const stockParse = (proto as unknown as { parse: (md: string) => JsonNode }).parse;
+(proto as unknown as { parse: (md: string) => JsonNode }).parse = function (this: unknown, md: string) {
+  const doc = stockParse.call(this, md);
+  const kids = doc.content;
+  if (kids && kids.length > 0) {
+    if (ATOM_BLOCK_TYPES.has(kids[kids.length - 1].type ?? '')) kids.push({ type: 'paragraph' });
+    if (ATOM_BLOCK_TYPES.has(kids[0].type ?? '')) kids.unshift({ type: 'paragraph' });
+  }
+  return doc;
 };
 
 export const FidelityMarkdown = Markdown.extend({

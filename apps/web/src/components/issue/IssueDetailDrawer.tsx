@@ -212,6 +212,11 @@ function DrawerBody({
   const [descriptionEditing, setDescriptionEditing] = useState(false);
   const descriptionCancelled = useRef(false);
 
+  // A fresh edit session starts un-cancelled (the cancel flag is only consumed
+  // by a blur that may never arrive now that blur-out is decided a tick later).
+  useEffect(() => {
+    if (descriptionEditing) descriptionCancelled.current = false;
+  }, [descriptionEditing]);
   useEffect(() => setTitle(issue.title), [issue.id, issue.title]);
   useEffect(
     () => setDescription(issue.description ?? ''),

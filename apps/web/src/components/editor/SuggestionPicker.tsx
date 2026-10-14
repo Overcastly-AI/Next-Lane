@@ -79,7 +79,10 @@ export function SuggestionPicker({
               e.preventDefault();
               picker.command(item);
             },
-            onMouseEnter: () => onHover(idx),
+            // mousemove, not mouseenter: a pointer merely RESTING where the list
+            // opens must not steal the active option (Enter would pick the wrong
+            // member). Touch never moves a pointer.
+            onMouseMove: () => onHover(idx),
           };
           if (isMention) {
             const user = item as UserDto;

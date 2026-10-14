@@ -76,6 +76,11 @@ const CORPUS: Case[] = [
   // ── images ─────────────────────────────────────────────────────────────
   { name: 'page image reference', md: '![screenshot.png](nl-image:cm0abcd1234)', exact: true },
   { name: 'image with title + inline image', md: '![alt](https://x.test/y.png "Title")\n\ntext ![i](nl-image:abc_DEF-9) more', exact: true },
+  { name: 'consecutive block images', md: '![a](https://e.com/1.png)\n\n![b](nl-image:abc)\n\n![c](https://e.com/3.png "t")', exact: true },
+  { name: 'image-only document', md: '![solo](https://e.com/a.png)', exact: true },
+  { name: 'image-first document', md: '![pic](nl-image:abc)\n\nthen text', exact: true },
+  { name: 'image-last document', md: 'text\n\n![pic](https://e.com/a.png)', exact: true },
+  { name: 'images with bracketed alt', md: '![alt](https://e.com/1.png)\n\n![a [b] c](https://e.com/2.png)' },
   // ── product syntax ─────────────────────────────────────────────────────
   { name: 'wiki link', md: 'See [[Page Title]] for details', exact: true },
   { name: 'wiki link with alias', md: 'See [[Page Title|the page]] now', exact: true },
@@ -257,6 +262,88 @@ describe('hard break inside a table cell', () => {
     expect(lines).toHaveLength(3); // header, delimiter, ONE body row
     expect(rt(md)).toBe(md);
   });
+});
+
+describe('editing next to block images / atom blocks', () => {
+  const edit = (md: string, run: (e: Editor) => void) => {
+    const e = new Editor({ extensions: createMarkdownExtensions(), content: md, contentType: 'markdown' });
+    run(e);
+    const out = editorToMarkdown(e);
+    e.destroy();
+    return out;
+  };
+
+  it('images are valid paragraph content (no bare top-level <img>)', () => {
+    const e = new Editor({
+      extensions: createMarkdownExtensions(),
+      content: '![a](https://e.com/1.png)\n\n![b](https://e.com/2.png)',
+      contentType: 'markdown',
+    });
+    const kinds = e.getJSON().content?.map((n) => n.type);
+    e.destroy();
+    expect(kinds?.filter((k) => k === 'image')).toEqual([]);
+  });
+
+  it('typing at the start keeps consecutive images separate', () => {
+    const out = edit('![a](https://e.com/1.png)\n\n![b](https://e.com/2.png)', (e) => {
+      e.commands.focus('start');
+      e.commands.insertContent('X');
+    });
+    expect(out).toContain('![a](https://e.com/1.png)');
+    expect(out).toMatch(/!\[a\]\(https:\/\/e\.com\/1\.png\)\n\n!\[b\]/);
+  });
+
+  it('focus(end) on a doc ending in an image or raw-HTML block gives a text cursor; typing keeps the atom', () => {
+    for (const md of ['text\n\n![pic](https://e.com/a.png)', 'text\n\n<!-- c -->', 'text\n\n---']) {
+      const out = edit(md, (e) => {
+        e.commands.focus('end');
+        e.commands.insertContent('hello');
+      });
+      expect(out, md).toContain(md.split('\n\n')[1]);
+      expect(out, md).toContain('hello');
+    }
+  });
+
+  it('focus(start) on a doc starting with an atom block keeps it too', () => {
+    for (const md of ['<!-- c -->\n\ntext', '---\n\ntext', '![pic](https://e.com/a.png)\n\ntext']) {
+      const out = edit(md, (e) => {
+        e.commands.focus('start');
+        e.commands.insertContent('hello');
+      });
+      expect(out, md).toContain(md.split('\n\n')[0]);
+      expect(out, md).toContain('hello');
+    }
+  });
+
+  it('the guard paragraphs never change the markdown of an untouched doc', () => {
+    for (const md of ['<!-- c -->', '---', 'a\n\n<div>\nx\n</div>']) {
+      expect(edit(md, () => {})).toBe(md);
+    }
+  });
+});
+
+describe('typing task syntax', () => {
+  const type = (e: Editor, text: string) => {
+    for (const ch of text) {
+      const { from, to } = e.state.selection;
+      const handled = e.view.someProp('handleTextInput', (f) => f(e.view, from, to, ch, () => e.state.tr));
+      if (!handled) e.view.dispatch(e.state.tr.insertText(ch, from, to));
+    }
+  };
+  for (const [typed, md] of [
+    ['- [ ] do thing', '- [ ] do thing'],
+    ['- [x] done', '- [x] done'],
+    ['[ ] bare', '- [ ] bare'],
+  ] as const) {
+    it(`${typed} -> ${md}`, () => {
+      const e = new Editor({ extensions: createMarkdownExtensions(), content: '' });
+      e.commands.focus();
+      type(e, typed);
+      const out = editorToMarkdown(e);
+      e.destroy();
+      expect(out).toBe(md);
+    });
+  }
 });
 
 describe('blank paragraphs', () => {

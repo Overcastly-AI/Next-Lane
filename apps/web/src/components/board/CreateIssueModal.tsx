@@ -156,6 +156,8 @@ export function CreateIssueModal({
             value={description}
             onChange={setDescription}
             minHeight="5.5rem"
+            maxHeight="40vh"
+            escapeKeepsDraft
             aria-label="Description"
             placeholder="Add more detail…"
             data-testid="create-issue-description"

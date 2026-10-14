@@ -18,6 +18,7 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -30,6 +31,9 @@ import { PAGE_IMAGE_MIME_TYPES } from '@next-lane/shared';
 import type { UserDto } from '@next-lane/shared';
 import type { FlatPageOption } from '@/lib/wikiLinks';
 import { cn } from '@/lib/cn';
+import { NodeSelection, Selection, TextSelection } from '@tiptap/pm/state';
+import { bootBuffer } from './bootBuffer';
+import { ATOM_BLOCK_TYPES } from './EdgeParagraphs';
 import { createMarkdownExtensions } from './extensions';
 import { editorToMarkdown } from './markdownRoundTrip';
 import { EditorToolbar } from './EditorToolbar';
@@ -64,6 +68,8 @@ export const RichMarkdownEditorImpl = forwardRef<RichMarkdownEditorHandle, RichM
       toolbar = 'full',
       variant = 'inline',
       minHeight,
+      maxHeight,
+      escapeKeepsDraft,
       className,
       initialMode = 'rich',
     } = props;
@@ -90,6 +96,8 @@ export const RichMarkdownEditorImpl = forwardRef<RichMarkdownEditorHandle, RichM
     const onKeyDownRef = useRef(onKeyDown);
     const onFilesRef = useRef(onFiles);
     const maxLengthRef = useRef(maxLength);
+    const escapeKeepsDraftRef = useRef(escapeKeepsDraft);
+    escapeKeepsDraftRef.current = escapeKeepsDraft;
     const usersRef = useRef<UserDto[] | undefined>(users);
     const pagesRef = useRef<FlatPageOption[] | undefined>(pages);
     onChangeRef.current = onChange;
@@ -109,6 +117,7 @@ export const RichMarkdownEditorImpl = forwardRef<RichMarkdownEditorHandle, RichM
     // How the current document looked when loaded (see rule 2 above).
     const baseline = useRef<{ original: string; normalized: string } | null>(null);
     const initialValue = useRef(value);
+    const interacted = useRef(false);
 
     // ── autocomplete bridge ──────────────────────────────────────────────
     const pickerRef = useRef<PickerState | null>(null);
@@ -174,12 +183,58 @@ export const RichMarkdownEditorImpl = forwardRef<RichMarkdownEditorHandle, RichM
 
     const openLinkBar = useRef<() => void>(() => {});
 
+    // Autofocus, run from each editor's own `onCreate` (an effect keyed on the
+    // `editor` object can see a stale, already-destroyed instance when the view
+    // is re-created). Keeps trying for ~3 s, never moves a caret the user has
+    // already placed, and replays characters typed while the chunk was loading.
+    const autofocusRef = useRef<(e: Editor) => void>(() => {});
+    autofocusRef.current = (editor: Editor) => {
+      if (!autoFocus || initialMode !== 'rich') return;
+      const started = performance.now();
+      let flushed = false;
+      const domFocused = () => {
+        try {
+          return editor.view.dom.contains(document.activeElement);
+        } catch {
+          return false;
+        }
+      };
+      const flushBoot = () => {
+        if (flushed || !domFocused()) return;
+        flushed = true;
+        const text = bootBuffer.take();
+        if (!text) return;
+        const chain = editor.chain();
+        text.split('\n').forEach((line, i) => {
+          if (i > 0) chain.splitBlock();
+          if (line) chain.insertContent({ type: 'text', text: line });
+        });
+        chain.run();
+      };
+      const attempt = () => {
+        if (editor.isDestroyed) return;
+        if (!domFocused()) {
+          try {
+            const v = editor.view;
+            if (!interacted.current) v.dispatch(v.state.tr.setSelection(Selection.atEnd(v.state.doc)));
+            v.focus();
+          } catch {
+            /* view not attached yet: the next frame retries */
+          }
+        }
+        flushBoot();
+        if (!domFocused() && performance.now() - started < 3000) requestAnimationFrame(attempt);
+      };
+      attempt();
+    };
+
     const editor = useEditor({
       extensions,
       content: value,
       contentType: 'markdown',
       editable: !disabled,
-      autofocus: autoFocus ? 'end' : false,
+      // (no `autofocus` option: it re-asserts the caret at the END a tick after
+      // creation, even if the user has already moved it — see the effect below)
       injectCSS: false,
       immediatelyRender: true,
       shouldRerenderOnTransaction: false,
@@ -196,6 +251,19 @@ export const RichMarkdownEditorImpl = forwardRef<RichMarkdownEditorHandle, RichM
             'markdown-body nl-editor-content outline-none',
             variant === 'canvas' ? 'min-h-[50vh]' : 'min-h-[4.5rem]',
           ),
+        },
+        // Typing over a selected block atom (raw HTML, rule) must not destroy
+        // it: write the text in a new paragraph after it instead.
+        handleTextInput: (view, _from, _to, text) => {
+          const sel = view.state.selection;
+          if (sel instanceof NodeSelection && ATOM_BLOCK_TYPES.has(sel.node.type.name)) {
+            const para = view.state.schema.nodes.paragraph.create(null, view.state.schema.text(text));
+            const tr = view.state.tr.insert(sel.to, para);
+            tr.setSelection(TextSelection.create(tr.doc, sel.to + 1 + text.length));
+            view.dispatch(tr.scrollIntoView());
+            return true;
+          }
+          return false;
         },
         handlePaste: (view, event) => {
           const files = Array.from(event.clipboardData?.files ?? []);
@@ -232,6 +300,7 @@ export const RichMarkdownEditorImpl = forwardRef<RichMarkdownEditorHandle, RichM
           // ProseMirror re-synthesises Enter as a modifier-less key event, so
           // Cmd/Ctrl+Enter would never reach a `handleKeyDown` there.
           keydown: (view, event) => {
+            interacted.current = true;
             // An open picker owns arrows/Enter/Tab/Esc (its plugin handles them).
             if (pickerRef.current) return false;
             // ⌘/Ctrl+K on a selection (or inside a link) edits the link — the
@@ -260,7 +329,25 @@ export const RichMarkdownEditorImpl = forwardRef<RichMarkdownEditorHandle, RichM
                 return true;
               }
             }
-            return onKeyDownRef.current?.(event) === true;
+            if (onKeyDownRef.current?.(event) === true) return true;
+            // Escape with an unsent draft: keep it (blur) rather than let the
+            // drawer/modal around us close and throw it away.
+            if (
+              event.key === 'Escape' &&
+              escapeKeepsDraftRef.current &&
+              lastEmitted.current.trim() !== ''
+            ) {
+              event.preventDefault();
+              event.stopPropagation();
+              event.stopImmediatePropagation();
+              (view.dom as HTMLElement).blur();
+              return true;
+            }
+            return false;
+          },
+          mousedown: () => {
+            interacted.current = true;
+            return false;
           },
           dragover: (_view, event) => {
             if (!onFilesRef.current) return false;
@@ -276,6 +363,7 @@ export const RichMarkdownEditorImpl = forwardRef<RichMarkdownEditorHandle, RichM
         },
       },
       onCreate: ({ editor: e }) => {
+        autofocusRef.current(e);
         baseline.current = { original: value, normalized: editorToMarkdown(e) };
       },
       onUpdate: ({ editor: e }) => {
@@ -304,6 +392,11 @@ export const RichMarkdownEditorImpl = forwardRef<RichMarkdownEditorHandle, RichM
         flushSync(() => onChangeRef.current(next));
       },
     });
+    // Also right after mount, synchronously (onCreate fires a tick later).
+    useLayoutEffect(() => {
+      if (editor && !editor.isDestroyed) autofocusRef.current(editor);
+    }, [editor]);
+
     const editorRef = useRef<Editor | null>(null);
     editorRef.current = editor;
 
@@ -319,25 +412,12 @@ export const RichMarkdownEditorImpl = forwardRef<RichMarkdownEditorHandle, RichM
     useEffect(() => () => clearTimeout(limitTimer.current), []);
 
     useEffect(() => {
-      editor?.setEditable(!disabled);
+      // Only when it differs: re-asserting the same value re-applies the
+      // contenteditable attribute, which blurs a freshly focused editor.
+      if (editor && editor.isEditable === disabled) editor.setEditable(!disabled);
     }, [editor, disabled]);
 
-    // Autofocus, retried: the `autofocus` editor option fires once at creation,
-    // which can be before the view is attached (lazy chunk, modal mount) or be
-    // undone by the control that opened us unmounting. A few animation frames
-    // of "focus until it sticks" make "click Edit → caret is there" reliable.
-    useEffect(() => {
-      if (!editor || !autoFocus || initialMode !== 'rich') return;
-      let tries = 0;
-      let raf = 0;
-      const attempt = () => {
-        if (editor.isDestroyed) return;
-        editor.commands.focus('end');
-        if (!editor.isFocused && tries++ < 8) raf = requestAnimationFrame(attempt);
-      };
-      raf = requestAnimationFrame(attempt);
-      return () => cancelAnimationFrame(raf);
-    }, [editor, autoFocus, initialMode]);
+
 
     // ARIA combobox state for the open picker, set on the contenteditable.
     useEffect(() => {
@@ -500,14 +580,23 @@ export const RichMarkdownEditorImpl = forwardRef<RichMarkdownEditorHandle, RichM
       (e: React.FocusEvent<HTMLDivElement>) => {
         const next = e.relatedTarget as Node | null;
         if (next && wrapperRef.current?.contains(next)) return;
-        setDropActive(false);
-        onBlurOut?.(lastEmitted.current);
+        const target = e.target as Node;
+        // Decide one tick later. A blur caused by the focused element being
+        // REMOVED (the editor view re-created — React StrictMode's double
+        // mount, a mode switch) fires while it is still attached and is gone by
+        // the next tick; that is not the user leaving.
+        setTimeout(() => {
+          if (!target.isConnected) return;
+          if (wrapperRef.current?.contains(document.activeElement)) return;
+          setDropActive(false);
+          onBlurOut?.(lastEmitted.current);
+        }, 0);
       },
       [onBlurOut],
     );
 
     const canUpload = !!onFiles;
-    const sizeStyle = minHeight ? { minHeight } : undefined;
+    const sizeStyle = minHeight || maxHeight ? { minHeight, maxHeight } : undefined;
 
     return (
       <div
@@ -604,6 +693,7 @@ export const RichMarkdownEditorImpl = forwardRef<RichMarkdownEditorHandle, RichM
           className={cn(
             'min-h-0',
             variant === 'canvas' ? 'flex-1 overflow-y-auto' : '',
+            maxHeight && 'overflow-y-auto',
             mode === 'markdown' && 'hidden',
             variant === 'inline' ? 'px-3 py-2' : 'px-0 py-2',
             // 16px on phones: iOS zooms the page on focus below that.

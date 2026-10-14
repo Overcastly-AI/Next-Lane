@@ -30,6 +30,14 @@ export interface RichMarkdownEditorProps {
   onBlurOut?: (markdown: string) => void;
   autoFocus?: boolean;
   disabled?: boolean;
+  /**
+   * Escape with unsent content blurs the editor (keeping the draft) instead of
+   * letting an enclosing drawer/modal close and discard it. Empty -> Escape
+   * passes through and closes as usual.
+   */
+  escapeKeepsDraft?: boolean;
+  /** Cap on the writing area's height (any CSS length); longer content scrolls inside. */
+  maxHeight?: string;
   /** Hard cap on the markdown length, like a textarea's maxLength. */
   maxLength?: number;
   toolbar?: EditorToolbarVariant;
