@@ -80,6 +80,8 @@ export const RichMarkdownEditorImpl = forwardRef<RichMarkdownEditorHandle, RichM
     }, []);
     const [dropActive, setDropActive] = useState(false);
     const [linkOpen, setLinkOpen] = useState(false);
+    const [limitHit, setLimitHit] = useState(false);
+    const limitTimer = useRef<ReturnType<typeof setTimeout>>();
     const [picker, setPicker] = useState<PickerState | null>(null);
     const [selectedIndex, setSelectedIndex] = useState(0);
 
@@ -284,8 +286,11 @@ export const RichMarkdownEditorImpl = forwardRef<RichMarkdownEditorHandle, RichM
         if (!baseline.current) baseline.current = { original: initialValue.current, normalized: md };
         const max = maxLengthRef.current;
         if (max !== undefined && md.length > max) {
-          // Like a textarea's maxLength: refuse the keystroke.
+          // Like a textarea's maxLength: refuse the keystroke — and say so.
           e.commands.undo();
+          setLimitHit(true);
+          clearTimeout(limitTimer.current);
+          limitTimer.current = setTimeout(() => setLimitHit(false), 3500);
           return;
         }
         const b = baseline.current;
@@ -310,6 +315,8 @@ export const RichMarkdownEditorImpl = forwardRef<RichMarkdownEditorHandle, RichM
       editor.commands.setContent(value, { contentType: 'markdown', emitUpdate: false });
       baseline.current = { original: value, normalized: editorToMarkdown(editor) };
     }, [value, editor, mode]);
+
+    useEffect(() => () => clearTimeout(limitTimer.current), []);
 
     useEffect(() => {
       editor?.setEditable(!disabled);
@@ -647,6 +654,12 @@ export const RichMarkdownEditorImpl = forwardRef<RichMarkdownEditorHandle, RichM
               setSelectedIndex(i);
             }}
           />
+        )}
+
+        {limitHit && (
+          <p role="status" className="px-3 pb-2 text-xs text-red-600">
+            That would go over the {maxLength?.toLocaleString()}-character limit, so it was not added.
+          </p>
         )}
 
         {canUpload && (
