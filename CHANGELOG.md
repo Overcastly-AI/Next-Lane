@@ -16,6 +16,21 @@ staged here by hand (see [`RELEASING.md`](./RELEASING.md))._
 
 ---
 
+## [0.22.0] — 2026-10-14
+
+[Compare with v0.21.0](https://github.com/Overcastly-AI/Next-Lane/compare/v0.21.0...v0.22.0)
+
+### Features
+
+* **web:** migrate every markdown field to the rich editor ([dd3760e](https://github.com/Overcastly-AI/Next-Lane/commit/dd3760e73509159670783c25b5c70e1b67b4cfa5))
+* **web:** Tiptap rich markdown editor primitive + round-trip suite ([49c4b95](https://github.com/Overcastly-AI/Next-Lane/commit/49c4b95cffa5cc362531f094972e1ba8070f421a)), closes [#123](https://github.com/Overcastly-AI/Next-Lane/issues/123)
+
+### Bug Fixes
+
+* **api:** accept page bodies up to the advertised cap; oversize is 413 not 500 ([3919b28](https://github.com/Overcastly-AI/Next-Lane/commit/3919b287001fefc6ada71484782489d2131cf27d))
+* **web:** rich editor QA round - atom edges, block images, task rule, typing races ([60771e5](https://github.com/Overcastly-AI/Next-Lane/commit/60771e58e897a2c1f9afada420ac8a7208da88d9))
+* **web:** rich editor races, chip scoping, comment double-append ([bd2238b](https://github.com/Overcastly-AI/Next-Lane/commit/bd2238b1de0c2d5886775a04857d22b481e59531))
+
 ## [0.21.0] — 2026-10-09
 
 [Compare with v0.20.0](https://github.com/Overcastly-AI/Next-Lane/compare/v0.20.0...v0.21.0)
