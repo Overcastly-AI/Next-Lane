@@ -7,7 +7,8 @@ import {
   Patch,
   Post,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import { CommentResponse } from '../common/dto/api-responses.dto';
 import { CommentsService } from './comments.service';
 import { CreateCommentDto, UpdateCommentDto } from './dto/comment.dto';
 import { CurrentUser, AuthUser } from '../auth/current-user.decorator';
@@ -20,12 +21,14 @@ export class CommentsController {
   constructor(private readonly comments: CommentsService) {}
 
   @Get('issues/:issueId/comments')
+  @ApiOkResponse({ type: CommentResponse, isArray: true })
   @RequireScope('comments:read')
   findAll(@CurrentUser() user: AuthUser, @Param('issueId') issueId: string) {
     return this.comments.findAll(user.id, issueId);
   }
 
   @Post('issues/:issueId/comments')
+  @ApiCreatedResponse({ type: CommentResponse })
   @RequireScope('comments:write')
   create(
     @CurrentUser() user: AuthUser,
@@ -36,6 +39,7 @@ export class CommentsController {
   }
 
   @Patch('comments/:id')
+  @ApiOkResponse({ type: CommentResponse })
   @RequireScope('comments:write')
   update(
     @CurrentUser() user: AuthUser,
